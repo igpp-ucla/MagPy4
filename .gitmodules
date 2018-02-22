@@ -1,0 +1,3 @@
+[submodule "ffPy"]
+	path = ffPy
+	url = https://github.com/igpp-ucla/ffPy.git
