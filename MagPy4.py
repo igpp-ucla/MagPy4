@@ -1,11 +1,15 @@
 
 import sys
 from PyQt5 import QtGui, QtCore, QtWidgets
+from PyQt5.QtWidgets import QSizePolicy
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tckr
+from matplotlib.widgets import Slider
+
+from MagPy4UI import UI_MagPy4
 
 import random
 import numpy as np
@@ -20,72 +24,43 @@ POSCOLS = [5, 6, 7, 8, 13, 14, 15, 16, 21, 22, 23, 24, 29, 30, 31, 32]
 BLMCOLS = [32, 33, 34, 35, 36, 37, 38]  #  J{X,Y,Z}M J Jpara, Jperp, Angle
 
 
-class MagPy4Window(QtWidgets.QDialog):
+class MagPy4Window(QtWidgets.QDialog, UI_MagPy4):
     def __init__(self, parent=None):
         super(MagPy4Window, self).__init__(parent)
 
-        # gives default window options in top right
-        self.setWindowFlags(QtCore.Qt.Window)
+        self.ui = UI_MagPy4()
+        self.ui.setupUI(self)
 
-        # a figure instance to plot on
-        #self.figure = plt.figure(figsize=(10,20), dpi=100)
-        self.figure = plt.figure()
-
-        # this is the Canvas Widget that displays the `figure`
-        # it takes the `figure` instance as a parameter to __init__
-        self.canvas = FigureCanvas(self.figure)
-
-        self.canvas.mpl_connect('resize_event', self.resizeEvent)
-
-        #self.scroll = QtWidgets.QScrollArea()
-        #self.scroll.setWidget(self.canvas)
-
-        #self.scrollBar = NavigationToolbar(self.canvas, )
-
-        # this is the Navigation widget
-        # it takes the Canvas widget and a parent
-        self.toolbar = NavigationToolbar2QT(self.canvas, self)
-        #self.toolbar.actions()[0].triggered.connect(tightness)
-        #NavigationToolbar2QT.home = tightness
-
-        # Just some button connected to `plot` method
-        self.button = QtWidgets.QPushButton('Plot')
-        #self.button.clicked.connect(self.plot)
-        self.button.clicked.connect(self.halfAxes)
-
-        self.tightenButton = QtWidgets.QPushButton('Tighten')
-
-        self.tightenButton.clicked.connect(self.tighten)
-
-        # set the layout
-        layout = QtWidgets.QVBoxLayout()
-        layout.addWidget(self.toolbar)
-        layout.addWidget(self.canvas)
-        #layout.addWidget(self.scroll)
-
-        horiz = QtWidgets.QHBoxLayout()
-        horiz.addWidget(self.button)
-        horiz.addWidget(self.tightenButton)
-        layout.addLayout(horiz)
-
-        self.setLayout(layout)
-
-        #self.plot() # plot once at beginning
+        self.ui.button.clicked.connect(self.halfAxes)
+        self.ui.tightenButton.clicked.connect(self.tighten)
+        self.ui.comboBox.currentIndexChanged.connect(self.comboChange)
+        #self.ui.timeSlider.startValueChanged.connect(self.onStartChanged)
+        #self.ui.timeSlider.endValueChanged.connect(self.onEndChanged)
+        self.ui.startSlider.valueChanged.connect(self.onStartChanged)
+        self.ui.endSlider.valueChanged.connect(self.onEndChanged)
+        self.ui.startSlider.sliderReleased.connect(self.setTimes)
+        self.ui.endSlider.sliderReleased.connect(self.setTimes)
 
         self.openFile('C:/Users/jcollins/mmsTestData/L2/merged/2015/09/27/mms15092720')
+        self.setupSliders()
         self.calcPlotPoints()
         self.plotFFData()
+
+    def comboChange(self, i):
+        print(f'combo changed to: {self.comboBox.itemText(i)}')
+            
 
     def tighten(self):
         print('hello')
         plt.tight_layout()
 
     def halfAxes(self):
-        axes = self.figure.axes
+        axes = self.ui.figure.axes
         self.tO += (self.tE-self.tO)/2
         for ax in axes:
             xmin,xmax,ymin,ymax = ax.axis()
-            ax.axis(self.tO,self.tE, ymin, ymax)
+            ax.axis(xmin = self.tO,xmax=self.tE, ymin=ymin, ymax=ymax)
+        self.ui.canvas.draw()
 
     def resizeEvent(self, event):
         print('resize detected')
@@ -103,7 +78,7 @@ class MagPy4Window(QtWidgets.QDialog):
             #self._NoData()   # purge old panels
         self.FID = FID
         self.epoch = self.FID.getEpoch()
-        print(self.epoch)
+        print(f'epoch: {self.epoch}')
         info = self.FID.FFInfo
         err = self.FID.open()
         if err < 0:
@@ -113,15 +88,17 @@ class MagPy4Window(QtWidgets.QDialog):
             return err, mess
         self.fTime = [info["FIRST_TIME"].info, info["LAST_TIME"].info]
         self.resolution = self.FID.getResolution()
+        print(f'resolution: {self.resolution}')
 #       self.numpoints = min(self.numpoints, self.FID.FFParm["NROWS"].value)
 
         self.numpoints = self.FID.FFParm["NROWS"].value
         self.tO = self.times[0]
-        print(self.tO)
+        print(f'tO: {self.tO}')
         last = min(self.numpoints - 1, len(self.times) - 1)
+        print(f'last: {last}')
         self.tE = self.times[last]
-        print(self.tE)
-
+        print(f'tE: {self.tE}')
+        
 
         #self.plot_.clear()
 #       self.setHeaders(self.plot_)
@@ -176,6 +153,51 @@ class MagPy4Window(QtWidgets.QDialog):
         #self.updateFileStats()
         return 1, "OKAY"
 
+    # update slider tick amount and timers and labels and stuff based on new file
+    def setupSliders(self):
+        parm = self.FID.FFParm
+        mx = parm["NROWS"].value - 1
+        #tick = int(mx / 20) - 1
+        tick = 1.0 / self.resolution * 2.0
+
+        self.ui.startSlider.setMinimum(1)
+        self.ui.startSlider.setMaximum(mx)
+        self.ui.startSlider.setTickInterval(tick)
+        self.ui.startSlider.setSingleStep(tick)
+        self.ui.endSlider.setMinimum(1)
+        self.ui.endSlider.setMaximum(mx)
+        self.ui.endSlider.setTickInterval(tick)
+        self.ui.endSlider.setSingleStep(tick)
+
+        #self.ui.timeSlider.setMin(1)
+        #self.ui.timeSlider.setMax(mx)
+        #self.ui.timeSlider.setStart(1)
+        #self.ui.timeSlider.setEnd(mx)
+
+    def onStartChanged(self, val):
+        self.iO = val
+        # send a new time if the user clicks on the bar but not on the sliders
+        if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.startSlider.underMouse():
+            self.setTimes()
+
+    def onEndChanged(self, val):
+        self.iE = val
+        # send a new time if the user clicks on the bar but not on the sliders
+        if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.endSlider.underMouse():
+            self.setTimes()
+
+    def setTimes(self):
+        axes = self.ui.figure.axes
+
+        self.tO = self.times[self.iO]
+        self.tE = self.times[self.iE]
+
+        for ax in axes:
+            xmin,xmax,ymin,ymax = ax.axis()
+            ax.axis(xmin = self.tO, xmax=self.tE, ymin=ymin, ymax=ymax)
+        self.ui.canvas.draw()
+
+
     def calcPlotPoints(self):
         #  determine which section to be plotted
         # error cannot use just self.times (data
@@ -183,6 +205,10 @@ class MagPy4Window(QtWidgets.QDialog):
         # print("SEARCH TIMES",self.tO, self.tE)
         iO = timeIndex(times, self.tO, dt=self.resolution)
         iE = timeIndex(times, self.tE, dt=self.resolution) + 1
+        print(f'iO: {iO}')
+        print(f'iE: {iE}')
+
+        # bunch of error debugging
         if iO is None:
             iO = 0 if self.tO < self.times[0] else None
         if iE is None:
@@ -229,7 +255,7 @@ class MagPy4Window(QtWidgets.QDialog):
         return newStats
 
     def plotFFData(self):
-        self.figure.clear()
+        self.ui.figure.clear()
         colors = ['r','g','b','black']
         xO = self.xO
         xE = self.xE
@@ -239,34 +265,50 @@ class MagPy4Window(QtWidgets.QDialog):
 
         numCraft = 4
         firstAxis = None
-        for i in range(numCraft): # for each spacecraft
-            col = i * 4 + 0 # bx, by, bz, bt  (0 is bx, 1 by, etc)
-            Y = np.array(self.magData[col])
-            if len(Y) <= 1:
-                continue
-
-            ax = self.figure.add_subplot(numCraft, 1, i+1, sharex=firstAxis)
+        for j in range(4):   # bx, by, bz, bt (offset into array kinda)
+            ax = self.ui.figure.add_subplot(numCraft, 1, j+1, sharex=firstAxis)
             if firstAxis is None:
                 firstAxis = ax       
 
             ax.autoscale(enable=True, axis='both',tight=True)
             ax.set_ymargin(0.05)
 
-            color = colors[i]
-            ax.plot(X[xO:xE], Y[xO:xE], ',', lw=0.5, snap=True, color = color) #',' makes points
-            #ax.plot_date(Xd[xO:xE], Y[xO:xE], ',', lw=0.5, snap=True, color = color) #',' makes points
-
             loc = tckr.AutoMinorLocator(5)
             ax.xaxis.set_minor_locator(loc)
-            #plt.grid(which='minor')
-            #plt.tick_params(which='major', length = 7)
 
-            #formatter = tckr.FuncFormatter(self.tickFormat)
-            #ax.xaxis.set_major_formatter(formatter)
+            for i in range(numCraft): # for each spacecraft
+                col = i * 4 + j
+                Y = np.array(self.magData[col])
+                if len(Y) <= 1:
+                    continue
 
+                color = colors[i]
+                ax.plot(X[xO:xE], Y[xO:xE], ',', lw=0.5, snap=True, color = color) #',' makes points
+                #ax.plot_date(Xd[xO:xE], Y[xO:xE], ',', lw=0.5, snap=True, color = color) #',' makes points
+
+                #plt.grid(which='minor')
+                #plt.tick_params(which='major', length = 7)
+
+                #formatter = tckr.FuncFormatter(self.tickFormat)
+                #ax.xaxis.set_major_formatter(formatter)
+
+        #ax = self.ui.figure.add_subplot(numCraft+1, 1, 5)
+        #self.timeSlider = Slider(ax, 'time', self.tO, self.tE)
+        #self.timeSlider.on_changed(self.updateAxes)
 
         # refresh canvas
-        self.canvas.draw()
+        self.ui.canvas.draw()
+
+    # unused currently. was used by slider code above but then did with pyqt instead
+    def updateAxes(self, val):
+        axes = self.ui.figure.axes
+        #self.tO += (self.tE-self.tO)/2
+        pos = self.timeSlider.val
+        for ax in axes:
+            xmin,xmax,ymin,ymax = ax.axis()
+            ax.axis(xmin = pos,xmax=pos+10000, ymin=ymin, ymax=ymax)
+        self.ui.canvas.draw()
+
 
     # x is value of tick
     # pos is position of tick int time array i think
@@ -275,41 +317,6 @@ class MagPy4Window(QtWidgets.QDialog):
          return str(t)
         
 
-    def plot(self):
-
-        # instead of ax.hold(False)
-        self.figure.clear()
-
-        rows = 5
-        firstAxis = None
-        colors = ['r','g','b']
-        for i in range(rows):
-            # random data
-            data = [random.random() for i in range(1000)]
-
-            # create an axis
-            ax = self.figure.add_subplot(rows, 1, i+1, sharex=firstAxis)
-            if firstAxis is None:
-                firstAxis = ax                   
-
-            
-            ax.autoscale(enable=True, axis='both',tight=True)
-            ax.set_ymargin(0.05)
-
-            # discards the old graph
-            # ax.hold(False) # deprecated, see above
-
-            # plot data
-            
-            color = 'black'
-            if i < len(colors):
-                color = colors[i]
-            #color = colors[len(colors) - 1 if i >= len(colors) else i]
-
-            ax.plot(data, lw=0.5, snap=True, color = color) #',' makes points
-
-        # refresh canvas
-        self.canvas.draw()
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)

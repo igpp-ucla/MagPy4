@@ -30,6 +30,10 @@
     <Compile Include="ffPy\FF_Static.py" />
     <Compile Include="ffPy\FF_Time.py" />
     <Compile Include="MagPy4.py" />
+    <Compile Include="MagPy4UI.py" />
+    <Compile Include="qrangeslider.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="test.py">
       <SubType>Code</SubType>
     </Compile>
