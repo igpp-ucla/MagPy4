@@ -1,0 +1,26 @@
+#compiled py code should NOT be stored on repo and shared
+__pycache__/
+*.py[cod]
+*$py.class
+
+#mac trash
+._*
+.DS_Store
+
+#ignore vim temp stuff 
+*~
+*.swp
+*.swo
+
+#ignore idea config files
+.idea/
+
+#ignore user specific visual studio files
+*.suo
+
+#ignore everything in build folder
+build/*
+
+#except these two files
+!build/magPyDist.py
+!build/magPyFreeze.py
