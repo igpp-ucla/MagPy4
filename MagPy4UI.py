@@ -55,16 +55,48 @@ class UI_MagPy4(object):
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.toolbar)
 
+        bottomHoriz = QtWidgets.QHBoxLayout()
+        drawStyleLayout = QtWidgets.QHBoxLayout()
+        self.drawStyleComboLabel = QtWidgets.QLabel()
+        #self.drawStyleComboLabel.setAlignment
+        self.drawStyleComboLabel.setText("Draw Style")
+        self.drawStyleCombo = QtWidgets.QComboBox()
+        self.drawStyleCombo.addItem('dots')
+        self.drawStyleCombo.addItem('lines')
+        drawStyleLayout.addWidget(self.drawStyleComboLabel)
+        drawStyleLayout.addWidget(self.drawStyleCombo)
+        self.drawStyleCombo.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.drawStyleComboLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        #layout.addLayout(drawStyleLayout)
+        bottomHoriz.addLayout(drawStyleLayout)
+
+        bottomHoriz.addWidget(self.button)
+        bottomHoriz.addWidget(self.tightenButton)
+
+        layout.addLayout(bottomHoriz)
+
         layout.addLayout(mainHoriz)
         #layout.addWidget(self.canvas)
         #layout.addWidget(self.scroll)
 
+        # SLIDER setup
+        sliderFont = QtGui.QFont("Times", 14)#, QtGui.QFont.Bold) 
+        sliderLayout = QtWidgets.QGridLayout() # r, c, w, h
+        self.startSliderLabel = QtWidgets.QLabel()
+        self.startSliderLabel.setText("StartTime")
+        self.startSliderLabel.setFont(sliderFont)
         self.startSlider = QtWidgets.QSlider()
         self.startSlider.setOrientation(QtCore.Qt.Horizontal)
-        layout.addWidget(self.startSlider)
+        self.endSliderLabel = QtWidgets.QLabel()
+        self.endSliderLabel.setText("EndTime")
+        self.endSliderLabel.setFont(sliderFont)
         self.endSlider = QtWidgets.QSlider()
         self.endSlider.setOrientation(QtCore.Qt.Horizontal)
-        layout.addWidget(self.endSlider)
+        sliderLayout.addWidget(self.startSliderLabel, 0, 0, 1, 1)
+        sliderLayout.addWidget(self.startSlider, 0, 1, 1, 1)
+        sliderLayout.addWidget(self.endSliderLabel, 1, 0, 1, 1)
+        sliderLayout.addWidget(self.endSlider, 1, 1, 1, 1)
+        layout.addLayout(sliderLayout)
 
         #self.timeSlider = QRangeSlider()
         #self.timeSlider.setOrientation(QtCore.Qt.Horizontal)
@@ -73,9 +105,6 @@ class UI_MagPy4(object):
 
         #layout.addWidget()
 
-        horiz = QtWidgets.QHBoxLayout()
-        horiz.addWidget(self.button)
-        horiz.addWidget(self.tightenButton)
-        layout.addLayout(horiz)
+
 
         MagPy4.setLayout(layout)
