@@ -15,6 +15,22 @@ class UI_MagPy4(object):
         MagPy4.setWindowFlags(QtCore.Qt.Window)
         MagPy4.resize(1500,1000)
 
+        self.centralWidget = QtWidgets.QWidget(MagPy4)
+        MagPy4.setCentralWidget(self.centralWidget)
+
+        self.toolBar = QtWidgets.QToolBar(MagPy4)
+        MagPy4.addToolBar(QtCore.Qt.TopToolBarArea, self.toolBar)
+        self.actionOpen = QtWidgets.QAction(MagPy4)
+        self.actionOpen.setPriority(QtWidgets.QAction.HighPriority)
+        self.actionOpen.setText('Open')
+        self.actionOpen.setShortcut('O')
+
+        self.actionTest = QtWidgets.QAction(MagPy4)
+        self.actionTest.setText('Test')
+
+        self.toolBar.addAction(self.actionOpen)
+        self.toolBar.addAction(self.actionTest)
+
         # a figure instance to plot on
         self.figure = plt.figure()
         self.canvas = FigureCanvas(self.figure)
@@ -29,33 +45,98 @@ class UI_MagPy4(object):
 
         # this is the Navigation widget
         # it takes the Canvas widget and a parent
-        self.toolbar = NavigationToolbar2QT(self.canvas, MagPy4)
+        #self.toolbar = NavigationToolbar2QT(self.canvas, MagPy4)
         #self.toolbar.actions()[0].triggered.connect(tightness)
         #NavigationToolbar2QT.home = tightness
-
-        # test buttons for functions
-        self.button = QtWidgets.QPushButton('Plot')
-        self.tightenButton = QtWidgets.QPushButton('Tighten')
 
         mainHoriz = QtWidgets.QHBoxLayout()
         mainHoriz.addWidget(self.canvas)
         
-        self.comboBox = QtWidgets.QComboBox()
-        self.comboBox.addItem("test1")
-        self.comboBox.addItem("test2")
-        self.comboBox.addItem("test3")
+        sideGrid = QtWidgets.QGridLayout() #dropdown grid on side
+        mainHoriz.addLayout(sideGrid)
+        # make two things here, one toggle that says update realtime as you change combos (or not)
+        # and then one update button maybe (button becomes grayed out if first toggle is checked)
+
+        qframe = QtWidgets.QFrame()
+        qframe.setStyleSheet("background-color: rgb(255, 0,0)")
+        qframe1 = QtWidgets.QFrame()
+        qframe1.setStyleSheet("background-color: rgb(0,255,0)")
+        qframe2 = QtWidgets.QFrame()
+        qframe2.setStyleSheet("background-color: rgb(0,0, 255)")
+        qframe3 = QtWidgets.QFrame()
+        qframe3.setStyleSheet("background-color: rgb(255,255,0)")
+        qframe4 = QtWidgets.QFrame()
+        qframe4.setStyleSheet("background-color: rgb(0, 255, 255)")
+        qframe.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        qframe1.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        qframe2.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        qframe3.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        qframe4.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+
+        self.comboBox = QtWidgets.QComboBox(qframe)
         self.comboBox.addItem("BX1")
-
-        # horiz then vertical policy
+        self.comboBox.addItem("BX2")
+        self.comboBox.addItem("BX3")
+        self.comboBox.addItem("BX4")
+        self.comboBox.addItem("BY1")
+        self.comboBox.addItem("BY2")
+        self.comboBox.addItem("BY3")
+        self.comboBox.addItem("BY4")
+        self.comboBox.addItem("BZ1")
+        self.comboBox.addItem("BZ2")
+        self.comboBox.addItem("BZ3")
+        self.comboBox.addItem("BZ4")
+        self.comboBox.addItem("BT1")
+        self.comboBox.addItem("BT2")
+        self.comboBox.addItem("BT3")
+        self.comboBox.addItem("current")
+        self.comboBox.addItem("velocity")
+        self.comboBox.addItem("curl?")
+        self.comboBox.addItem("pressure")
         self.comboBox.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        
+        self.comboBox1 = QtWidgets.QComboBox(qframe1)
+        self.comboBox1.addItem("test1")
+        self.comboBox1.addItem("test2")
+        self.comboBox1.addItem("test3")
+        self.comboBox1.addItem("BX1")
+        self.comboBox1.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.comboBox2 = QtWidgets.QComboBox(qframe2)
+        self.comboBox2.addItem("test1")
+        self.comboBox2.addItem("test2")
+        self.comboBox2.addItem("test3")
+        self.comboBox2.addItem("BX1")
+        self.comboBox2.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.comboBox3 = QtWidgets.QComboBox(qframe3)
+        self.comboBox3.addItem("test1")
+        self.comboBox3.addItem("test2")
+        self.comboBox3.addItem("test3")
+        self.comboBox3.addItem("BX1")
+        self.comboBox3.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.comboBox4 = QtWidgets.QComboBox(qframe4)
+        self.comboBox4.addItem(" ")
+        self.comboBox4.addItem("test2")
+        self.comboBox4.addItem("test3")
+        self.comboBox4.addItem("BX1")
+        self.comboBox4.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 
-        mainHoriz.addWidget(self.comboBox)
+        sideGrid.addWidget(qframe, 0,0,1,1)
+        sideGrid.addWidget(qframe1, 1,0,1,1)
+        sideGrid.addWidget(qframe2, 2,0,1,1)
+        sideGrid.addWidget(qframe3, 3,0,1,1)
+        sideGrid.addWidget(qframe4, 4,0,1,1)
+
+        self.comboBox.setStyleSheet("background-color: rgb(255, 0,0)")
+        self.comboBox1.setStyleSheet("background-color: rgb(255, 0,0)")
+        self.comboBox2.setStyleSheet("background-color: rgb(255, 0,0)")
+        self.comboBox3.setStyleSheet("background-color: rgb(255, 0,0)")
+        self.comboBox4.setStyleSheet("background-color: rgb(255, 0,0)")
+
 
         # main vertical layout
-        layout = QtWidgets.QVBoxLayout()
-        layout.addWidget(self.toolbar)
+        layout = QtWidgets.QVBoxLayout(self.centralWidget)
+        #layout.addWidget(self.toolbar)
 
-        bottomHoriz = QtWidgets.QHBoxLayout()
         drawStyleLayout = QtWidgets.QHBoxLayout()
         self.drawStyleComboLabel = QtWidgets.QLabel()
         #self.drawStyleComboLabel.setAlignment
@@ -67,14 +148,11 @@ class UI_MagPy4(object):
         drawStyleLayout.addWidget(self.drawStyleCombo)
         self.drawStyleCombo.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.drawStyleComboLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        self.toolBar.addWidget(self.drawStyleComboLabel)
+        self.toolBar.addWidget(self.drawStyleCombo)
         #layout.addLayout(drawStyleLayout)
-        bottomHoriz.addLayout(drawStyleLayout)
-
-        bottomHoriz.addWidget(self.button)
-        bottomHoriz.addWidget(self.tightenButton)
-
-        layout.addLayout(bottomHoriz)
-
+        
         layout.addLayout(mainHoriz)
         #layout.addWidget(self.canvas)
         #layout.addWidget(self.scroll)
@@ -98,13 +176,65 @@ class UI_MagPy4(object):
         sliderLayout.addWidget(self.endSlider, 1, 1, 1, 1)
         layout.addLayout(sliderLayout)
 
-        #self.timeSlider = QRangeSlider()
-        #self.timeSlider.setOrientation(QtCore.Qt.Horizontal)
-        #layout.addWidget(self.timeSlider)
+ 
+class UI_AxisTracer(object):
+    def setupUI(self, Frame):
+        Frame.resize(500,500)
+
+        layout = QtWidgets.QVBoxLayout(Frame)
+
+        self.gridFrame = QtWidgets.QGroupBox('Axes Matrix')
+        self.grid = QtWidgets.QGridLayout(self.gridFrame)
+
+        layout.addWidget(self.gridFrame)
 
 
-        #layout.addWidget()
+        checkBoxStyle = """
+            QCheckBox{spacing: 0px;}
+            QCheckBox::indicator{width:32px;height:32px}
+            QCheckBox::indicator:unchecked {            image: url(images/checkbox_unchecked.png);}
+            QCheckBox::indicator:unchecked:hover {      image: url(images/checkbox_unchecked_hover.png);}
+            QCheckBox::indicator:unchecked:pressed {    image: url(images/checkbox_unchecked_pressed.png);}
+            QCheckBox::indicator:checked {              image: url(images/checkbox_checked.png);}
+            QCheckBox::indicator:checked:hover {        image: url(images/checkbox_checked_hover.png);}
+            QCheckBox::indicator:checked:pressed {      image: url(images/checkbox_checked_pressed.png);}
+            QCheckBox::indicator:indeterminate:hover {  image: url(images/checkbox_checked_hover.png);}
+            QCheckBox::indicator:indeterminate:pressed {image: url(images/checkbox_checked_pressed.png);}
+        """
 
+        Frame.setStyleSheet(checkBoxStyle)
 
+        #datas = ['BX1','BX2','BX3','BX4','BY1','BY2','BY3','BY4','BZ1','BZ2','BZ3','BZ4','BT1','BT2','BT3','BT4','curl','velocity','pressure','density']
+        #axisCount = 4
+        #for a in range(axisCount+1):
+        #    if a == 0: # make labels
+        #        for i,dstr in enumerate(datas):
+        #            label = QtWidgets.QLabel()
+        #            label.setText(dstr)
+        #            label.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        #            self.grid.addWidget(label,a,i+1,1,1)
+        #    else:
+        #        axLabel = QtWidgets.QLabel()
+        #        axLabel.setText(f'Axis{a}')
+        #        self.grid.addWidget(axLabel,a,0,1,1)
+        #        for i,dstr in enumerate(datas):
+        #            checkBox = QtWidgets.QCheckBox()
+        #            #checkBox.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred))
+        #            self.grid.addWidget(checkBox,a,i+1,1,1)
 
-        MagPy4.setLayout(layout)
+        buttonLayout = QtWidgets.QHBoxLayout()
+        layout.addLayout(buttonLayout)
+        self.clearButton = QtWidgets.QPushButton('Clear')
+        buttonLayout.addWidget(self.clearButton)
+        self.removeAxisButton = QtWidgets.QPushButton('Remove Axis')
+        buttonLayout.addWidget(self.removeAxisButton)
+        self.addAxisButton = QtWidgets.QPushButton('Add Axis')
+        buttonLayout.addWidget(self.addAxisButton)
+        self.plotButton = QtWidgets.QPushButton('Plot')
+        layout.addWidget(self.plotButton)
+
+        # take up the rest of the space, otherwise top label row in grid will. not sure how to do this otherwise
+        spacelabel = QtWidgets.QLabel()
+        spacelabel.setText(' ')
+        spacelabel.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        layout.addWidget(spacelabel)

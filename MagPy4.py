@@ -10,7 +10,7 @@ import matplotlib.ticker as tckr
 import matplotlib.dates as mdates
 from matplotlib.widgets import Slider
 
-from MagPy4UI import UI_MagPy4
+from MagPy4UI import UI_MagPy4, UI_AxisTracer
 
 import random
 import numpy as np
@@ -25,15 +25,13 @@ POSCOLS = [5, 6, 7, 8, 13, 14, 15, 16, 21, 22, 23, 24, 29, 30, 31, 32]
 BLMCOLS = [32, 33, 34, 35, 36, 37, 38]  #  J{X,Y,Z}M J Jpara, Jperp, Angle
 
 
-class MagPy4Window(QtWidgets.QDialog, UI_MagPy4):
+class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def __init__(self, parent=None):
         super(MagPy4Window, self).__init__(parent)
 
         self.ui = UI_MagPy4()
         self.ui.setupUI(self)
 
-        self.ui.button.clicked.connect(self.halfAxes)
-        self.ui.tightenButton.clicked.connect(self.tighten)
         self.ui.comboBox.currentIndexChanged.connect(self.comboChange)
         self.ui.drawStyleCombo.currentIndexChanged.connect(self.setLineStyle)
         #self.ui.timeSlider.startValueChanged.connect(self.onStartChanged)
@@ -43,15 +41,22 @@ class MagPy4Window(QtWidgets.QDialog, UI_MagPy4):
         self.ui.startSlider.sliderReleased.connect(self.setTimes)
         self.ui.endSlider.sliderReleased.connect(self.setTimes)
 
+        #self.ui.actionTest.triggered.connect(self.plotFFDataTest)
+        self.ui.actionTest.triggered.connect(self.openTracer)
+        self.jTest = 0
+
         self.openFile('C:/Users/jcollins/mmsTestData/L2/merged/2015/09/27/mms15092720')
         self.setupSliders()
         self.markerStyle = ','
         self.lineStyle = ''
-        self.plotFFData()
+        #self.plotFFData()
 
     def comboChange(self, i):
-        print(f'combo changed to: {self.comboBox.itemText(i)}')
-           
+        print(f'combo changed to: {self.ui.comboBox.itemText(i)}')
+
+    def openTracer(self):
+        self.tracer = AxisTracer()
+        self.tracer.show()
 
     def setLineStyle(self, i):
         style = self.ui.drawStyleCombo.itemText(i)
@@ -307,6 +312,74 @@ class MagPy4Window(QtWidgets.QDialog, UI_MagPy4):
         # refresh canvas
         self.ui.canvas.draw()
 
+
+    def plotFFDataTest(self):
+        #self.ui.figure.clear()
+        colors = ['r','g','b','black']
+        j = self.jTest
+        self.jTest += 1
+        if self.jTest > 3:
+            self.jTest = 0
+        #Xd = FFTIME.list2Date(self.times)
+
+        numCraft = 4
+        loc = tckr.AutoMinorLocator(5)
+        formatter = tckr.FuncFormatter(self.tickFormat)
+        #majorLoc = tckr.MaxNLocator(nbins=5,integer=False,prune=None)
+
+        fixedTics = []
+        rng = self.tE - self.tO
+        tickCount = 10
+        for i in range(tickCount+1):
+            n = self.tO + i * (rng/tickCount)
+            fixedTics.append(n)
+
+        majorLoc = tckr.FixedLocator(fixedTics)
+
+        axxs = self.ui.figure.axes
+        if len(axxs) == 0:
+            ax = self.ui.figure.add_subplot(numCraft, 1, j+1)
+        else:
+            ax = axxs[0]
+            ax.clear()
+
+        #ax.autoscale(enable=True, axis='y',tight=None)
+        ax.set_ymargin(0.05) # margin inside ax plot
+
+        ax.xaxis.set_minor_locator(loc)
+        #formatter = mdates.DateFormatter('%d')
+        ax.xaxis.set_major_formatter(formatter)
+
+        ax.xaxis.set_major_locator(majorLoc)
+        plt.tick_params(which='major', length = 7)
+
+        for i in range(numCraft): # for each spacecraft
+            col = i * 4 + j
+            Y = np.array(self.magData[col])
+            if len(Y) <= 1:
+                continue
+            ax.plot(self.times, Y, marker=self.markerStyle, linestyle=self.lineStyle, lw=0.5, color = colors[i]) #snap=True, 
+
+        # draw horizontal line if crosses zero
+        ymin,ymax = plt.ylim()
+        if ymin < 0 and ymax > 0:
+            ax.axhline(color='r', lw=0.5, dashes=[5,5])
+
+        # move to fit current time
+        xmin,xmax,ymin,ymax = ax.axis()
+        ax.axis(xmin = self.tO, xmax= self.tE, ymin=ymin, ymax=ymax)
+
+        if j != numCraft-1: # have x axis labels only on bottom
+            ax.tick_params(labelbottom='off')  
+
+        #ax = self.ui.figure.add_subplot(numCraft+1, 1, 5)
+        #self.timeSlider = Slider(ax, 'time', self.tO, self.tE)
+        #self.timeSlider.on_changed(self.updateAxes)
+        plt.tight_layout()
+
+        # refresh canvas
+        self.ui.canvas.draw()
+
     # x is value of tick
     # pos is position of tick int time array i think
     def tickFormat(self, x, pos):
@@ -319,6 +392,66 @@ class MagPy4Window(QtWidgets.QDialog, UI_MagPy4):
             t = t.split('.',1)[0]
         return t
         
+
+class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
+    def __init__(self, parent=None):
+        super(AxisTracer, self).__init__(parent)
+        self.ui = UI_AxisTracer()
+        self.ui.setupUI(self)
+        self.axisCount = 0
+
+        self.ui.clearButton.clicked.connect(self.clearCheckBoxes)
+        self.ui.addAxisButton.clicked.connect(self.addAxis)
+        self.ui.removeAxisButton.clicked.connect(self.removeAxis)
+
+        self.checkBoxes = []
+        self.datas = ['BX1','BX2','BX3','BX4','BY1','BY2','BY3','BY4','BZ1','BZ2','BZ3','BZ4','BT1','BT2','BT3','BT4','curl','velocity','pressure','density']
+
+        self.addLabels()
+        for i in range(4):
+            self.addAxis()
+
+    def clearCheckBoxes(self):
+        for row in self.checkBoxes:
+            for cb in row:
+                cb.setChecked(False)
+
+    def addLabels(self):
+        for i,dstr in enumerate(self.datas):
+            label = QtWidgets.QLabel()
+            label.setText(dstr)
+            label.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+            self.ui.grid.addWidget(label,0,i+1,1,1)
+
+    def addAxis(self):
+        self.axisCount += 1
+        axLabel = QtWidgets.QLabel()
+        axLabel.setText(f'Axis{self.axisCount}')
+        checkBoxes = []
+        a = self.axisCount + 1 # first axis is labels so +1
+        self.ui.grid.addWidget(axLabel,a,0,1,1)
+        for i,dstr in enumerate(self.datas):
+            checkBox = QtWidgets.QCheckBox()
+            checkBoxes.append(checkBox)
+            #checkBox.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred))
+            self.ui.grid.addWidget(checkBox,a,i+1,1,1)
+        self.checkBoxes.append(checkBoxes)
+
+    def removeAxis(self):
+        #self.ui.grid.removeRow(self.axisCount)
+        if self.axisCount == 0:
+            print('no more axes to delete')
+            return
+        self.axisCount-=1
+
+        count = self.ui.grid.count()
+        rowLen = len(self.datas)+1
+        for i in range(count-1,count-rowLen-1,-1): #not sure if i need to iterate backwards even?
+            child = self.ui.grid.takeAt(i)
+            if child.widget() is not None:
+                child.widget().deleteLater()
+            elif child.layout() is not None:
+                clearLayout(child.layout())
 
 
 if __name__ == '__main__':
