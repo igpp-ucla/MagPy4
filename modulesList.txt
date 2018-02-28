@@ -1,4 +1,0 @@
-python 3.6
-
-use numpy 1.13 as FFPY needs that
-rest of modules can be latest version it seems

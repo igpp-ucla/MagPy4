@@ -11,7 +11,7 @@
     <Name>MagPy4</Name>
     <RootNamespace>MagPy4</RootNamespace>
     <IsWindowsApplication>False</IsWindowsApplication>
-    <InterpreterId>Global|VisualStudio|Python 3.6 CUSTOM</InterpreterId>
+    <InterpreterId>Global|PythonCore|3.6</InterpreterId>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
   </PropertyGroup>
@@ -39,6 +39,7 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <InterpreterReference Include="Global|PythonCore|3.6" />
     <InterpreterReference Include="Global|VisualStudio|Python 3.6 CUSTOM" />
   </ItemGroup>
   <ItemGroup>

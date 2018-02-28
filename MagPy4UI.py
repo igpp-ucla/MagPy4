@@ -181,14 +181,6 @@ class UI_AxisTracer(object):
     def setupUI(self, Frame):
         Frame.resize(500,500)
 
-        layout = QtWidgets.QVBoxLayout(Frame)
-
-        self.gridFrame = QtWidgets.QGroupBox('Axes Matrix')
-        self.grid = QtWidgets.QGridLayout(self.gridFrame)
-
-        layout.addWidget(self.gridFrame)
-
-
         checkBoxStyle = """
             QCheckBox{spacing: 0px;}
             QCheckBox::indicator{width:32px;height:32px}
@@ -222,6 +214,11 @@ class UI_AxisTracer(object):
         #            #checkBox.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred))
         #            self.grid.addWidget(checkBox,a,i+1,1,1)
 
+        layout = QtWidgets.QVBoxLayout(Frame)
+
+        self.gridFrame = QtWidgets.QGroupBox('Axes Matrix')
+        self.grid = QtWidgets.QGridLayout(self.gridFrame)
+
         buttonLayout = QtWidgets.QHBoxLayout()
         layout.addLayout(buttonLayout)
         self.clearButton = QtWidgets.QPushButton('Clear')
@@ -232,6 +229,8 @@ class UI_AxisTracer(object):
         buttonLayout.addWidget(self.addAxisButton)
         self.plotButton = QtWidgets.QPushButton('Plot')
         layout.addWidget(self.plotButton)
+
+        layout.addWidget(self.gridFrame)
 
         # take up the rest of the space, otherwise top label row in grid will. not sure how to do this otherwise
         spacelabel = QtWidgets.QLabel()

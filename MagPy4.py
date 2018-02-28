@@ -1,4 +1,6 @@
 
+# python 3.6
+
 import sys
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
@@ -12,8 +14,9 @@ from matplotlib.widgets import Slider
 
 from MagPy4UI import UI_MagPy4, UI_AxisTracer
 
-import random
-import numpy as np
+#import random
+#make sure to use numpy 1.13, later versions have problems with ffPy library
+import numpy as np 
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
@@ -24,6 +27,8 @@ POSCOLS = [5, 6, 7, 8, 13, 14, 15, 16, 21, 22, 23, 24, 29, 30, 31, 32]
 # BLMCOLS = [32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
 BLMCOLS = [32, 33, 34, 35, 36, 37, 38]  #  J{X,Y,Z}M J Jpara, Jperp, Angle
 
+DATADICT = {} # dict of lists, key is data string below, value is list of data to plot
+DATASTRINGS = ['BX1','BX2','BX3','BX4','BY1','BY2','BY3','BY4','BZ1','BZ2','BZ3','BZ4','BT1','BT2','BT3','BT4','curl','velocity','pressure','density']
 
 class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def __init__(self, parent=None):
@@ -45,7 +50,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui.actionTest.triggered.connect(self.openTracer)
         self.jTest = 0
 
-        self.openFile('C:/Users/jcollins/mmsTestData/L2/merged/2015/09/27/mms15092720')
+        self.openFile('mmsTestData/L2/merged/2015/09/27/mms15092720')
         self.setupSliders()
         self.markerStyle = ','
         self.lineStyle = ''
@@ -55,7 +60,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         print(f'combo changed to: {self.ui.comboBox.itemText(i)}')
 
     def openTracer(self):
-        self.tracer = AxisTracer()
+        self.tracer = AxisTracer(self)
         self.tracer.show()
 
     def setLineStyle(self, i):
@@ -139,12 +144,19 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.data = self.dataByCol    # for FFSpectrar
         self.epoch = self.FID.getEpoch()
 
-        magData = []
+        magData = [] # can get rid of this eventually with DATADICT holding all fetched data
 #       print(self.dataByRec.shape)
+        # in order: bx1 by1 bz1 bt1 bx2 by2 etc
+        dataAxis = ['X','Y','Z','T']
         for i in range(4):
             for j in range(4):
                 column = self.dataByRec[:, i * 8 + j]
                 magData.append(column)
+
+                dataStr = f'B{dataAxis[j]}{i+1}'
+                DATADICT[dataStr] = np.array(column)
+                print(dataStr)
+
         BLMData = []
 #       print("BLMCOLS", BLMCOLS)
 #       print(self.dataByRec.shape)
@@ -391,11 +403,80 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         if diff > 60: # if less than a minute total difference then add milliseconds
             t = t.split('.',1)[0]
         return t
+
+    def plotData(self, cbMatrix):
+        colors = ['r','g','b','black']
+        formatter = tckr.FuncFormatter(self.tickFormat)
+
+        # calculate x axis ticks at fixed interval
+        fixedTics = []
+        rng = self.tE - self.tO
+        tickCount = 10
+        for i in range(tickCount+1):
+            n = self.tO + i * (rng/tickCount)
+            fixedTics.append(n)
+        majorLoc = tckr.FixedLocator(fixedTics)
+        #majorLoc = tckr.MaxNLocator(nbins=5,integer=False,prune=None)
+        # add minor ticks in between each major
+        loc = tckr.AutoMinorLocator(5)
+
+        numAxes = len(cbMatrix)
+        plotCount = max(numAxes,4) # always space for at least 4 plots on screen
+        for ai,cbAxis in enumerate(cbMatrix):
+            figAxes = self.ui.figure.axes
+            if len(figAxes) <= ai:
+                ax = self.ui.figure.add_subplot(plotCount, 1, ai+1)
+            else:
+                ax = figAxes[ai]
+                ax.clear()
+            
+            ax.set_ymargin(0.05) # margin inside ax plot
+            ax.xaxis.set_minor_locator(loc)
+            ax.xaxis.set_major_formatter(formatter)
+            ax.xaxis.set_major_locator(majorLoc)
+            plt.tick_params(which='major', length = 7)
+
+            # add traces for each data checked for this axis
+            traces = 0 # number of traces on this axis
+            for i,cb in enumerate(cbAxis):
+                if cb.isChecked():
+                    #print(f'{DATASTRINGS[i]}')
+                    Y = DATADICT[DATASTRINGS[i]]
+                    if len(Y) <= 1:
+                        continue
+                    ax.plot(self.times, Y, marker=self.markerStyle, linestyle=self.lineStyle, lw=0.5, color = colors[min(traces,len(colors))]) #snap=True, 
+                    traces += 1
+
+            # draw horizontal line if crosses zero
+            ymin,ymax = plt.ylim()
+            if ymin < 0 and ymax > 0:
+                ax.axhline(color='r', lw=0.5, dashes=[5,5])
+
+            # move to fit current time
+            xmin,xmax,ymin,ymax = ax.axis()
+            ax.axis(xmin = self.tO, xmax= self.tE, ymin=ymin, ymax=ymax)
+
+            if ai != numAxes-1: # have x axis labels only on bottom (last one to be plotted)
+                ax.tick_params(labelbottom='off')  
+
+
+        plt.tight_layout()
+        #problems
+        # make remove axis to plot 3 or something actually delete 4th
+        # make add axis to more than 4 add one and resize rest may need to redo whole figure? clear figure?
+        #self.ui.figure.clear()
+        # horizontal line goes away after replot?
+
+        # refresh canvas
+        self.ui.canvas.draw()
+
         
 
 class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
-    def __init__(self, parent=None):
+    def __init__(self, window, parent=None):
         super(AxisTracer, self).__init__(parent)
+
+        self.window = window
         self.ui = UI_AxisTracer()
         self.ui.setupUI(self)
         self.axisCount = 0
@@ -403,13 +484,19 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
         self.ui.clearButton.clicked.connect(self.clearCheckBoxes)
         self.ui.addAxisButton.clicked.connect(self.addAxis)
         self.ui.removeAxisButton.clicked.connect(self.removeAxis)
+        self.ui.plotButton.clicked.connect(self.plotData)
 
         self.checkBoxes = []
-        self.datas = ['BX1','BX2','BX3','BX4','BY1','BY2','BY3','BY4','BZ1','BZ2','BZ3','BZ4','BT1','BT2','BT3','BT4','curl','velocity','pressure','density']
-
         self.addLabels()
         for i in range(4):
             self.addAxis()
+
+        # setup default check marks
+        for i in range(16):
+            self.checkBoxes[int(i/4)][i].setChecked(True)            
+
+    def plotData(self):
+        self.window.plotData(self.checkBoxes)
 
     def clearCheckBoxes(self):
         for row in self.checkBoxes:
@@ -417,7 +504,8 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
                 cb.setChecked(False)
 
     def addLabels(self):
-        for i,dstr in enumerate(self.datas):
+        self.labels = []
+        for i,dstr in enumerate(DATASTRINGS):
             label = QtWidgets.QLabel()
             label.setText(dstr)
             label.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
@@ -430,7 +518,7 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
         checkBoxes = []
         a = self.axisCount + 1 # first axis is labels so +1
         self.ui.grid.addWidget(axLabel,a,0,1,1)
-        for i,dstr in enumerate(self.datas):
+        for i,dstr in enumerate(DATASTRINGS):
             checkBox = QtWidgets.QCheckBox()
             checkBoxes.append(checkBox)
             #checkBox.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred))
@@ -445,7 +533,8 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
         self.axisCount-=1
 
         count = self.ui.grid.count()
-        rowLen = len(self.datas)+1
+        rowLen = len(DATASTRINGS)+1
+        self.checkBoxes = self.checkBoxes[:-1]
         for i in range(count-1,count-rowLen-1,-1): #not sure if i need to iterate backwards even?
             child = self.ui.grid.takeAt(i)
             if child.widget() is not None:
