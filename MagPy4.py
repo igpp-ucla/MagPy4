@@ -434,13 +434,17 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
             # add traces for each data checked for this axis
             traces = 0 # number of traces on this axis
+            axisString = ''
             for i,cb in enumerate(cbAxis):
                 if cb.isChecked():
                     #print(f'{DATASTRINGS[i]}')
-                    Y = DATADICT[DATASTRINGS[i]]
+                    dstr = DATASTRINGS[i]
+                    Y = DATADICT[dstr]
+                    axisString += f'{dstr}\n'
                     if len(Y) <= 1:
                         continue
-                    ax.plot(self.times, Y, marker=self.markerStyle, linestyle=self.lineStyle, lw=0.5, color = colors[min(traces,len(colors))]) #snap=True, 
+                    c = colors[min(traces,len(colors)-1)]
+                    ax.plot(self.times, Y, marker=self.markerStyle, linestyle=self.lineStyle, lw=0.5, color = c) #snap=True, 
                     traces += 1
 
             # draw horizontal line if crosses zero
@@ -451,6 +455,9 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             # move to fit current time
             xmin,xmax,ymin,ymax = ax.axis()
             ax.axis(xmin = self.tO, xmax= self.tE, ymin=ymin, ymax=ymax)
+
+            # at this point should figure out y axis labels
+            ax.set_ylabel(axisString, rotation='horizontal', va='center', labelpad = 20.0)
 
             if ai != numAxes-1: # have x axis labels only on bottom (last one to be plotted)
                 ax.tick_params(labelbottom='off')  
