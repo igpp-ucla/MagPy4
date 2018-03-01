@@ -155,7 +155,6 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
                 dataStr = f'B{dataAxis[j]}{i+1}'
                 DATADICT[dataStr] = np.array(column)
-                print(dataStr)
 
         BLMData = []
 #       print("BLMCOLS", BLMCOLS)
@@ -405,8 +404,9 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         return t
 
     def plotData(self, cbMatrix):
+        self.ui.figure.clear()
+
         colors = ['r','g','b','black']
-        formatter = tckr.FuncFormatter(self.tickFormat)
 
         # calculate x axis ticks at fixed interval
         fixedTics = []
@@ -419,16 +419,12 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         #majorLoc = tckr.MaxNLocator(nbins=5,integer=False,prune=None)
         # add minor ticks in between each major
         loc = tckr.AutoMinorLocator(5)
+        formatter = tckr.FuncFormatter(self.tickFormat)
 
         numAxes = len(cbMatrix)
         plotCount = max(numAxes,4) # always space for at least 4 plots on screen
         for ai,cbAxis in enumerate(cbMatrix):
-            figAxes = self.ui.figure.axes
-            if len(figAxes) <= ai:
-                ax = self.ui.figure.add_subplot(plotCount, 1, ai+1)
-            else:
-                ax = figAxes[ai]
-                ax.clear()
+            ax = self.ui.figure.add_subplot(plotCount, 1, ai+1)
             
             ax.set_ymargin(0.05) # margin inside ax plot
             ax.xaxis.set_minor_locator(loc)
@@ -448,7 +444,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                     traces += 1
 
             # draw horizontal line if crosses zero
-            ymin,ymax = plt.ylim()
+            ymin,ymax = ax.get_ylim()
             if ymin < 0 and ymax > 0:
                 ax.axhline(color='r', lw=0.5, dashes=[5,5])
 
@@ -460,12 +456,11 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                 ax.tick_params(labelbottom='off')  
 
 
+        # remove extra unused axes
+        for i in range(numAxes, len(self.ui.figure.axes)):
+            self.ui.figure.axes[i].remove()
+
         plt.tight_layout()
-        #problems
-        # make remove axis to plot 3 or something actually delete 4th
-        # make add axis to more than 4 add one and resize rest may need to redo whole figure? clear figure?
-        #self.ui.figure.clear()
-        # horizontal line goes away after replot?
 
         # refresh canvas
         self.ui.canvas.draw()
