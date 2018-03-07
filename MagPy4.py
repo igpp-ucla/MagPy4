@@ -5,9 +5,15 @@ import sys
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
+#import matplotlib
+#matplotlib.use('TkAgg')
+#matplotlib.use('tkagg')
+#matplotlib.use('Agg')
+
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 import matplotlib.pyplot as plt
+plt.ioff()
 import matplotlib.ticker as tckr
 import matplotlib.dates as mdates
 from matplotlib.widgets import Slider
@@ -21,14 +27,31 @@ import numpy as np
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
 
-MAGCOLS = [[1, 2, 3, 4], [9, 10, 11, 12], [17, 18, 19, 20], [25, 26, 27, 28]]
-POSCOLS = [5, 6, 7, 8, 13, 14, 15, 16, 21, 22, 23, 24, 29, 30, 31, 32]
+#MAGCOLS = [[1, 2, 3, 4], [9, 10, 11, 12], [17, 18, 19, 20], [25, 26, 27, 28]]
+
+DATATABLE = {
+    'BX1': 0, 'BY1': 1, 'BZ1': 2, 'BT1': 3, 'PX1': 4, 'PY1': 5, 'PZ1': 6, 'PT1': 7,
+    'BX2': 8, 'BY2': 9, 'BZ2':10, 'BT2':11, 'PX2':12, 'PY2':13, 'PZ2':14, 'PT2':15,
+    'BX3':16, 'BY3':17, 'BZ3':18, 'BT3':19, 'PX3':20, 'PY3':21, 'PZ3':22, 'PT3':23,
+    'BX4':24, 'BY4':25, 'BZ4':26, 'BT4':27, 'PX4':28, 'PY4':29, 'PZ4':30, 'PT4':31,
+    'JXM':32, 'JYM':33, 'JZM':34, 'JTM':35, 'JPARA':36, 'JPERP':37, 'JANGLE':38
+    #not sure whats after this
+}
+
+#POSCOLS = [5, 6, 7, 8, 13, 14, 15, 16, 21, 22, 23, 24, 29, 30, 31, 32]
 # BLMCOLS = [33, 34, 35, 36, 37, 38, 39, 40, 41]
 # BLMCOLS = [32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
-BLMCOLS = [32, 33, 34, 35, 36, 37, 38]  #  J{X,Y,Z}M J Jpara, Jperp, Angle
+#BLMCOLS = [32, 33, 34, 35, 36, 37, 38]  #  J{X,Y,Z}M Jt Jpara, Jperp, Angle (current)
 
-DATADICT = {} # dict of lists, key is data string below, value is list of data to plot
-DATASTRINGS = ['BX1','BX2','BX3','BX4','BY1','BY2','BY3','BY4','BZ1','BZ2','BZ3','BZ4','BT1','BT2','BT3','BT4','curl','velocity','pressure','density']
+ # dict of lists, key is data string below, value is list of data to plot
+DATADICT = {}
+# list of each field wanted to plot
+DATASTRINGS = ['BX1','BX2','BX3','BX4',
+               'BY1','BY2','BY3','BY4',
+               'BZ1','BZ2','BZ3','BZ4',
+               'BT1','BT2','BT3','BT4',
+               'JXM','JYM','JZM','JTM','JPARA','JPERP','JANGLE']
+#,'curl','velocity','pressure','density'
 
 class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def __init__(self, parent=None):
@@ -37,7 +60,6 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui = UI_MagPy4()
         self.ui.setupUI(self)
 
-        
         #self.ui.timeSlider.startValueChanged.connect(self.onStartChanged)
         #self.ui.timeSlider.endValueChanged.connect(self.onEndChanged)
         self.ui.startSlider.valueChanged.connect(self.onStartChanged)
@@ -45,10 +67,10 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui.startSlider.sliderReleased.connect(self.setTimes)
         self.ui.endSlider.sliderReleased.connect(self.setTimes)
 
-        #self.ui.actionTest.triggered.connect(self.plotFFDataTest)
-        self.ui.actionTest.triggered.connect(self.openTracer)
+        self.ui.actionPlot.triggered.connect(self.openTracer)
         self.ui.actionOpen.triggered.connect(self.openFileDialog)
 
+        self.lastPlotMatrix = None # used by axis tracer
         self.markerStyle = ','
         self.lineStyle = ''
 
@@ -65,6 +87,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def resizeEvent(self, event):
         print('resize detected')
         plt.tight_layout()
+        plt.subplots_adjust(hspace=0.05)
 
     def openFileDialog(self):
         fileName = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
@@ -132,31 +155,42 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         #self.data = self.dataByCol    # for FFSpectrar
         self.epoch = self.FID.getEpoch()
 
-        magData = [] # can get rid of this eventually with DATADICT holding all fetched data
-#       print(self.dataByRec.shape)
-        # in order: bx1 by1 bz1 bt1 bx2 by2 etc
-        dataAxis = ['X','Y','Z','T']
-        for i in range(4):
-            for j in range(4):
-                column = self.dataByRec[:, i * 8 + j]
-                magData.append(column)
+        numRecords = len(self.dataByRec)
+        numColumns = len(self.dataByCol)
+        print(f'number records: {numRecords}')
+        print(f'number columns: {numColumns}')
+        for dstr in DATASTRINGS:
+            if dstr not in DATATABLE:
+                print(f'cant plot {key}, not in DATATABLE')
+            else:
+                i = DATATABLE[dstr]
+                DATADICT[dstr] = np.array(self.dataByRec[:,i])
 
-                dataStr = f'B{dataAxis[j]}{i+1}'
-                DATADICT[dataStr] = np.array(column)
+#        magData = [] # can get rid of this eventually with DATADICT holding all fetched data
+##       print(self.dataByRec.shape)
+#        # in order: bx1 by1 bz1 bt1 bx2 by2 etc
+#        dataAxis = ['X','Y','Z','T']
+#        for i in range(4):
+#            for j in range(4):
+#                column = self.dataByRec[:, i * 8 + j]
+#                magData.append(column)
 
-        BLMData = []
-#       print("BLMCOLS", BLMCOLS)
-#       print(self.dataByRec.shape)
-        for i in BLMCOLS:
-            column = self.dataByRec[:, i]
-            BLMData.append(column)
-        magStats = ColumnStats(magData, self.FID.getError(), NoTime=True)
-        BLMStats = ColumnStats(BLMData, self.FID.getError(), NoTime=True)
-        self.stats16 = magStats
-        self.magData = magData
-        self.BLMData = BLMData
-        self.BLMStats = BLMStats
-#       self.fillFileStat()
+#                dataStr = f'B{dataAxis[j]}{i+1}'
+#                DATADICT[dataStr] = np.array(column)
+
+        #BLMData = []
+        #print("BLMCOLS", BLMCOLS)
+        #print(self.dataByRec.shape)
+        #for i in BLMCOLS:
+        #    column = self.dataByRec[:, i]
+        #    BLMData.append(column)
+        #magStats = ColumnStats(magData, self.FID.getError(), NoTime=True)
+        #BLMStats = ColumnStats(BLMData, self.FID.getError(), NoTime=True)
+        #self.stats16 = magStats
+        #self.magData = magData
+        #self.BLMData = BLMData
+        #self.BLMStats = BLMStats
+        #self.fillFileStat()
         #self.updateFileStats()
         return 1, "OKAY"
 
@@ -259,8 +293,9 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     # boolMatrix is same shape as the checkBox matrix but just bools
     def plotData(self, bMatrix):
         self.ui.figure.clear()
+        self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
 
-        colors = ['r','g','b','black']
+        colors = ['black','r','g','b']
 
         # calculate x axis ticks at fixed interval
         fixedTics = []
@@ -290,16 +325,17 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             traces = 0 # number of traces on this axis
             axisString = ''
             for i,b in enumerate(bAxis):
-                if b:
-                    #print(f'{DATASTRINGS[i]}')
-                    dstr = DATASTRINGS[i]
-                    Y = DATADICT[dstr]
-                    axisString += f'{dstr}\n'
-                    if len(Y) <= 1:
-                        continue
-                    c = colors[min(traces,len(colors)-1)]
-                    ax.plot(self.times, Y, marker=self.markerStyle, linestyle=self.lineStyle, lw=0.5, color = c) #snap=True, 
-                    traces += 1
+                if not b:
+                    continue
+                #print(f'{DATASTRINGS[i]}')
+                dstr = DATASTRINGS[i]
+                Y = DATADICT[dstr]
+                axisString += f'{dstr}\n'
+                if len(Y) <= 1:
+                    continue
+                c = colors[min(traces,len(colors)-1)] #if more traces on this axis than colors, use last
+                ax.plot(self.times, Y, marker=self.markerStyle, linestyle=self.lineStyle, lw=0.5, color = c) #snap=True, 
+                traces += 1
 
             # draw horizontal line if crosses zero
             ymin,ymax = ax.get_ylim()
@@ -309,6 +345,16 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             # move to fit current time
             xmin,xmax,ymin,ymax = ax.axis()
             ax.axis(xmin = self.tO, xmax= self.tE, ymin=ymin, ymax=ymax)
+
+            allMagData = True
+            for line in axisString.splitlines():
+                if not line.startswith('B'):
+                    allMagData = False
+                    break
+            if allMagData and len(axisString) > 0:
+                axisString += '[nT]'
+            else:
+                axisString = axisString[:-1] #remove last newline character
 
             # at this point should figure out y axis labels
             ax.set_ylabel(axisString, rotation='horizontal', va='center', labelpad = 20.0)
@@ -322,7 +368,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             self.ui.figure.axes[i].remove()
 
         plt.tight_layout()
-
+        plt.subplots_adjust(hspace=0.05)
         # refresh canvas
         self.ui.canvas.draw()
 
@@ -343,14 +389,15 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
         self.ui.removeAxisButton.clicked.connect(self.removeAxis)
         self.ui.plotButton.clicked.connect(self.plotData)
 
-        self.checkBoxes = []
         self.addLabels()
-        for i in range(4):
-            self.addAxis()
 
-        # setup default check marks
-        for i in range(16):
-            self.checkBoxes[int(i/4)][i].setChecked(True)            
+        self.checkBoxes = []
+        # lastPlotMatrix is set whenever window does a plot
+        if self.window.lastPlotMatrix is not None:
+            for i,axis in enumerate(self.window.lastPlotMatrix):
+                self.addAxis()
+                for j,checked in enumerate(axis):
+                    self.checkBoxes[i][j].setChecked(checked)
 
     
     def setLineStyle(self, i):
@@ -369,6 +416,7 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
             for cb in cbAxis:
                 boolAxis.append(cb.isChecked())
             boolMatrix.append(boolAxis)
+        self.window.lastPlotMatrix = boolMatrix
         self.window.plotData(boolMatrix)
 
     def clearCheckBoxes(self):

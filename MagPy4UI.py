@@ -25,11 +25,11 @@ class UI_MagPy4(object):
         self.actionOpen.setText('Open')
         self.actionOpen.setShortcut('O')
 
-        self.actionTest = QtWidgets.QAction(MagPy4)
-        self.actionTest.setText('Test')
+        self.actionPlot = QtWidgets.QAction(MagPy4)
+        self.actionPlot.setText('Plot Menu')
 
         self.toolBar.addAction(self.actionOpen)
-        self.toolBar.addAction(self.actionTest)
+        self.toolBar.addAction(self.actionPlot)
 
         # a figure instance to plot on
         self.figure = plt.figure()
