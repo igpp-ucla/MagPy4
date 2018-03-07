@@ -13,21 +13,14 @@ from PyQt5.QtWidgets import QSizePolicy
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 import matplotlib.pyplot as plt
-plt.ioff()
 import matplotlib.ticker as tckr
 import matplotlib.dates as mdates
 from matplotlib.widgets import Slider
-
-from MagPy4UI import UI_MagPy4, UI_AxisTracer
-
-#import random
-#make sure to use numpy 1.13, later versions have problems with ffPy library
-import numpy as np 
+import numpy as np #make sure to use numpy 1.13, later versions have problems with ffPy library
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
-
-#MAGCOLS = [[1, 2, 3, 4], [9, 10, 11, 12], [17, 18, 19, 20], [25, 26, 27, 28]]
+from MagPy4UI import UI_MagPy4, UI_AxisTracer
 
 DATATABLE = {
     'BX1': 0, 'BY1': 1, 'BZ1': 2, 'BT1': 3, 'PX1': 4, 'PY1': 5, 'PZ1': 6, 'PT1': 7,
@@ -50,12 +43,20 @@ DATASTRINGS = ['BX1','BX2','BX3','BX4',
                'BY1','BY2','BY3','BY4',
                'BZ1','BZ2','BZ3','BZ4',
                'BT1','BT2','BT3','BT4',
-               'JXM','JYM','JZM','JTM','JPARA','JPERP','JANGLE']
+               'JXM','JYM','JZM','JTM','JPARA','JPERP','JANGLE',
+               'VEL']
+
+CALCTABLE = {
+    #'VEL':calcVel    
+}
+
 #,'curl','velocity','pressure','density'
 
 class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def __init__(self, parent=None):
         super(MagPy4Window, self).__init__(parent)
+
+        plt.ioff() #try to speed up by making non interactive
 
         self.ui = UI_MagPy4()
         self.ui.setupUI(self)
@@ -161,10 +162,13 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         print(f'number columns: {numColumns}')
         for dstr in DATASTRINGS:
             if dstr not in DATATABLE:
-                print(f'cant plot {key}, not in DATATABLE')
+                print(f'cant plot {dstr}, not in DATATABLE')
             else:
                 i = DATATABLE[dstr]
                 DATADICT[dstr] = np.array(self.dataByRec[:,i])
+
+
+        #DATADICT['VEL'] = 
 
 #        magData = [] # can get rid of this eventually with DATADICT holding all fetched data
 ##       print(self.dataByRec.shape)
@@ -295,7 +299,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui.figure.clear()
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
 
-        colors = ['black','r','g','b']
+        colors = ['r','g','b','black']
 
         # calculate x axis ticks at fixed interval
         fixedTics = []
