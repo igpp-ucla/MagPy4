@@ -5,22 +5,13 @@ import sys
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
-#import matplotlib
-#matplotlib.use('TkAgg')
-#matplotlib.use('tkagg')
-#matplotlib.use('Agg')
-
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
-import matplotlib.pyplot as plt
-import matplotlib.ticker as tckr
-import matplotlib.dates as mdates
-from matplotlib.widgets import Slider
 import numpy as np #make sure to use numpy 1.13, later versions have problems with ffPy library
+import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
 from MagPy4UI import UI_MagPy4, UI_AxisTracer
+
 
 DATATABLE = {
     'BX1': 0, 'BY1': 1, 'BZ1': 2, 'BT1': 3, 'PX1': 4, 'PY1': 5, 'PZ1': 6, 'PT1': 7,
@@ -28,14 +19,8 @@ DATATABLE = {
     'BX3':16, 'BY3':17, 'BZ3':18, 'BT3':19, 'PX3':20, 'PY3':21, 'PZ3':22, 'PT3':23,
     'BX4':24, 'BY4':25, 'BZ4':26, 'BT4':27, 'PX4':28, 'PY4':29, 'PZ4':30, 'PT4':31,
     'JXM':32, 'JYM':33, 'JZM':34, 'JTM':35, 'JPARA':36, 'JPERP':37, 'JANGLE':38
-    #not sure whats after this
+    # i think every column is mapped
 }
-
-#POSCOLS = [5, 6, 7, 8, 13, 14, 15, 16, 21, 22, 23, 24, 29, 30, 31, 32]
-# BLMCOLS = [33, 34, 35, 36, 37, 38, 39, 40, 41]
-# BLMCOLS = [32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
-#BLMCOLS = [32, 33, 34, 35, 36, 37, 38]  #  J{X,Y,Z}M Jt Jpara, Jperp, Angle (current)
-
  # dict of lists, key is data string below, value is list of data to plot
 DATADICT = {}
 # list of each field wanted to plot
@@ -48,21 +33,21 @@ DATASTRINGS = ['BX1','BX2','BX3','BX4',
 
 CALCTABLE = {
     #'VEL':calcVel    
+    #'CURL'
+    #'PRESSURE'
+    #'DENSITY'
 }
-
-#,'curl','velocity','pressure','density'
 
 class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def __init__(self, parent=None):
         super(MagPy4Window, self).__init__(parent)
 
-        plt.ioff() #try to speed up by making non interactive
+        pg.setConfigOption('background', 'w')
+        pg.setConfigOption('foreground', 'k')
 
         self.ui = UI_MagPy4()
         self.ui.setupUI(self)
 
-        #self.ui.timeSlider.startValueChanged.connect(self.onStartChanged)
-        #self.ui.timeSlider.endValueChanged.connect(self.onEndChanged)
         self.ui.startSlider.valueChanged.connect(self.onStartChanged)
         self.ui.endSlider.valueChanged.connect(self.onEndChanged)
         self.ui.startSlider.sliderReleased.connect(self.setTimes)
@@ -75,6 +60,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.markerStyle = ','
         self.lineStyle = ''
 
+        self.plotItems = []
         starterFile = 'mmsTestData/L2/merged/2015/09/27/mms15092720'
         if os.path.exists(starterFile+'.ffd'):
             self.openFile(starterFile)
@@ -86,9 +72,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.tracer.show()
 
     def resizeEvent(self, event):
-        print('resize detected')
-        plt.tight_layout()
-        plt.subplots_adjust(hspace=0.05)
+        print('resize event')
 
     def openFileDialog(self):
         fileName = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
@@ -134,6 +118,9 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.iE = min(self.numpoints - 1, len(self.times) - 1) #could maybe just be second part of this min not sure
         self.tO = self.times[self.iO]
         self.tE = self.times[self.iE]
+        # save initial time range
+        self.itO = self.tO
+        self.itE = self.tE  
 
         print(f'resolution: {self.resolution}')
         print(f'iO: {self.iO}')
@@ -167,42 +154,16 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                 i = DATATABLE[dstr]
                 DATADICT[dstr] = np.array(self.dataByRec[:,i])
 
-
-        #DATADICT['VEL'] = 
-
-#        magData = [] # can get rid of this eventually with DATADICT holding all fetched data
-##       print(self.dataByRec.shape)
-#        # in order: bx1 by1 bz1 bt1 bx2 by2 etc
-#        dataAxis = ['X','Y','Z','T']
-#        for i in range(4):
-#            for j in range(4):
-#                column = self.dataByRec[:, i * 8 + j]
-#                magData.append(column)
-
-#                dataStr = f'B{dataAxis[j]}{i+1}'
-#                DATADICT[dataStr] = np.array(column)
-
-        #BLMData = []
-        #print("BLMCOLS", BLMCOLS)
         #print(self.dataByRec.shape)
-        #for i in BLMCOLS:
-        #    column = self.dataByRec[:, i]
-        #    BLMData.append(column)
         #magStats = ColumnStats(magData, self.FID.getError(), NoTime=True)
         #BLMStats = ColumnStats(BLMData, self.FID.getError(), NoTime=True)
-        #self.stats16 = magStats
-        #self.magData = magData
-        #self.BLMData = BLMData
-        #self.BLMStats = BLMStats
-        #self.fillFileStat()
-        #self.updateFileStats()
+
         return 1, "OKAY"
 
     # update slider tick amount and timers and labels and stuff based on new file
     def setupSliders(self):
         parm = self.FID.FFParm
         mx = parm["NROWS"].value - 1
-        #tick = int(mx / 20) - 1
         tick = 1.0 / self.resolution * 2.0
 
         self.ui.startSlider.setMinimum(0)
@@ -217,11 +178,6 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         utc = self.getUTCString(self.times[self.iO])
         self.ui.startSliderLabel.setText(utc)
-
-        #self.ui.timeSlider.setMin(1)
-        #self.ui.timeSlider.setMax(mx)
-        #self.ui.timeSlider.setStart(1)
-        #self.ui.timeSlider.setEnd(mx)
 
     def getUTCString(self, time):
         utc = FFTIME(time, Epoch=self.epoch).UTC
@@ -249,26 +205,14 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             self.setTimes()
 
     def setTimes(self):
-        axes = self.ui.figure.axes
 
         self.tO = self.times[self.iO]
         self.tE = self.times[self.iE]
 
-        fixedTics = []
-        rng = self.tE - self.tO
-        tickCount = 10
-        for i in range(tickCount+1):
-            n = self.tO + i * (rng/tickCount)
-            fixedTics.append(n)
+        for pi in self.plotItems:
+            pi.setXRange(self.tO, self.tE, 0.0)
 
-        majorLoc = tckr.FixedLocator(fixedTics)
-
-        for ax in axes:
-            xmin,xmax,ymin,ymax = ax.axis()
-            ax.axis(xmin = self.tO, xmax=self.tE, ymin=ymin, ymax=ymax)
-            ax.xaxis.set_major_locator(majorLoc)
-
-        self.ui.canvas.draw()
+        # can manipulate tick strings here similar to commented code in plotData
 
     # x is value of tick
     # pos is position of tick int time array i think
@@ -296,34 +240,50 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
     # boolMatrix is same shape as the checkBox matrix but just bools
     def plotData(self, bMatrix):
-        self.ui.figure.clear()
+        #self.ui.figure.clear()
+        self.ui.glw.clear()
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
-
-        colors = ['r','g','b','black']
+        self.plotItems = []
+        #colors = ['r','g','b','black']
+        colors = ['#ff0000','#00ff00','#0000ff','#000000']
 
         # calculate x axis ticks at fixed interval
-        fixedTics = []
-        rng = self.tE - self.tO
-        tickCount = 10
-        for i in range(tickCount+1):
-            n = self.tO + i * (rng/tickCount)
-            fixedTics.append(n)
-        majorLoc = tckr.FixedLocator(fixedTics)
-        #majorLoc = tckr.MaxNLocator(nbins=5,integer=False,prune=None)
-        # add minor ticks in between each major
-        loc = tckr.AutoMinorLocator(5)
-        formatter = tckr.FuncFormatter(self.tickFormat)
+        #fixedTics = []
+        #rng = self.tE - self.tO
+        #tickCount = 10
+        #for i in range(tickCount+1):
+        #    n = self.tO + i * (rng/tickCount)
+        #    fixedTics.append(n)
+        #majorLoc = tckr.FixedLocator(fixedTics)
+        ##majorLoc = tckr.MaxNLocator(nbins=5,integer=False,prune=None)
+        ## add minor ticks in between each major
+        #loc = tckr.AutoMinorLocator(5)
+        #formatter = tckr.FuncFormatter(self.tickFormat)
 
         numAxes = len(bMatrix)
         plotCount = max(numAxes,4) # always space for at least 4 plots on screen
         for ai,bAxis in enumerate(bMatrix):
-            ax = self.ui.figure.add_subplot(plotCount, 1, ai+1)
-            
-            ax.set_ymargin(0.05) # margin inside ax plot
-            ax.xaxis.set_minor_locator(loc)
-            ax.xaxis.set_major_formatter(formatter)
-            ax.xaxis.set_major_locator(majorLoc)
-            plt.tick_params(which='major', length = 7)
+            #ax = self.ui.figure.add_subplot(plotCount, 1, ai+1)
+            pi = self.ui.glw.addPlot()
+            self.ui.glw.nextRow() # each plot on new row
+            self.plotItems.append(pi) #save it for use elsewhere
+            # show top and right axis, but hide labels (they are off by default apparently)
+            la = pi.getAxis('left')
+            ba = pi.getAxis('bottom')
+            ta = pi.getAxis('top')
+            ra = pi.getAxis('right')
+            ta.show()
+            ra.show()
+            ta.setStyle(showValues=False)
+            ra.setStyle(showValues=False)
+
+            # only show tick labels on bottom most axis
+            if ai != len(bMatrix)-1:
+                ba.setStyle(showValues=False)
+
+            # set left axis label up
+            la.setStyle(autoExpandTextSpace=False)
+            la.label.rotate(90)
 
             # add traces for each data checked for this axis
             traces = 0 # number of traces on this axis
@@ -331,24 +291,25 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             for i,b in enumerate(bAxis):
                 if not b:
                     continue
-                #print(f'{DATASTRINGS[i]}')
+                c = colors[min(traces,len(colors)-1)] #if more traces on this axis than colors, use last
                 dstr = DATASTRINGS[i]
                 Y = DATADICT[dstr]
-                axisString += f'{dstr}\n'
+                axisString += f"<span style='color:{c};'>{dstr}</span>\n"
+                #axisString += f"<span style='color:{c}; font-weight: bold'>{dstr}</span>"
+                #xScale.setLabel(text="<span style='color: #ff0000; font-weight: bold'>X</span> <i>Axis</i>", units="s")
                 if len(Y) <= 1:
                     continue
-                c = colors[min(traces,len(colors)-1)] #if more traces on this axis than colors, use last
-                ax.plot(self.times, Y, marker=self.markerStyle, linestyle=self.lineStyle, lw=0.5, color = c) #snap=True, 
+                pi.plot(self.times, Y, pen=c)
                 traces += 1
 
             # draw horizontal line if crosses zero
-            ymin,ymax = ax.get_ylim()
-            if ymin < 0 and ymax > 0:
-                ax.axhline(color='r', lw=0.5, dashes=[5,5])
+            #ymin,ymax = ax.get_ylim()
+            #if ymin < 0 and ymax > 0:
+            #    ax.axhline(color='r', lw=0.5, dashes=[5,5])
 
-            # move to fit current time
-            xmin,xmax,ymin,ymax = ax.axis()
-            ax.axis(xmin = self.tO, xmax= self.tE, ymin=ymin, ymax=ymax)
+            pi.setXRange(self.tO, self.tE, 0.0)
+            pi.setLimits(xMin=self.itO, xMax=self.itE)
+            #pi.setAspectLocked(True)
 
             allMagData = True
             for line in axisString.splitlines():
@@ -360,21 +321,12 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             else:
                 axisString = axisString[:-1] #remove last newline character
 
-            # at this point should figure out y axis labels
-            ax.set_ylabel(axisString, rotation='horizontal', va='center', labelpad = 20.0)
+            labelStyle = {'font-weight':'bold', 'white-space':'pre', 'justify':'left'}
+            la.setLabel(axisString, units=None, **labelStyle)
 
-            if ai != numAxes-1: # have x axis labels only on bottom (last one to be plotted)
-                ax.tick_params(labelbottom='off')  
+        # end of outer for
 
-
-        # remove extra unused axes
-        for i in range(numAxes, len(self.ui.figure.axes)):
-            self.ui.figure.axes[i].remove()
-
-        plt.tight_layout()
-        plt.subplots_adjust(hspace=0.05)
-        # refresh canvas
-        self.ui.canvas.draw()
+    # end of def
 
         
 
@@ -446,7 +398,6 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
         for i,dstr in enumerate(DATASTRINGS):
             checkBox = QtWidgets.QCheckBox()
             checkBoxes.append(checkBox)
-            #checkBox.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred))
             self.ui.grid.addWidget(checkBox,a,i+1,1,1)
         self.checkBoxes.append(checkBoxes)
 

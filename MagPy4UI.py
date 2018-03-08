@@ -1,11 +1,10 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
-import matplotlib.pyplot as plt
-from qrangeslider import QRangeSlider
 
+import pyqtgraph as pg
+
+#from qrangeslider import QRangeSlider
 #can add in translation stuff later
 
 class UI_MagPy4(object):
@@ -32,11 +31,36 @@ class UI_MagPy4(object):
         self.toolBar.addAction(self.actionPlot)
 
         # a figure instance to plot on
-        self.figure = plt.figure()
-        self.canvas = FigureCanvas(self.figure)
+        #self.figure = plt.figure()
+        #self.canvas = FigureCanvas(self.figure)
 
-        self.canvas.mpl_connect('resize_event', MagPy4.resizeEvent)
-        self.canvas.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        self.glw = pg.GraphicsLayoutWidget()#border=(100,100,100))
+
+        #view = pg.GraphicsView()
+        #l = pg.GraphicsLayout(border=(100,100,100))
+        #view.setCentralItem(l)
+        #view.show()
+        #view.setWindowTitle('pyqtgraph example: GraphicsLayout')
+        #p1 = self.glw.addPlot()
+        #print(p1.getAxis('left'))
+        #print(p1.getAxis('bottom'))
+        
+        #a1t = p1.getAxis('top')
+        #a1r = p1.getAxis('right')
+        #a1t.show()
+        #a1r.show()
+        #a1t.setStyle(showValues=False)
+        #a1r.setStyle(showValues=False)
+
+        #self.glw.nextRow()
+        #p2 = self.glw.addPlot()
+        #p3 = self.glw.addPlot(title="Plot 3")
+        #self.glw.removeItem(p3)
+        self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+
+        #self.plot = pg.PlotWidget()
+        #self.plotWidget.mpl_connect('resize_event', MagPy4.resizeEvent)
+        #self.plot.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
 
         #self.scroll = QtWidgets.QScrollArea()
         #self.scroll.setWidget(self.canvas)
@@ -50,7 +74,7 @@ class UI_MagPy4(object):
         #NavigationToolbar2QT.home = tightness
 
         mainHoriz = QtWidgets.QHBoxLayout()
-        mainHoriz.addWidget(self.canvas)
+        mainHoriz.addWidget(self.glw)
         
         # main vertical layout
         layout = QtWidgets.QVBoxLayout(self.centralWidget)
