@@ -12,7 +12,6 @@ from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
 from MagPy4UI import UI_MagPy4, UI_AxisTracer
 
-
 DATATABLE = {
     'BX1': 0, 'BY1': 1, 'BZ1': 2, 'BT1': 3, 'PX1': 4, 'PY1': 5, 'PZ1': 6, 'PT1': 7,
     'BX2': 8, 'BY2': 9, 'BZ2':10, 'BT2':11, 'PX2':12, 'PY2':13, 'PZ2':14, 'PT2':15,
@@ -57,8 +56,12 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui.actionOpen.triggered.connect(self.openFileDialog)
 
         self.lastPlotMatrix = None # used by axis tracer
-        self.markerStyle = ','
-        self.lineStyle = ''
+
+        # setup pens
+        self.pens = []
+        colors = ['#0000ff','#00ff00','#ff0000','#000000'] # b g r bl
+        for c in colors:
+            self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
 
         self.plotItems = []
         starterFile = 'mmsTestData/L2/merged/2015/09/27/mms15092720'
@@ -214,18 +217,6 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         # can manipulate tick strings here similar to commented code in plotData
 
-    # x is value of tick
-    # pos is position of tick int time array i think
-    def tickFormat(self, x, pos):
-        t = FFTIME(x, Epoch=self.epoch).UTC
-        t = str(t)
-        t = t.split(' ')[-1]
-        t = t.split(':',1)[1]
-        diff = self.tE - self.tO
-        if diff > 60: # if less than a minute total difference then add milliseconds
-            t = t.split('.',1)[0]
-        return t
-
     # setup default 4 axis magdata plot
     def plotDataDefault(self):
         boolMatrix = []
@@ -239,34 +230,22 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.plotData(boolMatrix)
 
     # boolMatrix is same shape as the checkBox matrix but just bools
-    def plotData(self, bMatrix):
+    def plotData(self, bMatrix, fixedAxis = False):
         #self.ui.figure.clear()
         self.ui.glw.clear()
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
         self.plotItems = []
-        #colors = ['r','g','b','black']
-        colors = ['#ff0000','#00ff00','#0000ff','#000000']
-
-        # calculate x axis ticks at fixed interval
-        #fixedTics = []
-        #rng = self.tE - self.tO
-        #tickCount = 10
-        #for i in range(tickCount+1):
-        #    n = self.tO + i * (rng/tickCount)
-        #    fixedTics.append(n)
-        #majorLoc = tckr.FixedLocator(fixedTics)
-        ##majorLoc = tckr.MaxNLocator(nbins=5,integer=False,prune=None)
-        ## add minor ticks in between each major
-        #loc = tckr.AutoMinorLocator(5)
-        #formatter = tckr.FuncFormatter(self.tickFormat)
 
         numAxes = len(bMatrix)
         plotCount = max(numAxes,4) # always space for at least 4 plots on screen
         for ai,bAxis in enumerate(bMatrix):
             #ax = self.ui.figure.add_subplot(plotCount, 1, ai+1)
-            pi = self.ui.glw.addPlot()
-            self.ui.glw.nextRow() # each plot on new row
-            self.plotItems.append(pi) #save it for use elsewhere
+            axis = DateAxis(orientation='bottom')
+            axis.window = self #todo make this class init argument instead
+
+            pi = pg.PlotItem(axisItems={'bottom': axis})
+            self.plotItems.append(pi) #save it for ref elsewhere
+
             # show top and right axis, but hide labels (they are off by default apparently)
             la = pi.getAxis('left')
             ba = pi.getAxis('bottom')
@@ -281,54 +260,68 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             if ai != len(bMatrix)-1:
                 ba.setStyle(showValues=False)
 
-            # set left axis label up
-            la.setStyle(autoExpandTextSpace=False)
-            la.label.rotate(90)
-
             # add traces for each data checked for this axis
             traces = 0 # number of traces on this axis
             axisString = ''
             for i,b in enumerate(bAxis):
                 if not b:
                     continue
-                c = colors[min(traces,len(colors)-1)] #if more traces on this axis than colors, use last
+                p = self.pens[min(traces,len(self.pens)-1)] #if more traces on this axis than pens, use last pen
                 dstr = DATASTRINGS[i]
                 Y = DATADICT[dstr]
-                axisString += f"<span style='color:{c};'>{dstr}</span>\n"
-                #axisString += f"<span style='color:{c}; font-weight: bold'>{dstr}</span>"
-                #xScale.setLabel(text="<span style='color: #ff0000; font-weight: bold'>X</span> <i>Axis</i>", units="s")
+                axisString += f"<span style='color:{p.color().name()};'>{dstr}</span>\n" #font-weight: bold
                 if len(Y) <= 1:
                     continue
-                pi.plot(self.times, Y, pen=c)
+                pi.plot(self.times, Y, pen=p)
                 traces += 1
+                # trying to figure out how to just plot pixels
+                #pi.plot(self.times, Y, pen=None,symbolSize=1, symbolPen=p,symbolBrush=None,pxMode=True)
 
-            # draw horizontal line if crosses zero
+            # draw horizontal line if crosses zero (todo: update to pyqtgraph, called infinite line or something
             #ymin,ymax = ax.get_ylim()
             #if ymin < 0 and ymax > 0:
             #    ax.axhline(color='r', lw=0.5, dashes=[5,5])
 
             pi.setXRange(self.tO, self.tE, 0.0)
             pi.setLimits(xMin=self.itO, xMax=self.itE)
-            #pi.setAspectLocked(True)
 
+            # prob do units a more generalized way later
             allMagData = True
             for line in axisString.splitlines():
-                if not line.startswith('B'):
+                if not line.split('>')[1].startswith('B'):
                     allMagData = False
                     break
             if allMagData and len(axisString) > 0:
-                axisString += '[nT]'
+                axisString += "<span style='color:#888888;'>[nT]</span>\n"
             else:
                 axisString = axisString[:-1] #remove last newline character
 
-            labelStyle = {'font-weight':'bold', 'white-space':'pre', 'justify':'left'}
-            la.setLabel(axisString, units=None, **labelStyle)
+            li = pg.LabelItem()
+            li.item.setHtml(f"<span style='font-size:12pt; white-space:pre; padding:0px;'>{axisString}</span>")
+            #print(li.item.toHtml())
+            self.ui.glw.addItem(li)
+            self.ui.glw.addItem(pi)
+            self.ui.glw.nextRow() # each plot on new row
 
         # end of outer for
 
-    # end of def
+        #if you want each plot to span equal length on Y axis
+        if fixedAxis:
+            # find largest range
+            largest = 0
+            for pi in self.plotItems:
+                vr = pi.viewRange()
+                diff = vr[1][1] - vr[1][0]
+                largest = max(largest,diff)
+            # adjust each plot to match largest range
+            for pi in self.plotItems:
+                vr = pi.viewRange()
+                diff = vr[1][1] - vr[1][0]
+                l2 = (largest-diff) / 2.0
+                pi.setYRange(vr[1][0] - l2, vr[1][1] + l2)
 
-        
+
+    # end of def
 
 class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
     def __init__(self, window, parent=None):
@@ -339,7 +332,7 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
         self.ui.setupUI(self)
         self.axisCount = 0
 
-        self.ui.drawStyleCombo.currentIndexChanged.connect(self.setLineStyle)
+        #self.ui.drawStyleCombo.currentIndexChanged.connect(self.setLineStyle)
         self.ui.clearButton.clicked.connect(self.clearCheckBoxes)
         self.ui.addAxisButton.clicked.connect(self.addAxis)
         self.ui.removeAxisButton.clicked.connect(self.removeAxis)
@@ -355,16 +348,6 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
                 for j,checked in enumerate(axis):
                     self.checkBoxes[i][j].setChecked(checked)
 
-    
-    def setLineStyle(self, i):
-        style = self.ui.drawStyleCombo.itemText(i)
-        if style == 'dots':
-            self.window.markerStyle = ','
-            self.window.lineStyle = ''
-        elif style == 'lines':
-            self.window.markerStyle = ''
-            self.window.lineStyle = '-'
-
     def plotData(self):
         boolMatrix = []
         for cbAxis in self.checkBoxes:
@@ -373,7 +356,7 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
                 boolAxis.append(cb.isChecked())
             boolMatrix.append(boolAxis)
         self.window.lastPlotMatrix = boolMatrix
-        self.window.plotData(boolMatrix)
+        self.window.plotData(boolMatrix, self.ui.fixedAxisCheckBox.isChecked())
 
     def clearCheckBoxes(self):
         for row in self.checkBoxes:
@@ -419,8 +402,45 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
                 clearLayout(child.layout())
 
 
+# subclass based off example here: https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
+class DateAxis(pg.AxisItem):
+    def tickStrings(self, values, scale, spacing):
+        strngs = []
+        diff = self.window.tE - self.window.tO
+        for x in values:
+            t = FFTIME(x, Epoch=self.window.epoch).UTC
+            t = str(t)
+            t = t.split(' ')[-1]
+            t = t.split(':',1)[1]
+            if diff > 10: # add milliseconds
+                t = t.split('.',1)[0]
+            strngs.append(t)
+
+        return strngs
+
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
+
+    try:
+        import BUILD_CONSTANTS #set by cxFreeze script
+    except ImportError:
+        version = "debug"
+    else:
+        version = str(BUILD_CONSTANTS.version)
+
+    appName = app.applicationName()
+    if appName.startswith("python"):
+        appName = "MagPy4"
+    appName = appName + " " + version;
+    app.setOrganizationName("IGPP/UCLA")
+    app.setOrganizationDomain("igpp.ucla.edu")
+    app.setApplicationName(appName)
+    app.setApplicationVersion(version)
+
+    #set app icon
+    appIcon = QtGui.QIcon()
+    appIcon.addFile("images/magPy_blue.ico")
+    app.setWindowIcon(appIcon)
 
     main = MagPy4Window()
     main.show()

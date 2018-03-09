@@ -30,53 +30,13 @@ class UI_MagPy4(object):
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionPlot)
 
-        # a figure instance to plot on
-        #self.figure = plt.figure()
-        #self.canvas = FigureCanvas(self.figure)
-
         self.glw = pg.GraphicsLayoutWidget()#border=(100,100,100))
 
-        #view = pg.GraphicsView()
-        #l = pg.GraphicsLayout(border=(100,100,100))
-        #view.setCentralItem(l)
-        #view.show()
-        #view.setWindowTitle('pyqtgraph example: GraphicsLayout')
-        #p1 = self.glw.addPlot()
-        #print(p1.getAxis('left'))
-        #print(p1.getAxis('bottom'))
-        
-        #a1t = p1.getAxis('top')
-        #a1r = p1.getAxis('right')
-        #a1t.show()
-        #a1r.show()
-        #a1t.setStyle(showValues=False)
-        #a1r.setStyle(showValues=False)
-
-        #self.glw.nextRow()
-        #p2 = self.glw.addPlot()
-        #p3 = self.glw.addPlot(title="Plot 3")
-        #self.glw.removeItem(p3)
         self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-
-        #self.plot = pg.PlotWidget()
-        #self.plotWidget.mpl_connect('resize_event', MagPy4.resizeEvent)
-        #self.plot.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-
-        #self.scroll = QtWidgets.QScrollArea()
-        #self.scroll.setWidget(self.canvas)
-
-        #self.scrollBar = NavigationToolbar(self.canvas, )
-
-        # this is the Navigation widget
-        # it takes the Canvas widget and a parent
-        #self.toolbar = NavigationToolbar2QT(self.canvas, MagPy4)
-        #self.toolbar.actions()[0].triggered.connect(tightness)
-        #NavigationToolbar2QT.home = tightness
 
         mainHoriz = QtWidgets.QHBoxLayout()
         mainHoriz.addWidget(self.glw)
         
-        # main vertical layout
         layout = QtWidgets.QVBoxLayout(self.centralWidget)
 
         layout.addLayout(mainHoriz)
@@ -121,24 +81,6 @@ class UI_AxisTracer(object):
 
         Frame.setStyleSheet(checkBoxStyle)
 
-        #datas = ['BX1','BX2','BX3','BX4','BY1','BY2','BY3','BY4','BZ1','BZ2','BZ3','BZ4','BT1','BT2','BT3','BT4','curl','velocity','pressure','density']
-        #axisCount = 4
-        #for a in range(axisCount+1):
-        #    if a == 0: # make labels
-        #        for i,dstr in enumerate(datas):
-        #            label = QtWidgets.QLabel()
-        #            label.setText(dstr)
-        #            label.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
-        #            self.grid.addWidget(label,a,i+1,1,1)
-        #    else:
-        #        axLabel = QtWidgets.QLabel()
-        #        axLabel.setText(f'Axis{a}')
-        #        self.grid.addWidget(axLabel,a,0,1,1)
-        #        for i,dstr in enumerate(datas):
-        #            checkBox = QtWidgets.QCheckBox()
-        #            #checkBox.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred))
-        #            self.grid.addWidget(checkBox,a,i+1,1,1)
-
         layout = QtWidgets.QVBoxLayout(Frame)
 
         self.gridFrame = QtWidgets.QGroupBox('Axes Matrix')
@@ -147,17 +89,25 @@ class UI_AxisTracer(object):
         buttonLayout = QtWidgets.QHBoxLayout()
         layout.addLayout(buttonLayout)
 
-        drawStyleLayout = QtWidgets.QHBoxLayout()
-        drawStyleComboLabel = QtWidgets.QLabel()
-        drawStyleComboLabel.setText("Draw Style")
-        self.drawStyleCombo = QtWidgets.QComboBox() # add this to AxisTracer instead
-        self.drawStyleCombo.addItem('dots')
-        self.drawStyleCombo.addItem('lines')
-        drawStyleLayout.addWidget(drawStyleComboLabel)
-        drawStyleLayout.addWidget(self.drawStyleCombo)
-        self.drawStyleCombo.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        drawStyleComboLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        buttonLayout.addLayout(drawStyleLayout)
+        #drawStyleLayout = QtWidgets.QHBoxLayout()
+        #drawStyleComboLabel = QtWidgets.QLabel()
+        #drawStyleComboLabel.setText("Draw Style")
+        #self.drawStyleCombo = QtWidgets.QComboBox() # add this to AxisTracer instead
+        #self.drawStyleCombo.addItem('dots')
+        #self.drawStyleCombo.addItem('lines')
+        #drawStyleLayout.addWidget(drawStyleComboLabel)
+        #drawStyleLayout.addWidget(self.drawStyleCombo)
+        #self.drawStyleCombo.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        #drawStyleComboLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        #buttonLayout.addLayout(drawStyleLayout)
+
+        fixedLabel = QtWidgets.QLabel()
+        fixedLabel.setText("Fixed Y Axis")
+        fixedLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.fixedAxisCheckBox = QtWidgets.QCheckBox()
+        self.fixedAxisCheckBox.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        buttonLayout.addWidget(fixedLabel)
+        buttonLayout.addWidget(self.fixedAxisCheckBox)
 
         self.clearButton = QtWidgets.QPushButton('Clear')
         buttonLayout.addWidget(self.clearButton)
