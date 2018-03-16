@@ -10,7 +10,7 @@ import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
-from MagPy4UI import UI_MagPy4, UI_AxisTracer
+from MagPy4UI import UI_MagPy4, UI_PlotTracer
 
 DATATABLE = {
     'BX1': 0, 'BY1': 1, 'BZ1': 2, 'BT1': 3, 'PX1': 4, 'PY1': 5, 'PZ1': 6, 'PT1': 7,
@@ -71,7 +71,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
 
     def openTracer(self):
-        self.tracer = AxisTracer(self)
+        self.tracer = PlotTracer(self)
         self.tracer.show()
 
     def resizeEvent(self, event):
@@ -173,6 +173,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui.startSlider.setMaximum(mx)
         self.ui.startSlider.setTickInterval(tick)
         self.ui.startSlider.setSingleStep(tick)
+        self.ui.startSlider.setValue(0)
         self.ui.endSlider.setMinimum(0)
         self.ui.endSlider.setMaximum(mx)
         self.ui.endSlider.setTickInterval(tick)
@@ -181,6 +182,8 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         utc = self.getUTCString(self.times[self.iO])
         self.ui.startSliderLabel.setText(utc)
+        utc = self.getUTCString(self.times[self.iE])
+        self.ui.endSliderLabel.setText(utc)
 
     def getUTCString(self, time):
         utc = FFTIME(time, Epoch=self.epoch).UTC
@@ -208,7 +211,6 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             self.setTimes()
 
     def setTimes(self):
-
         self.tO = self.times[self.iO]
         self.tE = self.times[self.iE]
 
@@ -323,28 +325,29 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
     # end of def
 
-class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
+class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
     def __init__(self, window, parent=None):
-        super(AxisTracer, self).__init__(parent)
+        super(PlotTracer, self).__init__(parent)
 
         self.window = window
-        self.ui = UI_AxisTracer()
+        self.ui = UI_PlotTracer()
         self.ui.setupUI(self)
-        self.axisCount = 0
+        self.plotCount = 0
 
         #self.ui.drawStyleCombo.currentIndexChanged.connect(self.setLineStyle)
         self.ui.clearButton.clicked.connect(self.clearCheckBoxes)
-        self.ui.addAxisButton.clicked.connect(self.addAxis)
-        self.ui.removeAxisButton.clicked.connect(self.removeAxis)
+        self.ui.addPlotButton.clicked.connect(self.addPlot)
+        self.ui.removePlotButton.clicked.connect(self.removePlot)
         self.ui.plotButton.clicked.connect(self.plotData)
 
         self.addLabels()
 
         self.checkBoxes = []
+        self.fcheckBoxes = []
         # lastPlotMatrix is set whenever window does a plot
         if self.window.lastPlotMatrix is not None:
             for i,axis in enumerate(self.window.lastPlotMatrix):
-                self.addAxis()
+                self.addPlot()
                 for j,checked in enumerate(axis):
                     self.checkBoxes[i][j].setChecked(checked)
 
@@ -363,6 +366,84 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
             for cb in row:
                 cb.setChecked(False)
 
+    def clearLayout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0) # removes from layout
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+            #else:
+                #self.clearLayout(item.layout())
+
+    def checkLinkBoxes(self):
+        oneAvailable = False
+        for row in self.fcheckBoxes:
+            count = 0
+            for b in row:
+                if b:
+                    count += 1
+            if count < 2:
+                if oneAvailable:
+                    pass #delete this row
+                oneAvailable = True
+
+
+    def setupLinkCheckBoxes(self):
+        boolList = []
+        # copy state of current check boxes
+        checked = 0
+        for i,row in enumerate(self.fcheckBoxes):
+            checked = 0
+            boolList.append([])
+            for cb in row:
+                if cb.isChecked():
+                    boolList[i].append(True)
+                    checked += 1
+                else:
+                    boolList[i].append(False)
+            if checked < 2:
+                break
+        if checked >= 2:
+            boolList.append([])
+
+        # make sure at least one row
+        if not boolList:
+            boolList.append([])
+
+        # make sure new boolList is correct length
+        for row in boolList:
+            while len(row) < self.plotCount:
+                row.append(False)
+            while len(row) > self.plotCount:
+                row.pop()
+
+        self.clearLayout(self.ui.fgrid)
+        self.fcheckBoxes = []
+
+        # top labels
+        for i in range(self.plotCount):
+            faxLabel = QtWidgets.QLabel()
+            faxLabel.setText(f'Axis{i+1}')
+            faxLabel.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+            self.ui.fgrid.addWidget(faxLabel,0,i+1,1,1)
+        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.ui.fgrid.addItem(spacer,0,self.plotCount,1,1)
+
+        # build rows
+        for r,row in enumerate(boolList):
+            linkGroupLabel = QtWidgets.QLabel()
+            linkGroupLabel.setText(f'LinkGroup{r+1}')
+            self.ui.fgrid.addWidget(linkGroupLabel,r+1,0,1,1)
+            fcheckBoxes = []
+            for i,b in enumerate(row):
+                checkBox = QtWidgets.QCheckBox()
+                checkBox.setChecked(b)
+                #checkBox.stateChanged = self.setupLinkCheckBoxes()
+                fcheckBoxes.append(checkBox)
+                self.ui.fgrid.addWidget(checkBox,r+1,i+1,1,1)            
+            self.fcheckBoxes.append(fcheckBoxes)
+
+
     def addLabels(self):
         self.labels = []
         for i,dstr in enumerate(DATASTRINGS):
@@ -371,35 +452,37 @@ class AxisTracer(QtWidgets.QFrame, UI_AxisTracer):
             label.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
             self.ui.grid.addWidget(label,0,i+1,1,1)
 
-    def addAxis(self):
-        self.axisCount += 1
-        axLabel = QtWidgets.QLabel()
-        axLabel.setText(f'Axis{self.axisCount}')
+    def addPlot(self):
+        self.plotCount += 1
+        plotLabel = QtWidgets.QLabel()
+        plotLabel.setText(f'Plot{self.plotCount}')
         checkBoxes = []
-        a = self.axisCount + 1 # first axis is labels so +1
-        self.ui.grid.addWidget(axLabel,a,0,1,1)
+        a = self.plotCount + 1 # first axis is labels so +1
+        self.ui.grid.addWidget(plotLabel,a,0,1,1)
         for i,dstr in enumerate(DATASTRINGS):
             checkBox = QtWidgets.QCheckBox()
             checkBoxes.append(checkBox)
             self.ui.grid.addWidget(checkBox,a,i+1,1,1)
         self.checkBoxes.append(checkBoxes)
 
-    def removeAxis(self):
-        #self.ui.grid.removeRow(self.axisCount)
-        if self.axisCount == 0:
-            print('no more axes to delete')
-            return
-        self.axisCount-=1
+        self.setupLinkCheckBoxes()
 
-        count = self.ui.grid.count()
-        rowLen = len(DATASTRINGS)+1
+    def removePlot(self):
+        if self.plotCount == 0:
+            print('no plots to delete')
+            return
+        self.plotCount-=1
+
+        rowLen = len(DATASTRINGS)+1 #+1 for plot label
         self.checkBoxes = self.checkBoxes[:-1]
-        for i in range(count-1,count-rowLen-1,-1): #not sure if i need to iterate backwards even?
-            child = self.ui.grid.takeAt(i)
+
+        for i in range(rowLen):
+            child = self.ui.grid.takeAt(self.ui.grid.count()-1) # take items off back
             if child.widget() is not None:
                 child.widget().deleteLater()
-            elif child.layout() is not None:
-                clearLayout(child.layout())
+
+        self.ui.grid.invalidate()
+        self.setupLinkCheckBoxes()        
 
 
 # subclass based off example here: https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py

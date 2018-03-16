@@ -62,7 +62,7 @@ class UI_MagPy4(object):
         layout.addLayout(sliderLayout)
 
  
-class UI_AxisTracer(object):
+class UI_PlotTracer(object):
     def setupUI(self, Frame):
         Frame.resize(500,500)
 
@@ -83,16 +83,13 @@ class UI_AxisTracer(object):
 
         layout = QtWidgets.QVBoxLayout(Frame)
 
-        self.gridFrame = QtWidgets.QGroupBox('Axes Matrix')
-        self.grid = QtWidgets.QGridLayout(self.gridFrame)
-
         buttonLayout = QtWidgets.QHBoxLayout()
         layout.addLayout(buttonLayout)
 
         #drawStyleLayout = QtWidgets.QHBoxLayout()
         #drawStyleComboLabel = QtWidgets.QLabel()
         #drawStyleComboLabel.setText("Draw Style")
-        #self.drawStyleCombo = QtWidgets.QComboBox() # add this to AxisTracer instead
+        #self.drawStyleCombo = QtWidgets.QComboBox() # add this to PlotTracer instead
         #self.drawStyleCombo.addItem('dots')
         #self.drawStyleCombo.addItem('lines')
         #drawStyleLayout.addWidget(drawStyleComboLabel)
@@ -101,27 +98,22 @@ class UI_AxisTracer(object):
         #drawStyleComboLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         #buttonLayout.addLayout(drawStyleLayout)
 
-        fixedLabel = QtWidgets.QLabel()
-        fixedLabel.setText("Fixed Y Axis")
-        fixedLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.fixedAxisCheckBox = QtWidgets.QCheckBox()
-        self.fixedAxisCheckBox.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        buttonLayout.addWidget(fixedLabel)
-        buttonLayout.addWidget(self.fixedAxisCheckBox)
-
         self.clearButton = QtWidgets.QPushButton('Clear')
         buttonLayout.addWidget(self.clearButton)
-        self.removeAxisButton = QtWidgets.QPushButton('Remove Axis')
-        buttonLayout.addWidget(self.removeAxisButton)
-        self.addAxisButton = QtWidgets.QPushButton('Add Axis')
-        buttonLayout.addWidget(self.addAxisButton)
+        self.removePlotButton = QtWidgets.QPushButton('Remove Plot')
+        buttonLayout.addWidget(self.removePlotButton)
+        self.addPlotButton = QtWidgets.QPushButton('Add Plot')
+        buttonLayout.addWidget(self.addPlotButton)
         self.plotButton = QtWidgets.QPushButton('Plot')
         layout.addWidget(self.plotButton)
 
+        self.gridFrame = QtWidgets.QGroupBox('Plot Matrix')
+        self.grid = QtWidgets.QGridLayout(self.gridFrame)
         layout.addWidget(self.gridFrame)
 
-        # take up the rest of the space, otherwise top label row in grid will. not sure how to do this otherwise
-        spacelabel = QtWidgets.QLabel()
-        spacelabel.setText(' ')
-        spacelabel.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        layout.addWidget(spacelabel)
+        self.fgridFrame = QtWidgets.QGroupBox('Y Axis Link Groups')
+        self.fgrid = QtWidgets.QGridLayout(self.fgridFrame)
+        layout.addWidget(self.fgridFrame)
+
+        # make invisible stretch to take up rest of space
+        layout.addStretch()
