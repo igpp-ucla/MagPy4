@@ -59,7 +59,6 @@ class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
     def checkPlotLinks(self, checkBox, r, c):
         print(f'{r} {c}')
         maxRows = int(self.plotCount / 2) # max number of rows required
-        return
 
         if checkBox.isChecked(): # make sure ur only one checked in your column
             for i in range(len(self.fcheckBoxes)):
@@ -91,7 +90,9 @@ class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
 
         self.fcheckBoxes.append(row) # adds to end
 
-    def removeLinkRow(self): # removes a most empty row from closest to end (moves the rest down)
+    # ecount is for when you just removed a plot and also are removing a row
+    # because self.plotCount already became one smaller but still need to delete all of a row
+    def removeLinkRow(self, ecount = 0): # removes a most empty row from closest to end (moves the rest down)
         minCount = 1000
         rowIndex = -1
         for r,row in enumerate(self.fcheckBoxes):
@@ -111,16 +112,17 @@ class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
 
         # remove target row of checkboxes
         del self.fcheckBoxes[rowIndex]
-        for i in range(1, self.plotCount+1): # skip labels
+        for i in range(1, self.plotCount+1+ecount): # skip labels
             item = fgrid.itemAtPosition(rowIndex+1, i)
+            #print(f'{rowIndex+1} {i} {item}')
             fgrid.removeItem(item)
             item.widget().deleteLater()
 
-        # move other rows of checkboxes down by one
-        gridRows = len(self.fcheckBoxes)+2
+        # move rows afterwards down one
+        gridRows = len(self.fcheckBoxes)+2 # +1 cuz we just deleted and 1 from labels
         for r in range(rowIndex+2, gridRows):
-            for i in range(1, self.plotCount+1):
-                item = fgrid.itemAtPosition(r, i)
+            for i in range(1, self.plotCount+1+ecount):
+                item = fgrid.itemAtPosition(r,i)
                 fgrid.removeItem(item)
                 fgrid.addItem(item, r-1, i)
         
@@ -131,23 +133,30 @@ class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
     
     def getProperLinkRowCount(self):
         targ = int(self.plotCount / 2) # max number of rows possibly required
-        return targ
 
-        # loop through each checkbox and check for more than one empty row
-        freeRows = 0
+        used = 1
         for row in self.fcheckBoxes:
             count = 0
             for cb in row:
                 if cb.isChecked():
                     count += 1
-            if count < 2:
-                freeRows += 1
+            if count >= 2:
+                used += 1
 
-        while freeRows > 1:
-            freeRows -= 1
-            targ -= 1
+        return used if used < targ else targ
 
-        return targ
+
+    def printGrid(self):
+        import sys
+        for i in range(10):
+            for j in range(10):
+                item = self.ui.fgrid.itemAtPosition(i,j)
+                if item is None:
+                    sys.stdout.write('[ ]')
+                else:
+                    sys.stdout.write('[W]')
+            sys.stdout.write('\n')
+        sys.stdout.flush()
 
     # called on add or remove axis
     # resize each row to match with self.plotCount
@@ -182,32 +191,30 @@ class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
 
         targRows = self.getProperLinkRowCount()
 
+        print(f'{len(self.fcheckBoxes)} {targRows}')
+
         while len(self.fcheckBoxes) < targRows:
             self.addLinkRow()
         while len(self.fcheckBoxes) > targRows:
-            self.removeLinkRow()
-
-        if len(self.fcheckBoxes) == 0:
-            return
+            self.removeLinkRow(1)
         
-        while len(self.fcheckBoxes[0]) < self.plotCount: # add column to end
-            i = len(self.fcheckBoxes[0])
-            for r,row in enumerate(self.fcheckBoxes):
+        for r,row in enumerate(self.fcheckBoxes):
+            while len(row) < self.plotCount:
+                i = len(row)
                 checkBox = QtWidgets.QCheckBox()
                 checkBox.setChecked(False)
-                checkBox.stateChanged.connect(functools.partial(self.checkPlotLinks, r, i))
+                checkBox.stateChanged.connect(functools.partial(self.checkPlotLinks, checkBox, r, i))
                 row.append(checkBox)
-                fgrid.addWidget(checkBox,r+1,i+1,1,1)                        
+                fgrid.addWidget(checkBox,r+1,i+1,1,1)       
 
-        while len(self.fcheckBoxes[0]) > self.plotCount: # remove column from end
-            i = len(self.fcheckBoxes[0])            
-            for r,row in enumerate(self.fcheckBoxes):
+            while len(row) > self.plotCount:
+                i = len(row)
                 row.pop() # remove last checkBox from list
                 checkBox = fgrid.itemAtPosition(r+1,i)
                 fgrid.removeItem(checkBox)
                 checkBox.widget().deleteLater()
 
-
+        #self.printGrid()
 
     def addLabels(self):
         self.labels = []
