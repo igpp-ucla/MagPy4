@@ -27,6 +27,9 @@
     <Compile Include="bokehtest.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="dataLayout.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="ffPy\FF_DESC.py" />
     <Compile Include="ffPy\FF_File.py" />
     <Compile Include="ffPy\FF_INFO.py" />
@@ -34,6 +37,9 @@
     <Compile Include="ffPy\FF_Time.py" />
     <Compile Include="MagPy4.py" />
     <Compile Include="MagPy4UI.py" />
+    <Compile Include="plotTracer.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="qrangeslider.py">
       <SubType>Code</SubType>
     </Compile>
