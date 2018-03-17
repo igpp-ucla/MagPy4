@@ -45,7 +45,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         starterFile = 'mmsTestData/L2/merged/2015/09/27/mms15092720'
         if os.path.exists(starterFile+'.ffd'):
             self.openFile(starterFile)
-            #self.plotDataDefault()
+            self.plotDataDefault()
 
 
     def openTracer(self):
@@ -210,7 +210,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.plotData(boolMatrix)
 
     # boolMatrix is same shape as the checkBox matrix but just bools
-    def plotData(self, bMatrix, fixedAxis = False):
+    def plotData(self, bMatrix, fMatrix = []):
         #self.ui.figure.clear()
         self.ui.glw.clear()
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
@@ -283,25 +283,26 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             self.ui.glw.addItem(pi)
             self.ui.glw.nextRow() # each plot on new row
 
-        # end of outer for
-
-        #if you want each plot to span equal length on Y axis
-        if fixedAxis:
+        # based on fixed axis matrix scale groups y axis to eachother
+        for row in fMatrix:
             # find largest range
             largest = 0
-            for pi in self.plotItems:
-                vr = pi.viewRange()
-                diff = vr[1][1] - vr[1][0]
-                largest = max(largest,diff)
-            # adjust each plot to match largest range
-            for pi in self.plotItems:
-                vr = pi.viewRange()
-                diff = vr[1][1] - vr[1][0]
-                l2 = (largest-diff) / 2.0
-                pi.setYRange(vr[1][0] - l2, vr[1][1] + l2)
+            for i,b in enumerate(row):
+                if b:
+                    pi = self.plotItems[i]
+                    vr = pi.viewRange()
+                    diff = vr[1][1] - vr[1][0] # first is viewrange y max, second is y min
+                    largest = max(largest, diff)
+            # adjust each plot in this group to largest range
+            for i,b in enumerate(row):
+                if b:
+                    pi = self.plotItems[i]
+                    vr = pi.viewRange()
+                    diff = vr[1][1] - vr[1][0]
+                    l2 = (largest-diff)/2.0
+                    pi.setYRange(vr[1][0] - l2, vr[1][1] + l2)
 
-
-    # end of def
+    ##
 
 # subclass based off example here: https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
 class DateAxis(pg.AxisItem):
