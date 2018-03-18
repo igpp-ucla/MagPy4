@@ -42,6 +42,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
 
         self.plotItems = []
+        self.trackerLines = []
         starterFile = 'mmsTestData/L2/merged/2015/09/27/mms15092720'
         if os.path.exists(starterFile+'.ffd'):
             self.openFile(starterFile)
@@ -73,7 +74,6 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def openFile(self, PATH=None):  # slot when Open pull down is selected
         FID = FF_ID(PATH, status=FF_STATUS.READ | FF_STATUS.EXIST)
         if not FID:
-            WARNING(self, "NOT HAPPENING")
             return -1, "BAD"
 
         self.FID = FID
@@ -86,7 +86,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         err, mess = self.loadFile()  # read in the file
         if err < 0:
             return err, mess
-        self.fTime = [info["FIRST_TIME"].info, info["LAST_TIME"].info]
+        #self.fTime = [info["FIRST_TIME"].info, info["LAST_TIME"].info]
         self.resolution = self.FID.getResolution()
 #       self.numpoints = min(self.numpoints, self.FID.FFParm["NROWS"].value)
 
@@ -171,7 +171,12 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def onStartChanged(self, val):
         self.iO = val
 
-        utc = self.getUTCString(self.times[self.iO])
+        # move tracker lines to show where new range will be
+        time = self.times[self.iO]
+        for line in self.trackerLines:
+            line.setValue(time)
+
+        utc = self.getUTCString(time)
         self.ui.startSliderLabel.setText(utc)
 
         # send a new time if the user clicks on the bar but not on the sliders
@@ -181,7 +186,13 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def onEndChanged(self, val):
         self.iE = val
 
-        utc = self.getUTCString(self.times[self.iE])
+        # move tracker lines to show where new range will be
+        time = self.times[self.iE]
+        for line in self.trackerLines:
+            line.setValue(time+2)#offset by linewidth so its not visible once released
+
+        utc = self.getUTCString(time)
+
         self.ui.endSliderLabel.setText(utc)
 
         # send a new time if the user clicks on the bar but not on the sliders
@@ -216,6 +227,16 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
         self.plotItems = []
 
+        # add label for file name at top right
+        fileNameLabel = pg.LabelItem()
+        fileNameLabel.opts['justify'] = 'right'
+        fileNameLabel.item.setHtml(f"<span style='font-size:10pt;'>{self.FID.name}</span>")
+        self.ui.glw.nextColumn()
+        self.ui.glw.addItem(fileNameLabel)
+        self.ui.glw.nextRow()
+
+        self.trackerLines = []
+
         numAxes = len(bMatrix)
         plotCount = max(numAxes,4) # always space for at least 4 plots on screen
         for ai,bAxis in enumerate(bMatrix):
@@ -223,8 +244,19 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             axis = DateAxis(orientation='bottom')
             axis.window = self #todo make this class init argument instead
 
-            pi = pg.PlotItem(axisItems={'bottom': axis})
+            vb = MagPyViewBox()
+            pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis})
+
+            # add some lines used to show where time series sliders will zoom to
+            trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0)
+            trackerLine.setPen(pg.mkPen('#000000', width=2, style=QtCore.Qt.DashLine))
+            pi.addItem(trackerLine)
+            self.trackerLines.append(trackerLine)
+            #print(f'{self.tO} {self.tE}')
+
             self.plotItems.append(pi) #save it for ref elsewhere
+
+            pi.hideButtons() # hide autoscale button
 
             # show top and right axis, but hide labels (they are off by default apparently)
             la = pi.getAxis('left')
@@ -257,15 +289,19 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                 # trying to figure out how to just plot pixels
                 #pi.plot(self.times, Y, pen=None,symbolSize=1, symbolPen=p,symbolBrush=None,pxMode=True)
 
-            # draw horizontal line if crosses zero (todo: update to pyqtgraph, called infinite line or something
-            #ymin,ymax = ax.get_ylim()
-            #if ymin < 0 and ymax > 0:
-            #    ax.axhline(color='r', lw=0.5, dashes=[5,5])
+            # draw horizontal line if plot crosses zero
+            vr = pi.viewRange()
+            if vr[1][0] < 0 and vr[1][1] > 0:
+                zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
+                zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
+                pi.getViewBox().addItem(zeroLine)
 
+            # set plot to current range based on time sliders
             pi.setXRange(self.tO, self.tE, 0.0)
             pi.setLimits(xMin=self.itO, xMax=self.itE)
 
-            # prob do units a more generalized way later
+            # add units for mag data
+            # should think of more generalized way to do this for sure
             allMagData = True
             for line in axisString.splitlines():
                 if not line.split('>')[1].startswith('B'):
@@ -276,12 +312,14 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             else:
                 axisString = axisString[:-1] #remove last newline character
 
+            # add Y axis label based on traces
             li = pg.LabelItem()
-            li.item.setHtml(f"<span style='font-size:12pt; white-space:pre; padding:0px;'>{axisString}</span>")
-            #print(li.item.toHtml())
+            li.item.setHtml(f"<span style='font-size:12pt; white-space:pre;'>{axisString}</span>")
             self.ui.glw.addItem(li)
+
             self.ui.glw.addItem(pi)
-            self.ui.glw.nextRow() # each plot on new row
+            self.ui.glw.nextRow()
+
 
         # based on fixed axis matrix scale groups y axis to eachother
         for row in fMatrix:
@@ -303,6 +341,24 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                     pi.setYRange(vr[1][0] - l2, vr[1][1] + l2)
 
     ##
+
+class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
+    def __init__(self, *args, **kwds):
+        pg.ViewBox.__init__(self, *args, **kwds)
+        #self.setMouseMode(self.RectMode)
+        
+    ## reimplement right-click to zoom out
+    def mouseClickEvent(self, ev):
+        ev.ignore()
+        #if ev.button() == QtCore.Qt.RightButton:
+        #    self.autoRange()
+            
+    def mouseDragEvent(self, ev, axis=None):
+        ev.ignore()
+        #if ev.button() == QtCore.Qt.RightButton:
+        #    ev.ignore()
+        #else:
+        #    pg.ViewBox.mouseDragEvent(self, ev)
 
 # subclass based off example here: https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
 class DateAxis(pg.AxisItem):
