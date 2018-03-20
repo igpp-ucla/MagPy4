@@ -34,6 +34,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui.actionOpen.triggered.connect(self.openFileDialog)
 
         self.lastPlotMatrix = None # used by plot tracer
+        self.lastLinkMatrix = None
 
         # setup pens
         self.pens = []
@@ -189,7 +190,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         # move tracker lines to show where new range will be
         time = self.times[self.iE]
         for line in self.trackerLines:
-            line.setValue(time+2)#offset by linewidth so its not visible once released
+            line.setValue(time+1)#offset by linewidth so its not visible once released
 
         utc = self.getUTCString(time)
 
@@ -218,13 +219,16 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             boolMatrix.append(boolAxis)
         for i in range(16):
             boolMatrix[int(i/4)][i] = True
-        self.plotData(boolMatrix)
+        
+        self.plotData(boolMatrix, [[True,True,True,True]])
 
     # boolMatrix is same shape as the checkBox matrix but just bools
     def plotData(self, bMatrix, fMatrix = []):
         #self.ui.figure.clear()
         self.ui.glw.clear()
+
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
+        self.lastLinkMatrix = fMatrix
         self.plotItems = []
 
         # add label for file name at top right
@@ -249,10 +253,9 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
             # add some lines used to show where time series sliders will zoom to
             trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0)
-            trackerLine.setPen(pg.mkPen('#000000', width=2, style=QtCore.Qt.DashLine))
+            trackerLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine))
             pi.addItem(trackerLine)
             self.trackerLines.append(trackerLine)
-            #print(f'{self.tO} {self.tE}')
 
             self.plotItems.append(pi) #save it for ref elsewhere
 
@@ -294,7 +297,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             if vr[1][0] < 0 and vr[1][1] > 0:
                 zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
                 zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
-                pi.getViewBox().addItem(zeroLine)
+                pi.addItem(zeroLine)
 
             # set plot to current range based on time sliders
             pi.setXRange(self.tO, self.tE, 0.0)
@@ -346,10 +349,38 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     def __init__(self, *args, **kwds):
         pg.ViewBox.__init__(self, *args, **kwds)
         #self.setMouseMode(self.RectMode)
+
+        # add lines to show where left clicks happen
+        pen = pg.mkPen('#B600C6', width=1, style=QtCore.Qt.SolidLine)
+        self.vMouseLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pen)
+        self.hMouseLine = pg.InfiniteLine(movable=False, angle=0, pos=0, pen=pen)
+
+        self.addItem(self.vMouseLine, ignoreBounds=True) #so they dont mess up view range
+        self.addItem(self.hMouseLine, ignoreBounds=True)
+        self.vMouseLine.hide()
+        self.hMouseLine.hide()
         
-    ## reimplement right-click to zoom out
     def mouseClickEvent(self, ev):
-        ev.ignore()
+        if ev.button() == QtCore.Qt.LeftButton:
+            if ev.double(): # double clicking will hide the lines
+                self.vMouseLine.hide()
+                self.hMouseLine.hide()
+            else:
+                self.vMouseLine.show()
+                self.hMouseLine.show()
+
+                # map the mouse click to data coordinates
+                vr = self.viewRange()
+                mc = self.mapToView(ev.pos())
+                x = mc.x()
+                y = mc.y()
+                print(f'{x} {y}')
+                self.vMouseLine.setPos(x)
+                self.hMouseLine.setPos(y)
+            ev.accept()
+        else:
+            pg.ViewBox.mouseClickEvent(self,ev) # default right click
+
         #if ev.button() == QtCore.Qt.RightButton:
         #    self.autoRange()
             

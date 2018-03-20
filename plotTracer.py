@@ -28,12 +28,18 @@ class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
         self.fcheckBoxes = []
         self.fLabels = 0
 
-        # lastPlotMatrix is set whenever window does a plot
+        # set up previous saved plot and link checkboxes
         if self.window.lastPlotMatrix is not None:
             for i,axis in enumerate(self.window.lastPlotMatrix):
                 self.addPlot()
-                for j,checked in enumerate(axis):
-                    self.checkBoxes[i][j].setChecked(checked)
+                for j,b in enumerate(axis):
+                    self.checkBoxes[i][j].setChecked(b)
+        if self.window.lastLinkMatrix is not None:
+            numRows = len(self.window.lastLinkMatrix)
+            self.rebuildPlotLinks(numRows)
+            for i,axis in enumerate(self.window.lastLinkMatrix):
+                for j,b in enumerate(axis):
+                    self.fcheckBoxes[i][j].setChecked(b)
 
     # returns bool matrix from checkbox matrix
     def checksToBools(self, cbMatrix, skipEmpty = False):
@@ -87,10 +93,13 @@ class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
         return used if used < targ else targ
 
     # rebuild whole link table (tried adding and removing widgets and got pretty close but this was way easier in hindsight)
-    def rebuildPlotLinks(self):
+    def rebuildPlotLinks(self, targRows = None):
         fgrid = self.ui.fgrid
 
-        self.targRows = self.getProperLinkRowCount()
+        if targRows is None:
+            self.targRows = self.getProperLinkRowCount()
+        else:
+            self.targRows = targRows
 
         cbools = self.checksToBools(self.fcheckBoxes, True)
         self.fcheckBoxes = [] # clear list after
