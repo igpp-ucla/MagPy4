@@ -27,8 +27,12 @@ class UI_MagPy4(object):
         self.actionPlot = QtWidgets.QAction(MagPy4)
         self.actionPlot.setText('Plot Menu')
 
+        self.actionShowData = QtWidgets.QAction(MagPy4)
+        self.actionShowData.setText('Show Data')
+
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionPlot)
+        self.toolBar.addAction(self.actionShowData)
 
         self.glw = pg.GraphicsLayoutWidget()#border=(100,100,100))
 

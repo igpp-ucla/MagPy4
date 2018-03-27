@@ -12,6 +12,7 @@ from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
 from MagPy4UI import UI_MagPy4
 from plotTracer import PlotTracer
+from dataDisplay import DataDisplay
 
 from dataLayout import *
 
@@ -32,6 +33,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         self.ui.actionPlot.triggered.connect(self.openTracer)
         self.ui.actionOpen.triggered.connect(self.openFileDialog)
+        self.ui.actionShowData.triggered.connect(self.showData)
 
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
@@ -53,6 +55,10 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def openTracer(self):
         self.tracer = PlotTracer(self)
         self.tracer.show()
+
+    def showData(self):
+        self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Test title')
+        self.dataDisplay.show()
 
     def resizeEvent(self, event):
         print('resize event')
@@ -122,7 +128,6 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.times = records["time"]
         self.dataByRec = records["data"]
         self.dataByCol = arrayToColumns(records["data"])
-        #self.data = self.dataByCol    # for FFSpectrar
         self.epoch = self.FID.getEpoch()
 
         numRecords = len(self.dataByRec)
@@ -246,9 +251,9 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         for ai,bAxis in enumerate(bMatrix):
             #ax = self.ui.figure.add_subplot(plotCount, 1, ai+1)
             axis = DateAxis(orientation='bottom')
-            axis.window = self #todo make this class init argument instead
-
+            axis.window = self #todo make this class init argument instead probly?
             vb = MagPyViewBox()
+            vb.window = self
             pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis})
 
             # add some lines used to show where time series sliders will zoom to
@@ -345,6 +350,14 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
     ##
 
+    #find points at which each spacecraft crosses this value for the first time after this time
+    # axis is X Y Z or T
+    def findTimes(self, time, value, axis):
+        #first need to get correct Y datas based on axis
+        dataNames = [f'B{axis}{n}' for n in range(1,5)]
+        print(dataNames)
+
+
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     def __init__(self, *args, **kwds):
         pg.ViewBox.__init__(self, *args, **kwds)
@@ -377,6 +390,9 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 print(f'{x} {y}')
                 self.vMouseLine.setPos(x)
                 self.hMouseLine.setPos(y)
+
+                self.window.findTimes(x,y,'X') #just for testing for now
+
             ev.accept()
         else:
             pg.ViewBox.mouseClickEvent(self,ev) # default right click

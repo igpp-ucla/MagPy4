@@ -27,6 +27,9 @@
     <Compile Include="bokehtest.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="dataDisplay.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="dataLayout.py">
       <SubType>Code</SubType>
     </Compile>
