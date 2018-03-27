@@ -2,6 +2,8 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from FF_Time import FFTIME, FF_EPOCH
 import datetime
+import numpy as np
+import os
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -99,11 +101,8 @@ class FFTableModel(QtCore.QAbstractTableModel):
     def columnCount(self, parent):
         return self.nColumns
 
-    def useUTC(self):
-        self.UTCMode = True
-
-    def useTick(self):
-        self.UTCMode = False
+    def setUTC(self, utc):
+        self.UTCMode = utc
 
     def data(self, index, role):
         if not index.isValid():
@@ -114,9 +113,11 @@ class FFTableModel(QtCore.QAbstractTableModel):
             t = self.time[index.row()]
             if self.UTCMode:
                 if isinstance(t, FFTIME):
-                    value = t.UTC
+                    utc = t.UTC
                 else:
-                    value =  FFTIME(t, Epoch=self.epoch).UTC
+                    utc = FFTIME(t, Epoch=self.epoch).UTC
+                utc = UTCQDate.removeDOY(utc)
+                value = utc
             else:
                 value = "%16.4f" % t
         else:
@@ -140,16 +141,18 @@ class FFTableModel(QtCore.QAbstractTableModel):
         return "section"
 
 
-
 class UTCQDate():
     FORMAT = "yyyy MMM  d hh:mm:ss.zzz"
     FORMAT2 = "yyyy MMM dd hh:mm:ss.zzz"
     FORMAT3 = "yyyy MMM dd  hh:mm:ss.zzz"
 
+    def removeDOY(UTC):
+        cut = UTC[4:8]
+        return UTC.replace(cut, '').strip()
+
     # convert UTC string to QDateTime
     def UTC2QDateTime(UTC):
-        cut = UTC[4:8]
-        UTC = UTC.replace(cut, '').strip()
+        UTC = UTCQDate.removeDOY(UTC)
         qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT)
         test = qdateTime.toString()
         if not test:
@@ -177,17 +180,16 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
     def update(self):
         parm = self.FID.FFParm
         info = self.FID.FFInfo
-        dD = self.ui
-        dD.fileLabel.setText(parm["DATA"].info)
+        self.ui.fileLabel.setText(parm["DATA"].info)
         self.setWindowTitle(self.title)
-        times = "Times : " + \
-            info["FIRST_TIME"].info.replace("UTC", '') + \
-            info["LAST_TIME"].info.replace("UTC", '')
+
+        startTime = info["FIRST_TIME"].info.replace("UTC", '')
+        endTime = info["LAST_TIME"].info.replace("UTC", '')
         epoch = " Epoch " + parm["EPOCH"].info
         nrows = "NROWS : " + parm["NROWS"].info.lstrip()
         ncols = "NCOLS : " + parm["NCOLS"].info.lstrip()
-        stats = times + " " + epoch + " " + nrows + " " + ncols
-        dD.timesLabel.setText(stats)
+        stats = f'Times: [{startTime}]>>[{endTime}] [{epoch}] [{nrows}] [{ncols}]'
+        self.ui.timesLabel.setText(stats)
         epoch = self.FID.getEpoch()
         # actually it's the last data (data not allfile)
         nRow = self.FID.getRows()
@@ -205,31 +207,13 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         header = self.FID.getColumnDescriptor("NAME")
         if self.data is not None:
             tm = FFTableModel(self.time, self.data, header, parent=None, epoch=parm["EPOCH"].value)
-            if self.ui.checkBox.isChecked():
-                tm.useTick()
-            else:
-                tm.useUTC()
-            dD.dataTableView.setModel(tm)
-            dD.dataTableView.resizeColumnToContents(1)
-
-    def resizeEvent(self, event):
-        """Required to update time column to longer width"""
-        # sets first column 2 as wide, won't work on macos
-        #       selfsz = event.size().width()
-        TV = self.ui.dataTableView
-        HH = TV.horizontalHeader()
-        #       newszs =  selfsz / (HH.count() + 1)
-        #       HH.resizeSection(0, newszs * 2)
-        font = TV.font()
-        width = font.pointSize()
-        if width == -1:
-            width = font.pixelSize()
-            newszs = 16 * width
-            HH.resizeSection(0, newszs)
+            tm.setUTC(not self.ui.checkBox.isChecked())
+            self.ui.dataTableView.setModel(tm)
+            self.ui.dataTableView.resizeColumnToContents(0) # make time column resize to fit
 
     def writeText(self, fullname):
-        numpy.set_printoptions(formatter={'float': '{:+10.4f}'.format})
-        file = open(fullname, "+w")
+        np.set_printoptions(formatter={'float': '{:+10.4f}'.format})
+        file = open(fullname[0], "+w")
         t = self.time
         d = self.data
         epoch = self.FID.FFParm["EPOCH"].value
@@ -241,14 +225,14 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         return
 
     def saveData(self):
-        QQ = QtFD(self)
-        QQ.setAcceptMode(QtFD.AcceptSave)
+        QQ = QtGui.QFileDialog(self)
+        QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
         path = os.path.expanduser("~")
         QQ.setDirectory(path)
         fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data")
         if fullname is not None:
             self.writeText(fullname)
-            DIALOG(self, fullname + " saved.")
+            print(f'{fullname} saved')
 
     def toggleTimeDisplay(self):
         self.update()
@@ -264,7 +248,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         dtInt = [int(item) for item in dtList]
         doy = datetime.datetime(*dtInt).timetuple().tm_yday
         UTC = dtList[0] + " " + str(doy) + DTSTRM[4:]
-        print(UTC)
+        #print(UTC)
         t = FFTIME(UTC, Epoch=self.FID.getEpoch()).tick
         iRow = self.FID.ffsearch(t, 1, self.FID.getRows()) - 1
         self.ui.dataTableView.selectRow(iRow)

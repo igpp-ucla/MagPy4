@@ -248,8 +248,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         numAxes = len(bMatrix)
         plotCount = max(numAxes,4) # always space for at least 4 plots on screen
-        for ai,bAxis in enumerate(bMatrix):
-            #ax = self.ui.figure.add_subplot(plotCount, 1, ai+1)
+        for pi,bAxis in enumerate(bMatrix):
             axis = DateAxis(orientation='bottom')
             axis.window = self #todo make this class init argument instead probly?
             vb = MagPyViewBox()
@@ -277,7 +276,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             ra.setStyle(showValues=False)
 
             # only show tick labels on bottom most axis
-            if ai != len(bMatrix)-1:
+            if pi != len(bMatrix)-1:
                 ba.setStyle(showValues=False)
 
             # add traces for each data checked for this axis
@@ -357,7 +356,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         dataNames = [f'B{axis}{n}' for n in range(1,5)]
         print(dataNames)
 
-
+#http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     def __init__(self, *args, **kwds):
         pg.ViewBox.__init__(self, *args, **kwds)
@@ -406,6 +405,9 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         #    ev.ignore()
         #else:
         #    pg.ViewBox.mouseDragEvent(self, ev)
+
+    def wheelEvent(self, ev, axis=None):
+        ev.ignore()
 
 # subclass based off example here: https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
 class DateAxis(pg.AxisItem):
