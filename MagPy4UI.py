@@ -68,7 +68,7 @@ class UI_MagPy4(object):
  
 class UI_PlotTracer(object):
     def setupUI(self, Frame):
-        Frame.resize(500,500)
+        Frame.resize(100,100)
 
         checkBoxStyle = """
             QCheckBox{spacing: 0px;}

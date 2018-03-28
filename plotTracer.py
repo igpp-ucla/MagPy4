@@ -5,8 +5,6 @@ from PyQt5.QtWidgets import QSizePolicy
 from MagPy4UI import UI_PlotTracer
 import functools
 
-from dataLayout import *
-
 class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
     def __init__(self, window, parent=None):
         super(PlotTracer, self).__init__(parent)
@@ -137,7 +135,7 @@ class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
 
     def addLabels(self):
         self.labels = []
-        for i,dstr in enumerate(DATASTRINGS):
+        for i,dstr in enumerate(self.window.DATASTRINGS):
             label = QtWidgets.QLabel()
             label.setText(dstr)
             label.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
@@ -150,7 +148,7 @@ class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
         checkBoxes = []
         a = self.plotCount + 1 # first axis is labels so +1
         self.ui.grid.addWidget(plotLabel,a,0,1,1)
-        for i,dstr in enumerate(DATASTRINGS):
+        for i,dstr in enumerate(self.window.DATASTRINGS):
             checkBox = QtWidgets.QCheckBox()
             checkBoxes.append(checkBox)
             self.ui.grid.addWidget(checkBox,a,i+1,1,1)
@@ -164,7 +162,7 @@ class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
             return
         self.plotCount-=1
 
-        rowLen = len(DATASTRINGS)+1 # +1 for plot label
+        rowLen = len(self.window.DATASTRINGS)+1 # one extra because plot labels row
         self.checkBoxes = self.checkBoxes[:-1]
 
         for i in range(rowLen):

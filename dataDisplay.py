@@ -14,7 +14,7 @@ except AttributeError:
 class DataDisplayUI(object):
     def setupUi(self, dataFrame):
         dataFrame.setObjectName(_fromUtf8("dataFrame"))
-        dataFrame.resize(1106, 790)
+        dataFrame.resize(1150, 800)
         dataFrame.setFrameShape(QtGui.QFrame.StyledPanel)
         dataFrame.setFrameShadow(QtGui.QFrame.Raised)
         self.verticalLayout = QtGui.QVBoxLayout(dataFrame)
@@ -22,7 +22,6 @@ class DataDisplayUI(object):
         self.widget = QtGui.QWidget(dataFrame)
         self.widget.setObjectName(_fromUtf8("widget"))
         self.verticalLayout_2 = QtGui.QVBoxLayout(self.widget)
-        #self.verticalLayout_2.setMargin(0)
         self.verticalLayout_2.setObjectName(_fromUtf8("verticalLayout_2"))
         self.fileLabel = QtGui.QLabel(self.widget)
         self.fileLabel.setObjectName(_fromUtf8("fileLabel"))
@@ -49,7 +48,6 @@ class DataDisplayUI(object):
         self.widget_2 = QtGui.QWidget(dataFrame)
         self.widget_2.setObjectName(_fromUtf8("widget_2"))
         self.horizontalLayout = QtGui.QHBoxLayout(self.widget_2)
-        #self.horizontalLayout.setMargin(0)
         self.horizontalLayout.setObjectName(_fromUtf8("horizontalLayout"))
         self.checkBox = QtGui.QCheckBox(self.widget_2)
         self.checkBox.setObjectName(_fromUtf8("checkBox"))
@@ -128,16 +126,16 @@ class FFTableModel(QtCore.QAbstractTableModel):
 
     def headerData(self, section, orientation, role):
         if role == QtCore.Qt.DisplayRole:
-            if orientation == QtCore.Qt.Horizontal:
-                return (self.headerdata[section])
-            else:
-                return (section + 1)
+            if orientation == QtCore.Qt.Horizontal: # column labels
+                return self.headerdata[section]
+            else: # row labels
+                return section + 1
         return None
 
-    def tableDetailHeader(self, col, orientation, role):
+    def tableDetailHeader(self, col, orientation, role): # i think this is unused
         print("TableDetailHeader")
         if orientation == QtCore.Qt.Horizontal and role == QtCore.Qt.DisplayRole:
-            return (self.headerdata[col])
+            return self.headerdata[col]
         return "section"
 
 
@@ -270,6 +268,3 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 #       printButton = QPushButton("Print Data")
 #       printPanelButton.clicked.connect(self.printPanel)
 #       buttonBox.addButton(printButton, QDialogButtonBox.ApplyRole)
-
-
-

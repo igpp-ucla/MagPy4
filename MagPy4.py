@@ -14,7 +14,7 @@ from MagPy4UI import UI_MagPy4
 from plotTracer import PlotTracer
 from dataDisplay import DataDisplay
 
-from dataLayout import *
+import time
 
 class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def __init__(self, parent=None):
@@ -37,6 +37,10 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
+
+        # this was testing for segment calculation, this way was easy but slower than current way, saving incase i need later
+        ##testa = np.array([5,10,5,0,1,1,.5,28,28,27,1e34,0,0,0,1e34,1e34])
+        #testb = [np.array(list(g)) for k,g in groupby(testa, lambda x:x != 1e34) if k]
 
         # setup pens
         self.pens = []
@@ -86,14 +90,15 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.FID = FID
         self.epoch = self.FID.getEpoch()
         print(f'epoch: {self.epoch}')
-        info = self.FID.FFInfo
+        #info = self.FID.FFInfo
+        self.errorFlag = self.FID.FFInfo['ERROR_FLAG'].value
+        print(f'error flag: {self.errorFlag}')
         err = self.FID.open()
         if err < 0:
             return err, " UNABLE TO OPEN"
         err, mess = self.loadFile()  # read in the file
         if err < 0:
             return err, mess
-        #self.fTime = [info["FIRST_TIME"].info, info["LAST_TIME"].info]
         self.resolution = self.FID.getResolution()
 #       self.numpoints = min(self.numpoints, self.FID.FFParm["NROWS"].value)
 
@@ -111,8 +116,8 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.itE = self.tE  
 
         print(f'resolution: {self.resolution}')
-        print(f'iO: {self.iO}')
-        print(f'iE: {self.iE}')
+        #print(f'iO: {self.iO}')
+        #print(f'iE: {self.iE}')
         print(f'tO: {self.tO}')
         print(f'tE: {self.tE}')
         
@@ -134,16 +139,14 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         numColumns = len(self.dataByCol)
         print(f'number records: {numRecords}')
         print(f'number columns: {numColumns}')
-        for dstr in DATASTRINGS:
-            if dstr not in DATATABLE:
-                print(f'cant plot {dstr}, not in DATATABLE')
-            else:
-                i = DATATABLE[dstr]
-                DATADICT[dstr] = np.array(self.dataByRec[:,i])
 
-        #print(self.dataByRec.shape)
-        #magStats = ColumnStats(magData, self.FID.getError(), NoTime=True)
-        #BLMStats = ColumnStats(BLMData, self.FID.getError(), NoTime=True)
+        self.DATASTRINGS = self.FID.getColumnDescriptor("NAME")[1:]
+        units = self.FID.getColumnDescriptor("UNITS")[1:]
+
+        self.DATADICT = {} # maps strings to tuple of data array and unit
+        for i, dstr in enumerate(self.DATASTRINGS):
+            self.DATADICT[dstr] = (np.array(self.dataByRec[:,i]),units[i])
+
 
         return 1, "OKAY"
 
@@ -217,19 +220,20 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     # setup default 4 axis magdata plot
     def plotDataDefault(self):
         boolMatrix = []
+        keyword = ['BX','BY','BZ','BT']
         for a in range(4):
             boolAxis = []
-            for i in range(len(DATASTRINGS)):
-                boolAxis.append(False)
+            for dstr in self.DATASTRINGS:
+                if keyword[a] in dstr:
+                    boolAxis.append(True)
+                else:
+                    boolAxis.append(False)
             boolMatrix.append(boolAxis)
-        for i in range(16):
-            boolMatrix[int(i/4)][i] = True
-        
+                
         self.plotData(boolMatrix, [[True,True,True,True]])
 
     # boolMatrix is same shape as the checkBox matrix but just bools
     def plotData(self, bMatrix, fMatrix = []):
-        #self.ui.figure.clear()
         self.ui.glw.clear()
 
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
@@ -282,17 +286,41 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             # add traces for each data checked for this axis
             traces = 0 # number of traces on this axis
             axisString = ''
+            unit = ''
             for i,b in enumerate(bAxis):
-                if not b:
+                if not b: # axis isn't checked so its not gona be on this plot
                     continue
+
                 p = self.pens[min(traces,len(self.pens)-1)] #if more traces on this axis than pens, use last pen
-                dstr = DATASTRINGS[i]
-                Y = DATADICT[dstr]
-                axisString += f"<span style='color:{p.color().name()};'>{dstr}</span>\n" #font-weight: bold
-                if len(Y) <= 1:
+                dstr = self.DATASTRINGS[i]
+                dat = self.DATADICT[dstr]
+                Y = dat[0] # y data
+                u = dat[1] # units
+
+                if len(Y) <= 1: # not sure if this can happen but just incase
                     continue
-                pi.plot(self.times, Y, pen=p)
+
+                # figure out if each axis trace shares same unit
+                if unit == '':
+                    unit = u
+                elif unit != None and unit != u:
+                    unit = None
+
+                # build the axis label string for this plot
+                axisString += f"<span style='color:{p.color().name()};'>{dstr}</span>\n" #font-weight: bold
+
+                segments = np.where(Y == self.errorFlag)[0].tolist() # find spots where there are errors and make segments
+                segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
+                st = 0 #start index
+                for seg in segments: # draw each segment of trace
+                    while st in segments:
+                        st += 1
+                    if st >= seg:
+                        continue
+                    pi.plot(self.times[st:seg], Y[st:seg], pen=p)
+                    st = seg+1
                 traces += 1
+
                 # trying to figure out how to just plot pixels
                 #pi.plot(self.times, Y, pen=None,symbolSize=1, symbolPen=p,symbolBrush=None,pxMode=True)
 
@@ -307,15 +335,9 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             pi.setXRange(self.tO, self.tE, 0.0)
             pi.setLimits(xMin=self.itO, xMax=self.itE)
 
-            # add units for mag data
-            # should think of more generalized way to do this for sure
-            allMagData = True
-            for line in axisString.splitlines():
-                if not line.split('>')[1].startswith('B'):
-                    allMagData = False
-                    break
-            if allMagData and len(axisString) > 0:
-                axisString += "<span style='color:#888888;'>[nT]</span>\n"
+            # add unit label if each trace on this plot shares same unit
+            if unit != None and unit != '':
+                axisString += f"<span style='color:#888888;'>[{unit}]</span>\n"
             else:
                 axisString = axisString[:-1] #remove last newline character
 
@@ -356,6 +378,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         dataNames = [f'B{axis}{n}' for n in range(1,5)]
         print(dataNames)
 
+# look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     def __init__(self, *args, **kwds):
