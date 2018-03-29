@@ -22,6 +22,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
+        pg.setConfigOption('antialias', True)
 
         self.ui = UI_MagPy4()
         self.ui.setupUI(self)
@@ -37,6 +38,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
+        self.tracer = None
 
         # this was testing for segment calculation, this way was easy but slower than current way, saving incase i need later
         ##testa = np.array([5,10,5,0,1,1,.5,28,28,27,1e34,0,0,0,1e34,1e34])
@@ -122,6 +124,9 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         print(f'tE: {self.tE}')
         
         self.setupSliders()
+
+        if self.tracer is not None:
+            self.tracer.close()
 
         return 1, "FILE " + PATH + "read"
 
@@ -250,14 +255,15 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         self.trackerLines = []
 
-        numAxes = len(bMatrix)
-        plotCount = max(numAxes,4) # always space for at least 4 plots on screen
-        for pi,bAxis in enumerate(bMatrix):
+        numPlots = len(bMatrix)
+        plotCount = max(numPlots,4) # always space for at least 4 plots on screen
+        for plotIndex,bAxis in enumerate(bMatrix):
             axis = DateAxis(orientation='bottom')
             axis.window = self #todo make this class init argument instead probly?
             vb = MagPyViewBox()
             vb.window = self
             pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis})
+            #pi.setDownsampling(auto=True)
 
             # add some lines used to show where time series sliders will zoom to
             trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0)
@@ -271,6 +277,8 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
             # show top and right axis, but hide labels (they are off by default apparently)
             la = pi.getAxis('left')
+            la.style['textFillLimits'] = [(0,1.05)]
+
             ba = pi.getAxis('bottom')
             ta = pi.getAxis('top')
             ra = pi.getAxis('right')
@@ -280,7 +288,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             ra.setStyle(showValues=False)
 
             # only show tick labels on bottom most axis
-            if pi != len(bMatrix)-1:
+            if plotIndex != numPlots-1:
                 ba.setStyle(showValues=False)
 
             # add traces for each data checked for this axis
@@ -341,9 +349,11 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             else:
                 axisString = axisString[:-1] #remove last newline character
 
+            fontSize = max(15 - numPlots,7)
+
             # add Y axis label based on traces
             li = pg.LabelItem()
-            li.item.setHtml(f"<span style='font-size:12pt; white-space:pre;'>{axisString}</span>")
+            li.item.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{axisString}</span>")
             self.ui.glw.addItem(li)
 
             self.ui.glw.addItem(pi)
@@ -389,31 +399,39 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         pen = pg.mkPen('#B600C6', width=1, style=QtCore.Qt.SolidLine)
         self.vMouseLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pen)
         self.hMouseLine = pg.InfiniteLine(movable=False, angle=0, pos=0, pen=pen)
+        self.dataText = pg.TextItem('test', anchor=(0.0,1.0), html='<div style="text-align: center; color:#FFF;">')
 
         self.addItem(self.vMouseLine, ignoreBounds=True) #so they dont mess up view range
         self.addItem(self.hMouseLine, ignoreBounds=True)
+        self.addItem(self.dataText, ignoreBounds=True)
+
         self.vMouseLine.hide()
         self.hMouseLine.hide()
+        self.dataText.hide()
         
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
             if ev.double(): # double clicking will hide the lines
                 self.vMouseLine.hide()
                 self.hMouseLine.hide()
+                self.dataText.hide()
             else:
                 self.vMouseLine.show()
                 self.hMouseLine.show()
+                self.dataText.show()
 
                 # map the mouse click to data coordinates
                 vr = self.viewRange()
                 mc = self.mapToView(ev.pos())
                 x = mc.x()
                 y = mc.y()
-                print(f'{x} {y}')
                 self.vMouseLine.setPos(x)
                 self.hMouseLine.setPos(y)
+                self.dataText.setPos(x,y)
+                xt = DateAxis.toUTC(x, self.window, True)
+                self.dataText.setText(f'{xt}, {y:.4f}')
 
-                self.window.findTimes(x,y,'X') #just for testing for now
+                #self.window.findTimes(x,y,'X') #just for testing for now
 
             ev.accept()
         else:
@@ -434,19 +452,18 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
 # subclass based off example here: https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
 class DateAxis(pg.AxisItem):
-    def tickStrings(self, values, scale, spacing):
-        strngs = []
-        diff = self.window.tE - self.window.tO
-        for x in values:
-            t = FFTIME(x, Epoch=self.window.epoch).UTC
-            t = str(t)
-            t = t.split(' ')[-1]
-            t = t.split(':',1)[1]
-            if diff > 10: # add milliseconds
-                t = t.split('.',1)[0]
-            strngs.append(t)
 
-        return strngs
+    def toUTC(x,window, showMillis=False): # converts seconds since epoch to UTC string
+        t = FFTIME(x, Epoch=window.epoch).UTC
+        t = str(t)
+        t = t.split(' ')[-1]
+        t = t.split(':',1)[1]
+        if not showMillis and window.tE-window.tO > 10:
+            t = t.split('.',1)[0]
+        return t
+
+    def tickStrings(self, values, scale, spacing):
+        return [DateAxis.toUTC(x,self.window) for x in values]
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)

@@ -35,10 +35,14 @@ class UI_MagPy4(object):
         self.toolBar.addAction(self.actionShowData)
 
         self.glw = pg.GraphicsLayoutWidget()#border=(100,100,100))
+        #self.gv = pg.GraphicsView()
+        #self.glw = pg.GraphicsLayout()
+        #self.gv.setCentralItem(self.glw)
 
         self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
 
         mainHoriz = QtWidgets.QHBoxLayout()
+        #mainHoriz.addWidget(self.gv)
         mainHoriz.addWidget(self.glw)
         
         layout = QtWidgets.QVBoxLayout(self.centralWidget)

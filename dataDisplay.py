@@ -4,6 +4,8 @@ from FF_Time import FFTIME, FF_EPOCH
 import datetime
 import numpy as np
 import os
+import time
+from tqdm import tqdm
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -209,28 +211,30 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             self.ui.dataTableView.setModel(tm)
             self.ui.dataTableView.resizeColumnToContents(0) # make time column resize to fit
 
-    def writeText(self, fullname):
-        np.set_printoptions(formatter={'float': '{:+10.4f}'.format})
-        file = open(fullname[0], "+w")
-        t = self.time
-        d = self.data
-        epoch = self.FID.FFParm["EPOCH"].value
-        nRows = len(self.time)
-        for i in range(nRows):
-            UTC = FFTIME(t[i], Epoch=epoch).UTC
-            file.write(UTC + " " + str(d[:, i])[1:-2] + "\n")
-        file.close()
-        return
-
+    # saves flatfile data to a plain text file
     def saveData(self):
         QQ = QtGui.QFileDialog(self)
         QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
         path = os.path.expanduser("~")
         QQ.setDirectory(path)
-        fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data")
-        if fullname is not None:
-            self.writeText(fullname)
-            print(f'{fullname} saved')
+        fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='Text files (*.txt)')
+        if fullname is None:
+            print('Save failed')
+            return
+        if fullname[0] == '':
+            print('Save cancelled')
+            return
+        np.set_printoptions(formatter={'float': '{:+10.4f}'.format}, linewidth=10000)
+        print(fullname)
+        file = open(fullname[0], "+w")
+        epoch = self.FID.FFParm["EPOCH"].value
+        nRows = len(self.time)
+        print(f'Writing {nRows} records to {fullname[0]}...')
+        for i in tqdm(range(nRows),ascii=True):
+            UTC = FFTIME(self.time[i], Epoch=epoch).UTC
+            file.write(f'{UTC} {str(self.data[:,i])[1:-2]}\n')
+        file.close()
+        print(f'Save complete')
 
     def toggleTimeDisplay(self):
         self.update()
