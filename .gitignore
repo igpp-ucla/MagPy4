@@ -20,6 +20,8 @@ __pycache__/
 
 #ignore everything in build folder
 build/*
+dist/*
+mmsTestData/*
 
 #except these two files
 !build/magPyDist.py

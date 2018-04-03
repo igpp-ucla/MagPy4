@@ -317,8 +317,10 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                 # build the axis label string for this plot
                 axisString += f"<span style='color:{p.color().name()};'>{dstr}</span>\n" #font-weight: bold
 
-                segments = np.where(Y == self.errorFlag)[0].tolist() # find spots where there are errors and make segments
+                #was using self.errorFlag but sometimes its diffent, prob error in way files were made so just using 1e33
+                segments = np.where(Y >= 1e33)[0].tolist() # find spots where there are errors and make segments
                 segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
+                #print(f'SEGMENTS {len(segments)}')
                 st = 0 #start index
                 for seg in segments: # draw each segment of trace
                     while st in segments:
@@ -429,7 +431,9 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 self.hMouseLine.setPos(y)
                 self.dataText.setPos(x,y)
                 xt = DateAxis.toUTC(x, self.window, True)
-                self.dataText.setText(f'{xt}, {y:.4f}')
+                sf = f'{xt}, {y:.4f}'
+                print(sf)
+                self.dataText.setText(sf)
 
                 #self.window.findTimes(x,y,'X') #just for testing for now
 
@@ -486,7 +490,9 @@ if __name__ == '__main__':
 
     #set app icon
     appIcon = QtGui.QIcon()
-    appIcon.addFile("images/magPy_blue.ico")
+    #path = os.path.join(sys._MEIPASS, 'images/') if hasattr(sys, '_MEIPASS') else 'images/'
+    path = 'images/'
+    appIcon.addFile(f'{path}magPy_blue.ico')
     app.setWindowIcon(appIcon)
 
     main = MagPy4Window()

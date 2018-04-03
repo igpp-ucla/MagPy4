@@ -1,0 +1,233 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1561\cocoasubrtf200
+{\fonttbl\f0\fnil\fcharset0 Monaco;}
+{\colortbl;\red255\green255\blue255;\red64\green128\blue128;\red255\green0\blue0;\red127\green127\blue0;
+\red0\green0\blue255;\red0\green192\blue192;\red127\green0\blue0;\red0\green127\blue127;}
+{\*\expandedcolortbl;;\csgenericrgb\c25098\c50196\c50196;\csgenericrgb\c100000\c0\c0;\csgenericrgb\c49804\c49804\c0;
+\csgenericrgb\c0\c0\c100000;\csgenericrgb\c0\c75294\c75294;\csgenericrgb\c49804\c0\c0;\csgenericrgb\c0\c49804\c49804;}
+\margl1440\margr1440\vieww10800\viewh8400\viewkind0
+\deftab720
+\pard\pardeftab720\partightenfactor0
+
+\f0\fs28 \cf2 ;==================\cf0 \
+\cf2 ;using MMS1 as reference\cf0 \
+\cf2 ;==================\cf0 \
+\cf2 ;first manually check the time range\cf0 \
+\cf2 ;manually search for the propriate bx value within the range of interest.\cf0 \
+\cf2 ;troi=['2015-11-21/01:56:47','2015-11-21/01:56:57']\cf0 \
+\
+\cf2 ;clip_range = ['2015-11-21 01:56:50', '2015-11-21 01:56:51.5']\cf0 \
+\cf2 ;ref='x'\cf0 \
+\cf2 ;level_interval = 3.\cf0 \
+\cf2 ;level_begin=13\cf0 \
+\cf2 ;level_end=40\cf0 \
+\
+\cf2 ;clip_range = ['2015-11-07 14:16:39', '2015-11-07 14:16:41']\cf0 \
+\cf2 ;ref='y'\cf0 \
+\cf2 ;level_interval = 2.\cf0 \
+\cf2 ;level_begin=-20\cf0 \
+\cf2 ;level_end=30\cf0 \
+\
+clip_range = [\cf3 '2015-10-31 07:18:36.8'\cf0 , \cf3 '2015-10-31 07:18:39.5'\cf0 ]\
+ref=\cf3 'x'\cf0 \
+\cf2 ;level_interval = 5.\cf0 \
+\cf2 ;level_begin=-5\cf0 \
+\cf2 ;level_end=30\cf0 \
+\
+\cf2 ;clip_range = ['2015-10-11 10:50:40', '2015-10-11 10:50:45']\cf0 \
+\cf2 ;ref='x'\cf0 \
+\cf2 ;level_interval = 2.\cf0 \
+\cf2 ;level_begin=10\cf0 \
+\cf2 ;level_end=20\cf0 \
+\cf2 ;============================\cf0 \
+\
+\cf2 ;num=fix((level_end-level_begin)/level_interval)\cf0 \
+\
+\
+window_width=\cf4 32\cf0    \cf2 ;;this is half the clip window size; every 32*2 data point, pick a corresponding level value, sample rate=128S/s, 32 correspond to every 0.25s pick a level\cf0 \
+tstart_index=\cf5 where\cf0 (\cf5 abs\cf0 (mms1_bvec.x - \cf6 str2time\cf0 (clip_range[\cf4 0\cf0 ])) \cf7 lt\cf0  \cf4 5e-3\cf0 )\
+tstart_index=\cf5 long\cf0 (tstart_index[\cf4 0\cf0 ])\
+tend_index= tstart_index + \cf5 fix\cf0 ((\cf6 str2time\cf0 (clip_range[\cf4 1\cf0 ])-\cf6 str2time\cf0 (clip_range[\cf4 0\cf0 ]))*\cf4 128\cf0 )\
+\cf2 ;tend_index=long(tend_index[0])\cf0 \
+\
+num=(tend_index - tstart_index)/window_width  \
+v=\cf5 fltarr\cf0 (num+\cf4 1\cf0 )\
+time=\cf5 dblarr\cf0 (num+\cf4 1\cf0 )\
+x=\cf5 dblarr\cf0 (num+\cf4 1\cf0 ,\cf4 3\cf0 )\
+level=\cf5 intarr\cf0 (num+\cf4 1\cf0 )\
+\
+\cf2 ;if byte(ref) eq 120 then level_ref=mms1_bvec.y[*,0]\cf0 \
+\cf2 ;if byte(ref) eq 121 then level_ref=mms1_bvec.y[*,1]\cf0 \
+\cf2 ;if byte(ref) eq 122 then level_ref=mms1_bvec.y[*,2]\cf0 \
+level_ref=mms1_bvec.y[*,\cf4 0\cf0 ]\
+\
+\cf2 ;================================\cf0 \
+\cf2 ;calc\cf0 \
+\cf2 ;================================\cf0 \
+\pard\pardeftab720\partightenfactor0
+\cf7 for\cf0  i=\cf4 0\cf0 , num  \cf7 do\cf0  \cf7 begin\cf0   \cf2 ;the value around which you want to calculate the velocity\cf0 \
+  \cf2 ;level[i]=level_begin+level_interval*i\cf0 \
+  level[i]=level_ref[(i+\cf4 1\cf0 ) * window_width + tstart_index] \cf2 ;pick the x value in the middle of the window\cf0 \
+  leveli=level[i]\
+  clip_t1 = mms1_bvec.x[tstart_index-(i+\cf4 1\cf0 ) * window_width]\
+  clip_t2 = mms1_bvec.x[tstart_index+(i+\cf4 1\cf0 ) * window_width]\
+  \
+  \cf8 time_clip\cf0 ,\cf3 'mms1_b'\cf0 +ref, clip_t1, clip_t2\
+  \cf8 time_clip\cf0 ,\cf3 'mms2_b'\cf0 +ref, clip_t1, clip_t2\
+  \cf8 time_clip\cf0 ,\cf3 'mms3_b'\cf0 +ref, clip_t1, clip_t2\
+  \cf8 time_clip\cf0 ,\cf3 'mms4_b'\cf0 +ref, clip_t1, clip_t2\
+\
+  \cf8 tinterpol\cf0 , \cf3 'mms1_mec_r_gsm'\cf0 , \cf3 'mms1_fgm_b_gsm_brst_l2_bvec'\cf0 \
+  \cf8 tinterpol\cf0 , \cf3 'mms2_mec_r_gsm'\cf0 , \cf3 'mms2_fgm_b_gsm_brst_l2_bvec'\cf0 \
+  \cf8 tinterpol\cf0 , \cf3 'mms3_mec_r_gsm'\cf0 , \cf3 'mms3_fgm_b_gsm_brst_l2_bvec'\cf0 \
+  \cf8 tinterpol\cf0 , \cf3 'mms4_mec_r_gsm'\cf0 , \cf3 'mms4_fgm_b_gsm_brst_l2_bvec'\cf0 \
+  \cf8 time_clip\cf0 ,\cf3 'mms1_mec_r_gsm_interp'\cf0 , clip_t1, clip_t2\
+  \cf8 time_clip\cf0 ,\cf3 'mms2_mec_r_gsm_interp'\cf0 , clip_t1, clip_t2\
+  \cf8 time_clip\cf0 ,\cf3 'mms3_mec_r_gsm_interp'\cf0 , clip_t1, clip_t2\
+  \cf8 time_clip\cf0 ,\cf3 'mms4_mec_r_gsm_interp'\cf0 , clip_t1, clip_t2\
+\
+  \cf8 get_data\cf0 ,\cf3 'mms1_b'\cf0 +ref+\cf3 '_tclip'\cf0 , data=bx1 \cf2 ;here 'bx' doesn't mean the x-component in GSM coordinate, but acutually the reference sc chose at the beginning\cf0 \
+  \cf8 get_data\cf0 ,\cf3 'mms2_b'\cf0 +ref+\cf3 '_tclip'\cf0 , data=bx2\
+  \cf8 get_data\cf0 ,\cf3 'mms3_b'\cf0 +ref+\cf3 '_tclip'\cf0 , data=bx3\
+  \cf8 get_data\cf0 ,\cf3 'mms4_b'\cf0 +ref+\cf3 '_tclip'\cf0 , data=bx4\
+  \cf8 get_data\cf0 ,\cf3 'mms1_mec_r_gsm_interp_tclip'\cf0 ,data=pos1\
+  \cf8 get_data\cf0 ,\cf3 'mms2_mec_r_gsm_interp_tclip'\cf0 ,data=pos2\
+  \cf8 get_data\cf0 ,\cf3 'mms3_mec_r_gsm_interp_tclip'\cf0 ,data=pos3\
+  \cf8 get_data\cf0 ,\cf3 'mms4_mec_r_gsm_interp_tclip'\cf0 ,data=pos4\
+\
+  \cf2 ;Choose a 'level'\cf0 \
+  \cf2 ;MMS1\cf0 \
+  t1index = \cf5 where\cf0 (\cf5 abs\cf0 (bx1.y - leveli) \cf7 eq\cf0  \cf5 min\cf0 (\cf5 abs\cf0 (bx1.y - leveli)))\
+  value=bx1.\cf6 y\cf0 (t1index)\
+  value=value[\cf4 0\cf0 ]\
+  t1=bx1.x[t1index]\
+  x1=pos1.y[t1index,\cf4 0\cf0 ]\
+  y1=pos1.y[t1index,\cf4 1\cf0 ]\
+  z1=pos1.y[t1index,\cf4 2\cf0 ]\
+\
+  \cf2 ;MMS2\cf0 \
+  t2index = \cf5 where\cf0 (\cf5 abs\cf0 (bx2.y-value) \cf7 eq\cf0  (\cf5 min\cf0 (\cf5 abs\cf0 (bx2.y - value))))\
+  \cf7 if\cf0  ((bx2.y[t2index] - value) * (bx2.y[t2index+\cf4 1\cf0 ] - value)) \cf7 gt\cf0  \cf4 0\cf0  \cf7 then\cf0  (t2index2 = t2index - \cf4 1\cf0 ) \cf7 else\cf0  (t2index2 = t2index + \cf4 1\cf0 )\
+  t2slope = (bx2.y[t2index2] - bx2.y[t2index])/(bx2.x[t2index2] - bx2.x[t2index])\
+  t2inter = bx2.y[t2index] - t2slope *  bx2.x[t2index2]\
+  t2 = (value - t2inter)/t2slope\
+\
+  x2slope = (pos2.y[t2index2,\cf4 0\cf0 ] - pos2.y[t2index,\cf4 0\cf0 ])/(pos2.x[t2index2] - pos2.x[t2index])\
+  x2inter = (pos2.y[t2index,\cf4 0\cf0 ] - x2slope *  pos2.x[t2index2])\
+  x2 = x2slope * t2 + x2inter\
+\
+  y2slope = (pos2.y[t2index2,\cf4 1\cf0 ] - pos2.y[t2index,\cf4 1\cf0 ])/(pos2.x[t2index2] - pos2.x[t2index])\
+  y2inter = (pos2.y[t2index,\cf4 1\cf0 ] - y2slope *  pos2.x[t2index2])\
+  y2 = y2slope * t2 + y2inter\
+\
+  z2slope = (pos2.y[t2index2,\cf4 2\cf0 ] - pos2.y[t2index,\cf4 2\cf0 ])/(pos2.x[t2index2] - pos2.x[t2index])\
+  z2inter = (pos2.y[t2index,\cf4 2\cf0 ] - z2slope *  pos2.x[t2index2])\
+  z2 = z2slope * t2 + z2inter\
+\
+  \cf2 ;MMS3\cf0 \
+  t3index = \cf5 where\cf0 (\cf5 abs\cf0 (bx3.y-value) \cf7 eq\cf0  (\cf5 min\cf0 (\cf5 abs\cf0 (bx3.y - value))))\
+  \cf7 if\cf0  ((bx3.y[t3index] - value) * (bx3.y[t3index+\cf4 1\cf0 ] - value)) \cf7 gt\cf0  \cf4 0\cf0  \cf7 then\cf0  (t3index2 = t3index - \cf4 1\cf0 ) \cf7 else\cf0  (t3index2 = t3index + \cf4 1\cf0 )\
+  t3slope = (bx3.y[t3index2] - bx3.y[t3index])/(bx3.x[t3index2] - bx3.x[t3index])\
+  t3inter = bx3.y[t3index] - t3slope *  bx3.x[t3index2]\
+  t3 = (value - t3inter)/t3slope\
+\
+  x3slope = (pos3.y[t3index2,\cf4 0\cf0 ] - pos3.y[t3index,\cf4 0\cf0 ])/(pos3.x[t3index2] - pos3.x[t3index])\
+  x3inter = (pos3.y[t3index,\cf4 0\cf0 ] - x3slope *  pos3.x[t3index2])\
+  x3 = x3slope * t3 + x3inter\
+\
+  y3slope = (pos3.y[t3index2,\cf4 1\cf0 ] - pos3.y[t3index,\cf4 1\cf0 ])/(pos3.x[t3index2] - pos3.x[t3index])\
+  y3inter = (pos3.y[t3index,\cf4 1\cf0 ] - y3slope *  pos3.x[t3index2])\
+  y3 = y3slope * t3 + y3inter\
+\
+  z3slope = (pos3.y[t3index2,\cf4 2\cf0 ] - pos3.y[t3index,\cf4 2\cf0 ])/(pos3.x[t3index2] - pos3.x[t3index])\
+  z3inter = (pos3.y[t3index,\cf4 2\cf0 ] - z3slope *  pos3.x[t3index2])\
+  z3 = z3slope * t3 + z3inter\
+\
+  \cf2 ;MMS4\cf0 \
+  t4index = \cf5 where\cf0 (\cf5 abs\cf0 (bx4.y-value) \cf7 eq\cf0  (\cf5 min\cf0 (\cf5 abs\cf0 (bx4.y - value))))\
+  \cf7 if\cf0  ((bx4.y[t4index] - value) * (bx4.y[t4index+\cf4 1\cf0 ] - value)) \cf7 gt\cf0  \cf4 0\cf0  \cf7 then\cf0  (t4index2 = t4index - \cf4 1\cf0 ) \cf7 else\cf0  (t4index2 = t4index + \cf4 1\cf0 )\
+  t4slope = (bx4.y[t4index2] - bx4.y[t4index])/(bx4.x[t4index2] - bx4.x[t4index])\
+  t4inter = bx4.y[t4index] - t4slope *  bx4.x[t4index2]\
+  t4 = (value - t4inter)/t4slope\
+\
+  x4slope = (pos4.y[t4index2,\cf4 0\cf0 ] - pos4.y[t4index,\cf4 0\cf0 ])/(pos4.x[t4index2] - pos4.x[t4index])\
+  x4inter = (pos4.y[t4index,\cf4 0\cf0 ] - x4slope *  pos4.x[t4index2])\
+  x4 = x4slope * t4 + x4inter\
+\
+  y4slope = (pos4.y[t4index2,\cf4 1\cf0 ] - pos4.y[t4index,\cf4 1\cf0 ])/(pos4.x[t4index2] - pos4.x[t4index])\
+  y4inter = (pos4.y[t4index,\cf4 1\cf0 ] - y4slope *  pos3.x[t4index2])\
+  y4 = y4slope * t4 + y4inter\
+\
+  z4slope = (pos4.y[t4index2,\cf4 2\cf0 ] - pos4.y[t4index,\cf4 2\cf0 ])/(pos4.x[t4index2] - pos4.x[t4index])\
+  z4inter = (pos4.y[t4index,\cf4 2\cf0 ] - z4slope *  pos4.x[t4index2])\
+  z4 = z4slope * t4 + z4inter\
+\
+  \cf2 ;  a=dblarr(3,3)\cf0 \
+  \cf2 ;  ; Input a matrix containing the coefficients.\cf0 \
+  \cf2 ;  a[0,0]=(x2-x1)/(t2-t1)\cf0 \
+  \cf2 ;  a[1,0]=(y2-y1)/(t2-t1)\cf0 \
+  \cf2 ;  a[2,0]=(z2-z1)/(t2-t1)\cf0 \
+  \cf2 ;  a[0,1]=(x3-x1)/(t3-t1)\cf0 \
+  \cf2 ;  a[1,1]=(y3-y1)/(t3-t1)\cf0 \
+  \cf2 ;  a[2,1]=(z3-z1)/(t3-t1)\cf0 \
+  \cf2 ;  a[0,2]=(x4-x1)/(t4-t1)\cf0 \
+  \cf2 ;  a[1,2]=(y4-y1)/(t4-t1)\cf0 \
+  \cf2 ;  a[2,2]=(z4-z1)/(t4-t1)\cf0 \
+\
+  a=[[(x2-x1)/(t2-t1), (y2-y1)/(t2-t1),(z2-z1)/(t2-t1)],$\
+    [(x3-x1)/(t3-t1), (y3-y1)/(t3-t1), (z3-z1)/(t3-t1)],$\
+    [(x4-x1)/(t4-t1), (y4-y1)/(t4-t1), (z4-z1)/(t4-t1)]]\
+\
+  b=[\cf4 1\cf0 ,\cf4 1\cf0 ,\cf4 1\cf0 ]\
+\
+  x[i,*] = \cf5 la_least_squares\cf0 (a, b)\
+  temp=\cf5 sqrt\cf0 (x[i,\cf4 0\cf0 ]^\cf4 2\cf0 +x[i,\cf4 1\cf0 ]^\cf4 2\cf0 +x[i,\cf4 2\cf0 ]^\cf4 2\cf0 )\
+  v[i]=(\cf4 1.\cf0 /temp)\
+  time[i]=t1\
+  x[i,*]=x[i,*]*v[i]\
+\cf7 endfor\cf0 \
+v_avg=\cf5 total\cf0 (v)/\cf5 n_elements\cf0 (v)\
+\
+\
+\pard\pardeftab720\partightenfactor0
+\cf8 store_data\cf0 ,\cf3 'V'\cf0 ,data=\{x:time, y:v\}\
+\cf8 store_data\cf0 ,\cf3 'Normal_gsm'\cf0 , data=\{x:time, y:x\}\
+\cf8 cotrans\cf0 , \cf3 'Normal_gsm'\cf0 ,\cf3 'Normal_gse'\cf0 ,/gsm2gse\
+\cf8 get_data\cf0 ,\cf3 'Normal_gse'\cf0 ,data=n_gse\
+normal_gse_x=\cf5 total\cf0 (n_gse.y[*,\cf4 0\cf0 ])/\cf5 n_elements\cf0 (n_gse.y[*,\cf4 0\cf0 ])\
+normal_gse_y=\cf5 total\cf0 (n_gse.y[*,\cf4 1\cf0 ])/\cf5 n_elements\cf0 (n_gse.y[*,\cf4 1\cf0 ])\
+normal_gse_z=\cf5 total\cf0 (n_gse.y[*,\cf4 2\cf0 ])/\cf5 n_elements\cf0 (n_gse.y[*,\cf4 2\cf0 ])\
+\cf8 get_data\cf0 ,\cf3 'Normal_gsm'\cf0 ,data=n_gsm\
+normal_gsm_x=\cf5 total\cf0 (n_gsm.y[*,\cf4 0\cf0 ])/\cf5 n_elements\cf0 (n_gsm.y[*,\cf4 0\cf0 ])\
+normal_gsm_y=\cf5 total\cf0 (n_gsm.y[*,\cf4 1\cf0 ])/\cf5 n_elements\cf0 (n_gsm.y[*,\cf4 1\cf0 ])\
+normal_gsm_z=\cf5 total\cf0 (n_gsm.y[*,\cf4 2\cf0 ])/\cf5 n_elements\cf0 (n_gsm.y[*,\cf4 2\cf0 ])\
+\pard\pardeftab720\partightenfactor0
+\cf2 ;18th elements is closest to the manuscript indicating value\cf0 \
+\
+\cf2 ;options,'V','yrange',[20,100]\cf0 \
+\pard\pardeftab720\partightenfactor0
+\cf8 options\cf0 ,\cf3 'V'\cf0 ,\cf3 'databar'\cf0 ,\{yval:v_avg, linestyle:\cf4 2\cf0 \}\
+\cf8 options\cf0 ,\cf3 'V'\cf0 ,\cf3 'labels'\cf0 ,\cf3 'average v = !n!c '\cf0 + \cf5 string\cf0 (v_avg)\
+\cf8 options\cf0 ,[\cf3 'bt'\cf0 ,\cf3 'bx'\cf0 ,\cf3 'by'\cf0 ,\cf3 'bz'\cf0 ],\cf3 'databar'\cf0 ,\{yval:\cf4 0\cf0 , linestyle:\cf4 2\cf0 \}\
+\pard\pardeftab720\partightenfactor0
+\cf2 ;options,'bx','yrange',[35,65]\cf0 \
+\cf2 ;options,'bz','yrange',[20,60]\cf0 \
+\cf2 ;options,'bt','yrange',[60,80]\cf0 \
+\
+time_avg=[\cf4 0\cf0 ]\
+v_avg=[v_avg]\
+time_avg=[\cf6 average\cf0 (time)]\
+\pard\pardeftab720\partightenfactor0
+\cf8 store_data\cf0 ,\cf3 'V_avg'\cf0 , data=\{x:time_avg, y:v_avg\}\
+\
+\pard\pardeftab720\partightenfactor0
+\cf6 window\cf0 ,\cf4 1\cf0 \
+\pard\pardeftab720\partightenfactor0
+\cf8 tplot\cf0 ,[\cf3 'bt'\cf0 ,\cf3 'bx'\cf0 ,\cf3 'by'\cf0 ,\cf3 'bz'\cf0 ,\cf3 'V'\cf0 ],trange=clip_range, window=\cf4 1\cf0 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 ;popen,'mfe_201511071410_timing'\cf0 \
+\cf2 ;tplot, ['bx','by','bz','bt','V']\cf0 \
+\cf2 ;tplot_apply_databar\cf0 \
+\cf2 ;pclose\cf0 \
+\pard\pardeftab720\partightenfactor0
+\cf7 end}
