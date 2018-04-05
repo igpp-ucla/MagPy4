@@ -6,38 +6,20 @@ import shutil
 
 block_cipher = None
 
+os.chdir('..') # move one dir up out of build folder
+workDir = os.getcwd()
+
 a = Analysis(['MagPy4.py'],
-             pathex=['C:\\Users\\Bucky\\Dropbox\\workspace\\python\\MagPy4',
-					 'C:\\Users\\Bucky\\Dropbox\\workspace\\python\\MagPy4\\ffPy'],
+             pathex=[workDir, f'{workDir}\\ffPy'],
              binaries=[],
              datas=[],
              hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],
-             excludes=['matplotlib'],
+             excludes=['matplotlib','scipy'], 
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher)
-	
-print('--------------------')
-for s in a.scripts:
-	print(s)
-print('--------------------')
-for p in a.pure:
-	print(p)
-print('--------------------')
-
-#for file in os.listdir('ffPy/'):
-#	if file.endswith('.py') or file.endswith('.dat'):
-#		path = os.path.abspath(os.path.join('ffPy/',file))
-#		print(f'{file} {path}')
-#		a.pure.append((file, path, 'PYMODULE'))
-
-#a.pure.append(('pytz','pytz','PYMODULE'))
-
-#exeDir = f"build/{os.listdir('build')[0]}/"
-		
-# also manually added images, mmstestdata
 
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
@@ -49,7 +31,7 @@ exe = EXE(pyz,
           strip=False,
           upx=True,
           console=True,
-		  version='version.rc',
+		  version='build/version.rc',
 		  icon='images/magPy_blue.ico')
 coll = COLLECT(exe,
                a.binaries,
@@ -59,7 +41,13 @@ coll = COLLECT(exe,
                upx=True,
                name='MagPy4')
 			   
-exeDir = "dist/MagPy4/"
+exeDir = "build/dist/MagPy4/"
 shutil.copy2("ffPy/tai-utc.dat", exeDir)
 shutil.copytree("images/", f'{exeDir}images')
-shutil.copytree("styles/", f'{exeDir}PyQt5/Qt/plugins/styles')
+shutil.copytree("build/styles/", f'{exeDir}PyQt5/Qt/plugins/styles')
+
+fname = 'mms15092720'
+dpath = 'mmsTestData/L2/merged/2015/09/27/'
+os.makedirs(f'{exeDir}{dpath}')
+shutil.copy(f'{dpath}{fname}.ffh', f'{exeDir}{dpath}{fname}.ffh')
+shutil.copy(f'{dpath}{fname}.ffd', f'{exeDir}{dpath}{fname}.ffd')

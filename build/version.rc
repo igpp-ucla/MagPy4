@@ -1,7 +1,6 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(6, 1, 7601, 17514),
-    prodvers=(6, 1, 7601, 17514),
+    filevers=(1,0,0,0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -17,10 +16,8 @@ VSVersionInfo(
         [StringStruct(u'CompanyName', u'IGPP'),
         StringStruct(u'FileDescription', u'Magnetic Field Analysis Program'),
         StringStruct(u'FileVersion', u'1.0.0'),
-        StringStruct(u'LegalCopyright', u'IGPP UCLA. All rights reserved.'),
-        StringStruct(u'OriginalFilename', u'MagPy4.exe'),
-        StringStruct(u'ProductName', u'MagPy4'),
-        StringStruct(u'ProductVersion', u'1.0.0')])
+        StringStruct(u'LegalCopyright', u'IGPP UCLA'),
+        StringStruct(u'ProductName', u'MagPy4')])
       ]), 
     VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
   ]

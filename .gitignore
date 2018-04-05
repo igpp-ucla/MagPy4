@@ -18,11 +18,14 @@ __pycache__/
 #ignore user specific visual studio files
 *.suo
 
-#ignore everything in build folder
-build/*
-dist/*
+#ignore build folders
+build/build/*
+build/dist/*
+
+*.iss
+credentials.txt
+
 mmsTestData/*
 
-#except these two files
-!build/magPyDist.py
-!build/magPyFreeze.py
+
+
