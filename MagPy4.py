@@ -472,27 +472,25 @@ class DateAxis(pg.AxisItem):
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
 
-    try:
-        import BUILD_CONSTANTS #set by cxFreeze script
-    except ImportError:
-        version = "debug"
-    else:
-        version = str(BUILD_CONSTANTS.version)
+    #try:
+    #    import BUILD_CONSTANTS #was set by old script
+    #except ImportError:
+    #    version = 'debug'
+    #else:
+    #    version = str(BUILD_CONSTANTS.version)
 
     appName = app.applicationName()
-    if appName.startswith("python"):
-        appName = "MagPy4"
-    appName = appName + " " + version;
-    app.setOrganizationName("IGPP/UCLA")
-    app.setOrganizationDomain("igpp.ucla.edu")
+    if appName.startswith('python'):
+        appName = 'MagPy4'
+    #appName = f'{appName} {version}';
+    app.setOrganizationName('IGPP UCLA')
+    app.setOrganizationDomain('igpp.ucla.edu')
     app.setApplicationName(appName)
-    app.setApplicationVersion(version)
+    #app.setApplicationVersion(version)
 
     #set app icon
     appIcon = QtGui.QIcon()
-    #path = os.path.join(sys._MEIPASS, 'images/') if hasattr(sys, '_MEIPASS') else 'images/'
-    path = 'images/'
-    appIcon.addFile(f'{path}magPy_blue.ico')
+    appIcon.addFile('images/magPy_blue.ico')
     app.setWindowIcon(appIcon)
 
     main = MagPy4Window()

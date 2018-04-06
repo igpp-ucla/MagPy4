@@ -21,6 +21,7 @@ __pycache__/
 #ignore build folders
 build/build/*
 build/dist/*
+build/Output/*
 
 *.iss
 credentials.txt

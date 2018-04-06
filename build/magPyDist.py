@@ -1,83 +1,120 @@
 
-#usage format: python magPyDist.py <command> <version>
-#commands
-    #build  -compiles and makes an installer for given version
-    #deploy -sends version to webserver
-    #remove -deletes version from webserver
-    #bnd    -builds and deploys version to webserver
-
-# given a version number it will trigger innosetup to compile a new installer
-# it will find the .exe in the build/Output folder with according version and make a .zip out of it
-# then it will connect to the webserver and upload it to the build folder
-# and add a entry to it in the html file with the current date
-
 # REQUIREMENTS
-# need to have followed README_WindowsBuildTutorial already and have Innosetup installed with an .iss file prepared in this folder
-# need the paramiko package installed, i did it using python 3.6 so there might be problems if you use 3.4 but hopefully not
+# python 3.6 (would prob work with earlier versions)
+# paramiko package
+# pyinstaller
 # have a credentials.txt file defined in the same directory as this file (dont worry it wont be tracked in the repository)
     # username on first line, password on second line
 
 import sys
 import os
+import shutil
 import paramiko
 
 server = 'aten.igpp.ucla.edu'
 
-_entryName = "MagPy4_Windows_v"
-_indexFile = "index.html"
-_remotePath = "/webdocs/docs/magpy/"
-_buildPath = "builds/windows/"
+_entryName = 'MagPy4_Windows_v'
+_indexFile = 'index.html'
+_remotePath = '/webdocs/docs/magpy/'
+_buildPath = 'builds/windows/'
 
 def tryConnectSSH(ssh):
-    if not os.path.isfile("credentials.txt"):
+    if not os.path.isfile('credentials.txt'):
         print('Error: cannot find "credentials.txt" (file with username on first line and password on second line)')
         return False
-    with open("credentials.txt", 'r') as file:
+    with open('credentials.txt', 'r') as file:
         user = file.readline().strip()
         pw = file.readline().strip()
 
     try:
         ssh.connect(server, username=user, password=pw)
     except paramiko.ssh_exception.AuthenticationException:
-        print("Error: ssh authentication failed (bad username / pw)")
+        print('Error: ssh authentication failed (bad username / pw)')
         return False
     except:
-        print("Error: unknown ssh failure")
+        print('Error: unknown ssh failure')
         return False
 
     return True
 
 def printHelp():
-    print("usage format: python magPyDist.py <command> <version>")
-    print("")
-    print("[commands]")
-    print("build  -compiles and makes an installer for given version")
-    print("deploy -sends version to webserver")
-    print("remove -deletes version from webserver")
-    print("bnd    -builds and deploys version to webserver")
-    print("")
+    print('usage format: python magPyDist.py <command> <version>')
+    print('')
+    print('[commands]')
+    print('freeze -freezes program and makes an executable')
+    print('build  -compiles and makes an installer for given version')
+    print('deploy -sends version to webserver')
+    print('remove -deletes version from webserver')
+    print('full -freezes builds and deploys version')
+    print('')
+	
+def freeze(version):
+	with open('version.rc','r') as file:
+		lines = file.readlines()
+	for li,line in enumerate(lines):
+		if line.strip().startswith('filevers'):
+			vers = 'filevers=('
+			vt = version.split('.')
+			for i in range(4):
+				v = '0'
+				if i < len(vt):
+					v = vt[i]
+				end = ',' if i < 3 else '),\n'
+				vers = f'{vers}{v}{end}'
+			lines[li] = vers
+			break
+	
+	# write back to file
+	with open('version.rc','w') as file:
+		for line in lines:
+			file.write(line)
+	
+	#print('\n'.join(lines))
+	
+	#remove these folders made by pyinstaller before remaking
+	if os.path.exists('build'):
+		shutil.rmtree('build')
+	if os.path.exists('dist'):
+		shutil.rmtree('dist')
+	
+	os.system('pyinstaller MagPy4.spec')	
 
+	print(f'Successfully froze version {version}')
+
+def getVersionString(version):
+    vers = ''
+    vt = version.split('.')
+    for i in range(4):
+        v = '0'
+        if i < len(vt):
+            v = vt[i]
+        end = '.' if i < 3 else ''
+        vers = f'{vers}{v}{end}'
+    return vers
+	
 def build(version):
     #find innosetup file in the build directory
     issFile = None
-    for file in os.listdir("."):
-        if file.endswith(".iss"):
+    for file in os.listdir('.'):
+        if file.endswith('.iss'):
             issFile = file
             break
 
     if not issFile:
-        print("Error: cannot find InnoSetup .iss file!")
+        print('Error: cannot find InnoSetup .iss file!')
         return
 
     #open file
     with open(issFile, 'r') as file:
         data = file.readlines()
 
+    version = getVersionString(version)
+
     #change version number
-    appVersionLine = "#define MyAppVersion"
+    appVersionLine = '#define MyAppVersion'
     for i, line in enumerate(data):
         if line.startswith(appVersionLine):
-            data[i] = appVersionLine + ' "'+version+'"\n'
+            data[i] = f'{appVersionLine} "{version}"\n'
             break
 
     #save file
@@ -89,22 +126,24 @@ def build(version):
     # also need to restart VS2017 once you do before it registers
     os.system('iscc ' + issFile)
 
-    print("Built version " + version + " successfully")
+    print(f'Built version {version} successfully')
 
 def deploy(version):
     # find the .exe in Output folder
+    version = getVersionString(version)
+
     fileName = None
-    if not os.path.isdir("Output"):
-        print("Error: cannot find Output directory")
+    if not os.path.isdir('Output'):
+        print('Error: cannot find Output directory')
         return
-    for file in os.listdir("Output"):
-        if file.endswith(version+".exe"):
+    for file in os.listdir('Output'):
+        if file.endswith(f'{version}.exe'):
             fileName = file
             break
 
     # check to see file found
     if not fileName:
-        print("Error: no .exe with version "+version+" found in Output folder!")
+        print(f'Error: no .exe with version {version} found in Output folder!')
         return
 
     # open ssh session with webserver
@@ -130,7 +169,7 @@ def deploy(version):
     found = False
     for line in data:
         if searchPhrase in line:
-            print("Failed: version " + version + " already deployed on website!")
+            print('Failed: version {version} already deployed on website!')
             # cleanup
             sftp.close()
             ssh.close()
@@ -139,19 +178,17 @@ def deploy(version):
 
     # add .exe to .zip
     zipName = _entryName + version
-    zipFile = zipName + ".zip"
+    zipFile = f'{zipName}.zip'
     from zipfile import ZipFile
-    with ZipFile(zipFile, "w") as myzip:
-        myzip.write("Output/"+fileName, fileName)
+    with ZipFile(zipFile, 'w') as myzip:
+        myzip.write(f'Output/{fileName}', fileName)
 
     # find and add new entry into html
-    startPhrase = "<!--MMSDLStart-->"
+    startPhrase = '<!--MMSDLStart-->'
     for i, line in enumerate(data):
         if startPhrase in line:
-            htmlStr = ('<tr>'
-                '<td><a href="' + _buildPath+zipFile+'" download>'+zipName+'</a></td>'
-                '<td>'+now.strftime("%m/%d/%Y")+'</td>'
-	            '</tr>\n')
+            htmlStr = ('<tr><td><a href="' + _buildPath+zipFile+'" download>'+zipName+'</a></td>'
+                '<td>'+now.strftime('%m/%d/%Y')+'</td></tr>\n')
             data.insert(i+1, htmlStr)
             break
 
@@ -170,11 +207,7 @@ def deploy(version):
     os.remove(_indexFile)
     os.remove(zipFile)
 
-    print("Deployed version " + version + " to website successfully")
-
-def buildAndDeploy(version):
-    build()
-    deploy()
+    print(f'Deployed version {version} to website successfully')
 
 def remove(version):
     # open ssh session with webserver
@@ -202,7 +235,7 @@ def remove(version):
     #        found = True;
     newData = [line for line in data if searchPhrase not in line]
     if data == newData: # if no differences then can return early
-        print("No entries with version "+version+" found")
+        print(f'No entries with version {version} found')
         # close stuff
         sftp.close()
         ssh.close()
@@ -226,7 +259,7 @@ def remove(version):
     ssh.close()
     os.remove(_indexFile)
 
-    print("Removed version " + version + " from website successfully")
+    print(f'Removed version {version} from website successfully')
     
 
 def main():
@@ -240,19 +273,18 @@ def main():
     
     command = myargs[1]
     version = myargs[2]
-    if version == "0.1":
-        print("Error: dont mess with the first version you heathen")
-        #return
 
-    if (command == "bnd" or
-        command == "buildAndDeploy"):
+    if (command == 'full'):
+        freeze(version)
         build(version)
         deploy(version)
-    elif command == "build":
+    elif command == 'freeze':
+        freeze(version)
+    elif command == 'build':
         build(version)
-    elif command == "deploy":
+    elif command == 'deploy':
         deploy(version)
-    elif command == "remove":
+    elif command == 'remove':
         remove(version)    
     else:
         printHelp()
