@@ -12,7 +12,7 @@ from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
 from MagPy4UI import UI_MagPy4
 from plotTracer import PlotTracer
-from dataDisplay import DataDisplay
+from dataDisplay import DataDisplay, UTCQDate
 
 import time
 
@@ -27,10 +27,13 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui = UI_MagPy4()
         self.ui.setupUI(self)
 
-        self.ui.startSlider.valueChanged.connect(self.onStartChanged)
-        self.ui.endSlider.valueChanged.connect(self.onEndChanged)
+        self.ui.startSlider.valueChanged.connect(self.onStartSliderChanged)
+        self.ui.endSlider.valueChanged.connect(self.onEndSliderChanged)
         self.ui.startSlider.sliderReleased.connect(self.setTimes)
         self.ui.endSlider.sliderReleased.connect(self.setTimes)
+
+        self.ui.startSliderEdit.dateTimeChanged.connect(self.onStartEditChanged)
+        self.ui.endSliderEdit.dateTimeChanged.connect(self.onEndEditChanged)
 
         self.ui.actionPlot.triggered.connect(self.openTracer)
         self.ui.actionOpen.triggered.connect(self.openFileDialog)
@@ -63,7 +66,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.tracer.show()
 
     def showData(self):
-        self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Test title')
+        self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
         self.dataDisplay.show()
 
     def resizeEvent(self, event):
@@ -103,9 +106,6 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             return err, mess
         self.resolution = self.FID.getResolution()
 #       self.numpoints = min(self.numpoints, self.FID.FFParm["NROWS"].value)
-
-        self.UTCO = FFTIME(self.times[0], Epoch=self.epoch)
-        self.UTCE = FFTIME(self.times[-1], Epoch=self.epoch)
 
         self.numpoints = self.FID.FFParm["NROWS"].value
 
@@ -172,55 +172,72 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui.endSlider.setSingleStep(tick)
         self.ui.endSlider.setValue(mx)
 
-        utc = self.getUTCString(self.times[self.iO])
-        self.ui.startSliderLabel.setText(utc)
-        utc = self.getUTCString(self.times[self.iE])
-        self.ui.endSliderLabel.setText(utc)
+        minDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.times[0], Epoch=self.epoch).UTC)
+        maxDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.times[-1], Epoch=self.epoch).UTC)
 
-    def getUTCString(self, time):
-        utc = FFTIME(time, Epoch=self.epoch).UTC
-        utc = f"{utc.split(' ')[0]} {utc.split(' ',2)[2]}" #cut out day of year?
-        return utc
+        self.ui.startSliderEdit.setMinimumDateTime(minDateTime)
+        self.ui.endSliderEdit.setMinimumDateTime(minDateTime)
+        self.ui.startSliderEdit.setMaximumDateTime(maxDateTime)
+        self.ui.endSliderEdit.setMaximumDateTime(maxDateTime)
 
-    def onStartChanged(self, val):
+    def onStartSliderChanged(self, val):
         self.iO = val
 
         # move tracker lines to show where new range will be
-        time = self.times[self.iO]
+        tt = self.times[self.iO]
         for line in self.trackerLines:
-            line.setValue(time)
+            line.show()
+            line.setValue(tt)
 
-        utc = self.getUTCString(time)
-        self.ui.startSliderLabel.setText(utc)
+        dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
+        self.ui.startSliderEdit.blockSignals(True) #dont want to trigger callback from this
+        self.ui.startSliderEdit.setDateTime(dt)
+        self.ui.startSliderEdit.blockSignals(False)
 
         # send a new time if the user clicks on the bar but not on the sliders
         if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.startSlider.underMouse():
             self.setTimes()
 
-    def onEndChanged(self, val):
+    def onEndSliderChanged(self, val):
         self.iE = val
 
         # move tracker lines to show where new range will be
-        time = self.times[self.iE]
+        tt = self.times[self.iE]
         for line in self.trackerLines:
-            line.setValue(time+1)#offset by linewidth so its not visible once released
+            line.show()
+            line.setValue(tt+1)#offset by linewidth so its not visible once released
 
-        utc = self.getUTCString(time)
-
-        self.ui.endSliderLabel.setText(utc)
+        dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
+        self.ui.endSliderEdit.blockSignals(True) #dont want to trigger callback from this
+        self.ui.endSliderEdit.setDateTime(dt)
+        self.ui.endSliderEdit.blockSignals(False)
 
         # send a new time if the user clicks on the bar but not on the sliders
         if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.endSlider.underMouse():
             self.setTimes()
 
+    def onStartEditChanged(self, val):
+        utc = UTCQDate.QDateTime2UTC(val)
+        self.tO = FFTIME(utc, Epoch=self.epoch)._tick
+        for line in self.trackerLines:
+            line.hide()
+        self.updateXRange()
+
+    def onEndEditChanged(self, val):
+        utc = UTCQDate.QDateTime2UTC(val)
+        self.tE = FFTIME(utc, Epoch=self.epoch)._tick
+        for line in self.trackerLines:
+            line.hide()
+        self.updateXRange()
+
     def setTimes(self):
         self.tO = self.times[self.iO]
         self.tE = self.times[self.iE]
+        self.updateXRange()
 
+    def updateXRange(self):
         for pi in self.plotItems:
             pi.setXRange(self.tO, self.tE, 0.0)
-
-        # can manipulate tick strings here similar to commented code in plotData
 
     # setup default 4 axis magdata plot
     def plotDataDefault(self):

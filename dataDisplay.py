@@ -160,9 +160,14 @@ class UTCQDate():
         test = qdateTime.toString()
         if not test:
             qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT3)
-        #test = qdateTime.toString()
-        #UTCQDate.doy(qdateTime)
         return qdateTime
+
+    def QDateTime2UTC(qdt):
+        doy = QtCore.QDateTime.fromString(f'{qdt.date().year()} 01 01', 'yyyy MM dd').daysTo(qdt) + 1
+        DOY = "%03d" % doy
+        dateTime = qdt.toString(UTCQDate.FORMAT)
+        return dateTime[:5] + DOY + dateTime[4:]
+        
 
 class DataDisplay(QtGui.QFrame, DataDisplayUI):
     """ file data dialog """
