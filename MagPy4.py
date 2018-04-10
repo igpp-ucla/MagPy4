@@ -111,6 +111,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         self.iO = 0
         self.iE = min(self.numpoints - 1, len(self.times) - 1) #could maybe just be second part of this min not sure
+        self.iiE = self.iE
         self.tO = self.times[self.iO]
         self.tE = self.times[self.iE]
         # save initial time range
@@ -176,9 +177,11 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         maxDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.times[-1], Epoch=self.epoch).UTC)
 
         self.ui.startSliderEdit.setMinimumDateTime(minDateTime)
-        self.ui.endSliderEdit.setMinimumDateTime(minDateTime)
         self.ui.startSliderEdit.setMaximumDateTime(maxDateTime)
+        self.ui.startSliderEdit.setDateTime(minDateTime)
+        self.ui.endSliderEdit.setMinimumDateTime(minDateTime)
         self.ui.endSliderEdit.setMaximumDateTime(maxDateTime)
+        self.ui.endSliderEdit.setDateTime(maxDateTime)
 
     def onStartSliderChanged(self, val):
         self.iO = val
@@ -216,9 +219,26 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.endSlider.underMouse():
             self.setTimes()
 
+    def getTickIndex(self, t):
+        perc = (t - self.itO) / (self.itE - self.itO)
+        return int(self.iiE * perc)
+
+    def calcTickIndexByTime(self, t):
+        perc = (t - self.itO) / (self.itE - self.itO)
+        return int(self.iiE * perc)
+
+    def setSliderNoCallback(self, slider, i):
+        slider.blockSignals(True)
+        slider.setValue(i)
+        slider.blockSignals(False)
+
     def onStartEditChanged(self, val):
         utc = UTCQDate.QDateTime2UTC(val)
         self.tO = FFTIME(utc, Epoch=self.epoch)._tick
+
+        self.iO = self.calcTickIndexByTime(self.tO)
+        self.setSliderNoCallback(self.ui.startSlider, self.iO)
+
         for line in self.trackerLines:
             line.hide()
         self.updateXRange()
@@ -226,6 +246,10 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     def onEndEditChanged(self, val):
         utc = UTCQDate.QDateTime2UTC(val)
         self.tE = FFTIME(utc, Epoch=self.epoch)._tick
+        
+        self.iE = self.calcTickIndexByTime(self.tE)
+        self.setSliderNoCallback(self.ui.endSlider, self.iE)
+
         for line in self.trackerLines:
             line.hide()
         self.updateXRange()
