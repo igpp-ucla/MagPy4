@@ -62,6 +62,8 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
 
     def openTracer(self):
+        if self.tracer is not None:
+            self.tracer.close()
         self.tracer = PlotTracer(self)
         self.tracer.show()
 
@@ -128,6 +130,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         if self.tracer is not None:
             self.tracer.close()
+            self.tracer = None
 
         return 1, "FILE " + PATH + "read"
 
@@ -300,9 +303,8 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         plotCount = max(numPlots,4) # always space for at least 4 plots on screen
         for plotIndex,bAxis in enumerate(bMatrix):
             axis = DateAxis(orientation='bottom')
-            axis.window = self #todo make this class init argument instead probly?
-            vb = MagPyViewBox()
-            vb.window = self
+            axis.window = self
+            vb = MagPyViewBox(self)
             pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis})
             #pi.setDownsampling(auto=True)
 
@@ -434,15 +436,17 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
-    def __init__(self, *args, **kwds):
+    def __init__(self, window, *args, **kwds):
         pg.ViewBox.__init__(self, *args, **kwds)
         #self.setMouseMode(self.RectMode)
-
+        self.window = window
         # add lines to show where left clicks happen
-        pen = pg.mkPen('#B600C6', width=1, style=QtCore.Qt.SolidLine)
+        pen = pg.mkPen('#FF0000', width=1, style=QtCore.Qt.DashLine)
         self.vMouseLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pen)
         self.hMouseLine = pg.InfiniteLine(movable=False, angle=0, pos=0, pen=pen)
-        self.dataText = pg.TextItem('test', anchor=(0.0,1.0), html='<div style="text-align: center; color:#FFF;">')
+        self.dataText = pg.TextItem('test', fill=(255, 255, 255, 200), html='<div style="text-align: center; color:#FFF;">')
+        self.dataText.setZValue(10)
+        self.dataText.border = self.window.pens[3] #black pen
 
         self.addItem(self.vMouseLine, ignoreBounds=True) #so they dont mess up view range
         self.addItem(self.hMouseLine, ignoreBounds=True)
@@ -476,7 +480,12 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 print(sf)
                 self.dataText.setText(sf)
 
-                #self.window.findTimes(x,y,'X') #just for testing for now
+                #set text anchor based on which quadrant of viewbox dataText crosshair is in
+                centerX = vr[0][0] + (vr[0][1] - vr[0][0])/2
+                centerY = vr[1][0] + (vr[1][1] - vr[1][0])/2
+
+                #i think its based on axis ratio of the label so x is about 1/5 times of y anchor offset
+                self.dataText.setAnchor((-0.04 if x < centerX else 1.04, 1.2 if y < centerY else -0.2))
 
             ev.accept()
         else:
