@@ -49,7 +49,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
         # setup pens
         self.pens = []
-        colors = ['#0000ff','#00ff00','#ff0000','#000000'] # b g r bl
+        colors = ['#0000ff','#00ff00','#ff0000','#000000'] # b g r black
         for c in colors:
             self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
 
@@ -60,11 +60,15 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             self.openFile(starterFile)
             self.plotDataDefault()
 
-
     def openTracer(self):
         if self.tracer is not None:
             self.tracer.close()
         self.tracer = PlotTracer(self)
+
+        #geo = QtWidgets.QDesktopWidget().availableGeometry()
+        #print(geo)
+
+        self.tracer.move(0,500)
         self.tracer.show()
 
     def showData(self):
@@ -222,10 +226,6 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.endSlider.underMouse():
             self.setTimes()
 
-    def getTickIndex(self, t):
-        perc = (t - self.itO) / (self.itE - self.itO)
-        return int(self.iiE * perc)
-
     def calcTickIndexByTime(self, t):
         perc = (t - self.itO) / (self.itE - self.itO)
         return int(self.iiE * perc)
@@ -235,6 +235,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         slider.setValue(i)
         slider.blockSignals(False)
 
+    # this gets called when the start date time edit is changed directly
     def onStartEditChanged(self, val):
         utc = UTCQDate.QDateTime2UTC(val)
         self.tO = FFTIME(utc, Epoch=self.epoch)._tick
@@ -246,6 +247,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             line.hide()
         self.updateXRange()
 
+    # this gets called when the end date time edit is changed directly
     def onEndEditChanged(self, val):
         utc = UTCQDate.QDateTime2UTC(val)
         self.tE = FFTIME(utc, Epoch=self.epoch)._tick
@@ -261,6 +263,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.tO = self.times[self.iO]
         self.tE = self.times[self.iE]
         self.updateXRange()
+        #self.updateYRange() # need to sort some problems out with this
 
     def updateXRange(self):
         for pi in self.plotItems:
@@ -404,27 +407,51 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             self.ui.glw.addItem(pi)
             self.ui.glw.nextRow()
 
+        # this should also be called when changing time sliders and if region vs whole timeseries box is on?
+        self.updateYRange()
 
-        # based on fixed axis matrix scale groups y axis to eachother
-        for row in fMatrix:
-            # find largest range
-            largest = 0
-            for i,b in enumerate(row):
-                if b:
-                    pi = self.plotItems[i]
-                    vr = pi.viewRange()
-                    diff = vr[1][1] - vr[1][0] # first is viewrange y max, second is y min
-                    largest = max(largest, diff)
-            # adjust each plot in this group to largest range
-            for i,b in enumerate(row):
-                if b:
-                    pi = self.plotItems[i]
-                    vr = pi.viewRange()
-                    diff = vr[1][1] - vr[1][0]
-                    l2 = (largest-diff)/2.0
-                    pi.setYRange(vr[1][0] - l2, vr[1][1] + l2)
-
+        ##
     ##
+
+    def updateYRange(self):
+        # based on fixed axis matrix scale groups y axis to eachother
+        for row in self.lastLinkMatrix:
+            # find largest range
+            minValues = []
+            maxValues = []
+            largest = 0
+            for i,checked in enumerate(row):
+                if checked:
+                    dstr = self.DATASTRINGS[i]
+                    dat = self.DATADICT[dstr]
+                    Y = dat[0][self.iO:self.iE] # y data in current range
+                    segments = np.where(Y >= 1e33)[0].tolist() # find spots where there are errors and make segments
+                    segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
+                    st = 0 #start index
+                    minVal = np.inf
+                    maxVal = -np.inf
+                    for seg in segments:
+                        while st in segments:
+                            st += 1
+                        if st >= seg:
+                            continue
+                        slice = Y[st:seg]
+                        minVal = min(slice.min(), minVal)
+                        maxVal = max(slice.max(), maxVal)
+                        st = seg+1
+
+                    diff = maxVal - minVal
+                    minValues.append(minVal)
+                    maxValues.append(maxVal)
+                    largest = max(largest, diff)
+
+            # adjust each plot in this group to largest range
+            for i,checked in enumerate(row):
+                if checked:
+                    pi = self.plotItems[i]
+                    diff = maxValues[i]-minValues[i]
+                    l2 = (largest-diff)/2.0
+                    pi.setYRange(minValues[i] - l2, maxValues[i] + l2)
 
     #find points at which each spacecraft crosses this value for the first time after this time
     # axis is X Y Z or T
@@ -445,7 +472,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         self.vMouseLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pen)
         self.hMouseLine = pg.InfiniteLine(movable=False, angle=0, pos=0, pen=pen)
         self.dataText = pg.TextItem('test', fill=(255, 255, 255, 200), html='<div style="text-align: center; color:#FFF;">')
-        self.dataText.setZValue(10)
+        self.dataText.setZValue(10) #draw over the traces
         self.dataText.border = self.window.pens[3] #black pen
 
         self.addItem(self.vMouseLine, ignoreBounds=True) #so they dont mess up view range
