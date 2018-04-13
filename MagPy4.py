@@ -42,6 +42,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
         self.tracer = None
+        self.scaleYToCurrentRegion = True
 
         # this was testing for segment calculation, this way was easy but slower than current way, saving incase i need later
         ##testa = np.array([5,10,5,0,1,1,.5,28,28,27,1e34,0,0,0,1e34,1e34])
@@ -169,6 +170,12 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         mx = parm["NROWS"].value - 1
         tick = 1.0 / self.resolution * 2.0
 
+        #dont want to trigger callbacks from first plot
+        self.ui.startSlider.blockSignals(True)
+        self.ui.endSlider.blockSignals(True)
+        self.ui.startSliderEdit.blockSignals(True)
+        self.ui.endSliderEdit.blockSignals(True)
+
         self.ui.startSlider.setMinimum(0)
         self.ui.startSlider.setMaximum(mx)
         self.ui.startSlider.setTickInterval(tick)
@@ -189,6 +196,11 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui.endSliderEdit.setMinimumDateTime(minDateTime)
         self.ui.endSliderEdit.setMaximumDateTime(maxDateTime)
         self.ui.endSliderEdit.setDateTime(maxDateTime)
+
+        self.ui.startSlider.blockSignals(False)
+        self.ui.endSlider.blockSignals(False)
+        self.ui.startSliderEdit.blockSignals(False)
+        self.ui.endSliderEdit.blockSignals(False)
 
     def onStartSliderChanged(self, val):
         self.iO = val
@@ -226,6 +238,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.endSlider.underMouse():
             self.setTimes()
 
+    # pretty sure this is accurate
     def calcTickIndexByTime(self, t):
         perc = (t - self.itO) / (self.itE - self.itO)
         return int(self.iiE * perc)
@@ -238,32 +251,32 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
     # this gets called when the start date time edit is changed directly
     def onStartEditChanged(self, val):
         utc = UTCQDate.QDateTime2UTC(val)
-        self.tO = FFTIME(utc, Epoch=self.epoch)._tick
-
-        self.iO = self.calcTickIndexByTime(self.tO)
+        self.iO = self.calcTickIndexByTime(FFTIME(utc, Epoch=self.epoch)._tick)
         self.setSliderNoCallback(self.ui.startSlider, self.iO)
-
         for line in self.trackerLines:
             line.hide()
-        self.updateXRange()
+        self.setTimes()
 
     # this gets called when the end date time edit is changed directly
     def onEndEditChanged(self, val):
         utc = UTCQDate.QDateTime2UTC(val)
-        self.tE = FFTIME(utc, Epoch=self.epoch)._tick
-        
-        self.iE = self.calcTickIndexByTime(self.tE)
+        self.iE = self.calcTickIndexByTime(FFTIME(utc, Epoch=self.epoch)._tick)
         self.setSliderNoCallback(self.ui.endSlider, self.iE)
-
         for line in self.trackerLines:
             line.hide()
-        self.updateXRange()
+        self.setTimes()
 
     def setTimes(self):
+        if self.iO == self.iE:
+            if self.iE < self.iiE:
+                self.iE += 1
+            else:
+                self.iO -= 1
+
         self.tO = self.times[self.iO]
         self.tE = self.times[self.iE]
         self.updateXRange()
-        #self.updateYRange() # need to sort some problems out with this
+        self.updateYRange()
 
     def updateXRange(self):
         for pi in self.plotItems:
@@ -407,29 +420,33 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             self.ui.glw.addItem(pi)
             self.ui.glw.nextRow()
 
-        # this should also be called when changing time sliders and if region vs whole timeseries box is on?
         self.updateYRange()
 
         ##
     ##
 
     def updateYRange(self):
-        # based on fixed axis matrix scale groups y axis to eachother
-        for row in self.lastLinkMatrix:
-            # find largest range
-            minValues = []
-            maxValues = []
-            largest = 0
-            for i,checked in enumerate(row):
+        # for each plot, find min and max values for current time selection (consider every trace)
+        # otherwise just use the whole visible range self.iiO self.iiE
+        if self.lastPlotMatrix is None:
+            return
+        values = [] # (min,max)
+        skipRangeSet = set()
+        for plotIndex,bAxis in enumerate(self.lastPlotMatrix):
+            minVal = np.inf
+            maxVal = -np.inf
+            # find min and max values out of all traces on this plot
+            for i,checked in enumerate(bAxis):
                 if checked:
                     dstr = self.DATASTRINGS[i]
                     dat = self.DATADICT[dstr]
-                    Y = dat[0][self.iO:self.iE] # y data in current range
+                    a = self.iO if self.scaleYToCurrentRegion else 0
+                    b = self.iE if self.scaleYToCurrentRegion else self.iiE
+
+                    Y = dat[0][a:b] # y data in current range
                     segments = np.where(Y >= 1e33)[0].tolist() # find spots where there are errors and make segments
                     segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
                     st = 0 #start index
-                    minVal = np.inf
-                    maxVal = -np.inf
                     for seg in segments:
                         while st in segments:
                             st += 1
@@ -439,19 +456,38 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                         minVal = min(slice.min(), minVal)
                         maxVal = max(slice.max(), maxVal)
                         st = seg+1
+            # if range is bad then dont change this
+            if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or np.isinf(minVal):
+                skipRangeSet.add(plotIndex)
+            values.append((minVal,maxVal))
 
-                    diff = maxVal - minVal
-                    minValues.append(minVal)
-                    maxValues.append(maxVal)
-                    largest = max(largest, diff)
-
-            # adjust each plot in this group to largest range
+        partOfGroup = set()
+        for row in self.lastLinkMatrix:
+            # for each plot in this link row find largest range
+            largest = 0
             for i,checked in enumerate(row):
+                if i in skipRangeSet:
+                    continue
                 if checked:
-                    pi = self.plotItems[i]
-                    diff = maxValues[i]-minValues[i]
+                    partOfGroup.add(i)
+                    diff = values[i][1]-values[i][0]
+                    largest = max(largest,diff)
+            # then scale each plot in this row to the range
+            for i,checked in enumerate(row):
+                if i in skipRangeSet:
+                    continue
+                if checked:
+                    diff = values[i][1]-values[i][0]
                     l2 = (largest-diff)/2.0
-                    pi.setYRange(minValues[i] - l2, maxValues[i] + l2)
+                    self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2)
+        # for plot items that aren't apart of a group (and has at least one trace) just scale them to themselves
+        for i,row in enumerate(self.lastPlotMatrix):
+            if i not in partOfGroup and i not in skipRangeSet:
+                for b in row: # check to see if has at least one trace (not empty row)
+                    if b:
+                        self.plotItems[i].setYRange(values[i][0], values[i][1])
+                        break
+
 
     #find points at which each spacecraft crosses this value for the first time after this time
     # axis is X Y Z or T
