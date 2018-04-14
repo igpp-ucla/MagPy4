@@ -39,10 +39,11 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui.actionOpen.triggered.connect(self.openFileDialog)
         self.ui.actionShowData.triggered.connect(self.showData)
 
+        self.ui.scaleYToCurrentTimeCheckBox.stateChanged.connect(self.updateYRange)
+
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
         self.tracer = None
-        self.scaleYToCurrentRegion = True
 
         # this was testing for segment calculation, this way was easy but slower than current way, saving incase i need later
         ##testa = np.array([5,10,5,0,1,1,.5,28,28,27,1e34,0,0,0,1e34,1e34])
@@ -161,6 +162,10 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         for i, dstr in enumerate(self.DATASTRINGS):
             self.DATADICT[dstr] = (np.array(self.dataByRec[:,i]),units[i])
 
+        # sorts by units alphabetically
+        #datazip = list(zip(self.DATASTRINGS, units))
+        #datazip.sort(key=lambda tup: tup[1], reverse=True)
+        #self.DATASTRINGS = [tup[0] for tup in datazip]
 
         return 1, "OKAY"
 
@@ -440,8 +445,9 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                 if checked:
                     dstr = self.DATASTRINGS[i]
                     dat = self.DATADICT[dstr]
-                    a = self.iO if self.scaleYToCurrentRegion else 0
-                    b = self.iE if self.scaleYToCurrentRegion else self.iiE
+                    scaleYToCurrnt = self.ui.scaleYToCurrentTimeCheckBox.isChecked()
+                    a = self.iO if scaleYToCurrent else 0
+                    b = self.iE if scaleYToCurrent else self.iiE
 
                     Y = dat[0][a:b] # y data in current range
                     segments = np.where(Y >= 1e33)[0].tolist() # find spots where there are errors and make segments

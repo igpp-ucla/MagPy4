@@ -52,14 +52,8 @@ class UI_MagPy4(object):
         # SLIDER setup
         sliderFont = QtGui.QFont("Times", 14)#, QtGui.QFont.Bold) 
         sliderLayout = QtWidgets.QGridLayout() # r, c, w, h
-        #self.startSliderLabel = QtWidgets.QLabel()
-        #self.startSliderLabel.setText("StartTime")
-        #self.startSliderLabel.setFont(sliderFont)
         self.startSlider = QtWidgets.QSlider()
         self.startSlider.setOrientation(QtCore.Qt.Horizontal)
-        #self.endSliderLabel = QtWidgets.QLabel()
-        #self.endSliderLabel.setText("EndTime")
-        #self.endSliderLabel.setFont(sliderFont)
         self.endSlider = QtWidgets.QSlider()
         self.endSlider.setOrientation(QtCore.Qt.Horizontal)
 
@@ -76,6 +70,18 @@ class UI_MagPy4(object):
         sliderLayout.addWidget(self.endSlider, 1, 1, 1, 1)
 
         layout.addLayout(sliderLayout)
+
+        optionsLayout = QtWidgets.QHBoxLayout()
+        scaleLabel = QtWidgets.QLabel()
+        scaleLabel.setText("Scale Y range to current time selection")
+        self.scaleYToCurrentTimeCheckBox = QtWidgets.QCheckBox()
+        self.scaleYToCurrentTimeCheckBox.setChecked(True)
+        optionsLayout.addWidget(scaleLabel)
+        optionsLayout.addWidget(self.scaleYToCurrentTimeCheckBox)
+        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        optionsLayout.addItem(spacer)
+
+        layout.addLayout(optionsLayout)
 
  
 class UI_PlotTracer(object):
@@ -99,8 +105,6 @@ class UI_PlotTracer(object):
 
         layout = QtWidgets.QVBoxLayout(Frame)
 
-        buttonLayout = QtWidgets.QHBoxLayout()
-        layout.addLayout(buttonLayout)
 
         #drawStyleLayout = QtWidgets.QHBoxLayout()
         #drawStyleComboLabel = QtWidgets.QLabel()
@@ -115,12 +119,23 @@ class UI_PlotTracer(object):
         #buttonLayout.addLayout(drawStyleLayout)
 
         self.clearButton = QtWidgets.QPushButton('Clear')
-        buttonLayout.addWidget(self.clearButton)
         self.removePlotButton = QtWidgets.QPushButton('Remove Plot')
-        buttonLayout.addWidget(self.removePlotButton)
         self.addPlotButton = QtWidgets.QPushButton('Add Plot')
-        buttonLayout.addWidget(self.addPlotButton)
         self.plotButton = QtWidgets.QPushButton('Plot')
+
+        self.clearButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.removePlotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.addPlotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.plotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        buttonLayout = QtWidgets.QHBoxLayout()
+        buttonLayout.addWidget(self.clearButton)
+        buttonLayout.addWidget(self.removePlotButton)
+        buttonLayout.addWidget(self.addPlotButton)
+
+        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        buttonLayout.addItem(spacer)
+        layout.addLayout(buttonLayout)
         layout.addWidget(self.plotButton)
 
         self.gridFrame = QtWidgets.QGroupBox('Plot Matrix')
