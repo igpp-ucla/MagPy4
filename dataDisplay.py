@@ -82,6 +82,34 @@ class DataDisplayUI(object):
 
         QtCore.QMetaObject.connectSlotsByName(dataFrame)
 
+class UTCQDate():
+    FORMAT = "yyyy MMM  d hh:mm:ss.zzz"
+    FORMAT2 = "yyyy MMM dd hh:mm:ss.zzz"
+    FORMAT3 = "yyyy MMM dd  hh:mm:ss.zzz"
+
+    def removeDOY(UTC):
+        cut = UTC[4:8]
+        return UTC.replace(cut, '').strip()
+
+    # convert UTC string to QDateTime
+    def UTC2QDateTime(UTC):
+        UTC = UTCQDate.removeDOY(UTC)
+        qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT)
+        test = qdateTime.toString()
+        if not test:
+            qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT2)
+        test = qdateTime.toString()
+        if not test:
+            qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT3)
+        return qdateTime
+
+    def QDateTime2UTC(qdt):
+        doy = QtCore.QDateTime.fromString(f'{qdt.date().year()} 01 01', 'yyyy MM dd').daysTo(qdt) + 1
+        DOY = "%03d" % doy
+        dateTime = qdt.toString(UTCQDate.FORMAT)
+        return dateTime[:5] + DOY + dateTime[4:]
+       
+
 class FFTableModel(QtCore.QAbstractTableModel):
     def __init__(self, time_in, datain, headerdata, parent=None, epoch=None, *args):
         QtCore.QAbstractTableModel.__init__(self, parent, *args)
@@ -125,8 +153,9 @@ class FFTableModel(QtCore.QAbstractTableModel):
             value = str(d)
         return value
 
-
     def headerData(self, section, orientation, role):
+        if role == QtCore.Qt.TextAlignmentRole:
+            return QtCore.Qt.AlignLeft
         if role == QtCore.Qt.DisplayRole:
             if orientation == QtCore.Qt.Horizontal: # column labels
                 return self.headerdata[section]
@@ -139,35 +168,6 @@ class FFTableModel(QtCore.QAbstractTableModel):
         if orientation == QtCore.Qt.Horizontal and role == QtCore.Qt.DisplayRole:
             return self.headerdata[col]
         return "section"
-
-
-class UTCQDate():
-    FORMAT = "yyyy MMM  d hh:mm:ss.zzz"
-    FORMAT2 = "yyyy MMM dd hh:mm:ss.zzz"
-    FORMAT3 = "yyyy MMM dd  hh:mm:ss.zzz"
-
-    def removeDOY(UTC):
-        cut = UTC[4:8]
-        return UTC.replace(cut, '').strip()
-
-    # convert UTC string to QDateTime
-    def UTC2QDateTime(UTC):
-        UTC = UTCQDate.removeDOY(UTC)
-        qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT)
-        test = qdateTime.toString()
-        if not test:
-            qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT2)
-        test = qdateTime.toString()
-        if not test:
-            qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT3)
-        return qdateTime
-
-    def QDateTime2UTC(qdt):
-        doy = QtCore.QDateTime.fromString(f'{qdt.date().year()} 01 01', 'yyyy MM dd').daysTo(qdt) + 1
-        DOY = "%03d" % doy
-        dateTime = qdt.toString(UTCQDate.FORMAT)
-        return dateTime[:5] + DOY + dateTime[4:]
-        
 
 class DataDisplay(QtGui.QFrame, DataDisplayUI):
     """ file data dialog """
@@ -210,6 +210,8 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.dateTimeEdit.setMinimumDateTime(UTCQDate.UTC2QDateTime(start.UTC))
         self.ui.dateTimeEdit.setMaximumDateTime(UTCQDate.UTC2QDateTime(stop_.UTC))
         header = self.FID.getColumnDescriptor("NAME")
+        units = self.FID.getColumnDescriptor("UNITS")
+        header = [f'{h} ({u})' for h,u in zip(header,units)]
         if self.data is not None:
             tm = FFTableModel(self.time, self.data, header, parent=None, epoch=parm["EPOCH"].value)
             tm.setUTC(not self.ui.checkBox.isChecked())
@@ -255,7 +257,6 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         dtInt = [int(item) for item in dtList]
         doy = datetime.datetime(*dtInt).timetuple().tm_yday
         UTC = dtList[0] + " " + str(doy) + DTSTRM[4:]
-        #print(UTC)
         t = FFTIME(UTC, Epoch=self.FID.getEpoch()).tick
         iRow = self.FID.ffsearch(t, 1, self.FID.getRows()) - 1
         self.ui.dataTableView.selectRow(iRow)

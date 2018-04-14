@@ -155,6 +155,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         print(f'number records: {numRecords}')
         print(f'number columns: {numColumns}')
 
+        # ignoring first column because that is time, hence [1:]
         self.DATASTRINGS = self.FID.getColumnDescriptor("NAME")[1:]
         units = self.FID.getColumnDescriptor("UNITS")[1:]
 
@@ -341,9 +342,10 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
             # show top and right axis, but hide labels (they are off by default apparently)
             la = pi.getAxis('left')
-            la.style['textFillLimits'] = [(0,1.05)]
+            la.style['textFillLimits'] = [(0,2.0)] # no limits basically to force labels by each tick no matter what
 
             ba = pi.getAxis('bottom')
+            ba.style['textFillLimits'] = [(0,2.0)]
             ta = pi.getAxis('top')
             ra = pi.getAxis('right')
             ta.show()
@@ -430,13 +432,15 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         ##
     ##
 
+    # this function is so large because i couldnt figure out how to get pyqtgraph viewbox to return
+    # the range of the currently selected region so i had to do myself
     def updateYRange(self):
-        # for each plot, find min and max values for current time selection (consider every trace)
-        # otherwise just use the whole visible range self.iiO self.iiE
         if self.lastPlotMatrix is None:
             return
         values = [] # (min,max)
-        skipRangeSet = set()
+        skipRangeSet = set() # set of plots where the min and max values are infinite so they should be ignored
+        # for each plot, find min and max values for current time selection (consider every trace)
+        # otherwise just use the whole visible range self.iiO self.iiE
         for plotIndex,bAxis in enumerate(self.lastPlotMatrix):
             minVal = np.inf
             maxVal = -np.inf
@@ -445,7 +449,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                 if checked:
                     dstr = self.DATASTRINGS[i]
                     dat = self.DATADICT[dstr]
-                    scaleYToCurrnt = self.ui.scaleYToCurrentTimeCheckBox.isChecked()
+                    scaleYToCurrent = self.ui.scaleYToCurrentTimeCheckBox.isChecked()
                     a = self.iO if scaleYToCurrent else 0
                     b = self.iE if scaleYToCurrent else self.iiE
 
@@ -487,13 +491,13 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                     l2 = (largest-diff)/2.0
                     self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2)
         # for plot items that aren't apart of a group (and has at least one trace) just scale them to themselves
+        # so this effectively acts like they are checked in their own group
         for i,row in enumerate(self.lastPlotMatrix):
             if i not in partOfGroup and i not in skipRangeSet:
                 for b in row: # check to see if has at least one trace (not empty row)
                     if b:
                         self.plotItems[i].setYRange(values[i][0], values[i][1])
                         break
-
 
     #find points at which each spacecraft crosses this value for the first time after this time
     # axis is X Y Z or T
@@ -575,7 +579,6 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
 # subclass based off example here: https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
 class DateAxis(pg.AxisItem):
-
     def toUTC(x,window, showMillis=False): # converts seconds since epoch to UTC string
         t = FFTIME(x, Epoch=window.epoch).UTC
         t = str(t)
