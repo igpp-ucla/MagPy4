@@ -10,13 +10,14 @@ import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
-from MagPy4UI import UI_MagPy4
+from MagPy4UI import MagPy4UI
 from plotTracer import PlotTracer
+from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 
 import time
 
-class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
+class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def __init__(self, parent=None):
         super(MagPy4Window, self).__init__(parent)
 
@@ -38,16 +39,14 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
         self.ui.actionPlot.triggered.connect(self.openTracer)
         self.ui.actionOpen.triggered.connect(self.openFileDialog)
         self.ui.actionShowData.triggered.connect(self.showData)
+        self.ui.actionSpectra.triggered.connect(self.openSpectra)
+        self.ui.actionInsightMode.triggered.connect(self.swapMode)
 
         self.ui.scaleYToCurrentTimeCheckBox.stateChanged.connect(self.updateYRange)
 
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
         self.tracer = None
-
-        # this was testing for segment calculation, this way was easy but slower than current way, saving incase i need later
-        ##testa = np.array([5,10,5,0,1,1,.5,28,28,27,1e34,0,0,0,1e34,1e34])
-        #testb = [np.array(list(g)) for k,g in groupby(testa, lambda x:x != 1e34) if k]
 
         # setup pens
         self.pens = []
@@ -67,15 +66,24 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
             self.tracer.close()
         self.tracer = PlotTracer(self)
 
-        #geo = QtWidgets.QDesktopWidget().availableGeometry()
-        #print(geo)
-
-        self.tracer.move(0,500)
+        self.tracer.move(50,400)
         self.tracer.show()
+
+    def openSpectra(self):
+        self.spectra = Spectra(self)
+        self.spectra.show()
 
     def showData(self):
         self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
         self.dataDisplay.show()
+
+    def swapMode(self):
+        txt = self.ui.actionInsightMode.text()
+        if txt == 'Switch to Insight':
+            txt = 'Switch to MMS'
+        else:
+            txt = 'Switch to Insight'
+        self.ui.actionInsightMode.setText(txt)
 
     def resizeEvent(self, event):
         print('resize event')
@@ -342,10 +350,10 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
             # show top and right axis, but hide labels (they are off by default apparently)
             la = pi.getAxis('left')
-            la.style['textFillLimits'] = [(0,2.0)] # no limits basically to force labels by each tick no matter what
+            la.style['textFillLimits'] = [(0,1.1)] # no limits basically to force labels by each tick no matter what
 
             ba = pi.getAxis('bottom')
-            ba.style['textFillLimits'] = [(0,2.0)]
+            ba.style['textFillLimits'] = [(0,1.1)]
             ta = pi.getAxis('top')
             ra = pi.getAxis('right')
             ta.show()
@@ -434,6 +442,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
 
     # this function is so large because i couldnt figure out how to get pyqtgraph viewbox to return
     # the range of the currently selected region so i had to do myself
+    # edit: actually pyqtgraph had this option in viewbox called setAutoVisible but not sure if it works without using autoRange
     def updateYRange(self):
         if self.lastPlotMatrix is None:
             return
@@ -452,6 +461,8 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                     scaleYToCurrent = self.ui.scaleYToCurrentTimeCheckBox.isChecked()
                     a = self.iO if scaleYToCurrent else 0
                     b = self.iE if scaleYToCurrent else self.iiE
+                    if a > b: # so sliders work either way
+                        a,b = b,a
 
                     Y = dat[0][a:b] # y data in current range
                     segments = np.where(Y >= 1e33)[0].tolist() # find spots where there are errors and make segments
@@ -500,7 +511,7 @@ class MagPy4Window(QtWidgets.QMainWindow, UI_MagPy4):
                         break
 
     #find points at which each spacecraft crosses this value for the first time after this time
-    # axis is X Y Z or T
+    # this is currently unused but the start to the required velocity calculation code
     def findTimes(self, time, value, axis):
         #first need to get correct Y datas based on axis
         dataNames = [f'B{axis}{n}' for n in range(1,5)]
@@ -593,13 +604,6 @@ class DateAxis(pg.AxisItem):
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
-
-    #try:
-    #    import BUILD_CONSTANTS #was set by old script
-    #except ImportError:
-    #    version = 'debug'
-    #else:
-    #    version = str(BUILD_CONSTANTS.version)
 
     appName = app.applicationName()
     if appName.startswith('python'):

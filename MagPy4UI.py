@@ -7,12 +7,12 @@ import pyqtgraph as pg
 #from qrangeslider import QRangeSlider
 #can add in translation stuff later
 
-class UI_MagPy4(object):
+class MagPy4UI(object):
     def setupUI(self, MagPy4):
 
         # gives default window options in top right
         MagPy4.setWindowFlags(QtCore.Qt.Window)
-        MagPy4.resize(1400,900)
+        MagPy4.resize(1280,800)
 
         self.centralWidget = QtWidgets.QWidget(MagPy4)
         MagPy4.setCentralWidget(self.centralWidget)
@@ -30,9 +30,17 @@ class UI_MagPy4(object):
         self.actionShowData = QtWidgets.QAction(MagPy4)
         self.actionShowData.setText('Show Data')
 
+        self.actionInsightMode = QtWidgets.QAction(MagPy4)
+        self.actionInsightMode.setText('Switch to Insight')
+
+        self.actionSpectra = QtWidgets.QAction(MagPy4)
+        self.actionSpectra.setText('Spectra')
+
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionPlot)
         self.toolBar.addAction(self.actionShowData)
+        self.toolBar.addAction(self.actionSpectra)
+        self.toolBar.addAction(self.actionInsightMode)
 
         self.glw = pg.GraphicsLayoutWidget()#border=(100,100,100))
         self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
@@ -75,68 +83,3 @@ class UI_MagPy4(object):
 
         layout.addLayout(optionsLayout)
 
- 
-class UI_PlotTracer(object):
-    def setupUI(self, Frame):
-        Frame.resize(100,100)
-
-        checkBoxStyle = """
-            QCheckBox{spacing: 0px;}
-            QCheckBox::indicator{width:32px;height:32px}
-            QCheckBox::indicator:unchecked {            image: url(images/checkbox_unchecked.png);}
-            QCheckBox::indicator:unchecked:hover {      image: url(images/checkbox_unchecked_hover.png);}
-            QCheckBox::indicator:unchecked:pressed {    image: url(images/checkbox_unchecked_pressed.png);}
-            QCheckBox::indicator:checked {              image: url(images/checkbox_checked.png);}
-            QCheckBox::indicator:checked:hover {        image: url(images/checkbox_checked_hover.png);}
-            QCheckBox::indicator:checked:pressed {      image: url(images/checkbox_checked_pressed.png);}
-            QCheckBox::indicator:indeterminate:hover {  image: url(images/checkbox_checked_hover.png);}
-            QCheckBox::indicator:indeterminate:pressed {image: url(images/checkbox_checked_pressed.png);}
-        """
-
-        Frame.setStyleSheet(checkBoxStyle)
-
-        layout = QtWidgets.QVBoxLayout(Frame)
-
-
-        #drawStyleLayout = QtWidgets.QHBoxLayout()
-        #drawStyleComboLabel = QtWidgets.QLabel()
-        #drawStyleComboLabel.setText("Draw Style")
-        #self.drawStyleCombo = QtWidgets.QComboBox() # add this to PlotTracer instead
-        #self.drawStyleCombo.addItem('dots')
-        #self.drawStyleCombo.addItem('lines')
-        #drawStyleLayout.addWidget(drawStyleComboLabel)
-        #drawStyleLayout.addWidget(self.drawStyleCombo)
-        #self.drawStyleCombo.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        #drawStyleComboLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        #buttonLayout.addLayout(drawStyleLayout)
-
-        self.clearButton = QtWidgets.QPushButton('Clear')
-        self.removePlotButton = QtWidgets.QPushButton('Remove Plot')
-        self.addPlotButton = QtWidgets.QPushButton('Add Plot')
-        self.plotButton = QtWidgets.QPushButton('Plot')
-
-        self.clearButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.removePlotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.addPlotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.plotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-
-        buttonLayout = QtWidgets.QHBoxLayout()
-        buttonLayout.addWidget(self.clearButton)
-        buttonLayout.addWidget(self.removePlotButton)
-        buttonLayout.addWidget(self.addPlotButton)
-
-        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        buttonLayout.addItem(spacer)
-        layout.addLayout(buttonLayout)
-        layout.addWidget(self.plotButton)
-
-        self.gridFrame = QtWidgets.QGroupBox('Plot Matrix')
-        self.grid = QtWidgets.QGridLayout(self.gridFrame)
-        layout.addWidget(self.gridFrame)
-
-        self.fgridFrame = QtWidgets.QGroupBox('Y Axis Link Groups')
-        self.fgrid = QtWidgets.QGridLayout(self.fgridFrame)
-        layout.addWidget(self.fgridFrame)
-
-        # make invisible stretch to take up rest of space
-        layout.addStretch()

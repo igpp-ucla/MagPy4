@@ -43,6 +43,9 @@
     <Compile Include="qrangeslider.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="spectra.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="test.py">
       <SubType>Code</SubType>
     </Compile>

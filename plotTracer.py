@@ -2,15 +2,67 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
-from MagPy4UI import UI_PlotTracer
 import functools
 
-class PlotTracer(QtWidgets.QFrame, UI_PlotTracer):
+class PlotTracerUI(object):
+    def setupUI(self, Frame):
+        Frame.setWindowTitle('Plot Tracer')
+        Frame.resize(100,100)
+
+        checkBoxStyle = """
+            QCheckBox{spacing: 0px;}
+            QCheckBox::indicator{width:32px;height:32px}
+            QCheckBox::indicator:unchecked {            image: url(images/checkbox_unchecked.png);}
+            QCheckBox::indicator:unchecked:hover {      image: url(images/checkbox_unchecked_hover.png);}
+            QCheckBox::indicator:unchecked:pressed {    image: url(images/checkbox_unchecked_pressed.png);}
+            QCheckBox::indicator:checked {              image: url(images/checkbox_checked.png);}
+            QCheckBox::indicator:checked:hover {        image: url(images/checkbox_checked_hover.png);}
+            QCheckBox::indicator:checked:pressed {      image: url(images/checkbox_checked_pressed.png);}
+            QCheckBox::indicator:indeterminate:hover {  image: url(images/checkbox_checked_hover.png);}
+            QCheckBox::indicator:indeterminate:pressed {image: url(images/checkbox_checked_pressed.png);}
+        """
+
+        Frame.setStyleSheet(checkBoxStyle)
+
+        layout = QtWidgets.QVBoxLayout(Frame)
+
+        self.clearButton = QtWidgets.QPushButton('Clear')
+        self.removePlotButton = QtWidgets.QPushButton('Remove Plot')
+        self.addPlotButton = QtWidgets.QPushButton('Add Plot')
+        self.plotButton = QtWidgets.QPushButton('Plot')
+
+        self.clearButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.removePlotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.addPlotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.plotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        buttonLayout = QtWidgets.QHBoxLayout()
+        buttonLayout.addWidget(self.clearButton)
+        buttonLayout.addWidget(self.removePlotButton)
+        buttonLayout.addWidget(self.addPlotButton)
+
+        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        buttonLayout.addItem(spacer)
+        layout.addLayout(buttonLayout)
+        layout.addWidget(self.plotButton)
+
+        self.gridFrame = QtWidgets.QGroupBox('Plot Matrix')
+        self.grid = QtWidgets.QGridLayout(self.gridFrame)
+        layout.addWidget(self.gridFrame)
+
+        self.fgridFrame = QtWidgets.QGroupBox('Y Axis Link Groups')
+        self.fgrid = QtWidgets.QGridLayout(self.fgridFrame)
+        layout.addWidget(self.fgridFrame)
+
+        # make invisible stretch to take up rest of space
+        layout.addStretch()
+
+class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
     def __init__(self, window, parent=None):
         super(PlotTracer, self).__init__(parent)
 
         self.window = window
-        self.ui = UI_PlotTracer()
+        self.ui = PlotTracerUI()
         self.ui.setupUI(self)
         self.plotCount = 0
 
