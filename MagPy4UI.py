@@ -30,8 +30,8 @@ class MagPy4UI(object):
         self.actionShowData = QtWidgets.QAction(MagPy4)
         self.actionShowData.setText('Show Data')
 
-        self.actionInsightMode = QtWidgets.QAction(MagPy4)
-        self.actionInsightMode.setText('Switch to Insight')
+        self.switchMode = QtWidgets.QAction(MagPy4)
+        self.switchMode.setText('Switch to Insight')
 
         self.actionSpectra = QtWidgets.QAction(MagPy4)
         self.actionSpectra.setText('Spectra')
@@ -40,7 +40,7 @@ class MagPy4UI(object):
         self.toolBar.addAction(self.actionPlot)
         self.toolBar.addAction(self.actionShowData)
         self.toolBar.addAction(self.actionSpectra)
-        self.toolBar.addAction(self.actionInsightMode)
+        self.toolBar.addAction(self.switchMode)
 
         self.glw = pg.GraphicsLayoutWidget()#border=(100,100,100))
         self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))

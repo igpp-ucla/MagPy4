@@ -25,7 +25,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         pg.setConfigOption('foreground', 'k')
         pg.setConfigOption('antialias', True)
 
-        self.ui = UI_MagPy4()
+        self.ui = MagPy4UI()
         self.ui.setupUI(self)
 
         self.ui.startSlider.valueChanged.connect(self.onStartSliderChanged)
@@ -40,13 +40,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionOpen.triggered.connect(self.openFileDialog)
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionSpectra.triggered.connect(self.openSpectra)
-        self.ui.actionInsightMode.triggered.connect(self.swapMode)
+        self.ui.switchMode.triggered.connect(self.swapMode)
+        self.insightMode = False
 
         self.ui.scaleYToCurrentTimeCheckBox.stateChanged.connect(self.updateYRange)
 
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
         self.tracer = None
+
+        self.magpyIcon = QtGui.QIcon()
+        self.magpyIcon.addFile('images/magPy_blue.ico')
+        self.setWindowIcon(self.magpyIcon)
+        self.marsIcon = QtGui.QIcon()
+        self.marsIcon.addFile('images/mars.ico')
 
         # setup pens
         self.pens = []
@@ -57,7 +64,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotItems = []
         self.trackerLines = []
         starterFile = 'mmsTestData/L2/merged/2015/09/27/mms15092720'
-        if os.path.exists(starterFile+'.ffd'):
+        if os.path.exists(starterFile + '.ffd'):
             self.openFile(starterFile)
             self.plotDataDefault()
 
@@ -78,12 +85,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay.show()
 
     def swapMode(self):
-        txt = self.ui.actionInsightMode.text()
-        if txt == 'Switch to Insight':
-            txt = 'Switch to MMS'
-        else:
-            txt = 'Switch to Insight'
-        self.ui.actionInsightMode.setText(txt)
+        txt = self.ui.switchMode.text()
+        self.insightMode = not self.insightMode
+        txt = 'Switch to MMS' if self.insightMode else 'Switch to Insight'
+        self.ui.switchMode.setText(txt)
+        self.plotDataDefault()
+        self.setWindowTitle('InsightPy' if self.insightMode else 'MagPy4')
+        self.setWindowIcon(self.marsIcon if self.insightMode else self.magpyIcon)
 
     def resizeEvent(self, event):
         print('resize event')
@@ -241,7 +249,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         tt = self.times[self.iE]
         for line in self.trackerLines:
             line.show()
-            line.setValue(tt+1)#offset by linewidth so its not visible once released
+            line.setValue(tt + 1)#offset by linewidth so its not visible once released
 
         dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
         self.ui.endSliderEdit.blockSignals(True) #dont want to trigger callback from this
@@ -281,6 +289,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.setTimes()
 
     def setTimes(self):
+        # if giving exact same time index then slightly offset
         if self.iO == self.iE:
             if self.iE < self.iiE:
                 self.iE += 1
@@ -299,20 +308,25 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # setup default 4 axis magdata plot
     def plotDataDefault(self):
         boolMatrix = []
-        keyword = ['BX','BY','BZ','BT']
-        for a in range(4):
+        keywords = ['BX','BY','BZ']
+        links = [[True,True,True]]
+        if not self.insightMode:
+            keywords.append('BT')
+            links[0].append(True)
+        
+        for kw in keywords:
             boolAxis = []
             for dstr in self.DATASTRINGS:
-                if keyword[a] in dstr:
+                if kw in dstr:
                     boolAxis.append(True)
                 else:
                     boolAxis.append(False)
             boolMatrix.append(boolAxis)
                 
-        self.plotData(boolMatrix, [[True,True,True,True]])
+        self.plotData(boolMatrix, links)
 
     # boolMatrix is same shape as the checkBox matrix but just bools
-    def plotData(self, bMatrix, fMatrix = []):
+    def plotData(self, bMatrix, fMatrix=[]):
         self.ui.glw.clear()
 
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
@@ -336,9 +350,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             axis.window = self
             vb = MagPyViewBox(self)
             pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis})
+            #vb.enableAutoRange(axis=vb.YAxis)
+            #vb.setAutoVisible(y=True)
             #pi.setDownsampling(auto=True)
 
-            # add some lines used to show where time series sliders will zoom to
+            # add some lines used to show where time series sliders will zoom
             trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0)
             trackerLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine))
             pi.addItem(trackerLine)
@@ -362,7 +378,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             ra.setStyle(showValues=False)
 
             # only show tick labels on bottom most axis
-            if plotIndex != numPlots-1:
+            if plotIndex != numPlots - 1:
                 ba.setStyle(showValues=False)
 
             # add traces for each data checked for this axis
@@ -373,7 +389,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 if not b: # axis isn't checked so its not gona be on this plot
                     continue
 
-                p = self.pens[min(traces,len(self.pens)-1)] #if more traces on this axis than pens, use last pen
+                p = self.pens[min(traces,len(self.pens) - 1)] #if more traces on this axis than pens, use last pen
                 dstr = self.DATASTRINGS[i]
                 dat = self.DATADICT[dstr]
                 Y = dat[0] # y data
@@ -402,18 +418,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     if st >= seg:
                         continue
                     pi.plot(self.times[st:seg], Y[st:seg], pen=p)
-                    st = seg+1
+                    st = seg + 1
                 traces += 1
 
                 # trying to figure out how to just plot pixels
-                #pi.plot(self.times, Y, pen=None,symbolSize=1, symbolPen=p,symbolBrush=None,pxMode=True)
+                #pi.plot(self.times, Y, pen=None,symbolSize=1,
+                #symbolPen=p,symbolBrush=None,pxMode=True)
 
             # draw horizontal line if plot crosses zero
             vr = pi.viewRange()
             if vr[1][0] < 0 and vr[1][1] > 0:
                 zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
                 zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
-                pi.addItem(zeroLine)
+                pi.addItem(zeroLine, ignoreBounds=True)
 
             # set plot to current range based on time sliders
             pi.setXRange(self.tO, self.tE, 0.0)
@@ -440,9 +457,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         ##
     ##
 
-    # this function is so large because i couldnt figure out how to get pyqtgraph viewbox to return
-    # the range of the currently selected region so i had to do myself
-    # edit: actually pyqtgraph had this option in viewbox called setAutoVisible but not sure if it works without using autoRange
+    # pyqtgraph has y axis linking but not wat is needed
+    # this function scales them to have equal sized ranges but not the same actual range
+    # also this replicates pyqtgraph setAutoVisible to have scaling for currently selected time vs the whole file
     def updateYRange(self):
         if self.lastPlotMatrix is None:
             return
@@ -476,7 +493,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                         slice = Y[st:seg]
                         minVal = min(slice.min(), minVal)
                         maxVal = max(slice.max(), maxVal)
-                        st = seg+1
+                        st = seg + 1
             # if range is bad then dont change this
             if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or np.isinf(minVal):
                 skipRangeSet.add(plotIndex)
@@ -491,15 +508,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     continue
                 if checked:
                     partOfGroup.add(i)
-                    diff = values[i][1]-values[i][0]
+                    diff = values[i][1] - values[i][0]
                     largest = max(largest,diff)
             # then scale each plot in this row to the range
             for i,checked in enumerate(row):
                 if i in skipRangeSet:
                     continue
                 if checked:
-                    diff = values[i][1]-values[i][0]
-                    l2 = (largest-diff)/2.0
+                    diff = values[i][1] - values[i][0]
+                    l2 = (largest - diff) / 2.0
                     self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2)
         # for plot items that aren't apart of a group (and has at least one trace) just scale them to themselves
         # so this effectively acts like they are checked in their own group
@@ -510,7 +527,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                         self.plotItems[i].setYRange(values[i][0], values[i][1])
                         break
 
-    #find points at which each spacecraft crosses this value for the first time after this time
+    # find points at which each spacecraft crosses this value for the first time after this time
     # this is currently unused but the start to the required velocity calculation code
     def findTimes(self, time, value, axis):
         #first need to get correct Y datas based on axis
@@ -565,10 +582,11 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 self.dataText.setText(sf)
 
                 #set text anchor based on which quadrant of viewbox dataText crosshair is in
-                centerX = vr[0][0] + (vr[0][1] - vr[0][0])/2
-                centerY = vr[1][0] + (vr[1][1] - vr[1][0])/2
+                centerX = vr[0][0] + (vr[0][1] - vr[0][0]) / 2
+                centerY = vr[1][0] + (vr[1][1] - vr[1][0]) / 2
 
-                #i think its based on axis ratio of the label so x is about 1/5 times of y anchor offset
+                #i think its based on axis ratio of the label so x is about 1/5
+                #times of y anchor offset
                 self.dataText.setAnchor((-0.04 if x < centerX else 1.04, 1.2 if y < centerY else -0.2))
 
             ev.accept()
@@ -588,14 +606,15 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     def wheelEvent(self, ev, axis=None):
         ev.ignore()
 
-# subclass based off example here: https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
+# subclass based off example here:
+# https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
 class DateAxis(pg.AxisItem):
     def toUTC(x,window, showMillis=False): # converts seconds since epoch to UTC string
         t = FFTIME(x, Epoch=window.epoch).UTC
         t = str(t)
         t = t.split(' ')[-1]
         t = t.split(':',1)[1]
-        if not showMillis and window.tE-window.tO > 10:
+        if not showMillis and window.tE - window.tO > 10:
             t = t.split('.',1)[0]
         return t
 
@@ -605,19 +624,11 @@ class DateAxis(pg.AxisItem):
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
 
-    appName = app.applicationName()
-    if appName.startswith('python'):
-        appName = 'MagPy4'
     #appName = f'{appName} {version}';
     app.setOrganizationName('IGPP UCLA')
     app.setOrganizationDomain('igpp.ucla.edu')
-    app.setApplicationName(appName)
+    app.setApplicationName('MagPy4')
     #app.setApplicationVersion(version)
-
-    #set app icon
-    appIcon = QtGui.QIcon()
-    appIcon.addFile('images/magPy_blue.ico')
-    app.setWindowIcon(appIcon)
 
     main = MagPy4Window()
     main.show()
