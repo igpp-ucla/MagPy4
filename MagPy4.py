@@ -18,13 +18,14 @@ from dataDisplay import DataDisplay, UTCQDate
 import time
 
 class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
-    def __init__(self, parent=None):
+    def __init__(self, app, parent=None):
         super(MagPy4Window, self).__init__(parent)
 
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
         pg.setConfigOption('antialias', True)
 
+        self.app = app
         self.ui = MagPy4UI()
         self.ui.setupUI(self)
 
@@ -51,7 +52,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.magpyIcon = QtGui.QIcon()
         self.magpyIcon.addFile('images/magPy_blue.ico')
-        self.setWindowIcon(self.magpyIcon)
+        self.app.setWindowIcon(self.magpyIcon)
+
         self.marsIcon = QtGui.QIcon()
         self.marsIcon.addFile('images/mars.ico')
 
@@ -84,14 +86,32 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
         self.dataDisplay.show()
 
+    # much faster than naive way
+    def replaceErrorsWithLast(self,data):
+        segments = np.where(data >= self.errorFlag)[0] # find spots where there are errors and make segments
+        if len(segments) == 0:
+            return data
+
+        firstData = np.argmax(data < self.errorFlag) #first non error piece of data
+        cons = np.split(segments, np.where(np.diff(segments) != 1)[0]+1)
+        for arr in cons:
+            di = arr[0]-1
+            if di < 0:
+                di = firstData
+            dat = data[di]
+            for i in arr:
+                data[i] = dat
+
+        return data
+
     def swapMode(self):
         txt = self.ui.switchMode.text()
         self.insightMode = not self.insightMode
         txt = 'Switch to MMS' if self.insightMode else 'Switch to Insight'
         self.ui.switchMode.setText(txt)
         self.plotDataDefault()
-        self.setWindowTitle('InsightPy' if self.insightMode else 'MagPy4')
-        self.setWindowIcon(self.marsIcon if self.insightMode else self.magpyIcon)
+        self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
+        self.app.setWindowIcon(self.marsIcon if self.insightMode else self.magpyIcon)
 
     def resizeEvent(self, event):
         print('resize event')
@@ -120,8 +140,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.epoch = self.FID.getEpoch()
         print(f'epoch: {self.epoch}')
         #info = self.FID.FFInfo
+        # errorFlag is usually 1e34 but sometimes less. still huge though
         self.errorFlag = self.FID.FFInfo['ERROR_FLAG'].value
-        print(f'error flag: {self.errorFlag}')
+        print(f'error flag: {self.errorFlag}') # not being used currently
+        self.errorFlag *= 0.9 # based off FFSpectra.py line 829
         err = self.FID.open()
         if err < 0:
             return err, " UNABLE TO OPEN"
@@ -175,9 +197,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.DATASTRINGS = self.FID.getColumnDescriptor("NAME")[1:]
         units = self.FID.getColumnDescriptor("UNITS")[1:]
 
-        self.DATADICT = {} # maps strings to tuple of data array and unit
+        self.DATADICT = {} # maps strings to data array
+        self.UNITDICT = {} # maps strings to string unit
         for i, dstr in enumerate(self.DATASTRINGS):
-            self.DATADICT[dstr] = (np.array(self.dataByRec[:,i]),units[i])
+            self.DATADICT[dstr] = self.replaceErrorsWithLast(np.array(self.dataByRec[:,i]))
+            self.UNITDICT[dstr] = units[i]
 
         # sorts by units alphabetically
         #datazip = list(zip(self.DATASTRINGS, units))
@@ -305,7 +329,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for pi in self.plotItems:
             pi.setXRange(self.tO, self.tE, 0.0)
 
-    # setup default 4 axis magdata plot
+    # setup default 4 axis magdata plot or 3 axis insight plot
     def plotDataDefault(self):
         boolMatrix = []
         keywords = ['BX','BY','BZ']
@@ -317,7 +341,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for kw in keywords:
             boolAxis = []
             for dstr in self.DATASTRINGS:
-                if kw in dstr:
+                if kw.lower() in dstr.lower():
                     boolAxis.append(True)
                 else:
                     boolAxis.append(False)
@@ -391,9 +415,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 p = self.pens[min(traces,len(self.pens) - 1)] #if more traces on this axis than pens, use last pen
                 dstr = self.DATASTRINGS[i]
-                dat = self.DATADICT[dstr]
-                Y = dat[0] # y data
-                u = dat[1] # units
+                Y = self.DATADICT[dstr]
+                u = self.UNITDICT[dstr]
 
                 if len(Y) <= 1: # not sure if this can happen but just incase
                     continue
@@ -408,7 +431,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 axisString += f"<span style='color:{p.color().name()};'>{dstr}</span>\n" #font-weight: bold
 
                 #was using self.errorFlag but sometimes its diffent, prob error in way files were made so just using 1e33
-                segments = np.where(Y >= 1e33)[0].tolist() # find spots where there are errors and make segments
+                segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
                 segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
                 #print(f'SEGMENTS {len(segments)}')
                 st = 0 #start index
@@ -473,16 +496,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             # find min and max values out of all traces on this plot
             for i,checked in enumerate(bAxis):
                 if checked:
-                    dstr = self.DATASTRINGS[i]
-                    dat = self.DATADICT[dstr]
                     scaleYToCurrent = self.ui.scaleYToCurrentTimeCheckBox.isChecked()
                     a = self.iO if scaleYToCurrent else 0
                     b = self.iE if scaleYToCurrent else self.iiE
                     if a > b: # so sliders work either way
                         a,b = b,a
 
-                    Y = dat[0][a:b] # y data in current range
-                    segments = np.where(Y >= 1e33)[0].tolist() # find spots where there are errors and make segments
+                    dstr = self.DATASTRINGS[i]
+                    dat = self.DATADICT[dstr]
+                    Y = dat[a:b] # y data in current range
+                    segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
                     segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
                     st = 0 #start index
                     for seg in segments:
@@ -630,7 +653,7 @@ if __name__ == '__main__':
     app.setApplicationName('MagPy4')
     #app.setApplicationVersion(version)
 
-    main = MagPy4Window()
+    main = MagPy4Window(app)
     main.show()
 
     sys.exit(app.exec_())

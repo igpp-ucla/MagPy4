@@ -1,4 +1,6 @@
 # -*- mode: python -*-
+#using dev version PyInstaller3.4 as it fixed problem with scipy import (if 3.4 or later is out by time someone else uses this code then just go with that)
+#pip install https://github.com/pyinstaller/pyinstaller/tarball/develop
 
 import os
 import sys
@@ -13,10 +15,10 @@ a = Analysis(['MagPy4.py'],
              pathex=[workDir, f'{workDir}\\ffPy'],
              binaries=[],
              datas=[],
-             hiddenimports=[],
+             hiddenimports=['scipy','scipy.fftpack'],
              hookspath=[],
              runtime_hooks=[],
-             excludes=['matplotlib','scipy'], 
+             excludes=['matplotlib'], 
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher)
@@ -44,7 +46,7 @@ coll = COLLECT(exe,
 exeDir = "build/dist/MagPy4/"
 shutil.copy2("ffPy/tai-utc.dat", exeDir)
 shutil.copytree("images/", f'{exeDir}images')
-shutil.copytree("build/styles/", f'{exeDir}PyQt5/Qt/plugins/styles')
+#shutil.copytree("build/styles/", f'{exeDir}PyQt5/Qt/plugins/styles') #updated pyinstaller and now this is recognized as should be imported
 
 fname = 'mms15092720'
 dpath = 'mmsTestData/L2/merged/2015/09/27/'
