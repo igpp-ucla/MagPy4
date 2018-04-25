@@ -10,7 +10,7 @@ import numpy as np
 class SpectraUI(object):
     def setupUI(self, Frame):
         Frame.setWindowTitle('Spectra')
-        Frame.resize(250,200)
+        Frame.resize(500,500)
 
         layout = QtWidgets.QVBoxLayout(Frame)
 
@@ -35,6 +35,44 @@ class SpectraUI(object):
         layout.addLayout(bandWidthLayout)
         layout.addWidget(self.processButton)
 
+#todo show minor ticks on left side
+#hide minor tick labels always
+class LogAxis(pg.AxisItem):
+    def __init__(self, *args, **kwargs):
+        pg.AxisItem.__init__(self, *args, **kwargs)
+
+        self.tickFont=QtGui.QFont()
+        self.tickFont.setPixelSize(14)
+
+    def tickStrings(self, values, scale, spacing):
+        return [f'{int(x)}    ' for x in values] # spaces are for eyeballing the auto sizing before rich text override below
+
+    def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
+        p.setRenderHint(p.Antialiasing, False)
+        p.setRenderHint(p.TextAntialiasing, True)
+        
+        ## draw long line along axis
+        pen, p1, p2 = axisSpec
+        p.setPen(pen)
+        p.drawLine(p1, p2)
+        p.translate(0.5,0)  ## resolves some damn pixel ambiguity
+        
+        ## draw ticks
+        for pen, p1, p2 in tickSpecs:
+            p.setPen(pen)
+            p.drawLine(p1, p2)
+
+        ## Draw all text
+        if self.tickFont is not None:
+            p.setFont(self.tickFont)
+        p.setPen(self.pen())
+        for rect, flags, text in textSpecs:
+            qst = QtGui.QStaticText(f'10<sup>{text}</sup>')
+            qst.setTextFormat(QtCore.Qt.RichText)
+            p.drawStaticText(rect.left(), rect.top(), qst)
+
+            #p.drawText(rect, flags, text)
+            #p.drawRect(rect)
 
 class Spectra(QtWidgets.QFrame, SpectraUI):
     def __init__(self, window, parent=None):
@@ -65,11 +103,13 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             fft = fftpack.rfft(magData.tolist())
             power = self.calculatePower(fft)
 
-            pi = pg.PlotItem()
+            leftAxis = LogAxis(orientation='left')
+            bottomAxis = LogAxis(orientation='bottom')
+            pi = pg.PlotItem(axisItems={'bottom':bottomAxis, 'left':leftAxis})
             pi.setLogMode(True, True) #todo redo ticks to be of format 10^x
             print(f'freqLen {len(freq)} powLen {len(power)}')
 
-            pi.plot(freq, power[:len(freq)], pen=self.window.pens[0])
+            pi.plot(freq, power, pen=self.window.pens[0])
 
             self.ui.glw.addItem(pi)
 
@@ -103,8 +143,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             km = kmo + n
             kO = int(km - half)
             kE = int(km + half) + 1
-            p = [C * (fsqr[2 * k - 1] + fsqr[2 * k]) for k in range(kO,kE)]
-            power[n] = np.sum(p) / bw
+
+            power[n] = sum(fsqr[kO * 2 - 1:kE * 2 - 1]) / bw * C
 
         return power
 
@@ -113,5 +153,3 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
 
         
-
-
