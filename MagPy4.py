@@ -23,7 +23,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
-        pg.setConfigOption('antialias', True)
+        pg.setConfigOption('antialias', True) #todo add option to toggle this
 
         self.app = app
         self.ui = MagPy4UI()
@@ -151,8 +151,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if err < 0:
             return err, mess
         self.resolution = self.FID.getResolution()
-#       self.numpoints = min(self.numpoints, self.FID.FFParm["NROWS"].value)
-
         self.numpoints = self.FID.FFParm["NROWS"].value
 
         self.iO = 0
@@ -201,6 +199,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.UNITDICT = {} # maps strings to string unit
         for i, dstr in enumerate(self.DATASTRINGS):
             self.DATADICT[dstr] = self.replaceErrorsWithLast(np.array(self.dataByRec[:,i]))
+            #self.DATADICT[dstr] = np.array(self.dataByRec[:,i])
             self.UNITDICT[dstr] = units[i]
 
         # sorts by units alphabetically
