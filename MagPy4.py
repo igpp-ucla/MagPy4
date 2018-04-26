@@ -12,7 +12,7 @@ from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
 from MagPy4UI import MagPy4UI
 from plotTracer import PlotTracer
-from spectra import Spectra
+from spectra import Spectra, SpectraInfiniteLine
 from dataDisplay import DataDisplay, UTCQDate
 
 import time
@@ -49,6 +49,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
         self.tracer = None
+
+        self.spectraStep = 1
+        self.spectraPlots = []
+        self.spectraRange = [0,0]
 
         self.magpyIcon = QtGui.QIcon()
         self.magpyIcon.addFile('images/magPy_blue.ico')
@@ -474,10 +478,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.ui.glw.addItem(pi)
             self.ui.glw.nextRow()
 
+        ## end of main for loop
         self.updateYRange()
 
-        ##
-    ##
+    ## end of plot function
 
     # pyqtgraph has y axis linking but not wat is needed
     # this function scales them to have equal sized ranges but not the same actual range
@@ -556,6 +560,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         dataNames = [f'B{axis}{n}' for n in range(1,5)]
         print(dataNames)
 
+    # updates all spectra lines, index means which set the left or right basically
+    # i feel like i did this stupidly but couldnt think of smoother way to do this
+    def updateSpectra(self, index, x):
+        self.spectraRange[index] = x
+        for pi in self.plotItems:
+            pi.getViewBox().spectLines[index].setPos(x)
+
+    def getSpectraPlots(self):
+        spectraPlots = []
+        for pi in self.plotItems:
+            if pi.getViewBox().spectLines[1].isVisible():
+                spectraPlots.append(pi)
+        return spectraPlots
+
+
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
@@ -567,6 +586,8 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         pen = pg.mkPen('#FF0000', width=1, style=QtCore.Qt.DashLine)
         self.vMouseLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pen)
         self.hMouseLine = pg.InfiniteLine(movable=False, angle=0, pos=0, pen=pen)
+        self.spectLines = [SpectraInfiniteLine(self.window, 0, movable=True, angle=90, pos=0, pen=pen),
+                           SpectraInfiniteLine(self.window, 1, movable=True, angle=90, pos=0, pen=pen)]
         self.dataText = pg.TextItem('test', fill=(255, 255, 255, 200), html='<div style="text-align: center; color:#FFF;">')
         self.dataText.setZValue(10) #draw over the traces
         self.dataText.border = self.window.pens[3] #black pen
@@ -575,54 +596,91 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         self.addItem(self.hMouseLine, ignoreBounds=True)
         self.addItem(self.dataText, ignoreBounds=True)
 
-        self.vMouseLine.hide()
-        self.hMouseLine.hide()
-        self.dataText.hide()
-        
-    def mouseClickEvent(self, ev):
-        if ev.button() == QtCore.Qt.LeftButton:
-            if ev.double(): # double clicking will hide the lines
-                self.vMouseLine.hide()
-                self.hMouseLine.hide()
-                self.dataText.hide()
-            else:
-                self.vMouseLine.show()
-                self.hMouseLine.show()
-                self.dataText.show()
+        self.setCrosshairVisible(False)
+        for line in self.spectLines:
+            self.addItem(line, ignoreBounds = True)
+            line.hide()
+       
+    def setCrosshairVisible(self, visible):
+        self.vMouseLine.setVisible(visible)
+        self.hMouseLine.setVisible(visible)
+        self.dataText.setVisible(visible)
 
-                # map the mouse click to data coordinates
-                vr = self.viewRange()
-                mc = self.mapToView(ev.pos())
-                x = mc.x()
-                y = mc.y()
-                self.vMouseLine.setPos(x)
-                self.hMouseLine.setPos(y)
-                self.dataText.setPos(x,y)
-                xt = DateAxis.toUTC(x, self.window, True)
-                sf = f'{xt}, {y:.4f}'
-                print(sf)
-                self.dataText.setText(sf)
+    def onLeftClick(self, ev):
+         # map the mouse click to data coordinates
+        vr = self.viewRange()
+        mc = self.mapToView(ev.pos())
+        x = mc.x()
+        y = mc.y()
+        if self.window.spectraStep > 0: # if making a spectra selection
+            if self.window.spectraStep == 2:
+                if len(self.window.getSpectraPlots()) == 0:
+                    self.window.spectraStep = 1
 
-                #set text anchor based on which quadrant of viewbox dataText crosshair is in
-                centerX = vr[0][0] + (vr[0][1] - vr[0][0]) / 2
-                centerY = vr[1][0] + (vr[1][1] - vr[1][0]) / 2
+            if self.window.spectraStep == 1: # time range is not yet selected
+                if not self.spectLines[0].isVisible():
+                    self.spectLines[0].show()
+                    self.spectLines[0].setPos(x)
+                    self.window.spectraRange[0] = x
+                elif not self.spectLines[1].isVisible():
+                    self.spectLines[1].show()
+                    self.spectLines[1].setPos(x)
+                    self.window.spectraRange[1] = x
+                    self.window.spectraStep = 2
+            elif self.window.spectraStep == 2: # a time range is already selected
+                for i,line in enumerate(self.spectLines):
+                    line.show()
+                    line.setPos(self.window.spectraRange[i])
+        else:
+            self.setCrosshairVisible(True)
 
-                #i think its based on axis ratio of the label so x is about 1/5
-                #times of y anchor offset
-                self.dataText.setAnchor((-0.04 if x < centerX else 1.04, 1.2 if y < centerY else -0.2))
+            self.vMouseLine.setPos(x)
+            self.hMouseLine.setPos(y)
+            self.dataText.setPos(x,y)
+            xt = DateAxis.toUTC(x, self.window, True)
+            sf = f'{xt}, {y:.4f}'
+            print(sf)
+            self.dataText.setText(sf)
 
-            ev.accept()
+            #set text anchor based on which quadrant of viewbox dataText crosshair is in
+            centerX = vr[0][0] + (vr[0][1] - vr[0][0]) / 2
+            centerY = vr[1][0] + (vr[1][1] - vr[1][0]) / 2
+
+            #i think its based on axis ratio of the label so x is about 1/5
+            #times of y anchor offset
+            self.dataText.setAnchor((-0.04 if x < centerX else 1.04, 1.2 if y < centerY else -0.2))
+
+    def onRightClick(self, ev):
+        if self.window.spectraStep > 0: # cancel spectra on this plot
+            self.setCrosshairVisible(True)
+            for line in self.spectLines:
+                line.hide()
         else:
             pg.ViewBox.mouseClickEvent(self,ev) # default right click
 
-        #if ev.button() == QtCore.Qt.RightButton:
-        #    self.autoRange()
+    def mouseClickEvent(self, ev):
+        if ev.button() == QtCore.Qt.LeftButton:
+            if ev.double(): # double clicking will hide the lines
+                self.setCrosshairVisible(False)
+                for line in self.spectLines:
+                    line.hide()
+            else:
+               self.onLeftClick(ev)
+
+        else: # asume right click i guess, not sure about middle mouse button click
+            self.onRightClick(ev)
+
+        ev.accept()
             
+    # mouse drags for now just get turned into clicks, like on release basically, feels nicer
+    # technically only need to do this for spectra mode but not being used otherwise so whatever
     def mouseDragEvent(self, ev, axis=None):
-        ev.ignore()
-        #if ev.button() == QtCore.Qt.RightButton:
-        #    ev.ignore()
-        #else:
+        if ev.isFinish(): # on release
+            if ev.button() == QtCore.Qt.LeftButton:
+                self.onLeftClick(ev)
+            elif ev.button() == QtCore.Qt.RightButton:
+                self.onRightClick(ev)
+        ev.accept()
         #    pg.ViewBox.mouseDragEvent(self, ev)
 
     def wheelEvent(self, ev, axis=None):

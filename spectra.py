@@ -43,9 +43,19 @@ class LogAxis(pg.AxisItem):
 
         self.tickFont=QtGui.QFont()
         self.tickFont.setPixelSize(14)
+        #self.style['maxTickLevel'] = 3
+        #self.style['textFillLimits'] = [(0,1.1)]
 
     def tickStrings(self, values, scale, spacing):
         return [f'{int(x)}    ' for x in values] # spaces are for eyeballing the auto sizing before rich text override below
+
+    def tickSpacing(self, minVal, maxVal, size):
+        #levels = pg.AxisItem.tickSpacing(self,minVal,maxVal,size)
+        #if len(levels) > 2:
+        #    levels.pop()
+        #print(levels)  
+        levels = [(10.0,0),(1.0,0),(0.5,0)]
+        return levels
 
     def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
         p.setRenderHint(p.Antialiasing, False)
@@ -73,6 +83,19 @@ class LogAxis(pg.AxisItem):
 
             #p.drawText(rect, flags, text)
             #p.drawRect(rect)
+
+class SpectraInfiniteLine(pg.InfiniteLine):
+    def __init__(self, window, index, *args, **kwds):
+        pg.InfiniteLine.__init__(self, *args, **kwds)
+        self.window = window
+        self.index = index
+
+    def mouseDragEvent(self, ev):
+        pg.InfiniteLine.mouseDragEvent(self, ev)
+        #update all other infinite spectra lines on left or right depending
+        if self.movable and ev.button() == QtCore.Qt.LeftButton:
+            x = self.getXPos()
+            self.window.updateSpectra(self.index,x)
 
 class Spectra(QtWidgets.QFrame, SpectraUI):
     def __init__(self, window, parent=None):
