@@ -40,7 +40,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionPlot.triggered.connect(self.openTracer)
         self.ui.actionOpen.triggered.connect(self.openFileDialog)
         self.ui.actionShowData.triggered.connect(self.showData)
-        self.ui.actionSpectra.triggered.connect(self.openSpectra)
+        self.ui.actionSpectra.triggered.connect(self.runSpectra)
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.insightMode = False
 
@@ -50,8 +50,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.lastLinkMatrix = None
         self.tracer = None
 
-        self.spectraStep = 1
-        self.spectraPlots = []
+        self.spectraStep = 0
         self.spectraRange = [0,0]
 
         self.magpyIcon = QtGui.QIcon()
@@ -66,6 +65,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         colors = ['#0000ff','#00ff00','#ff0000','#000000'] # b g r black
         for c in colors:
             self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
+        self.trackerPen = pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine)
 
         self.plotItems = []
         self.trackerLines = []
@@ -82,14 +82,27 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.tracer.move(50,400)
         self.tracer.show()
 
-    def openSpectra(self):
-        self.spectra = Spectra(self)
-        self.spectra.show()
+    def runSpectra(self):
+        txt = self.ui.actionSpectra.text()
+        if txt == 'Spectra':
+            self.spectraStep = 1
+            self.ui.actionSpectra.setText('Complete Spectra')
+        elif txt == 'Complete Spectra':
+            # get current time range and list of spectra groups
+            if self.spectraStep == 2:
+                dataStrs = self.getSpectraPlots()
+                range = [self.calcTickIndexByTime(self.spectraRange[0]), 
+                         self.calcTickIndexByTime(self.spectraRange[1])]
+                self.spectra = Spectra(self, range, dataStrs)
+                self.spectra.show()
+                self.spectraStep = 0
+                self.ui.actionSpectra.setText('Spectra')
 
     def showData(self):
         self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
         self.dataDisplay.show()
 
+    # this smooths over data gaps, required for spectra analysis i guess
     # much faster than naive way
     def replaceErrorsWithLast(self,data):
         segments = np.where(data >= self.errorFlag)[0] # find spots where there are errors and make segments
@@ -118,7 +131,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.app.setWindowIcon(self.marsIcon if self.insightMode else self.magpyIcon)
 
     def resizeEvent(self, event):
-        print('resize event')
+        #print('resize event')
+        pass
 
     def openFileDialog(self):
         fileName = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
@@ -287,7 +301,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.endSlider.underMouse():
             self.setTimes()
 
-    # pretty sure this is accurate
+    # this might be inaccurate...
     def calcTickIndexByTime(self, t):
         perc = (t - self.itO) / (self.itE - self.itO)
         return int(self.iiE * perc)
@@ -359,6 +373,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
         self.lastLinkMatrix = fMatrix
         self.plotItems = []
+        self.plotDataStrings = [] # for each plot a list of strings for data contained within
 
         # add label for file name at top right
         fileNameLabel = pg.LabelItem()
@@ -382,8 +397,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #pi.setDownsampling(auto=True)
 
             # add some lines used to show where time series sliders will zoom
-            trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0)
-            trackerLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine))
+            trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=self.trackerPen)
             pi.addItem(trackerLine)
             self.trackerLines.append(trackerLine)
 
@@ -412,6 +426,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             traces = 0 # number of traces on this axis
             axisString = ''
             unit = ''
+            plotStrs = []
             for i,b in enumerate(bAxis):
                 if not b: # axis isn't checked so its not gona be on this plot
                     continue
@@ -423,6 +438,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 if len(Y) <= 1: # not sure if this can happen but just incase
                     continue
+
+                plotStrs.append(dstr)
 
                 # figure out if each axis trace shares same unit
                 if unit == '':
@@ -450,6 +467,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 # trying to figure out how to just plot pixels
                 #pi.plot(self.times, Y, pen=None,symbolSize=1,
                 #symbolPen=p,symbolBrush=None,pxMode=True)
+            self.plotDataStrings.append(plotStrs)
 
             # draw horizontal line if plot crosses zero
             vr = pi.viewRange()
@@ -554,7 +572,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                         break
 
     # find points at which each spacecraft crosses this value for the first time after this time
-    # this is currently unused but the start to the required velocity calculation code
+    # [CURRENTLY UNUSED] but the start to the required velocity calculation code
     def findTimes(self, time, value, axis):
         #first need to get correct Y datas based on axis
         dataNames = [f'B{axis}{n}' for n in range(1,5)]
@@ -569,11 +587,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def getSpectraPlots(self):
         spectraPlots = []
-        for pi in self.plotItems:
+        for i,pi in enumerate(self.plotItems):
             if pi.getViewBox().spectLines[1].isVisible():
-                spectraPlots.append(pi)
+                spectraPlots.append(self.plotDataStrings[i])
         return spectraPlots
-
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
@@ -652,7 +669,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
     def onRightClick(self, ev):
         if self.window.spectraStep > 0: # cancel spectra on this plot
-            self.setCrosshairVisible(True)
+            self.setCrosshairVisible(False)
             for line in self.spectLines:
                 line.hide()
         else:

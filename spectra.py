@@ -43,8 +43,10 @@ class LogAxis(pg.AxisItem):
 
         self.tickFont=QtGui.QFont()
         self.tickFont.setPixelSize(14)
-        #self.style['maxTickLevel'] = 3
-        #self.style['textFillLimits'] = [(0,1.1)]
+        self.style['maxTextLevel'] = 1 # never have any subtick labels
+        self.style['textFillLimits'] = [(0,1.1)] # try to always draw labels
+        #self.style['tickLength'] = -10
+        #todo: override AxisItem generateDrawSpecs and custom set tick length
 
     def tickStrings(self, values, scale, spacing):
         return [f'{int(x)}    ' for x in values] # spaces are for eyeballing the auto sizing before rich text override below
@@ -98,32 +100,38 @@ class SpectraInfiniteLine(pg.InfiniteLine):
             self.window.updateSpectra(self.index,x)
 
 class Spectra(QtWidgets.QFrame, SpectraUI):
-    def __init__(self, window, parent=None):
+    def __init__(self, window, range, dataStrings, parent=None):
         super(Spectra, self).__init__(parent)
-
         self.window = window
+        self.range = range # todo: make this all realtime, when process is hit this just checkes current line setup on main window and redoes everything
+        self.dataStrings = dataStrings
         self.ui = SpectraUI()
         self.ui.setupUI(self)
         
         self.ui.processButton.clicked.connect(self.processData)
 
+    def closeEvent(self, event):
+        #print('spectra closed')
+        # hide spectra lines in window
+        for pi in self.window.plotItems:
+            for line in pi.getViewBox().spectLines:
+                line.hide()
+
     def processData(self):
-        keywords = ['BX','BY','BZ','BT']
-        magDatas = []
-        for kw in keywords:
-            for dstr in self.window.DATASTRINGS:
-                if kw.lower() in dstr.lower():
-                    magDatas.append(self.window.DATADICT[dstr])
-                    #print(f'found {dstr}')
+        datas = []
+        for strList in self.dataStrings: # list of list of strings, each sublist should be own plot
+            for dstr in strList:
+                d = self.window.DATADICT[dstr]
+                datas.append(d[self.range[0]:self.range[1]])
 
-
-        self.N = self.window.numpoints # todo make this be whatever size of selection is
+        #self.N = self.window.numpoints # todo make this be whatever size of selection is
+        self.N = self.range[1] - self.range[0]
+        print(self.N)
         freq = self.calculateFreqList()
 
         self.ui.glw.clear()
-        for magData in magDatas:
-            #magData = magData.astype('>f8')
-            fft = fftpack.rfft(magData.tolist())
+        for data in datas:
+            fft = fftpack.rfft(data.tolist())
             power = self.calculatePower(fft)
 
             leftAxis = LogAxis(orientation='left')
