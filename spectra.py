@@ -26,14 +26,20 @@ class SpectraUI(object):
         self.bandWidthSpinBox.setMinimum(1)
         self.bandWidthSpinBox.setSingleStep(2)
         self.bandWidthSpinBox.setProperty("value", 3)
+        self.oneTraceCheckBox = QtGui.QCheckBox()
+        self.oneTraceCheckBox.setChecked(True)
+        oneTraceLabel = QtGui.QLabel("One Trace Per Plot")
+
         bandWidthLayout.addWidget(bandWidthLabel)
         bandWidthLayout.addWidget(self.bandWidthSpinBox)
+        bandWidthLayout.addWidget(oneTraceLabel)
+        bandWidthLayout.addWidget(self.oneTraceCheckBox)
         bandWidthLayout.addStretch()
 
-        self.processButton = QtWidgets.QPushButton('Process')
-        self.processButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.updateButton = QtWidgets.QPushButton('Update')
+        self.updateButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         layout.addLayout(bandWidthLayout)
-        layout.addWidget(self.processButton)
+        layout.addWidget(self.updateButton)
 
 #todo show minor ticks on left side
 #hide minor tick labels always
@@ -100,51 +106,69 @@ class SpectraInfiniteLine(pg.InfiniteLine):
             self.window.updateSpectra(self.index,x)
 
 class Spectra(QtWidgets.QFrame, SpectraUI):
-    def __init__(self, window, range, dataStrings, parent=None):
+    def __init__(self, window, parent=None):
         super(Spectra, self).__init__(parent)
         self.window = window
-        self.range = range # todo: make this all realtime, when process is hit this just checkes current line setup on main window and redoes everything
-        self.dataStrings = dataStrings
         self.ui = SpectraUI()
         self.ui.setupUI(self)
         
-        self.ui.processButton.clicked.connect(self.processData)
+        self.ui.updateButton.clicked.connect(self.updateSpectra)
+
+        self.updateSpectra()
 
     def closeEvent(self, event):
         #print('spectra closed')
         # hide spectra lines in window
+        self.window.spectraStep = 0
         for pi in self.window.plotItems:
             for line in pi.getViewBox().spectLines:
                 line.hide()
 
-    def processData(self):
-        datas = []
-        for strList in self.dataStrings: # list of list of strings, each sublist should be own plot
-            for dstr in strList:
-                d = self.window.DATADICT[dstr]
-                datas.append(d[self.range[0]:self.range[1]])
+    def updateSpectra(self):
+        dataStrings = self.window.getSpectraPlots()
+        indices = self.window.getSpectraRangeIndices()
 
         #self.N = self.window.numpoints # todo make this be whatever size of selection is
-        self.N = self.range[1] - self.range[0]
-        print(self.N)
+        self.N = indices[1] - indices[0]
+        #print(self.N)
         freq = self.calculateFreqList()
+        if freq is None:
+            return
 
         self.ui.glw.clear()
-        for data in datas:
-            fft = fftpack.rfft(data.tolist())
-            power = self.calculatePower(fft)
 
-            leftAxis = LogAxis(orientation='left')
-            bottomAxis = LogAxis(orientation='bottom')
-            pi = pg.PlotItem(axisItems={'bottom':bottomAxis, 'left':leftAxis})
-            pi.setLogMode(True, True) #todo redo ticks to be of format 10^x
-            print(f'freqLen {len(freq)} powLen {len(power)}')
+        oneTracePerPlot = self.ui.oneTraceCheckBox.isChecked()
 
-            pi.plot(freq, power, pen=self.window.pens[0])
+        numberPlots = 0
+        for strList in dataStrings:
+            for i,dstr in enumerate(strList):
+                if i == 0 or oneTracePerPlot:
+                    leftAxis = LogAxis(orientation='left')
+                    bottomAxis = LogAxis(orientation='bottom')
+                    pi = pg.PlotItem(axisItems={'bottom':bottomAxis, 'left':leftAxis})
+                    titleString = ''
+                    pi.setLogMode(True, True)
+                    numberPlots += 1
 
-            self.ui.glw.addItem(pi)
+                p = self.window.pens[min(i,len(self.window.pens) - 1)]
+                data = self.window.DATADICT[dstr][indices[0]:indices[1]]
+                fft = fftpack.rfft(data.tolist())
+                power = self.calculatePower(fft)
+                titleString = f"{titleString} <span style='color:{p.color().name()};'>{dstr}</span>"
+                #f"<span style='color:{p.color().name()};'>{dstr}</span>\n"
 
-            break
+                #print(f'freqLen {len(freq)} powLen {len(power)}')
+
+                pi.plot(freq, power, pen=p)
+
+                if i == len(strList)-1 or oneTracePerPlot:
+                    pi.setLabels(title=titleString, left='Power', bottom='Frequency')
+                    self.ui.glw.addItem(pi)
+
+                if numberPlots % 4 == 0:
+                    self.ui.glw.nextRow()
+
+        ## end of def
 
     def calculateFreqList(self):
         bw = self.ui.bandWidthSpinBox.value()

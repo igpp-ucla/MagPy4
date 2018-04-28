@@ -85,17 +85,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def runSpectra(self):
         txt = self.ui.actionSpectra.text()
         if txt == 'Spectra':
+            for pi in self.plotItems:
+                for line in pi.getViewBox().spectLines:
+                    line.hide()
             self.spectraStep = 1
             self.ui.actionSpectra.setText('Complete Spectra')
         elif txt == 'Complete Spectra':
             # get current time range and list of spectra groups
             if self.spectraStep == 2:
-                dataStrs = self.getSpectraPlots()
-                range = [self.calcTickIndexByTime(self.spectraRange[0]), 
-                         self.calcTickIndexByTime(self.spectraRange[1])]
-                self.spectra = Spectra(self, range, dataStrs)
+                self.spectra = Spectra(self)
                 self.spectra.show()
-                self.spectraStep = 0
                 self.ui.actionSpectra.setText('Spectra')
 
     def showData(self):
@@ -304,7 +303,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # this might be inaccurate...
     def calcTickIndexByTime(self, t):
         perc = (t - self.itO) / (self.itE - self.itO)
-        return int(self.iiE * perc)
+        v = int(self.iiE * perc)
+        return 0 if v < 0 else self.iiE if v > self.iiE else v
 
     def setSliderNoCallback(self, slider, i):
         slider.blockSignals(True)
@@ -585,6 +585,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for pi in self.plotItems:
             pi.getViewBox().spectLines[index].setPos(x)
 
+    # gets indices into time array for selected spectra range
+    # makes sure first is less than second
+    def getSpectraRangeIndices(self):
+        r0 = self.calcTickIndexByTime(self.spectraRange[0])
+        r1 = self.calcTickIndexByTime(self.spectraRange[1])
+        return [min(r0,r1),max(r0,r1)]
+
     def getSpectraPlots(self):
         spectraPlots = []
         for i,pi in enumerate(self.plotItems):
@@ -616,6 +623,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         self.setCrosshairVisible(False)
         for line in self.spectLines:
             self.addItem(line, ignoreBounds = True)
+            line.setBounds((self.window.itO, self.window.itE))
             line.hide()
        
     def setCrosshairVisible(self, visible):
