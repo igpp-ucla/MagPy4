@@ -52,6 +52,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.spectraStep = 0
         self.spectraRange = [0,0]
+        self.spectras = []
 
         self.magpyIcon = QtGui.QIcon()
         self.magpyIcon.addFile('images/magPy_blue.ico')
@@ -93,8 +94,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         elif txt == 'Complete Spectra':
             # get current time range and list of spectra groups
             if self.spectraStep == 2:
-                self.spectra = Spectra(self)
-                self.spectra.show()
+                spectra = Spectra(self)
+                spectra.show()
+                self.spectras.append(spectra) # so reference is held until closed
                 self.ui.actionSpectra.setText('Spectra')
 
     def showData(self):
@@ -585,6 +587,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for pi in self.plotItems:
             pi.getViewBox().spectLines[index].setPos(x)
 
+    def hideAllSpectraLinesExcept(self, vb):
+        for pi in self.plotItems:
+            if pi.getViewBox() is not vb:
+                for i in range(2):
+                    pi.getViewBox().spectLines[i].hide()
+
     # gets indices into time array for selected spectra range
     # makes sure first is less than second
     def getSpectraRangeIndices(self):
@@ -592,6 +600,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         r1 = self.calcTickIndexByTime(self.spectraRange[1])
         return [min(r0,r1),max(r0,r1)]
 
+    # based on which plots have active spectra lines, return list of lists of their data strings
     def getSpectraPlots(self):
         spectraPlots = []
         for i,pi in enumerate(self.plotItems):
@@ -647,11 +656,13 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                     self.spectLines[0].show()
                     self.spectLines[0].setPos(x)
                     self.window.spectraRange[0] = x
-                elif not self.spectLines[1].isVisible():
+                elif not self.spectLines[1].isVisible(): # first pair has been made
                     self.spectLines[1].show()
                     self.spectLines[1].setPos(x)
+                    self.window.spectraRange[0] = self.spectLines[0].getPos()[0]
                     self.window.spectraRange[1] = x
                     self.window.spectraStep = 2
+                    self.window.hideAllSpectraLinesExcept(self)
             elif self.window.spectraStep == 2: # a time range is already selected
                 for i,line in enumerate(self.spectLines):
                     line.show()

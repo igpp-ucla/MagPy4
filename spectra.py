@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
+from  LinearGraphicsLayout import LinearGraphicsLayout
 
 class SpectraUI(object):
     def setupUI(self, Frame):
@@ -16,8 +17,12 @@ class SpectraUI(object):
 
         self.glw = pg.GraphicsLayoutWidget()
         self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        
         layout.addWidget(self.glw)
+
+        #self.gview = pg.GraphicsView()
+        #self.glw = LinearGraphicsLayout()
+        #self.gview.setCentralItem(self.glw)
+        #layout.addWidget(self.gview)
 
         # bandwidth label and spinbox
         bandWidthLayout = QtWidgets.QHBoxLayout()
@@ -65,6 +70,7 @@ class LogAxis(pg.AxisItem):
         levels = [(10.0,0),(1.0,0),(0.5,0)]
         return levels
 
+    # overriden from source to be able to have superscript text
     def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
         p.setRenderHint(p.Antialiasing, False)
         p.setRenderHint(p.TextAntialiasing, True)
@@ -117,7 +123,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.updateSpectra()
 
     def closeEvent(self, event):
-        #print('spectra closed')
         # hide spectra lines in window
         self.window.spectraStep = 0
         for pi in self.window.plotItems:
@@ -127,8 +132,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     def updateSpectra(self):
         dataStrings = self.window.getSpectraPlots()
         indices = self.window.getSpectraRangeIndices()
-
-        #self.N = self.window.numpoints # todo make this be whatever size of selection is
         self.N = indices[1] - indices[0]
         #print(self.N)
         freq = self.calculateFreqList()
@@ -136,16 +139,15 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             return
 
         self.ui.glw.clear()
-
+        self.ui.glw.ci.currentRow = 0 # clear doesnt get rid of layout formatting correctly it seems
+        self.ui.glw.ci.currentCol = 0
         oneTracePerPlot = self.ui.oneTraceCheckBox.isChecked()
-
+        #curLayout = self.ui.glw.addLayout()
         numberPlots = 0
         for strList in dataStrings:
             for i,dstr in enumerate(strList):
                 if i == 0 or oneTracePerPlot:
-                    leftAxis = LogAxis(orientation='left')
-                    bottomAxis = LogAxis(orientation='bottom')
-                    pi = pg.PlotItem(axisItems={'bottom':bottomAxis, 'left':leftAxis})
+                    pi = pg.PlotItem(axisItems={'bottom':LogAxis(orientation='bottom'), 'left':LogAxis(orientation='left')})
                     titleString = ''
                     pi.setLogMode(True, True)
                     numberPlots += 1
@@ -164,9 +166,30 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 if i == len(strList)-1 or oneTracePerPlot:
                     pi.setLabels(title=titleString, left='Power', bottom='Frequency')
                     self.ui.glw.addItem(pi)
+                    #curLayout.addItem(pi)
+                    if numberPlots % 4 == 0:
+                        self.ui.glw.nextRow()
+                        #curLayout = self.ui.glw.addLayout()
+                        pass
 
-                if numberPlots % 4 == 0:
-                    self.ui.glw.nextRow()
+        #labelLayout = LinearGraphicsLayout(orientation = QtCore.Qt.Horizontal)
+        #self.ui.glw.addItem(labelLayout)
+
+        self.ui.glw.nextRow()
+        # draw some text info like time range and file and stuff
+        # add Y axis label based on traces
+
+        #lw = self.ui.glw.ci.layout
+        #lw.setColumnStretchFactor(1,100)
+
+        li = pg.LabelItem()
+        #li.item.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{axisString}</span>")
+        li.item.setHtml(f'hello this is a test wait wat no i dont want to test<br>here is a date<br>102-300:100:100>>>10000')
+        #filename
+        #time range, resolution
+        #number freq samples or something
+        self.ui.glw.addItem(li)
+        #labelLayout.addItem(li)
 
         ## end of def
 

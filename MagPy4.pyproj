@@ -13,7 +13,6 @@
     <IsWindowsApplication>False</IsWindowsApplication>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
-    <InterpreterId>Global|VisualStudio|Python 3.6 CUSTOM</InterpreterId>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -35,6 +34,9 @@
     <Compile Include="ffPy\FF_INFO.py" />
     <Compile Include="ffPy\FF_Static.py" />
     <Compile Include="ffPy\FF_Time.py" />
+    <Compile Include="LinearGraphicsLayout.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="MagPy4.py" />
     <Compile Include="MagPy4UI.py" />
     <Compile Include="plotTracer.py">
