@@ -44,7 +44,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.insightMode = False
 
-        self.ui.scaleYToCurrentTimeCheckBox.stateChanged.connect(self.updateYRange)
+        self.ui.scaleYToCurrentTimeAction.triggered.connect(self.updateYRange)
+        self.ui.antialiasAction.triggered.connect(self.toggleAntialiasing)
 
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
@@ -103,6 +104,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
         self.dataDisplay.show()
 
+    def toggleAntialiasing(self):
+        pg.setConfigOption('antialias', self.ui.antialiasAction.isChecked())
+        self.plotData()
+
     # this smooths over data gaps, required for spectra analysis i guess
     # much faster than naive way
     def replaceErrorsWithLast(self,data):
@@ -125,7 +130,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def swapMode(self):
         txt = self.ui.switchMode.text()
         self.insightMode = not self.insightMode
-        txt = 'Switch to MMS' if self.insightMode else 'Switch to Insight'
+        txt = 'Switch to MMS' if self.insightMode else 'Switch to MarsPy'
         self.ui.switchMode.setText(txt)
         self.plotDataDefault()
         self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
@@ -369,8 +374,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotData(boolMatrix, links)
 
     # boolMatrix is same shape as the checkBox matrix but just bools
-    def plotData(self, bMatrix, fMatrix=[]):
+    def plotData(self, bMatrix=None, fMatrix=None):
         self.ui.glw.clear()
+
+        if not bMatrix:
+            bMatrix = self.lastPlotMatrix
+        if not fMatrix:
+            fMatrix = self.lastLinkMatrix
 
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
         self.lastLinkMatrix = fMatrix
@@ -519,7 +529,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             # find min and max values out of all traces on this plot
             for i,checked in enumerate(bAxis):
                 if checked:
-                    scaleYToCurrent = self.ui.scaleYToCurrentTimeCheckBox.isChecked()
+                    scaleYToCurrent = self.ui.scaleYToCurrentTimeAction.isChecked()
                     a = self.iO if scaleYToCurrent else 0
                     b = self.iE if scaleYToCurrent else self.iiE
                     if a > b: # so sliders work either way

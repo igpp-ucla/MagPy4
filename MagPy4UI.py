@@ -31,7 +31,7 @@ class MagPy4UI(object):
         self.actionShowData.setText('Show Data')
 
         self.switchMode = QtWidgets.QAction(MagPy4)
-        self.switchMode.setText('Switch to Insight')
+        self.switchMode.setText('Switch to MarsPy')
 
         self.actionSpectra = QtWidgets.QAction(MagPy4)
         self.actionSpectra.setText('Spectra')
@@ -41,6 +41,23 @@ class MagPy4UI(object):
         self.toolBar.addAction(self.actionShowData)
         self.toolBar.addAction(self.actionSpectra)
         self.toolBar.addAction(self.switchMode)
+
+        self.options = QtWidgets.QToolButton()
+        
+        self.menu = QtWidgets.QMenu()
+        self.scaleYToCurrentTimeAction = QtWidgets.QAction('Scale y range to current time selection',checkable=True,checked=True)
+        self.antialiasAction = QtWidgets.QAction('Smooth lines (antialiasing)',checkable=True,checked=True)
+        self.test3 = QtWidgets.QAction('test3',checkable=True)
+        self.menu.addAction(self.scaleYToCurrentTimeAction)
+        self.menu.addAction(self.antialiasAction)
+        self.menu.addAction(self.test3)
+
+        self.options.setMenu(self.menu)
+        self.options.setText('Options ')
+        self.options.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+
+        self.toolBar.addWidget(self.options)
+        
 
         self.glw = pg.GraphicsLayoutWidget()#border=(100,100,100))
         self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
@@ -71,15 +88,14 @@ class MagPy4UI(object):
 
         layout.addLayout(sliderLayout)
 
-        optionsLayout = QtWidgets.QHBoxLayout()
-        scaleLabel = QtWidgets.QLabel()
-        scaleLabel.setText("Scale Y range to current time selection")
-        self.scaleYToCurrentTimeCheckBox = QtWidgets.QCheckBox()
-        self.scaleYToCurrentTimeCheckBox.setChecked(True)
-        optionsLayout.addWidget(scaleLabel)
-        optionsLayout.addWidget(self.scaleYToCurrentTimeCheckBox)
-        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        optionsLayout.addItem(spacer)
-
-        layout.addLayout(optionsLayout)
+        #optionsLayout = QtWidgets.QHBoxLayout()
+        #scaleLabel = QtWidgets.QLabel()
+        #scaleLabel.setText("Scale Y range to current time selection")
+        #self.scaleYToCurrentTimeCheckBox = QtWidgets.QCheckBox()
+        #self.scaleYToCurrentTimeCheckBox.setChecked(True)
+        #optionsLayout.addWidget(scaleLabel)
+        #optionsLayout.addWidget(self.scaleYToCurrentTimeCheckBox)
+        #spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        #optionsLayout.addItem(spacer)
+        #layout.addLayout(optionsLayout)
 
