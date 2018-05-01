@@ -6,7 +6,8 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
-from  LinearGraphicsLayout import LinearGraphicsLayout
+from LinearGraphicsLayout import LinearGraphicsLayout
+from FF_Time import FFTIME
 
 class SpectraUI(object):
     def setupUI(self, Frame):
@@ -15,36 +16,56 @@ class SpectraUI(object):
 
         layout = QtWidgets.QVBoxLayout(Frame)
 
-        self.glw = pg.GraphicsLayoutWidget()
-        self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        layout.addWidget(self.glw)
-
-        #self.gview = pg.GraphicsView()
-        #self.glw = LinearGraphicsLayout()
-        #self.gview.setCentralItem(self.glw)
-        #layout.addWidget(self.gview)
+        self.gview = pg.GraphicsView()
+        self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        self.gmain = LinearGraphicsLayout() # made this based off pg.GraphicsLayout
+        #apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
+        self.gmain.setContentsMargins(11,0,11,0) # left top right bottom
+        self.gview.setCentralItem(self.gmain)
+        self.grid = pg.GraphicsLayout() # based on Qt.GridGraphicsLayout
+        self.grid.setContentsMargins(0,0,0,0)
+        self.labelLayout = LinearGraphicsLayout(orientation = QtCore.Qt.Horizontal)
+        self.labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum))
+        self.labelLayout.setContentsMargins(0,0,0,0)
+        self.gmain.addItem(self.grid)
+        self.gmain.addItem(self.labelLayout)
+        layout.addWidget(self.gview)
 
         # bandwidth label and spinbox
-        bandWidthLayout = QtWidgets.QHBoxLayout()
+        bottomLayout = QtWidgets.QHBoxLayout()
         bandWidthLabel = QtGui.QLabel("Average Bandwidth")
         self.bandWidthSpinBox = QtGui.QSpinBox()
         self.bandWidthSpinBox.setMinimum(1)
         self.bandWidthSpinBox.setSingleStep(2)
         self.bandWidthSpinBox.setProperty("value", 3)
-        self.oneTraceCheckBox = QtGui.QCheckBox()
-        self.oneTraceCheckBox.setChecked(True)
-        oneTraceLabel = QtGui.QLabel("One Trace Per Plot")
 
-        bandWidthLayout.addWidget(bandWidthLabel)
-        bandWidthLayout.addWidget(self.bandWidthSpinBox)
-        bandWidthLayout.addWidget(oneTraceLabel)
-        bandWidthLayout.addWidget(self.oneTraceCheckBox)
-        bandWidthLayout.addStretch()
+        self.oneTracePerCheckBox = QtGui.QCheckBox()
+        self.oneTracePerCheckBox.setChecked(True)
+        oneTracePerLabel = QtGui.QLabel("One Trace Per Plot")
+
+        self.aspectLockedCheckBox = QtGui.QCheckBox()
+        self.aspectLockedCheckBox.setChecked(True)
+        aspectLockedLabel = QtGui.QLabel("Lock Aspect Ratio")
 
         self.updateButton = QtWidgets.QPushButton('Update')
-        self.updateButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        layout.addLayout(bandWidthLayout)
+        self.updateButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        layout.addLayout(bottomLayout)
         layout.addWidget(self.updateButton)
+
+        gridLayout = QtWidgets.QGridLayout()
+        gridLayout.addWidget(bandWidthLabel, 0, 0, 1, 1)
+        gridLayout.addWidget(oneTracePerLabel, 1, 0, 1, 1)
+        gridLayout.addWidget(aspectLockedLabel, 2, 0, 1, 1)
+        gridLayout.addWidget(self.bandWidthSpinBox, 0, 1, 1, 1)
+        gridLayout.addWidget(self.oneTracePerCheckBox, 1, 1, 1, 1)
+        gridLayout.addWidget(self.aspectLockedCheckBox, 2, 1, 1, 1)
+        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        gridLayout.addItem(spacer, 0, 2, 1, 1)
+
+        gridLayout.addWidget(self.updateButton, 0, 3, 1, 1)
+        self.updateButton
+
+        layout.addLayout(gridLayout)
 
 #todo show minor ticks on left side
 #hide minor tick labels always
@@ -64,9 +85,6 @@ class LogAxis(pg.AxisItem):
 
     def tickSpacing(self, minVal, maxVal, size):
         #levels = pg.AxisItem.tickSpacing(self,minVal,maxVal,size)
-        #if len(levels) > 2:
-        #    levels.pop()
-        #print(levels)  
         levels = [(10.0,0),(1.0,0),(0.5,0)]
         return levels
 
@@ -94,7 +112,6 @@ class LogAxis(pg.AxisItem):
             qst = QtGui.QStaticText(f'10<sup>{text}</sup>')
             qst.setTextFormat(QtCore.Qt.RichText)
             p.drawStaticText(rect.left(), rect.top(), qst)
-
             #p.drawText(rect, flags, text)
             #p.drawRect(rect)
 
@@ -119,6 +136,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.setupUI(self)
         
         self.ui.updateButton.clicked.connect(self.updateSpectra)
+        self.ui.bandWidthSpinBox.valueChanged.connect(self.updateSpectra)
+        self.ui.oneTracePerCheckBox.stateChanged.connect(self.updateSpectra)
+        self.ui.aspectLockedCheckBox.stateChanged.connect(self.updateSpectra)
 
         self.updateSpectra()
 
@@ -138,22 +158,25 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         if freq is None:
             return
 
-        self.ui.glw.clear()
-        self.ui.glw.ci.currentRow = 0 # clear doesnt get rid of layout formatting correctly it seems
-        self.ui.glw.ci.currentCol = 0
-        oneTracePerPlot = self.ui.oneTraceCheckBox.isChecked()
-        #curLayout = self.ui.glw.addLayout()
+        self.ui.grid.clear()
+        self.ui.grid.currentRow = 0 # clear doesnt get rid of grid layout formatting correctly it seems
+        self.ui.grid.currentCol = 0
+        self.ui.labelLayout.clear()
+        oneTracePerPlot = self.ui.oneTracePerCheckBox.isChecked()
+        aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
         numberPlots = 0
         for strList in dataStrings:
             for i,dstr in enumerate(strList):
                 if i == 0 or oneTracePerPlot:
                     pi = pg.PlotItem(axisItems={'bottom':LogAxis(orientation='bottom'), 'left':LogAxis(orientation='left')})
+                    if aspectLocked:
+                        pi.setAspectLocked()
                     titleString = ''
                     pi.setLogMode(True, True)
                     numberPlots += 1
 
                 p = self.window.pens[min(i,len(self.window.pens) - 1)]
-                data = self.window.DATADICT[dstr][indices[0]:indices[1]]
+                data = self.window.DATADICTNOGAPS[dstr][indices[0]:indices[1]]
                 fft = fftpack.rfft(data.tolist())
                 power = self.calculatePower(fft)
                 titleString = f"{titleString} <span style='color:{p.color().name()};'>{dstr}</span>"
@@ -165,31 +188,30 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
                 if i == len(strList)-1 or oneTracePerPlot:
                     pi.setLabels(title=titleString, left='Power', bottom='Frequency')
-                    self.ui.glw.addItem(pi)
-                    #curLayout.addItem(pi)
+                    self.ui.grid.addItem(pi)
                     if numberPlots % 4 == 0:
-                        self.ui.glw.nextRow()
-                        #curLayout = self.ui.glw.addLayout()
-                        pass
+                        self.ui.grid.nextRow()
 
-        #labelLayout = LinearGraphicsLayout(orientation = QtCore.Qt.Horizontal)
-        #self.ui.glw.addItem(labelLayout)
-
-        self.ui.glw.nextRow()
         # draw some text info like time range and file and stuff
-        # add Y axis label based on traces
-
-        #lw = self.ui.glw.ci.layout
-        #lw.setColumnStretchFactor(1,100)
-
         li = pg.LabelItem()
-        #li.item.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{axisString}</span>")
-        li.item.setHtml(f'hello this is a test wait wat no i dont want to test<br>here is a date<br>102-300:100:100>>>10000')
+        li.opts['justify'] = 'left'
+
+        labelText = f'FILE {self.window.FID.name.rsplit("/",1)[1]}'
+
+        #get utc start and stop times
+        s0 = self.window.spectraRange[0]
+        s1 = self.window.spectraRange[1]
+        startDate = FFTIME(min(s0,s1), Epoch=self.window.epoch).UTC
+        endDate = FFTIME(max(s0,s1), Epoch=self.window.epoch).UTC
+
+        labelText = f'{labelText}<br>TIME {startDate} -> {endDate}'
+
+
+        li.item.setHtml(labelText)
         #filename
         #time range, resolution
         #number freq samples or something
-        self.ui.glw.addItem(li)
-        #labelLayout.addItem(li)
+        self.ui.labelLayout.addItem(li)
 
         ## end of def
 

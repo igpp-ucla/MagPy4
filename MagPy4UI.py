@@ -23,41 +23,42 @@ class MagPy4UI(object):
         self.actionOpen.setPriority(QtWidgets.QAction.HighPriority)
         self.actionOpen.setText('Open')
         self.actionOpen.setShortcut('O')
+        self.toolBar.addAction(self.actionOpen)
 
         self.actionPlot = QtWidgets.QAction(MagPy4)
         self.actionPlot.setText('Plot Menu')
+        self.toolBar.addAction(self.actionPlot)
 
         self.actionShowData = QtWidgets.QAction(MagPy4)
         self.actionShowData.setText('Show Data')
-
-        self.switchMode = QtWidgets.QAction(MagPy4)
-        self.switchMode.setText('Switch to MarsPy')
+        self.toolBar.addAction(self.actionShowData)
 
         self.actionSpectra = QtWidgets.QAction(MagPy4)
         self.actionSpectra.setText('Spectra')
-
-        self.toolBar.addAction(self.actionOpen)
-        self.toolBar.addAction(self.actionPlot)
-        self.toolBar.addAction(self.actionShowData)
         self.toolBar.addAction(self.actionSpectra)
-        self.toolBar.addAction(self.switchMode)
 
-        self.options = QtWidgets.QToolButton()
-        
-        self.menu = QtWidgets.QMenu()
+        # add options popup menu for toggled things
+        options = QtWidgets.QToolButton()
+        menu = QtWidgets.QMenu()
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('Scale y range to current time selection',checkable=True,checked=True)
         self.antialiasAction = QtWidgets.QAction('Smooth lines (antialiasing)',checkable=True,checked=True)
-        self.test3 = QtWidgets.QAction('test3',checkable=True)
-        self.menu.addAction(self.scaleYToCurrentTimeAction)
-        self.menu.addAction(self.antialiasAction)
-        self.menu.addAction(self.test3)
+        self.showDataGapsAction = QtWidgets.QAction('Show Data Gaps', checkable=True, checked=True)
+        menu.addAction(self.scaleYToCurrentTimeAction)
+        menu.addAction(self.antialiasAction)
+        menu.addAction(self.showDataGapsAction)
+        options.setMenu(menu)
+        options.setText('Options ') # extra space for little arrow icon
+        options.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        self.toolBar.addWidget(options)        
 
-        self.options.setMenu(self.menu)
-        self.options.setText('Options ')
-        self.options.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        #empty widget (cant use spacer in toolbar?) does same thing tho so this action goes far right
+        spacer = QtWidgets.QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.toolBar.addWidget(spacer)
 
-        self.toolBar.addWidget(self.options)
-        
+        self.switchMode = QtWidgets.QAction(MagPy4)
+        self.switchMode.setText('Switch to MarsPy')
+        self.toolBar.addAction(self.switchMode)
 
         self.glw = pg.GraphicsLayoutWidget()#border=(100,100,100))
         self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
@@ -87,15 +88,3 @@ class MagPy4UI(object):
         sliderLayout.addWidget(self.endSlider, 1, 1, 1, 1)
 
         layout.addLayout(sliderLayout)
-
-        #optionsLayout = QtWidgets.QHBoxLayout()
-        #scaleLabel = QtWidgets.QLabel()
-        #scaleLabel.setText("Scale Y range to current time selection")
-        #self.scaleYToCurrentTimeCheckBox = QtWidgets.QCheckBox()
-        #self.scaleYToCurrentTimeCheckBox.setChecked(True)
-        #optionsLayout.addWidget(scaleLabel)
-        #optionsLayout.addWidget(self.scaleYToCurrentTimeCheckBox)
-        #spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        #optionsLayout.addItem(spacer)
-        #layout.addLayout(optionsLayout)
-

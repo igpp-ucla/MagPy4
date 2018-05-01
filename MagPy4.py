@@ -46,6 +46,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.ui.scaleYToCurrentTimeAction.triggered.connect(self.updateYRange)
         self.ui.antialiasAction.triggered.connect(self.toggleAntialiasing)
+        self.ui.showDataGapsAction.triggered.connect(self.replotData)
 
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
@@ -108,9 +109,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         pg.setConfigOption('antialias', self.ui.antialiasAction.isChecked())
         self.plotData()
 
+    # seems stupid but done to avoid extra arguments passed by action callbacks interfering with plotData
+    def replotData(self):
+        self.plotData()
+
     # this smooths over data gaps, required for spectra analysis i guess
-    # much faster than naive way
-    def replaceErrorsWithLast(self,data):
+    # faster than naive way
+    def replaceErrorsWithLast(self,dataOrig):
+        data = np.copy(dataOrig)
+
         segments = np.where(data >= self.errorFlag)[0] # find spots where there are errors and make segments
         if len(segments) == 0:
             return data
@@ -175,10 +182,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if err < 0:
             return err, mess
         self.resolution = self.FID.getResolution()
-        self.numpoints = self.FID.FFParm["NROWS"].value
+        numpoints = self.FID.FFParm["NROWS"].value
 
         self.iO = 0
-        self.iE = min(self.numpoints - 1, len(self.times) - 1) #could maybe just be second part of this min not sure
+        self.iE = min(numpoints - 1, len(self.times) - 1) #could maybe just be second part of this min not sure
         self.iiE = self.iE
         self.tO = self.times[self.iO]
         self.tE = self.times[self.iE]
@@ -220,10 +227,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         units = self.FID.getColumnDescriptor("UNITS")[1:]
 
         self.DATADICT = {} # maps strings to data array
+        self.DATADICTNOGAPS = {}
         self.UNITDICT = {} # maps strings to string unit
         for i, dstr in enumerate(self.DATASTRINGS):
-            self.DATADICT[dstr] = self.replaceErrorsWithLast(np.array(self.dataByRec[:,i]))
-            #self.DATADICT[dstr] = np.array(self.dataByRec[:,i])
+            datas = np.array(self.dataByRec[:,i])
+            self.DATADICT[dstr] = datas
+            self.DATADICTNOGAPS[dstr] = self.replaceErrorsWithLast(datas)
+
             self.UNITDICT[dstr] = units[i]
 
         # sorts by units alphabetically
@@ -377,9 +387,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def plotData(self, bMatrix=None, fMatrix=None):
         self.ui.glw.clear()
 
-        if not bMatrix:
+        if bMatrix is None:
             bMatrix = self.lastPlotMatrix
-        if not fMatrix:
+        if fMatrix is None:
             fMatrix = self.lastLinkMatrix
 
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
@@ -445,7 +455,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 p = self.pens[min(traces,len(self.pens) - 1)] #if more traces on this axis than pens, use last pen
                 dstr = self.DATASTRINGS[i]
-                Y = self.DATADICT[dstr]
+                Y = self.DATADICT[dstr] if self.ui.showDataGapsAction.isChecked() else self.DATADICTNOGAPS[dstr]                
                 u = self.UNITDICT[dstr]
 
                 if len(Y) <= 1: # not sure if this can happen but just incase
@@ -535,6 +545,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     if a > b: # so sliders work either way
                         a,b = b,a
 
+                    # todo just switch this to use GAPLESS data instead, prob faster
                     dstr = self.DATASTRINGS[i]
                     dat = self.DATADICT[dstr]
                     Y = dat[a:b] # y data in current range

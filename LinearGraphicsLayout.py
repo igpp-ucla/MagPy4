@@ -1,9 +1,8 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
-from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 
-# based off class here
+# based off class here, except i wanted a linear version (deleted a lot of stuff i wasnt gonna use to save time)
 #https://github.com/pyqtgraph/pyqtgraph/blob/develop/pyqtgraph/graphicsItems/GraphicsLayout.py
 # ref for qt layout component
 #http://doc.qt.io/qt-5/qgraphicslinearlayout.html
