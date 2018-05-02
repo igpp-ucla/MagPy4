@@ -73,7 +73,7 @@ class LogAxis(pg.AxisItem):
     def __init__(self, *args, **kwargs):
         pg.AxisItem.__init__(self, *args, **kwargs)
 
-        self.tickFont=QtGui.QFont()
+        self.tickFont = QtGui.QFont()
         self.tickFont.setPixelSize(14)
         self.style['maxTextLevel'] = 1 # never have any subtick labels
         self.style['textFillLimits'] = [(0,1.1)] # try to always draw labels
@@ -128,6 +128,25 @@ class SpectraInfiniteLine(pg.InfiniteLine):
             x = self.getXPos()
             self.window.updateSpectra(self.index,x)
 
+class SpectraViewBox(pg.ViewBox): # custom viewbox event handling
+    def __init__(self, *args, **kwds):
+        pg.ViewBox.__init__(self, *args, **kwds)
+
+    # overriding part of this function to get resizing to work correctly with
+    # manual y range override and fixed aspect ratio settings
+    def updateViewRange(self, forceX=False, forceY=False):
+        tr = self.targetRect()
+        bounds = self.rect()
+        aspect = self.state['aspectLocked']
+        if aspect is not False and 0 not in [aspect, tr.height(), bounds.height(), bounds.width()]:
+            targetRatio = tr.width()/tr.height() if tr.height() != 0 else 1
+            viewRatio = (bounds.width() / bounds.height() if bounds.height() != 0 else 1) / aspect
+            viewRatio = 1 if viewRatio == 0 else viewRatio
+            if viewRatio > targetRatio:
+                pg.ViewBox.updateViewRange(self,False,True) 
+                return
+        pg.ViewBox.updateViewRange(self,forceX,forceY) #default
+
 class Spectra(QtWidgets.QFrame, SpectraUI):
     def __init__(self, window, parent=None):
         super(Spectra, self).__init__(parent)
@@ -142,15 +161,15 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
         self.updateSpectra()
 
+    # todo only send close event if ur current spectra
     def closeEvent(self, event):
-        # hide spectra lines in window
         self.window.spectraStep = 0
-        for pi in self.window.plotItems:
-            for line in pi.getViewBox().spectLines:
-                line.hide()
+        self.window.hideAllSpectraLines()
 
+    # some weird stuff is going on in here because there was many conflicts 
+    # with combining linked y range between plots of each row, log scale, and fixed aspect ratio settings
     def updateSpectra(self):
-        dataStrings = self.window.getSpectraPlots()
+        plotInfos = self.window.getSpectraPlotInfo()
         indices = self.window.getSpectraRangeIndices()
         self.N = indices[1] - indices[0]
         #print(self.N)
@@ -165,32 +184,52 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         oneTracePerPlot = self.ui.oneTracePerCheckBox.isChecked()
         aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
         numberPlots = 0
-        for strList in dataStrings:
+        curRow = [] # list of plot items in rows of spectra
+        for listIndex, (strList,penList) in enumerate(plotInfos):
             for i,dstr in enumerate(strList):
                 if i == 0 or oneTracePerPlot:
-                    pi = pg.PlotItem(axisItems={'bottom':LogAxis(orientation='bottom'), 'left':LogAxis(orientation='left')})
+                    pi = pg.PlotItem(viewBox = SpectraViewBox(), axisItems={'bottom':LogAxis(orientation='bottom'), 'left':LogAxis(orientation='left')})
                     if aspectLocked:
                         pi.setAspectLocked()
                     titleString = ''
                     pi.setLogMode(True, True)
+                    pi.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False) # disabled so doesnt interfere with custom range settings
                     numberPlots += 1
+                    powers = []
 
-                p = self.window.pens[min(i,len(self.window.pens) - 1)]
-                data = self.window.DATADICTNOGAPS[dstr][indices[0]:indices[1]]
+                # calculate spectra
+                data = self.window.DATADICTNOGAPS[dstr][indices[0]:indices[1]] #spectra cant have gaps
                 fft = fftpack.rfft(data.tolist())
                 power = self.calculatePower(fft)
-                titleString = f"{titleString} <span style='color:{p.color().name()};'>{dstr}</span>"
-                #f"<span style='color:{p.color().name()};'>{dstr}</span>\n"
 
-                #print(f'freqLen {len(freq)} powLen {len(power)}')
+                pen = penList[i]
+                titleString = f"{titleString} <span style='color:{pen.color().name()};'>{dstr}</span>"
+                pi.plot(freq, power, pen=pen)
+                powers.append(power)
 
-                pi.plot(freq, power, pen=p)
-
-                if i == len(strList)-1 or oneTracePerPlot:
-                    pi.setLabels(title=titleString, left='Power', bottom='Frequency')
+                # this part figures out layout of plots into rows depending on settings
+                # also links the y scale of each row together
+                lastPlotInList = i == len(strList) - 1
+                lastPlotInWhole = listIndex == len(plotInfos)-1
+                if lastPlotInList or oneTracePerPlot:
+                    pi.setLabels(title=titleString, left='Power', bottom='Frequency(Hz)')
                     self.ui.grid.addItem(pi)
-                    if numberPlots % 4 == 0:
+                    curRow.append((pi,powers))
+                    if numberPlots % 4 == 0 or (lastPlotInList and lastPlotInWhole):
                         self.ui.grid.nextRow()
+                        # scale each plot to use same y range
+                        # the viewRange function was returning incorrect results so had to do manually
+                        minVal = np.inf
+                        maxVal = -np.inf
+                        for item in curRow:
+                            for pow in item[1]:
+                                minVal = min(minVal, min(pow))
+                                maxVal = max(maxVal, max(pow))
+                        minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
+                        maxVal = np.log10(maxVal)
+                        for item in curRow:
+                            item[0].setYRange(minVal,maxVal)
+                        curRow.clear()
 
         # draw some text info like time range and file and stuff
         li = pg.LabelItem()
@@ -204,13 +243,10 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         startDate = FFTIME(min(s0,s1), Epoch=self.window.epoch).UTC
         endDate = FFTIME(max(s0,s1), Epoch=self.window.epoch).UTC
 
+        labelText = f'{labelText}<br>FREQ BANDS {self.N}'
         labelText = f'{labelText}<br>TIME {startDate} -> {endDate}'
 
-
         li.item.setHtml(labelText)
-        #filename
-        #time range, resolution
-        #number freq samples or something
         self.ui.labelLayout.addItem(li)
 
         ## end of def

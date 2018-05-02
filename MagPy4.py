@@ -65,7 +65,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # setup pens
         self.pens = []
-        colors = ['#0000ff','#00ff00','#ff0000','#000000'] # b g r black
+        colors = ['#0000ff','#009900','#ff0000','#000000'] # b darkgreen r black
         for c in colors:
             self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
         self.trackerPen = pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine)
@@ -94,12 +94,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.spectraStep = 1
             self.ui.actionSpectra.setText('Complete Spectra')
         elif txt == 'Complete Spectra':
-            # get current time range and list of spectra groups
+            self.ui.actionSpectra.setText('Spectra')
+            if self.spectraStep == 1:
+                self.spectraStep = 0
+                self.hideAllSpectraLines()
             if self.spectraStep == 2:
                 spectra = Spectra(self)
                 spectra.show()
                 self.spectras.append(spectra) # so reference is held until closed
-                self.ui.actionSpectra.setText('Spectra')
+
 
     def showData(self):
         self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
@@ -123,9 +126,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             return data
 
         firstData = np.argmax(data < self.errorFlag) #first non error piece of data
-        cons = np.split(segments, np.where(np.diff(segments) != 1)[0]+1)
+        cons = np.split(segments, np.where(np.diff(segments) != 1)[0] + 1)
         for arr in cons:
-            di = arr[0]-1
+            di = arr[0] - 1
             if di < 0:
                 di = firstData
             dat = data[di]
@@ -134,7 +137,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         return data
 
-    def swapMode(self):
+    def swapMode(self): #todo: add option to just compile to one version or other with a bool swap as well
         txt = self.ui.switchMode.text()
         self.insightMode = not self.insightMode
         txt = 'Switch to MMS' if self.insightMode else 'Switch to MarsPy'
@@ -396,6 +399,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.lastLinkMatrix = fMatrix
         self.plotItems = []
         self.plotDataStrings = [] # for each plot a list of strings for data contained within
+        self.plotTracePens = [] # a list of pens for each trace (saved for consistency with spectra)
 
         # add label for file name at top right
         fileNameLabel = pg.LabelItem()
@@ -445,15 +449,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 ba.setStyle(showValues=False)
 
             # add traces for each data checked for this axis
-            traces = 0 # number of traces on this axis
             axisString = ''
             unit = ''
             plotStrs = []
+            tracePens = []
+            traceIndex = 0
+            traceCount = 0
+            for b in bAxis:
+                if b:
+                    traceCount+=1
             for i,b in enumerate(bAxis):
                 if not b: # axis isn't checked so its not gona be on this plot
                     continue
 
-                p = self.pens[min(traces,len(self.pens) - 1)] #if more traces on this axis than pens, use last pen
                 dstr = self.DATASTRINGS[i]
                 Y = self.DATADICT[dstr] if self.ui.showDataGapsAction.isChecked() else self.DATADICTNOGAPS[dstr]                
                 u = self.UNITDICT[dstr]
@@ -461,6 +469,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 if len(Y) <= 1: # not sure if this can happen but just incase
                     continue
 
+                # figure out which pen to use
+                numPens = len(self.pens)
+                if traceCount == 1: # if just one trace then base it off which plot
+                    penIndex = plotIndex % numPens
+                else: # else if base off trace index, capped at pen count
+                    penIndex = min(traceIndex,numPens - 1) 
+                pen = self.pens[penIndex]
+
+                #save these so spectra can stay synced with main plot
+                tracePens.append(pen)
                 plotStrs.append(dstr)
 
                 # figure out if each axis trace shares same unit
@@ -470,7 +488,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     unit = None
 
                 # build the axis label string for this plot
-                axisString += f"<span style='color:{p.color().name()};'>{dstr}</span>\n" #font-weight: bold
+                axisString += f"<span style='color:{pen.color().name()};'>{dstr}</span>\n" #font-weight: bold
 
                 #was using self.errorFlag but sometimes its diffent, prob error in way files were made so just using 1e33
                 segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
@@ -482,14 +500,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                         st += 1
                     if st >= seg:
                         continue
-                    pi.plot(self.times[st:seg], Y[st:seg], pen=p)
+                    pi.plot(self.times[st:seg], Y[st:seg], pen=pen)
                     st = seg + 1
-                traces += 1
+                traceIndex += 1
 
-                # trying to figure out how to just plot pixels
-                #pi.plot(self.times, Y, pen=None,symbolSize=1,
-                #symbolPen=p,symbolBrush=None,pxMode=True)
             self.plotDataStrings.append(plotStrs)
+            self.plotTracePens.append(tracePens)
 
             # draw horizontal line if plot crosses zero
             vr = pi.viewRange()
@@ -512,6 +528,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
             # add Y axis label based on traces
             li = pg.LabelItem()
+            # could just switch to using <br>'s probably instead
             li.item.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{axisString}</span>")
             self.ui.glw.addItem(li)
 
@@ -608,11 +625,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for pi in self.plotItems:
             pi.getViewBox().spectLines[index].setPos(x)
 
-    def hideAllSpectraLinesExcept(self, vb):
+    def hideAllSpectraLines(self, exc=None): # can allow optional viewbox exception
         for pi in self.plotItems:
-            if pi.getViewBox() is not vb:
-                for i in range(2):
-                    pi.getViewBox().spectLines[i].hide()
+            vb = pi.getViewBox()
+            if exc is not vb:
+                for line in pi.getViewBox().spectLines:
+                    line.hide()
 
     # gets indices into time array for selected spectra range
     # makes sure first is less than second
@@ -621,13 +639,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         r1 = self.calcTickIndexByTime(self.spectraRange[1])
         return [min(r0,r1),max(r0,r1)]
 
-    # based on which plots have active spectra lines, return list of lists of their data strings
-    def getSpectraPlots(self):
-        spectraPlots = []
+    # based on which plots have active spectra lines, return list for each plot of the datastr and pen for each trace
+    def getSpectraPlotInfo(self):
+        plotInfo = []
         for i,pi in enumerate(self.plotItems):
             if pi.getViewBox().spectLines[1].isVisible():
-                spectraPlots.append(self.plotDataStrings[i])
-        return spectraPlots
+                plotInfo.append((self.plotDataStrings[i], self.plotTracePens[i]))
+        return plotInfo
+
+    def anySpectraSelected(self):
+        for i,pi in enumerate(self.plotItems):
+            if pi.getViewBox().spectLines[1].isVisible():
+                return True
+        return False
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
@@ -669,7 +693,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         y = mc.y()
         if self.window.spectraStep > 0: # if making a spectra selection
             if self.window.spectraStep == 2:
-                if len(self.window.getSpectraPlots()) == 0:
+                if not self.window.anySpectraSelected():
                     self.window.spectraStep = 1
 
             if self.window.spectraStep == 1: # time range is not yet selected
@@ -683,7 +707,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                     self.window.spectraRange[0] = self.spectLines[0].getPos()[0]
                     self.window.spectraRange[1] = x
                     self.window.spectraStep = 2
-                    self.window.hideAllSpectraLinesExcept(self)
+                    self.window.hideAllSpectraLines(self)
             elif self.window.spectraStep == 2: # a time range is already selected
                 for i,line in enumerate(self.spectLines):
                     line.show()
