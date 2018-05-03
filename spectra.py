@@ -12,7 +12,7 @@ from FF_Time import FFTIME
 class SpectraUI(object):
     def setupUI(self, Frame):
         Frame.setWindowTitle('Spectra')
-        Frame.resize(500,500)
+        Frame.resize(750,500)
 
         layout = QtWidgets.QVBoxLayout(Frame)
 
@@ -194,6 +194,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     titleString = ''
                     pi.setLogMode(True, True)
                     pi.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False) # disabled so doesnt interfere with custom range settings
+                    pi.hideButtons() # hide autoscale button
                     numberPlots += 1
                     powers = []
 

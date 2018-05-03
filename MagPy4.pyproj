@@ -30,6 +30,9 @@
     <Compile Include="dataDisplay.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="edit.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="ffPy\FF_DESC.py" />
     <Compile Include="ffPy\FF_File.py" />
     <Compile Include="ffPy\FF_INFO.py" />

@@ -180,6 +180,7 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
                 checkBox = QtWidgets.QCheckBox()
                 if r < len(cbools) and len(cbools) > 0 and i < len(cbools[0]):
                     checkBox.setChecked(cbools[r][i])
+                # add callback with predefined arguments here
                 checkBox.stateChanged.connect(functools.partial(self.checkPlotLinks, checkBox, r, i))
                 row.append(checkBox)
                 fgrid.addWidget(checkBox,r+1,i+1,1,1)      

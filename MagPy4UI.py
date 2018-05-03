@@ -37,6 +37,10 @@ class MagPy4UI(object):
         self.actionSpectra.setText('Spectra')
         self.toolBar.addAction(self.actionSpectra)
 
+        self.actionEdit = QtWidgets.QAction(MagPy4)
+        self.actionEdit.setText('Edit')
+        self.toolBar.addAction(self.actionEdit)
+
         # add options popup menu for toggled things
         options = QtWidgets.QToolButton()
         menu = QtWidgets.QMenu()

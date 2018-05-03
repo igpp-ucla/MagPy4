@@ -5,7 +5,7 @@ import sys
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
-import numpy as np #make sure to use numpy 1.13, later versions have problems with ffPy library
+import numpy as np #make sure to use numpy 1.13, later versions have problems with ffPy string serialization
 import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
@@ -14,6 +14,7 @@ from MagPy4UI import MagPy4UI
 from plotTracer import PlotTracer
 from spectra import Spectra, SpectraInfiniteLine
 from dataDisplay import DataDisplay, UTCQDate
+from edit import Edit
 
 import time
 
@@ -41,6 +42,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionOpen.triggered.connect(self.openFileDialog)
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionSpectra.triggered.connect(self.runSpectra)
+        self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.insightMode = False
 
@@ -103,6 +105,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 spectra.show()
                 self.spectras.append(spectra) # so reference is held until closed
 
+    def openEdit(self):
+        self.edit = Edit(self)
+        self.edit.show()
 
     def showData(self):
         self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
@@ -111,6 +116,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def toggleAntialiasing(self):
         pg.setConfigOption('antialias', self.ui.antialiasAction.isChecked())
         self.plotData()
+        for spectra in self.spectras:
+            if spectra is not None:
+                spectra.updateSpectra()
 
     # seems stupid but done to avoid extra arguments passed by action callbacks interfering with plotData
     def replotData(self):
