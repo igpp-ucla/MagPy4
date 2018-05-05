@@ -9,7 +9,7 @@ from FF_Time import FFTIME
 import functools
 
 class EditUI(object):
-    def setupUI(self, Frame):
+    def setupUI(self, Frame, window):
         Frame.setWindowTitle('Edit')
         Frame.resize(630,500)
 
@@ -59,18 +59,32 @@ class EditUI(object):
         horizLayout.addWidget(self.opFrame,1)
         horizLayout.addWidget(self.rotFrame,2)
 
-        self.buttonBox = QtWidgets.QDialogButtonBox(Frame)
-        self.buttonBox.setLayoutDirection(QtCore.Qt.RightToLeft)
-        self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Apply | QtGui.QDialogButtonBox.Reset)
 
         layout.addLayout(horizLayout)
 
+        extraButtons = QtWidgets.QHBoxLayout()
+
         self.identity = QtGui.QPushButton('Load Identity')
         self.identity.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-        layout.addWidget(self.identity)
+        extraButtons.addWidget(self.identity)
+
+        # init axis combobox dropdowns
+        keywords = ['X','Y','Z']
+        self.axisCombos = []
+        for kw in keywords:
+            combo = QtGui.QComboBox()
+            for s in window.DATASTRINGS:
+                if kw.lower() in s.lower():
+                    combo.addItem(s)
+            extraButtons.addWidget(combo)
+            self.axisCombos.append(combo)
+
+        layout.addLayout(extraButtons)
 
         layout.addStretch()
-        layout.addWidget(self.buttonBox)
+        self.apply = QtGui.QPushButton('Apply')
+        self.apply.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+        layout.addWidget(self.apply)
 
         # testing
         self.A[0][2].setText('1.0')
@@ -84,7 +98,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         super(Edit, self).__init__(parent)
         self.window = window
         self.ui = EditUI()
-        self.ui.setupUI(self)
+        self.ui.setupUI(self, window)
 
         self.i = [0, 1, 2]
         self.IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
@@ -93,6 +107,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.operate.clicked.connect(self.operate)
         self.ui.download.clicked.connect(self.download)
         self.ui.identity.clicked.connect(functools.partial(self.setMatrix, self.ui.A, self.IDENTITY))
+        self.ui.apply.clicked.connect(self.apply)
 
     def empty(self): # return new 2D list
         return [[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]]
@@ -146,3 +161,63 @@ class Edit(QtWidgets.QFrame, EditUI):
                 for i in self.i:
                     N[r][c] += A[r][i] * R[i][c]
         self.setMatrix(self.ui.R, N)
+
+
+    # do some speed analysis here maybe 
+    # try storing in A = [] array for each axis 
+    # in for loop just do one at a time rather than all at once see if faster
+    def applyOld(self):
+        import time
+        startTime = time.time()
+
+        xstr = self.ui.axisCombos[0].currentText()
+        ystr = self.ui.axisCombos[1].currentText()
+        zstr = self.ui.axisCombos[2].currentText()
+
+        # use nogaps for now?
+        X = self.window.DATADICTNOGAPS[xstr]
+        Y = self.window.DATADICTNOGAPS[ystr]
+        Z = self.window.DATADICTNOGAPS[zstr]
+
+        R = self.getMatrix(self.ui.R)
+        for i in range(len(X)): # not sure how should operate on subsets
+            x = X[i] * R[0][0] + Y[i] * R[1][0] + Z[i] * R[2][0]
+            y = X[i] * R[0][1] + Y[i] * R[1][1] + Z[i] * R[2][1]
+            z = X[i] * R[0][2] + Y[i] * R[1][2] + Z[i] * R[2][2]
+            X[i] = x
+            Y[i] = y
+            Z[i] = z
+
+        self.window.DATAROTATED[xstr].append(X)
+        self.window.DATAROTATED[ystr].append(Y)
+        self.window.DATAROTATED[zstr].append(Z)
+
+        print(time.time() - startTime)
+
+        self.window.replotData()
+
+
+    def apply(self):
+        import time
+        startTime = time.time()
+
+        xstr = self.ui.axisCombos[0].currentText()
+        ystr = self.ui.axisCombos[1].currentText()
+        zstr = self.ui.axisCombos[2].currentText()
+
+        # use nogaps for now?
+        X = self.window.DATADICTNOGAPS[xstr]
+        Y = self.window.DATADICTNOGAPS[ystr]
+        Z = self.window.DATADICTNOGAPS[zstr]
+
+        R = self.getMatrix(self.ui.R)
+        A = np.column_stack((X,Y,Z))
+        M = np.matmul(A,R)
+
+        self.window.DATAROTATED[xstr].append(M[:,0])
+        self.window.DATAROTATED[ystr].append(M[:,1])
+        self.window.DATAROTATED[zstr].append(M[:,2])
+
+        print(time.time() - startTime)
+
+        self.window.replotData()

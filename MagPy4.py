@@ -239,11 +239,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.DATADICT = {} # maps strings to data array
         self.DATADICTNOGAPS = {}
+        self.DATAROTATED = {}
         self.UNITDICT = {} # maps strings to string unit
         for i, dstr in enumerate(self.DATASTRINGS):
             datas = np.array(self.dataByRec[:,i])
             self.DATADICT[dstr] = datas
             self.DATADICTNOGAPS[dstr] = self.replaceErrorsWithLast(datas)
+            self.DATAROTATED[dstr] = [] # add empty list and check if has entries when plotting
 
             self.UNITDICT[dstr] = units[i]
 
@@ -471,8 +473,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     continue
 
                 dstr = self.DATASTRINGS[i]
-                Y = self.DATADICT[dstr] if self.ui.showDataGapsAction.isChecked() else self.DATADICTNOGAPS[dstr]                
                 u = self.UNITDICT[dstr]
+                # check to see if rotated data to display
+                rotData = self.DATAROTATED[dstr]
+                lrd = len(rotData)
+                if lrd > 0:
+                    Y = rotData[lrd-1]
+                else:
+                    Y = self.DATADICT[dstr] if self.ui.showDataGapsAction.isChecked() else self.DATADICTNOGAPS[dstr]                
 
                 if len(Y) <= 1: # not sure if this can happen but just incase
                     continue
@@ -570,7 +578,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     if a > b: # so sliders work either way
                         a,b = b,a
 
-                    # todo just switch this to use GAPLESS data instead, prob faster
+                    # todo just switch this to use GAPLESS data instead, prob faster and wont change result of range
                     dstr = self.DATASTRINGS[i]
                     dat = self.DATADICT[dstr]
                     Y = dat[a:b] # y data in current range
