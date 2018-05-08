@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import QSizePolicy
 #import pyqtgraph as pg
 import numpy as np
 from FF_Time import FFTIME
+from math import sin, cos, acos, fabs, pi
 
 import functools
 
@@ -16,11 +17,12 @@ class EditUI(object):
         layout = QtWidgets.QVBoxLayout(Frame)
 
         horizLayout = QtWidgets.QHBoxLayout()
-        self.matrixPanel = QtGui.QWidget(Frame)
+
+        self.axes = ['X','Y','Z']
 
         # matrix A setup
-        self.gridFrame = QtWidgets.QGroupBox('Matrix A')
-        self.agrid = QtWidgets.QGridLayout(self.gridFrame)
+        gridFrame = QtWidgets.QGroupBox('Matrix A')
+        self.agrid = QtWidgets.QGridLayout(gridFrame)
         self.A = []
         for y in range(3):
             row = []
@@ -33,8 +35,8 @@ class EditUI(object):
             self.A.append(row)
 
         # operator setup
-        self.opFrame = QtWidgets.QGroupBox('Operators')
-        self.opLayout = QtWidgets.QVBoxLayout(self.opFrame)
+        opFrame = QtWidgets.QGroupBox('Operators')
+        self.opLayout = QtWidgets.QVBoxLayout(opFrame)
         self.upload = QtGui.QPushButton('A => R')
         self.operate = QtGui.QPushButton('AxR => R')
         self.download = QtGui.QPushButton('A <= R')
@@ -43,55 +45,80 @@ class EditUI(object):
         self.opLayout.addWidget(self.download)
 
         # matrix R setup
-        self.rotFrame = QtWidgets.QGroupBox('Rotation Matrix')
-        self.rgrid = QtWidgets.QGridLayout(self.rotFrame)
+        rotFrame = QtWidgets.QGroupBox('Rotation Matrix')
+        self.rgrid = QtWidgets.QGridLayout(rotFrame)
         self.R = []
         for y in range(3):
             row = []
             for x in range(3):
-                label = QtGui.QLabel()
-                label.setText('0.0')
+                label = QtGui.QLabel('0.0')
                 self.rgrid.addWidget(label, y, x, 1, 1)
                 row.append(label)
             self.R.append(row)
 
-        horizLayout.addWidget(self.gridFrame,2)
-        horizLayout.addWidget(self.opFrame,1)
-        horizLayout.addWidget(self.rotFrame,2)
-
-
+        horizLayout.addWidget(gridFrame,2)
+        horizLayout.addWidget(opFrame,1)
+        horizLayout.addWidget(rotFrame,2)
         layout.addLayout(horizLayout)
 
         extraButtons = QtWidgets.QHBoxLayout()
 
         self.identity = QtGui.QPushButton('Load Identity')
         self.identity.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+
         extraButtons.addWidget(self.identity)
-
-        # init axis combobox dropdowns
-        keywords = ['X','Y','Z']
-        self.axisCombos = []
-        for kw in keywords:
-            combo = QtGui.QComboBox()
-            for s in window.DATASTRINGS:
-                if kw.lower() in s.lower():
-                    combo.addItem(s)
-            extraButtons.addWidget(combo)
-            self.axisCombos.append(combo)
-
+        extraButtons.addStretch()
         layout.addLayout(extraButtons)
 
+        midHoriz = QtWidgets.QHBoxLayout()
+
+        # axis rotation frame
+        axisFrame = QtWidgets.QGroupBox('Axis Rotation')
+        axisRotation = QtWidgets.QHBoxLayout(axisFrame)
+        angleLabel = QtGui.QLabel('Angle')
+        angleLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.axisAngle = QtGui.QDoubleSpinBox()
+        self.axisAngle.setWrapping(True)
+        self.axisAngle.setMaximum(360.0)
+        self.axisAngle.setSuffix('\u00B0')
+        self.axisAngle.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        axisRotation.addWidget(angleLabel)
+        axisRotation.addWidget(self.axisAngle)
+        self.genButtons = []
+        for ax in self.axes:
+            gb = QtGui.QPushButton(f'Gen {ax}')
+            axisRotation.addWidget(gb)
+            self.genButtons.append(gb)
+        midHoriz.addWidget(axisFrame)
+
+        vectorSelectFrame = QtWidgets.QGroupBox('Data Vector')
+        vectorSelect = QtWidgets.QHBoxLayout(vectorSelectFrame)
+        # init data vector combobox dropdowns
+        self.axisCombos = []
+        for ax in self.axes:
+            combo = QtGui.QComboBox()
+            combo.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+            for s in window.DATASTRINGS:
+                if ax.lower() in s.lower():
+                    combo.addItem(s)
+            vectorSelect.addWidget(combo)
+            self.axisCombos.append(combo)
+        midHoriz.addWidget(vectorSelectFrame)
+
+        layout.addLayout(midHoriz)
+
         layout.addStretch()
+
+        # bottom area with apply button
+        bottomLayout = QtGui.QHBoxLayout()
         self.apply = QtGui.QPushButton('Apply')
         self.apply.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-        layout.addWidget(self.apply)
+        bottomLayout.addWidget(self.apply)
+        applyLabel = QtGui.QLabel('Multiplies data vector by rotation matrix')
+        bottomLayout.addWidget(applyLabel)
+        layout.addLayout(bottomLayout)
 
-        # testing
-        self.A[0][2].setText('1.0')
-        self.A[1][0].setText('2.0')
 
-        #layout.addWidget(self.gridFrame)
-        #layout.addWidget(self.opFrame)
 class Edit(QtWidgets.QFrame, EditUI):
 
     def __init__(self, window, parent=None):
@@ -102,12 +129,20 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         self.i = [0, 1, 2]
         self.IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+        self.FLAG = 1.e-10
+        self.D2R = pi / 180.0 # degree to rad conversion constant
 
         self.ui.upload.clicked.connect(self.upload)
         self.ui.operate.clicked.connect(self.operate)
         self.ui.download.clicked.connect(self.download)
         self.ui.identity.clicked.connect(functools.partial(self.setMatrix, self.ui.A, self.IDENTITY))
         self.ui.apply.clicked.connect(self.apply)
+
+        for i,gb in enumerate(self.ui.genButtons):
+            gb.clicked.connect(functools.partial(self.axisRotGen, self.ui.axes[i]))
+
+        self.setMatrix(self.ui.A, self.IDENTITY)
+        self.setMatrix(self.ui.R, self.IDENTITY)
 
     def empty(self): # return new 2D list
         return [[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]]
@@ -146,6 +181,29 @@ class Edit(QtWidgets.QFrame, EditUI):
                 else:
                     mat[i][j].setText(f'{n:.4f}')
 
+    def axisRotGen(self, axis):
+        R = self.genAxisRotationMatrix(axis)
+        self.setMatrix(self.ui.A, R)
+
+    # axis is x,y,z
+    def genAxisRotationMatrix(self, axis):
+        angle = self.ui.axisAngle.value() * self.D2R
+        s = sin(angle)
+        c = cos(angle)
+        if fabs(s) < self.FLAG:
+            s = 0
+        if fabs(c) < self.FLAG:
+            c = 0
+        ax = axis.lower()
+        if ax == 'x':
+            return [[1, 0, 0], [0, c, s], [0, -s, c]]
+        if ax == 'y':
+            return [[c, 0, -s], [0, 1, 0], [s, 0, c]]
+        if ax == 'z':
+            return [[c, s, 0], [-s, c, 0], [0, 0, 1]]
+        print(f'unknown axis "{ax}"')
+        return self.copy(self.IDENTITY)
+
     def upload(self):
         self.setMatrix(self.ui.R, self.getMatrix(self.ui.A))
 
@@ -162,6 +220,7 @@ class Edit(QtWidgets.QFrame, EditUI):
                     N[r][c] += A[r][i] * R[i][c]
         self.setMatrix(self.ui.R, N)
 
+    # stacks up chosen x y z vector, multiplies by rotation matrix, then replot
     def apply(self):
         xstr = self.ui.axisCombos[0].currentText()
         ystr = self.ui.axisCombos[1].currentText()
