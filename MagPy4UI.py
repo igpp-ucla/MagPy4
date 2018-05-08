@@ -46,10 +46,10 @@ class MagPy4UI(object):
         menu = QtWidgets.QMenu()
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('Scale y range to current time selection',checkable=True,checked=True)
         self.antialiasAction = QtWidgets.QAction('Smooth lines (antialiasing)',checkable=True,checked=True)
-        self.showDataGapsAction = QtWidgets.QAction('Show Data Gaps', checkable=True, checked=True)
+        self.bridgeDataGaps = QtWidgets.QAction('Bridge Data Gaps', checkable=True, checked=False)
         menu.addAction(self.scaleYToCurrentTimeAction)
         menu.addAction(self.antialiasAction)
-        menu.addAction(self.showDataGapsAction)
+        menu.addAction(self.bridgeDataGaps)
         options.setMenu(menu)
         options.setText('Options ') # extra space for little arrow icon
         options.setPopupMode(QtWidgets.QToolButton.InstantPopup)

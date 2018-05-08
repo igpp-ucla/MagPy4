@@ -199,7 +199,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     powers = []
 
                 # calculate spectra
-                data = self.window.DATADICTNOGAPS[dstr][indices[0]:indices[1]] #spectra cant have gaps
+                data = self.window.DATADICTNOGAPS[dstr][-1][indices[0]:indices[1]] #spectra cant have gaps
                 fft = fftpack.rfft(data.tolist())
                 power = self.calculatePower(fft)
 

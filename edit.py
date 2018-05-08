@@ -162,41 +162,6 @@ class Edit(QtWidgets.QFrame, EditUI):
                     N[r][c] += A[r][i] * R[i][c]
         self.setMatrix(self.ui.R, N)
 
-
-    # do some speed analysis here maybe 
-    # try storing in A = [] array for each axis 
-    # in for loop just do one at a time rather than all at once see if faster
-    def applyOld(self):
-        import time
-        startTime = time.time()
-
-        xstr = self.ui.axisCombos[0].currentText()
-        ystr = self.ui.axisCombos[1].currentText()
-        zstr = self.ui.axisCombos[2].currentText()
-
-        # use nogaps for now?
-        X = self.window.DATADICTNOGAPS[xstr]
-        Y = self.window.DATADICTNOGAPS[ystr]
-        Z = self.window.DATADICTNOGAPS[zstr]
-
-        R = self.getMatrix(self.ui.R)
-        for i in range(len(X)): # not sure how should operate on subsets
-            x = X[i] * R[0][0] + Y[i] * R[1][0] + Z[i] * R[2][0]
-            y = X[i] * R[0][1] + Y[i] * R[1][1] + Z[i] * R[2][1]
-            z = X[i] * R[0][2] + Y[i] * R[1][2] + Z[i] * R[2][2]
-            X[i] = x
-            Y[i] = y
-            Z[i] = z
-
-        self.window.DATAROTATED[xstr].append(X)
-        self.window.DATAROTATED[ystr].append(Y)
-        self.window.DATAROTATED[zstr].append(Z)
-
-        print(time.time() - startTime)
-
-        self.window.replotData()
-
-
     def apply(self):
         import time
         startTime = time.time()
@@ -206,17 +171,17 @@ class Edit(QtWidgets.QFrame, EditUI):
         zstr = self.ui.axisCombos[2].currentText()
 
         # use nogaps for now?
-        X = self.window.DATADICTNOGAPS[xstr]
-        Y = self.window.DATADICTNOGAPS[ystr]
-        Z = self.window.DATADICTNOGAPS[zstr]
+        X = self.window.DATADICTNOGAPS[xstr][-1]
+        Y = self.window.DATADICTNOGAPS[ystr][-1]
+        Z = self.window.DATADICTNOGAPS[zstr][-1]
 
         R = self.getMatrix(self.ui.R)
         A = np.column_stack((X,Y,Z))
         M = np.matmul(A,R)
 
-        self.window.DATAROTATED[xstr].append(M[:,0])
-        self.window.DATAROTATED[ystr].append(M[:,1])
-        self.window.DATAROTATED[zstr].append(M[:,2])
+        self.window.DATADICTNOGAPS[xstr].append(M[:,0])
+        self.window.DATADICTNOGAPS[ystr].append(M[:,1])
+        self.window.DATADICTNOGAPS[zstr].append(M[:,2])
 
         print(time.time() - startTime)
 

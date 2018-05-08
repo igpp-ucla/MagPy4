@@ -48,7 +48,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.ui.scaleYToCurrentTimeAction.triggered.connect(self.updateYRange)
         self.ui.antialiasAction.triggered.connect(self.toggleAntialiasing)
-        self.ui.showDataGapsAction.triggered.connect(self.replotData)
+        self.ui.bridgeDataGaps.triggered.connect(self.replotData)
 
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
@@ -78,6 +78,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if os.path.exists(starterFile + '.ffd'):
             self.openFile(starterFile)
             self.plotDataDefault()
+
+        np.set_printoptions(precision=2)
+        test = np.array([1e34,1e34,1e34, 5, 1, 2, 2, 5, 1e34,1e34, 2, 1e34,1e34, 7, 7, 10, 1, 1, 1e34,1 ,3 ,1e34,1e34])
+        segs = self.getSegments(test)
+        print(segs)
+        fixd = self.replaceErrorsWithLast(test)
+        print(fixd)
+        #print(self.getSegments(np.array([1e34,1e34,1e34])))
+        #print(self.getSegments(np.array([1,2,1e34,3])))
+        #print(self.getSegments(np.array([1,2,3])))
+        #l = [0,1,2,3]
+        #print(l[0:2])
+        #print(l[0:3])
+        #print(l[0:4])
+        #print(l[0:5])
 
     def openTracer(self):
         if self.tracer is not None:
@@ -128,22 +143,33 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # faster than naive way
     def replaceErrorsWithLast(self,dataOrig):
         data = np.copy(dataOrig)
-
-        segments = np.where(data >= self.errorFlag)[0] # find spots where there are errors and make segments
-        if len(segments) == 0:
+        segs = self.getSegments(data)
+        if len(segs) == 0: # data is pure errors
             return data
 
-        firstData = np.argmax(data < self.errorFlag) #first non error piece of data
-        cons = np.split(segments, np.where(np.diff(segments) != 1)[0] + 1)
-        for arr in cons:
-            di = arr[0] - 1
-            if di < 0:
-                di = firstData
-            dat = data[di]
-            for i in arr:
-                data[i] = dat
+        # if first segment doesnt start at 0 
+        # set data 0 - X to data at X
+        first = segs[0][0]
+        if first != 0: 
+            data[0:first] = data[first]
+
+        # interate over the gaps in the segment list
+        for si in range(len(segs) - 1):
+            gO = segs[si][1] # start of gap
+            gE = segs[si+1][0] # end of gap
+            gSize = gE - gO + 1 # gap size
+            for i in range(gO,gE): # calculate gap values by lerping from start to end
+                t = (i - gO + 1) / gSize
+                data[i] = (1 - t) * data[gO - 1] + t * data[gE]
+
+        # if last segment doesnt end with last index of data
+        # then set data X - end based on X
+        last = segs[-1][1]
+        if last != len(data):
+            data[last-1:len(data)] = data[last-1]
 
         return data
+
 
     def swapMode(self): #todo: add option to just compile to one version or other with a bool swap as well
         txt = self.ui.switchMode.text()
@@ -239,13 +265,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.DATADICT = {} # maps strings to data array
         self.DATADICTNOGAPS = {}
-        self.DATAROTATED = {}
         self.UNITDICT = {} # maps strings to string unit
         for i, dstr in enumerate(self.DATASTRINGS):
             datas = np.array(self.dataByRec[:,i])
-            self.DATADICT[dstr] = datas
-            self.DATADICTNOGAPS[dstr] = self.replaceErrorsWithLast(datas)
-            self.DATAROTATED[dstr] = [] # add empty list and check if has entries when plotting
+            self.DATADICT[dstr] = [datas]
+            self.DATADICTNOGAPS[dstr] = [self.replaceErrorsWithLast(datas)]
 
             self.UNITDICT[dstr] = units[i]
 
@@ -396,6 +420,22 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 
         self.plotData(boolMatrix, links)
 
+    def getSegments(self, Y):
+        segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
+        segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
+        #print(f'SEGMENTS {len(segments)}')
+        segList = []
+        st = 0 #start index
+        for seg in segments: # collect start and end range of each segment
+            while st in segments:
+                st += 1
+            if st >= seg:
+                continue
+            segList.append((st,seg))
+            st = seg + 1
+        # returns empty list if data is pure errors
+        return segList
+
     # boolMatrix is same shape as the checkBox matrix but just bools
     def plotData(self, bMatrix=None, fMatrix=None):
         self.ui.glw.clear()
@@ -474,15 +514,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 dstr = self.DATASTRINGS[i]
                 u = self.UNITDICT[dstr]
-                # check to see if rotated data to display
-                rotData = self.DATAROTATED[dstr]
-                lrd = len(rotData)
-                if lrd > 0:
-                    Y = rotData[lrd-1]
-                else:
-                    Y = self.DATADICT[dstr] if self.ui.showDataGapsAction.isChecked() else self.DATADICTNOGAPS[dstr]                
+                Y = self.DATADICT[dstr][-1] if not self.ui.bridgeDataGaps.isChecked() else self.DATADICTNOGAPS[dstr][-1]          
 
                 if len(Y) <= 1: # not sure if this can happen but just incase
+                    print(f'Error: insufficient Y data for column "{dstr}"')
                     continue
 
                 # figure out which pen to use
@@ -506,18 +541,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 # build the axis label string for this plot
                 axisString += f"<span style='color:{pen.color().name()};'>{dstr}</span>\n" #font-weight: bold
 
-                #was using self.errorFlag but sometimes its diffent, prob error in way files were made so just using 1e33
-                segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
-                segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
-                #print(f'SEGMENTS {len(segments)}')
-                st = 0 #start index
-                for seg in segments: # draw each segment of trace
-                    while st in segments:
-                        st += 1
-                    if st >= seg:
-                        continue
-                    pi.plot(self.times[st:seg], Y[st:seg], pen=pen)
-                    st = seg + 1
+                segs = self.getSegments(Y)                    
+                for a,b in segs:
+                    pi.plot(self.times[a:b], Y[a:b], pen=pen)
                 traceIndex += 1
 
             self.plotDataStrings.append(plotStrs)
@@ -580,7 +606,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                     # todo just switch this to use GAPLESS data instead, prob faster and wont change result of range
                     dstr = self.DATASTRINGS[i]
-                    dat = self.DATADICT[dstr]
+                    dat = self.DATADICT[dstr][-1]
                     Y = dat[a:b] # y data in current range
                     segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
                     segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
