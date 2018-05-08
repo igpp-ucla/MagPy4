@@ -163,26 +163,20 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.setMatrix(self.ui.R, N)
 
     def apply(self):
-        import time
-        startTime = time.time()
-
         xstr = self.ui.axisCombos[0].currentText()
         ystr = self.ui.axisCombos[1].currentText()
         zstr = self.ui.axisCombos[2].currentText()
 
-        # use nogaps for now?
-        X = self.window.DATADICTNOGAPS[xstr][-1]
-        Y = self.window.DATADICTNOGAPS[ystr][-1]
-        Z = self.window.DATADICTNOGAPS[zstr][-1]
+        X = self.window.DATADICT[xstr][-1]
+        Y = self.window.DATADICT[ystr][-1]
+        Z = self.window.DATADICT[zstr][-1]
 
         R = self.getMatrix(self.ui.R)
         A = np.column_stack((X,Y,Z))
         M = np.matmul(A,R)
 
-        self.window.DATADICTNOGAPS[xstr].append(M[:,0])
-        self.window.DATADICTNOGAPS[ystr].append(M[:,1])
-        self.window.DATADICTNOGAPS[zstr].append(M[:,2])
-
-        print(time.time() - startTime)
+        self.window.DATADICT[xstr].append(M[:,0])
+        self.window.DATADICT[ystr].append(M[:,1])
+        self.window.DATADICT[zstr].append(M[:,2])
 
         self.window.replotData()

@@ -87,7 +87,7 @@ class UTCQDate():
     FORMAT2 = "yyyy MMM dd hh:mm:ss.zzz"
     FORMAT3 = "yyyy MMM dd  hh:mm:ss.zzz"
 
-    def removeDOY(UTC):
+    def removeDOY(UTC): # should just add this as option to ffPy?
         cut = UTC[4:8]
         return UTC.replace(cut, '').strip()
 

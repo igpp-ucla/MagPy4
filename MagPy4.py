@@ -79,20 +79,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.openFile(starterFile)
             self.plotDataDefault()
 
-        np.set_printoptions(precision=2)
-        test = np.array([1e34,1e34,1e34, 5, 1, 2, 2, 5, 1e34,1e34, 2, 1e34,1e34, 7, 7, 10, 1, 1, 1e34,1 ,3 ,1e34,1e34])
-        segs = self.getSegments(test)
-        print(segs)
-        fixd = self.replaceErrorsWithLast(test)
-        print(fixd)
-        #print(self.getSegments(np.array([1e34,1e34,1e34])))
-        #print(self.getSegments(np.array([1,2,1e34,3])))
-        #print(self.getSegments(np.array([1,2,3])))
-        #l = [0,1,2,3]
-        #print(l[0:2])
-        #print(l[0:3])
-        #print(l[0:4])
-        #print(l[0:5])
 
     def openTracer(self):
         if self.tracer is not None:
@@ -139,7 +125,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def replotData(self):
         self.plotData()
 
-    # this smooths over data gaps, required for spectra analysis i guess
+    # this smooths over data gaps, required for spectra analysis?
     # faster than naive way
     def replaceErrorsWithLast(self,dataOrig):
         data = np.copy(dataOrig)
@@ -154,9 +140,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             data[0:first] = data[first]
 
         # interate over the gaps in the segment list
+        # this could prob be sped up somehow
         for si in range(len(segs) - 1):
             gO = segs[si][1] # start of gap
-            gE = segs[si+1][0] # end of gap
+            gE = segs[si + 1][0] # end of gap
             gSize = gE - gO + 1 # gap size
             for i in range(gO,gE): # calculate gap values by lerping from start to end
                 t = (i - gO + 1) / gSize
@@ -166,7 +153,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # then set data X - end based on X
         last = segs[-1][1]
         if last != len(data):
-            data[last-1:len(data)] = data[last-1]
+            data[last - 1:len(data)] = data[last - 1]
 
         return data
 
@@ -263,13 +250,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.DATASTRINGS = self.FID.getColumnDescriptor("NAME")[1:]
         units = self.FID.getColumnDescriptor("UNITS")[1:]
 
-        self.DATADICT = {} # maps strings to data array
-        self.DATADICTNOGAPS = {}
+        self.ORIGDATADICT = {} # maps string to original data array
+        self.DATADICT = {}  # stores smoothed version of data and all modifications (list of lists)
         self.UNITDICT = {} # maps strings to string unit
         for i, dstr in enumerate(self.DATASTRINGS):
             datas = np.array(self.dataByRec[:,i])
-            self.DATADICT[dstr] = [datas]
-            self.DATADICTNOGAPS[dstr] = [self.replaceErrorsWithLast(datas)]
+            self.ORIGDATADICT[dstr] = datas
+            self.DATADICT[dstr] = [self.replaceErrorsWithLast(datas)]
 
             self.UNITDICT[dstr] = units[i]
 
@@ -514,7 +501,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 dstr = self.DATASTRINGS[i]
                 u = self.UNITDICT[dstr]
-                Y = self.DATADICT[dstr][-1] if not self.ui.bridgeDataGaps.isChecked() else self.DATADICTNOGAPS[dstr][-1]          
+                Y = self.DATADICT[dstr][-1]
 
                 if len(Y) <= 1: # not sure if this can happen but just incase
                     print(f'Error: insufficient Y data for column "{dstr}"')
@@ -541,9 +528,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 # build the axis label string for this plot
                 axisString += f"<span style='color:{pen.color().name()};'>{dstr}</span>\n" #font-weight: bold
 
-                segs = self.getSegments(Y)                    
-                for a,b in segs:
-                    pi.plot(self.times[a:b], Y[a:b], pen=pen)
+                if not self.ui.bridgeDataGaps.isChecked():
+                    segs = self.getSegments(self.ORIGDATADICT[dstr])                    
+                    for a,b in segs:
+                        pi.plot(self.times[a:b], Y[a:b], pen=pen)
+                else:
+                    pi.plot(self.times, Y, pen = pen)
                 traceIndex += 1
 
             self.plotDataStrings.append(plotStrs)
@@ -603,24 +593,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     b = self.iE if scaleYToCurrent else self.iiE
                     if a > b: # so sliders work either way
                         a,b = b,a
-
-                    # todo just switch this to use GAPLESS data instead, prob faster and wont change result of range
                     dstr = self.DATASTRINGS[i]
-                    dat = self.DATADICT[dstr][-1]
-                    Y = dat[a:b] # y data in current range
-                    segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
-                    segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
-                    st = 0 #start index
-                    for seg in segments:
-                        while st in segments:
-                            st += 1
-                        if st >= seg:
-                            continue
-                        slice = Y[st:seg]
-                        minVal = min(slice.min(), minVal)
-                        maxVal = max(slice.max(), maxVal)
-                        st = seg + 1
-            # if range is bad then dont change this
+                    Y = self.DATADICT[dstr][-1][a:b] # get last modified data in current range
+                    minVal = min(minVal, Y.min())
+                    maxVal = max(maxVal, Y.max())
+            # if range is bad then dont change this plot
             if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or np.isinf(minVal):
                 skipRangeSet.add(plotIndex)
             values.append((minVal,maxVal))

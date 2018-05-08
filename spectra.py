@@ -8,6 +8,7 @@ from scipy import fftpack
 import numpy as np
 from LinearGraphicsLayout import LinearGraphicsLayout
 from FF_Time import FFTIME
+from dataDisplay import UTCQDate
 
 class SpectraUI(object):
     def setupUI(self, Frame):
@@ -199,7 +200,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     powers = []
 
                 # calculate spectra
-                data = self.window.DATADICTNOGAPS[dstr][-1][indices[0]:indices[1]] #spectra cant have gaps
+                data = self.window.DATADICT[dstr][-1][indices[0]:indices[1]]
                 fft = fftpack.rfft(data.tolist())
                 power = self.calculatePower(fft)
 
@@ -236,16 +237,16 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         li = pg.LabelItem()
         li.opts['justify'] = 'left'
 
-        labelText = f'FILE {self.window.FID.name.rsplit("/",1)[1]}'
+        labelText = f'[FILE] {self.window.FID.name.rsplit("/",1)[1]}'
 
         #get utc start and stop times
         s0 = self.window.spectraRange[0]
         s1 = self.window.spectraRange[1]
-        startDate = FFTIME(min(s0,s1), Epoch=self.window.epoch).UTC
-        endDate = FFTIME(max(s0,s1), Epoch=self.window.epoch).UTC
+        startDate = UTCQDate.removeDOY(FFTIME(min(s0,s1), Epoch=self.window.epoch).UTC)
+        endDate = UTCQDate.removeDOY(FFTIME(max(s0,s1), Epoch=self.window.epoch).UTC)
 
-        labelText = f'{labelText}<br>FREQ BANDS {self.N}'
-        labelText = f'{labelText}<br>TIME {startDate} -> {endDate}'
+        labelText = f'{labelText}<br>[FREQ BANDS] {self.N}'
+        labelText = f'{labelText}<br>[TIME] {startDate} -> {endDate}'
 
         li.item.setHtml(labelText)
         self.ui.labelLayout.addItem(li)
