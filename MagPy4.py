@@ -116,14 +116,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def toggleAntialiasing(self):
         pg.setConfigOption('antialias', self.ui.antialiasAction.isChecked())
-        self.plotData()
+        self.replotData()
         for spectra in self.spectras:
             if spectra is not None:
                 spectra.updateSpectra()
-
-    # seems stupid but done to avoid extra arguments passed by action callbacks interfering with plotData
-    def replotData(self):
-        self.plotData()
 
     # this smooths over data gaps, required for spectra analysis?
     # faster than naive way
@@ -252,12 +248,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.ORIGDATADICT = {} # maps string to original data array
         self.DATADICT = {}  # stores smoothed version of data and all modifications (list of lists)
+        self.DATAINDEX = {} # dict that stores which index in datadict should use
         self.UNITDICT = {} # maps strings to string unit
         for i, dstr in enumerate(self.DATASTRINGS):
             datas = np.array(self.dataByRec[:,i])
             self.ORIGDATADICT[dstr] = datas
             self.DATADICT[dstr] = [self.replaceErrorsWithLast(datas)]
-
+            self.DATAINDEX[dstr] = 0
             self.UNITDICT[dstr] = units[i]
 
         # sorts by units alphabetically
@@ -501,7 +498,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 dstr = self.DATASTRINGS[i]
                 u = self.UNITDICT[dstr]
-                Y = self.DATADICT[dstr][-1]
+                Y = self.DATADICT[dstr][self.DATAINDEX[dstr]]
 
                 if len(Y) <= 1: # not sure if this can happen but just incase
                     print(f'Error: insufficient Y data for column "{dstr}"')
@@ -572,6 +569,31 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     ## end of plot function
 
+    # just redraws the traces and ensures y range is correct
+    # dont need to rebuild everything
+    # maybe make this part of main plot function?
+    def replotData(self):
+        for i in range(len(self.plotItems)):
+            pi = self.plotItems[i]
+            plotStrs = self.plotDataStrings[i]
+            pens = self.plotTracePens[i]
+            pi.clearPlots()
+            for i,dstr in enumerate(plotStrs):
+                Y = self.DATADICT[dstr][self.DATAINDEX[dstr]]
+                if len(Y) <= 1: # not sure if this can happen but just incase
+                    print(f'Error: insufficient Y data for column "{dstr}"')
+                    continue
+
+                if not self.ui.bridgeDataGaps.isChecked():
+                    segs = self.getSegments(self.ORIGDATADICT[dstr])                    
+                    for a,b in segs:
+                        pi.plot(self.times[a:b], Y[a:b], pen=pens[i])
+                else:
+                    pi.plot(self.times, Y, pen = pens[i])
+
+        self.updateYRange()
+
+
     # pyqtgraph has y axis linking but not wat is needed
     # this function scales them to have equal sized ranges but not the same actual range
     # also this replicates pyqtgraph setAutoVisible to have scaling for currently selected time vs the whole file
@@ -594,7 +616,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     if a > b: # so sliders work either way
                         a,b = b,a
                     dstr = self.DATASTRINGS[i]
-                    Y = self.DATADICT[dstr][-1][a:b] # get last modified data in current range
+                    Y = self.DATADICT[dstr][self.DATAINDEX[dstr]][a:b] # get last modified data in current range
                     minVal = min(minVal, Y.min())
                     maxVal = max(maxVal, Y.max())
             # if range is bad then dont change this plot
@@ -621,6 +643,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     diff = values[i][1] - values[i][0]
                     l2 = (largest - diff) / 2.0
                     self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2)
+
         # for plot items that aren't apart of a group (and has at least one trace) just scale them to themselves
         # so this effectively acts like they are checked in their own group
         for i,row in enumerate(self.lastPlotMatrix):
