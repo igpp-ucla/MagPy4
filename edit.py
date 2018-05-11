@@ -18,33 +18,9 @@ class EditUI(object):
 
         gridLayout = QtWidgets.QGridLayout(Frame)
 
+        # this part gets built dynamically
         vectorFrame = QtWidgets.QGroupBox('Data Vectors')
-        #vsFrame.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-
         self.vectorLayout = QtWidgets.QVBoxLayout(vectorFrame)
-
-        ## init data vector combobox dropdowns
-        #self.axisCombos = []
-        ##self.vectorEdits = []
-        ##self.vectorLabels = []
-        #for i,ax in enumerate(self.axes):
-        #    combo = QtGui.QComboBox()
-        #    #edit = QtGui.QLineEdit(f'B{ax}')
-        #    #combo.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
-        #    combo.addItem('')
-        #    for s in window.DATASTRINGS:
-        #        if ax.lower() in s.lower():
-        #            combo.addItem(s)
-
-        #    self.axisCombos.append(combo)
-        #    #label = QtGui.QLabel('X Matches')
-        #    self.vectorGrid.addWidget(combo, 0, i, 1, 1)
-        #    #vectorGrid.addWidget(edit, 0, i, 1, 1)
-        #    #vectorGrid.addWidget(label, 1, i, 1, 1)
-
-        #    #self.vectorEdits.append(edit)
-        #    #self.vectorLabels.append(label)
-
         gridLayout.addWidget(vectorFrame, 0, 0, 1, 1)
 
         # matrix A setup
@@ -152,6 +128,8 @@ class EditUI(object):
 
 class Edit(QtWidgets.QFrame, EditUI):
 
+    IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+
     def __init__(self, window, parent=None):
         super(Edit, self).__init__(parent)
         self.window = window
@@ -159,54 +137,54 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.setupUI(self, window)
 
         self.i = [0, 1, 2]
-        self.IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
         self.FLAG = 1.e-10
         self.D2R = pi / 180.0 # degree to rad conversion constant
 
-        self.ui.loadIdentity.clicked.connect(functools.partial(self.setMatrix, self.ui.R, self.IDENTITY))
+        self.ui.loadIdentity.clicked.connect(functools.partial(self.setMatrix, self.ui.R, Edit.IDENTITY))
         self.ui.loadZeros.clicked.connect(functools.partial(self.setMatrix, self.ui.R, self.empty()))
         self.ui.apply.clicked.connect(self.apply)
         self.ui.removeRow.clicked.connect(self.removeHistory)
 
-        # determine how many rows to start with
+        # setup default BX vector rows
         self.axisCombos = []
         found = []
         maxLen = 0
         for kw in ['BX','BY','BZ']:
-            row = []
+            f = []
             for dstr in self.window.DATASTRINGS:
                 if kw.lower() in dstr.lower():
-                    row.append(dstr)
-            found.append(row)
-            maxLen = max(maxLen, len(row))
+                    f.append(dstr)
+            found.append(f)
+            maxLen = max(maxLen, len(f))
 
         for i in range(maxLen):
             self.addAxisRow()
 
         self.setAxisCombosBlocked(True)
-
-        for r,dstrs in enumerate(found):
-            for c,dstr in enumerate(dstrs):
-                combo = self.axisCombos[c][r]
+        for col,dstrs in enumerate(found):
+            for row,dstr in enumerate(dstrs):
+                combo = self.axisCombos[row][col]
                 index = combo.findText(dstr)
                 if index >= 0:
                     combo.setCurrentIndex(index)
-
         self.setAxisCombosBlocked(False)
 
+        # one run of this so comboboxes are correct
         self.checkVectorRows()
-
-        #self.updateVectorSelections()
+        self.updateVectorSelections()
 
         self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
-        self.historyMatrix = [] # selected matrix from histor
-        self.history = []
-        self.addHistory(self.IDENTITY, 'Identity')
+        self.historyMatrix = [] # selected matrix from history
+        self.history = [] # list of matrices
+        self.addHistory(Edit.IDENTITY, 'Identity')
+
+        #print(Edit.toString(Edit.IDENTITY))
+        print(Edit.identity())
 
         for i,gb in enumerate(self.ui.genButtons):
             gb.clicked.connect(functools.partial(self.axisRotGen, self.ui.axes[i]))
 
-        self.setMatrix(self.ui.R, self.IDENTITY)
+        self.setMatrix(self.ui.R, Edit.IDENTITY)
 
     def empty(self): # return an empty 2D list in 3x3 matrix form
         return [[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]]
@@ -219,8 +197,12 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     # matrix are used as keys in data table
     # DATADICT will be dict with dicts for each dstr
-    def toString(self, m):
-        return f'{m[0][0]}{m[0][1]}{m[0][2]}{m[1][0]}{m[1][1]}{m[1][2]}{m[2][0]}{m[2][1]}{m[2][2]}'
+    # this is probably stupid but i dont know what im doing
+    def toString(m, p=4):
+        return f'[{m[0][0]:.{p}f}][{m[0][1]:.{p}f}][{m[0][2]:.{p}f}][{m[1][0]:.{p}f}][{m[1][1]:.{p}f}][{m[1][2]:.{p}f}][{m[2][0]:.{p}f}][{m[2][1]:.{p}f}][{m[2][2]:.{p}f}]'
+
+    def identity():
+        return Edit.toString(Edit.IDENTITY)
 
     def setAxisCombosBlocked(self, blocked):
         for row in self.axisCombos:
@@ -228,24 +210,29 @@ class Edit(QtWidgets.QFrame, EditUI):
                 combo.blockSignals(blocked)
 
     def onAxisComboChanged(self, r, c, text):
-        print(f'{r} {c} {text}')
+        #print(f'{r} {c} {text}')
         self.checkVectorRows()
         self.updateVectorSelections()
 
     def checkVectorRows(self):
-        # check for empty rows
-        # partially empty rows
+        # ensure at least one non full row
+        # only get rid of empty rows
+
+        nonFullRowCount = 0
         emptyRows = []
         for r,row in enumerate(self.axisCombos):
-            if (not row[0].currentText() or 
-                not row[1].currentText() or
-                not row[2].currentText()):
+            r0 = not row[0].currentText()  
+            r1 = not row[1].currentText()
+            r2 = not row[2].currentText()
+            if r0 or r1 or r2:
+                nonFullRowCount += 1
+            if r0 and r1 and r2:
                 emptyRows.append(r)
 
-        numEmpty = len(emptyRows)
-        if numEmpty == 0: # and len(self.axisCombos) < 4:
+        if nonFullRowCount == 0: # and len(self.axisCombos) < 4:
             self.addAxisRow()
-        elif numEmpty > 1: # remove lastmost empty row
+        # if theres more than one non full row then delete empty rows
+        elif nonFullRowCount > 1 and len(emptyRows) >= 1:
             index = emptyRows[-1]
             del self.axisCombos[index]
             layout = self.ui.vectorLayout.takeAt(index)
@@ -272,14 +259,10 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.vectorLayout.addLayout(newLayout)
         self.axisCombos.append(row)
 
+    # sets up the vector axis comboboxes
+    # if an item is checke it wont be available for the others in same column
     def updateVectorSelections(self):
-        # top row should always have all options
-        # second row should have all minus top rows
-        # third row all minus 1st 2nd etc
-        # dont add new row if no possible options left????
-        # this is prob only place string lookup stuff needs to happen actually
-
-        self.setAxisCombosBlocked(True)
+        self.setAxisCombosBlocked(True) # block signals so we dont recursively explode
 
         colStrs = [] # total option list for each column
         for i,ax in enumerate(self.ui.axes):
@@ -289,47 +272,28 @@ class Edit(QtWidgets.QFrame, EditUI):
                     col.append(dstr)
             colStrs.append(col)
 
-        # this way you have to uncheck option for it to become available to other rows
         for r,row in enumerate(self.axisCombos):
             for i,combo in enumerate(row):
                 txt = combo.currentText()
                 col = colStrs[i]
                 if txt in col:
-                    index = col.index(txt)
-                    col[index] = [txt]
-                    #col.remove(txt)
-                    
+                    # turn this entry into a list (done to keep the ordering correct)
+                    # this is kinda stupid but just needed a simple way to mark this entry basically for next operation
+                    col[col.index(txt)] = [txt] 
 
         for r,row in enumerate(self.axisCombos):
             for i,combo in enumerate(row):
                 txt = combo.currentText()
                 combo.clear()
-                combo.addItem('')
-
+                combo.addItem('') # empty option is always first
                 for s in colStrs[i]:
+                    # if its a list
                     if isinstance(s, list):
-                        if txt == s[0]:
+                        if txt == s[0]: # only add it and set to current if same as txt
                             combo.addItem(txt)
-                            combo.setCurrentIndex(combo.count()-1)
-                    else:
+                            combo.setCurrentIndex(combo.count() - 1)
+                    else: # add untaken options to list
                         combo.addItem(s)
-
-                #if txt:
-                #    combo.addItem(txt)
-                #    combo.setCurrentIndex(1)
-                #combo.addItems(colStrs[i])
-                
-        # this way top row always has all options and reduces each row down
-        #for r,row in enumerate(self.axisCombos):
-        #    for i,combo in enumerate(row):
-        #        txt = combo.currentText()
-        #        combo.clear()
-        #        combo.addItems(colStrs[i])
-        #        if txt and txt in colStrs[i]:
-        #            combo.setCurrentIndex(combo.findText(txt))
-        #            colStrs[i].remove(txt)
-        #        else:
-        #            combo.setCurrentIndex(0)
 
         self.setAxisCombosBlocked(False)
 
@@ -384,7 +348,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         if ax == 'z':
             return [[c, s, 0], [-s, c, 0], [0, 0, 1]]
         print(f'unknown axis "{ax}"')
-        return self.copy(self.IDENTITY)
+        return self.copy(Edit.IDENTITY)
 
     # manual matrix mult with my list format
     def mult(self, a, b):
@@ -399,7 +363,7 @@ class Edit(QtWidgets.QFrame, EditUI):
     def addHistory(self, mat, name):
         self.history.append(self.copy(mat))
         self.ui.history.addItem(QtWidgets.QListWidgetItem(f'{name}'))   
-        self.ui.history.setCurrentRow(self.ui.history.count()-1)
+        self.ui.history.setCurrentRow(self.ui.history.count() - 1)
 
     # removes selected history
     def removeHistory(self):
@@ -408,45 +372,56 @@ class Edit(QtWidgets.QFrame, EditUI):
             print('cannot remove original data')
             return
         del self.history[curRow]
-        self.ui.history.setCurrentRow(curRow-1) # change before take item otherwise onHistory gets called with wrong row
+        self.ui.history.setCurrentRow(curRow - 1) # change before take item otherwise onHistory gets called with wrong row
         self.ui.history.takeItem(curRow)
 
-        #for i in range(3): # remove array from datadict data list
-        #    dstr = self.axisCombos[i].currentText()
-        #    del self.window.DATADICT[dstr][curRow]
+        # todo: iterate over subdicts in DATADICT and delete all data related to this key i guess? wat about duplicates tho?
 
     def onHistoryChanged(self, row):
         #print(f'CHANGED {row}')
         self.historyMatrix = self.history[row]
         self.setMatrix(self.ui.M, self.historyMatrix)
-        #for i in range(3):
-        #    dstr = self.axisCombos[i].currentText()
-        #    self.window.DATAINDEX[dstr] = row
-
+        self.window.MATRIX = Edit.toString(self.historyMatrix)
         self.window.replotData()
 
     # stacks up chosen x y z vector, multiplies by rotation matrix, then replot
     def apply(self):
-        startTime = time.time()
-
-        # todo: if these change need to clear all processed data out
-        xstr = self.axisCombos[0].currentText()
-        ystr = self.axisCombos[1].currentText()
-        zstr = self.axisCombos[2].currentText()
-
-        X = self.window.DATADICT[xstr][0]
-        Y = self.window.DATADICT[ystr][0]
-        Z = self.window.DATADICT[zstr][0]
-
-        # multiply by current selection in history
         R = self.mult(self.historyMatrix, self.getMatrix(self.ui.R))
-        A = np.column_stack((X,Y,Z))
-        M = np.matmul(A,R)
-
-        self.window.DATADICT[xstr].append(M[:,0])
-        self.window.DATADICT[ystr].append(M[:,1])
-        self.window.DATADICT[zstr].append(M[:,2])
-
         self.addHistory(R, f'Matrix {len(self.history)}')
 
-        print(f'{time.time() - startTime}')
+        self.verifyCalculations()
+
+    # given current axis vector selections
+    # make sure that all the correct data is calculated
+    # and replot
+    # todo: check to see if memory consumption gets out of hand because not deleting anything currently
+    def verifyCalculations(self):
+        R = self.historyMatrix
+        r = Edit.toString(R)
+        i = Edit.identity()
+        
+        for combos in self.axisCombos:
+            xstr = combos[0].currentText()
+            ystr = combos[1].currentText()
+            zstr = combos[2].currentText()
+
+            if not xstr or not ystr or not zstr: # skip rows with empty selections
+                continue
+
+            # if datadict contains no entries for datastring with this matrix then generate
+            if (r not in self.window.DATADICT[xstr] or
+                r not in self.window.DATADICT[ystr] or
+                r not in self.window.DATADICT[zstr]):
+
+                # get original data
+                X = self.window.DATADICT[xstr][i]
+                Y = self.window.DATADICT[ystr][i]
+                Z = self.window.DATADICT[zstr][i]
+
+                A = np.column_stack((X,Y,Z))
+                M = np.matmul(A,R)
+
+                self.window.DATADICT[xstr][r] = M[:,0]
+                self.window.DATADICT[ystr][r] = M[:,1]
+                self.window.DATADICT[zstr][r] = M[:,2]
+

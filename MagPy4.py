@@ -247,14 +247,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         units = self.FID.getColumnDescriptor("UNITS")[1:]
 
         self.ORIGDATADICT = {} # maps string to original data array
-        self.DATADICT = {}  # stores smoothed version of data and all modifications (list of lists)
-        self.DATAINDEX = {} # dict that stores which index in datadict should use
+        self.DATADICT = {}  # stores smoothed version of data and all modifications (dict of dicts)
         self.UNITDICT = {} # maps strings to string unit
+        self.IDENTITY = Edit.identity()
+        self.MATRIX = Edit.identity() # temp until i add matrix chooser dropdown in plot tracer
         for i, dstr in enumerate(self.DATASTRINGS):
             datas = np.array(self.dataByRec[:,i])
             self.ORIGDATADICT[dstr] = datas
-            self.DATADICT[dstr] = [self.replaceErrorsWithLast(datas)]
-            self.DATAINDEX[dstr] = 0
+            self.DATADICT[dstr] = { self.IDENTITY : self.replaceErrorsWithLast(datas) }
             self.UNITDICT[dstr] = units[i]
 
         # sorts by units alphabetically
@@ -498,7 +498,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 dstr = self.DATASTRINGS[i]
                 u = self.UNITDICT[dstr]
-                Y = self.DATADICT[dstr][self.DATAINDEX[dstr]]
+                Y = self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY]
 
                 if len(Y) <= 1: # not sure if this can happen but just incase
                     print(f'Error: insufficient Y data for column "{dstr}"')
@@ -579,7 +579,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             pens = self.plotTracePens[i]
             pi.clearPlots()
             for i,dstr in enumerate(plotStrs):
-                Y = self.DATADICT[dstr][self.DATAINDEX[dstr]]
+                Y = self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY]
                 if len(Y) <= 1: # not sure if this can happen but just incase
                     print(f'Error: insufficient Y data for column "{dstr}"')
                     continue
@@ -616,7 +616,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     if a > b: # so sliders work either way
                         a,b = b,a
                     dstr = self.DATASTRINGS[i]
-                    Y = self.DATADICT[dstr][self.DATAINDEX[dstr]][a:b] # get last modified data in current range
+                    Y = self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY][a:b]
                     minVal = min(minVal, Y.min())
                     maxVal = max(maxVal, Y.max())
             # if range is bad then dont change this plot
