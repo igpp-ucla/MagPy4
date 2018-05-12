@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
-from LinearGraphicsLayout import LinearGraphicsLayout
+from pyqtgraphExtensions import LinearGraphicsLayout
 from FF_Time import FFTIME
 from dataDisplay import UTCQDate
 

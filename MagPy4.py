@@ -15,6 +15,7 @@ from plotTracer import PlotTracer
 from spectra import Spectra, SpectraInfiniteLine
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
+from pyqtgraphExtensions import PlotPointsItem
 
 import time
 
@@ -537,12 +538,18 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 # build the axis label string for this plot
                 axisString += f"<span style='color:{pen.color().name()};'>{dstr}</span>\n" #font-weight: bold
 
-                if not self.ui.bridgeDataGaps.isChecked():
-                    segs = self.getSegments(self.ORIGDATADICT[dstr])                    
-                    for a,b in segs:
-                        pi.plot(self.times[a:b], Y[a:b], pen=pen)
+                pointMode = True
+
+                if pointMode:
+                    ppi = PlotPointsItem(self.times, Y, pen=pen)
+                    pi.addItem(ppi)
                 else:
-                    pi.plot(self.times, Y, pen = pen)
+                    if not self.ui.bridgeDataGaps.isChecked():
+                        segs = self.getSegments(self.ORIGDATADICT[dstr])                    
+                        for a,b in segs:
+                            pi.plot(self.times[a:b], Y[a:b], pen=pen)
+                    else:
+                        pi.plot(self.times, Y, pen = pen)
                 traceIndex += 1
 
             self.plotDataStrings.append(plotStrs)
