@@ -58,6 +58,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.spectraRange = [0,0]
         self.spectras = []
 
+        self.edit = None
+
         self.magpyIcon = QtGui.QIcon()
         self.magpyIcon.addFile('images/magPy_blue.ico')
         self.app.setWindowIcon(self.magpyIcon)
@@ -107,6 +109,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 self.spectras.append(spectra) # so reference is held until closed
 
     def openEdit(self):
+        if self.edit is not None:
+            self.edit.close()
         self.edit = Edit(self)
         self.edit.show()
 
@@ -224,6 +228,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.tracer is not None:
             self.tracer.close()
             self.tracer = None
+
+        if self.edit is not None:
+            self.edit.close()
+            self.edit = None
 
         return 1, "FILE " + PATH + "read"
 
@@ -404,6 +412,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 
         self.plotData(boolMatrix, links)
 
+    # todo: have
+    def getData(self, dstr):
+        return self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY]
+
     def getSegments(self, Y):
         segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
         segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
@@ -498,7 +510,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 dstr = self.DATASTRINGS[i]
                 u = self.UNITDICT[dstr]
-                Y = self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY]
+                Y = self.getData(dstr)
 
                 if len(Y) <= 1: # not sure if this can happen but just incase
                     print(f'Error: insufficient Y data for column "{dstr}"')
@@ -579,7 +591,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             pens = self.plotTracePens[i]
             pi.clearPlots()
             for i,dstr in enumerate(plotStrs):
-                Y = self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY]
+                Y = self.getData(dstr)
                 if len(Y) <= 1: # not sure if this can happen but just incase
                     print(f'Error: insufficient Y data for column "{dstr}"')
                     continue
@@ -592,7 +604,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     pi.plot(self.times, Y, pen = pens[i])
 
         self.updateYRange()
-
 
     # pyqtgraph has y axis linking but not wat is needed
     # this function scales them to have equal sized ranges but not the same actual range
@@ -616,7 +627,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     if a > b: # so sliders work either way
                         a,b = b,a
                     dstr = self.DATASTRINGS[i]
-                    Y = self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY][a:b]
+                    Y = self.getData(dstr)[a:b]
                     minVal = min(minVal, Y.min())
                     maxVal = max(maxVal, Y.max())
             # if range is bad then dont change this plot

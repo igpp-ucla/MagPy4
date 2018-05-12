@@ -13,31 +13,37 @@ import time
 class EditUI(object):
     def setupUI(self, Frame, window):
         Frame.setWindowTitle('Edit')
-        Frame.resize(630,500)
+        Frame.resize(600,500)
         self.axes = ['X','Y','Z']
 
-        gridLayout = QtWidgets.QGridLayout(Frame)
+        mainLayout = QtWidgets.QVBoxLayout(Frame)
+        upperLayout = QtWidgets.QHBoxLayout()
+        leftLayout = QtWidgets.QVBoxLayout()
+        rightLayout = QtWidgets.QVBoxLayout()
+        upperLayout.addLayout(leftLayout,1)
+        upperLayout.addLayout(rightLayout,1)
+        mainLayout.addLayout(upperLayout)
 
         # this part gets built dynamically
         vectorFrame = QtWidgets.QGroupBox('Data Vectors')
         self.vectorLayout = QtWidgets.QVBoxLayout(vectorFrame)
-        gridLayout.addWidget(vectorFrame, 0, 0, 1, 1)
+        leftLayout.addWidget(vectorFrame)
 
         # matrix A setup
-        self.R = []
+        self.R = [] # current rotation matrix
         rFrame = QtWidgets.QGroupBox('Rotation Matrix')
         rLayout = QtWidgets.QGridLayout(rFrame)
         for y in range(3):
             row = []
             for x in range(3):
                 edit = QtGui.QLineEdit()
-                edit.setInputMethodHints(QtCore.Qt.ImhFormattedNumbersOnly)
+                edit.setInputMethodHints(QtCore.Qt.ImhFormattedNumbersOnly) #i dont even know if this does anything
                 edit.setText('0.0')
                 rLayout.addWidget(edit, y, x, 1, 1)
                 row.append(edit)
             self.R.append(row)
 
-        gridLayout.addWidget(rFrame, 0, 1, 1, 1)
+        rightLayout.addWidget(rFrame)
 
         # axis rotation frame
         bFrame = QtWidgets.QGroupBox('Matrix Builders')
@@ -74,14 +80,15 @@ class EditUI(object):
         bLayout.addLayout(axLayout)
         #bLayout.addStretch()
 
-        gridLayout.addWidget(bFrame, 2, 0, 1, 1)
+        leftLayout.addWidget(bFrame)
+        leftLayout.addStretch()
         
         # history
-        hFrame = QtWidgets.QGroupBox('History')
+        hFrame = QtWidgets.QGroupBox('Matrix History')
         hLayout = QtWidgets.QVBoxLayout(hFrame)
 
         mGrid = QtWidgets.QGridLayout()
-        self.M = []
+        self.M = [] # matrix that is displayed in history
         for y in range(3):
             row = []
             for x in range(3):
@@ -96,39 +103,36 @@ class EditUI(object):
         hBotGrid = QtWidgets.QGroupBox()
         hBotLayout = QtWidgets.QHBoxLayout(hBotGrid)
         leftButtons = QtWidgets.QVBoxLayout()
-        loadMat = QtWidgets.QPushButton('Load Matrix')
+        #loadMat = QtWidgets.QPushButton('Load Matrix')
         self.removeRow = QtWidgets.QPushButton('Remove Matrix')
-        leftButtons.addWidget(loadMat)
+        #leftButtons.addWidget(loadMat)
         leftButtons.addWidget(self.removeRow)
         leftButtons.addStretch()
         hBotLayout.addLayout(leftButtons,1)
         self.history = QtWidgets.QListWidget()
-        #for i in range(5):
-        #    item = QtWidgets.QListWidgetItem(f'list item {i}')
-        #    self.history.insertItem(i,item)
-        hBotLayout.addWidget(self.history,1)
+        hBotLayout.addWidget(self.history,2)
         hLayout.addWidget(hBotGrid)
 
-        gridLayout.addWidget(hFrame, 2, 1, 2, 1)
+        rightLayout.addWidget(hFrame)
 
-
-        spacer = QtWidgets.QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        gridLayout.addWidget(spacer, 4, 0, 1, 1)
+        mainLayout.addStretch()
 
         # bottom area with apply button
         bottomLayout = QtGui.QHBoxLayout()
         self.apply = QtGui.QPushButton('Apply')
         self.apply.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
         bottomLayout.addWidget(self.apply)
-        applyLabel = QtGui.QLabel('Multiplies data vector by rotation matrix')
+        applyLabel = QtGui.QLabel('Multiplies each data vector by (selected history matrix multiplied by rotation matrix)')
         bottomLayout.addWidget(applyLabel)
-        gridLayout.addLayout(bottomLayout, 5, 0, 2, 1)
+        mainLayout.addLayout(bottomLayout)
 
 
 class Edit(QtWidgets.QFrame, EditUI):
 
     IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    STRING_PRECISION = 10
+    # i want to have it display and store at minimum precision necesary and go up to STRING_PRECISION
+    # maybe also show as 1eX notation if over 10000? or somethin?
 
     def __init__(self, window, parent=None):
         super(Edit, self).__init__(parent)
@@ -174,12 +178,9 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.updateVectorSelections()
 
         self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
-        self.historyMatrix = [] # selected matrix from history
+        self.selectedMatrix = [] # selected matrix from history
         self.history = [] # list of matrices
         self.addHistory(Edit.IDENTITY, 'Identity')
-
-        #print(Edit.toString(Edit.IDENTITY))
-        print(Edit.identity())
 
         for i,gb in enumerate(self.ui.genButtons):
             gb.clicked.connect(functools.partial(self.axisRotGen, self.ui.axes[i]))
@@ -195,14 +196,29 @@ class Edit(QtWidgets.QFrame, EditUI):
                 [a[1][0],a[1][1],a[1][2]],
                 [a[2][0],a[2][1],a[2][2]]]
 
-    # matrix are used as keys in data table
-    # DATADICT will be dict with dicts for each dstr
+    # matrix are stringified to use as keys in data table
+    # DATADICT is dict with dicts for each dstr with (k, v) : (matrix str, modified data)
     # this is probably stupid but i dont know what im doing
-    def toString(m, p=4):
-        return f'[{m[0][0]:.{p}f}][{m[0][1]:.{p}f}][{m[0][2]:.{p}f}][{m[1][0]:.{p}f}][{m[1][1]:.{p}f}][{m[1][2]:.{p}f}][{m[2][0]:.{p}f}][{m[2][1]:.{p}f}][{m[2][2]:.{p}f}]'
+    def toString(m, p=STRING_PRECISION):
+        return (f'''[{Edit.formatNumber(m[0][0])}]
+                    [{Edit.formatNumber(m[0][1])}]
+                    [{Edit.formatNumber(m[0][2])}]
+                    [{Edit.formatNumber(m[1][0])}]
+                    [{Edit.formatNumber(m[1][1])}]
+                    [{Edit.formatNumber(m[1][2])}]
+                    [{Edit.formatNumber(m[2][0])}]
+                    [{Edit.formatNumber(m[2][1])}]
+                    [{Edit.formatNumber(m[2][2])}]''')
 
     def identity():
         return Edit.toString(Edit.IDENTITY)
+
+    # converts float to string
+    def formatNumber(num):
+        n = round(num, Edit.STRING_PRECISION)
+        #if n >= 10000 or n <= 0.0001: #not sure how to handle this for now
+            #return f'{n:e}'
+        return f'{n}'
 
     def setAxisCombosBlocked(self, blocked):
         for row in self.axisCombos:
@@ -298,8 +314,6 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.setAxisCombosBlocked(False)
 
     # mat is 2D list of label/lineEdits
-    # maybe add precision option or checkbox somewhere
-    # so u can store whole precision internally but display abbreviated by default
     def getMatrix(self, mat):
         M = self.empty()
         for i in self.i:
@@ -311,21 +325,13 @@ class Edit(QtWidgets.QFrame, EditUI):
                     print(f'matrix has non-number at location {i},{j}')
                     f = 0.0
                 M[i][j] = f
-
-        #for r in M:
-        #    print(f'[{r[0]}][{r[1]}][{r[2]}]')
-
         return M
 
     # mat is 2D list of label/lineEdits, m is 2D list of floats
     def setMatrix(self, mat, m):
         for i in self.i:
             for j in self.i:
-                n = m[i][j]
-                if fabs(n) > 9999.9999:
-                    mat[i][j].setText(f'{n:.4e}')
-                else:
-                    mat[i][j].setText(f'{n:.4f}')
+                mat[i][j].setText(Edit.formatNumber(m[i][j]))
 
     def axisRotGen(self, axis):
         R = self.genAxisRotationMatrix(axis, self.ui.axisAngle.value())
@@ -337,16 +343,16 @@ class Edit(QtWidgets.QFrame, EditUI):
         s = sin(angle)
         c = cos(angle)
         if fabs(s) < self.FLAG:
-            s = 0
+            s = 0.0
         if fabs(c) < self.FLAG:
-            c = 0
+            c = 0.0
         ax = axis.lower()
         if ax == 'x':
-            return [[1, 0, 0], [0, c, s], [0, -s, c]]
+            return [[1.0, 0.0, 0.0], [0.0, c, s], [0.0, -s, c]]
         if ax == 'y':
-            return [[c, 0, -s], [0, 1, 0], [s, 0, c]]
+            return [[c, 0.0, -s], [0.0, 1.0, 0.0], [s, 0.0, c]]
         if ax == 'z':
-            return [[c, s, 0], [-s, c, 0], [0, 0, 1]]
+            return [[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]]
         print(f'unknown axis "{ax}"')
         return self.copy(Edit.IDENTITY)
 
@@ -374,32 +380,27 @@ class Edit(QtWidgets.QFrame, EditUI):
         del self.history[curRow]
         self.ui.history.setCurrentRow(curRow - 1) # change before take item otherwise onHistory gets called with wrong row
         self.ui.history.takeItem(curRow)
-
-        # todo: iterate over subdicts in DATADICT and delete all data related to this key i guess? wat about duplicates tho?
+        # todo: check to see if memory consumption gets out of hand because not deleting anything currently
 
     def onHistoryChanged(self, row):
         #print(f'CHANGED {row}')
-        self.historyMatrix = self.history[row]
-        self.setMatrix(self.ui.M, self.historyMatrix)
-        self.window.MATRIX = Edit.toString(self.historyMatrix)
+        self.selectedMatrix = self.history[row]
+        self.setMatrix(self.ui.M, self.selectedMatrix)
+        self.window.MATRIX = Edit.toString(self.selectedMatrix)
         self.window.replotData()
 
-    # stacks up chosen x y z vector, multiplies by rotation matrix, then replot
     def apply(self):
-        R = self.mult(self.historyMatrix, self.getMatrix(self.ui.R))
+        R = self.mult(self.selectedMatrix, self.getMatrix(self.ui.R))
+        self.generateData(R)
         self.addHistory(R, f'Matrix {len(self.history)}')
 
-        self.verifyCalculations()
-
     # given current axis vector selections
-    # make sure that all the correct data is calculated
-    # and replot
-    # todo: check to see if memory consumption gets out of hand because not deleting anything currently
-    def verifyCalculations(self):
-        R = self.historyMatrix
+    # make sure that all the correct data is calculated with matrix R
+    def generateData(self, R):
         r = Edit.toString(R)
         i = Edit.identity()
         
+        # for each full vector combo row 
         for combos in self.axisCombos:
             xstr = combos[0].currentText()
             ystr = combos[1].currentText()
@@ -424,4 +425,3 @@ class Edit(QtWidgets.QFrame, EditUI):
                 self.window.DATADICT[xstr][r] = M[:,0]
                 self.window.DATADICT[ystr][r] = M[:,1]
                 self.window.DATADICT[zstr][r] = M[:,2]
-

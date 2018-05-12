@@ -200,7 +200,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     powers = []
 
                 # calculate spectra
-                data = self.window.DATADICT[dstr][-1][indices[0]:indices[1]]
+                data = self.window.getData(dstr)[indices[0]:indices[1]]
                 fft = fftpack.rfft(data.tolist())
                 power = self.calculatePower(fft)
 
