@@ -379,10 +379,8 @@ class PlotPointsItem(pg.GraphicsObject):
         self.yData = kargs['y'].view(np.ndarray)
         self.xData = kargs['x'].view(np.ndarray)
 
-        import time
-        startTime = time.time()
-
         # can def make this faster
+        # not sure what format qpolygonf needs tho (saving this progress)
         #https://github.com/pyqtgraph/pyqtgraph/blob/develop/pyqtgraph/functions.py @ line 1470
         # can turn x,y data into QDataStream 
         # then do stream >> poly and just read it all into the polygon insta
@@ -390,17 +388,26 @@ class PlotPointsItem(pg.GraphicsObject):
         # prob way faster, thats what they do except with qpath thing instead!!
         # think first thing written to stream needs to be length, then each point x,y
 
-        # save polygon object (for some reason have to use this instead of lists of points)
-        points =[QtCore.QPointF(x,y) for x,y in zip(self.xData,self.yData)]
-        #print(f'  {time.time() - startTime}')
-        self.poly = QtGui.QPolygonF()
-        for p in points:
-            self.poly.append(p)
-        #self.poly = QtGui.QPolygonF()
-        #for x,y in zip(self.xData,self.yData):
-        #    self.poly << QtCore.QPointF(x,y) #stream operator
-        #print(f'{time.time() - startTime}')
+        #n = self.xData.shape[0]
+        #arr = np.empty(n+1, dtype=[('x','>f8'), ('y','>f8')])
+        #bv = arr.view(dtype=np.ubyte)
+        #arr[:]['x'] = self.xData
+        #arr[:]['y'] = self.yData
+
+        #buf = QtCore.QByteArray.fromRawData(arr.data)
+        #ds = QtCore.QDataStream()
+        #ds >> self.poly
         
+        #lendata = len(self.xData)
+        ##ds.writeInt(lendata)
+        #for i in range(lendata):
+        #    ds.writeFloat(self.xData[i])
+        #    ds.writeFloat(self.yData[i])
+
+        points = [QtCore.QPointF(x,y) for x,y in zip(self.xData,self.yData)]
+        self.poly = QtGui.QPolygonF(points)
+        
+
         if 'stepMode' in kargs:
             self.opts['stepMode'] = kargs['stepMode']
         
@@ -487,19 +494,8 @@ class PlotPointsItem(pg.GraphicsObject):
         cp = fn.mkPen(self.opts['pen']) 
         p.setPen(cp)
 
-        #poly = QtGui.QPolygonF()
-        #for x,y in zip(self.xData,self.yData):
-        #    poly.append(QtCore.QPointF(x,y))
-
         p.drawPoints(self.poly)
 
-        #for x,y in zip(self.xData,self.yData):
-            #print(f'{x} {y}')
-            #p.drawPoint(QtCore.QPointF(x,y))
-        
-        #print "Render hints:", int(p.renderHints())
-        #p.setPen(QtGui.QPen(QtGui.QColor(255,0,0)))
-        #p.drawRect(self.boundingRect())
         
     def clear(self):
         self.xData = None  ## raw values

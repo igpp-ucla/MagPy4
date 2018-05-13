@@ -47,9 +47,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.insightMode = False
 
+        # options menu dropdown
         self.ui.scaleYToCurrentTimeAction.triggered.connect(self.updateYRange)
         self.ui.antialiasAction.triggered.connect(self.toggleAntialiasing)
         self.ui.bridgeDataGaps.triggered.connect(self.replotData)
+        self.ui.drawPoints.triggered.connect(self.replotData)
 
         self.lastPlotMatrix = None # used by plot tracer
         self.lastLinkMatrix = None
@@ -511,11 +513,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 dstr = self.DATASTRINGS[i]
                 u = self.UNITDICT[dstr]
-                Y = self.getData(dstr)
-
-                if len(Y) <= 1: # not sure if this can happen but just incase
-                    print(f'Error: insufficient Y data for column "{dstr}"')
-                    continue
 
                 # figure out which pen to use
                 numPens = len(self.pens)
@@ -529,6 +526,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 tracePens.append(pen)
                 plotStrs.append(dstr)
 
+                self.plotTrace(pi, dstr, pen)
+
                 # figure out if each axis trace shares same unit
                 if unit == '':
                     unit = u
@@ -538,18 +537,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 # build the axis label string for this plot
                 axisString += f"<span style='color:{pen.color().name()};'>{dstr}</span>\n" #font-weight: bold
 
-                pointMode = True
-
-                if pointMode:
-                    ppi = PlotPointsItem(self.times, Y, pen=pen)
-                    pi.addItem(ppi)
-                else:
-                    if not self.ui.bridgeDataGaps.isChecked():
-                        segs = self.getSegments(self.ORIGDATADICT[dstr])                    
-                        for a,b in segs:
-                            pi.plot(self.times[a:b], Y[a:b], pen=pen)
-                    else:
-                        pi.plot(self.times, Y, pen = pen)
                 traceIndex += 1
 
             self.plotDataStrings.append(plotStrs)
@@ -598,19 +585,25 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             pens = self.plotTracePens[i]
             pi.clearPlots()
             for i,dstr in enumerate(plotStrs):
-                Y = self.getData(dstr)
-                if len(Y) <= 1: # not sure if this can happen but just incase
-                    print(f'Error: insufficient Y data for column "{dstr}"')
-                    continue
-
-                if not self.ui.bridgeDataGaps.isChecked():
-                    segs = self.getSegments(self.ORIGDATADICT[dstr])                    
-                    for a,b in segs:
-                        pi.plot(self.times[a:b], Y[a:b], pen=pens[i])
-                else:
-                    pi.plot(self.times, Y, pen = pens[i])
+                self.plotTrace(pi, dstr, pens[i])
 
         self.updateYRange()
+
+    # both plotData and replot use this function internally
+    def plotTrace(self, pi, dstr, pen):
+        Y = self.getData(dstr)
+        if len(Y) <= 1: # not sure if this can happen but just incase
+            print(f'Error: insufficient Y data for column "{dstr}"')
+            return
+        if self.ui.drawPoints.isChecked():
+            pi.addItem(PlotPointsItem(self.times, Y, pen=pen))
+        else:
+            if not self.ui.bridgeDataGaps.isChecked():
+                segs = self.getSegments(self.ORIGDATADICT[dstr])                    
+                for a,b in segs:
+                    pi.plot(self.times[a:b], Y[a:b], pen=pen)
+            else:
+                pi.plot(self.times, Y, pen = pen)
 
     # pyqtgraph has y axis linking but not wat is needed
     # this function scales them to have equal sized ranges but not the same actual range
