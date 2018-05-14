@@ -2,7 +2,10 @@
 # python 3.6
 import os
 import sys
-sys.path.insert(0, 'ffPy') # so ffPy is like its in same folder
+# so python looks in paths for these folders too
+# maybe make this into actual modules in future
+sys.path.insert(0, 'ffPy')
+sys.path.insert(0, 'pycdf')
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
@@ -81,7 +84,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.plotItems = []
         self.trackerLines = []
-        starterFile = 'mmsTestData/L2/merged/2015/09/27/mms15092720'
+        starterFile = 'testData/mms15092720'
         if os.path.exists(starterFile + '.ffd'):
             self.openFile(starterFile)
             self.plotDataDefault()
