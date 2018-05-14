@@ -2,10 +2,12 @@
 # python 3.6
 import os
 import sys
+sys.path.insert(0, 'ffPy') # so ffPy is like its in same folder
+
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
-import numpy as np #make sure to use numpy 1.13, later versions have problems with ffPy string serialization
+import numpy as np
 import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
@@ -595,13 +597,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if len(Y) <= 1: # not sure if this can happen but just incase
             print(f'Error: insufficient Y data for column "{dstr}"')
             return
-        if self.ui.drawPoints.isChecked():
-            pi.addItem(PlotPointsItem(self.times, Y, pen=pen))
-        else:
-            if not self.ui.bridgeDataGaps.isChecked():
-                segs = self.getSegments(self.ORIGDATADICT[dstr])                    
-                for a,b in segs:
+        if not self.ui.bridgeDataGaps.isChecked():
+            segs = self.getSegments(self.ORIGDATADICT[dstr])                    
+            for a,b in segs:
+                if self.ui.drawPoints.isChecked():
+                    pi.addItem(PlotPointsItem(self.times[a:b], Y[a:b], pen=pen))
+                else:
                     pi.plot(self.times[a:b], Y[a:b], pen=pen)
+        else:
+            if self.ui.drawPoints.isChecked():
+                pi.addItem(PlotPointsItem(self.times, Y, pen=pen))
             else:
                 pi.plot(self.times, Y, pen = pen)
 
@@ -631,7 +636,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     minVal = min(minVal, Y.min())
                     maxVal = max(maxVal, Y.max())
             # if range is bad then dont change this plot
-            if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or np.isinf(minVal):
+            if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or np.isinf(maxVal):
                 skipRangeSet.add(plotIndex)
             values.append((minVal,maxVal))
 
@@ -836,6 +841,7 @@ class DateAxis(pg.AxisItem):
         return [DateAxis.toUTC(x,self.window) for x in values]
 
 if __name__ == '__main__':
+
     app = QtWidgets.QApplication(sys.argv)
 
     #appName = f'{appName} {version}';

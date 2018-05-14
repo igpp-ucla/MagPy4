@@ -278,11 +278,11 @@ def main():
         freeze(version)
         build(version)
         deploy(version)
-    elif command == 'freeze':
+    elif command == 'freeze': # puts all required files in one folder
         freeze(version)
-    elif command == 'build':
+    elif command == 'build':  # makes a single installer .exe
         build(version)
-    elif command == 'deploy':
+    elif command == 'deploy': # uploads to website
         deploy(version)
     elif command == 'remove':
         remove(version)    
