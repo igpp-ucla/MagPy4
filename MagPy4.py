@@ -85,6 +85,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotItems = []
         self.trackerLines = []
         starterFile = 'testData/mms15092720'
+        self.FID = None #thanks yi 5/14/2018
         if os.path.exists(starterFile + '.ffd'):
             self.openFile(starterFile)
             self.plotDataDefault()
