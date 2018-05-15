@@ -19,11 +19,16 @@ class MagPy4UI(object):
 
         self.toolBar = QtWidgets.QToolBar(MagPy4)
         MagPy4.addToolBar(QtCore.Qt.TopToolBarArea, self.toolBar)
-        self.actionOpen = QtWidgets.QAction(MagPy4)
-        self.actionOpen.setPriority(QtWidgets.QAction.HighPriority)
-        self.actionOpen.setText('Open')
-        self.actionOpen.setShortcut('O')
-        self.toolBar.addAction(self.actionOpen)
+        self.actionOpenFF = QtWidgets.QAction(MagPy4)
+        self.actionOpenFF.setPriority(QtWidgets.QAction.HighPriority)
+        self.actionOpenFF.setText('Open FF')
+        self.actionOpenFF.setShortcut('O')
+        self.toolBar.addAction(self.actionOpenFF)
+
+        self.actionOpenCDF = QtWidgets.QAction(MagPy4)
+        self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
+        self.actionOpenCDF.setText('Open CDF')
+        self.toolBar.addAction(self.actionOpenCDF)
 
         self.actionPlot = QtWidgets.QAction(MagPy4)
         self.actionPlot.setText('Plot Menu')

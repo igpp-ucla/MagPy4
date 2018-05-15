@@ -25,6 +25,13 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="cdfPy\const.py" />
+    <Compile Include="cdfPy\coordinates.py" />
+    <Compile Include="cdfPy\datamodel.py" />
+    <Compile Include="cdfPy\lib.py" />
+    <Compile Include="cdfPy\pycdf.py" />
+    <Compile Include="cdfPy\time.py" />
+    <Compile Include="cdfPy\toolbox.py" />
     <Compile Include="dataDisplay.py">
       <SubType>Code</SubType>
     </Compile>
@@ -60,6 +67,7 @@
     <Content Include="ffPy\.git" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="cdfPy\" />
     <Folder Include="ffPy\" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />

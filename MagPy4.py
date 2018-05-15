@@ -5,7 +5,7 @@ import sys
 # so python looks in paths for these folders too
 # maybe make this into actual modules in future
 sys.path.insert(0, 'ffPy')
-sys.path.insert(0, 'pycdf')
+sys.path.insert(0, 'cdfPy')
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
@@ -15,6 +15,8 @@ import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
+import pycdf
+
 from MagPy4UI import MagPy4UI
 from plotTracer import PlotTracer
 from spectra import Spectra, SpectraInfiniteLine
@@ -23,6 +25,8 @@ from edit import Edit
 from pyqtgraphExtensions import PlotPointsItem
 
 import time
+import functools
+import multiprocessing as mp
 
 class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def __init__(self, app, parent=None):
@@ -45,7 +49,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.endSliderEdit.dateTimeChanged.connect(self.onEndEditChanged)
 
         self.ui.actionPlot.triggered.connect(self.openTracer)
-        self.ui.actionOpen.triggered.connect(self.openFileDialog)
+        self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True))
+        self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False))
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionSpectra.triggered.connect(self.runSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
@@ -87,7 +92,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         starterFile = 'testData/mms15092720'
         self.FID = None #thanks yi 5/14/2018
         if os.path.exists(starterFile + '.ffd'):
-            self.openFile(starterFile)
+            self.openFF(starterFile)
             self.plotDataDefault()
 
 
@@ -180,25 +185,43 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #print('resize event')
         pass
 
-    def openFileDialog(self):
-        fileName = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
+    def openFileDialog(self, isFlatfile):
+        if isFlatfile:
+            fileName = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
+        else:
+            fileName = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Cdf", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF (*.cdf)')[0]
+
         if fileName is "":
             print('OPEN FILE FAILED')
             return
-        fileName = fileName.rsplit(".", 1)[0]
-        if fileName is None:
-            print('OPEN FILE FAILED (split)')
-            return
+
         if self.FID is not None:
             self.FID.close()
 
-        self.openFile(fileName) # first elem of tuple is filepath
+        if isFlatfile:        
+            fileName = fileName.rsplit(".", 1)[0]
+            if fileName is None:
+                print('OPEN FILE FAILED (split)')
+                return
+            if not self.openFF(fileName):
+                return
+        else:
+            # trying to speed up that conversion
+            #q = mp.Queue()
+            #p = mp.Process(target=MagPy4Window.openCDF, args=(fileName,q))
+            #p.start()
+            #ret = q.get()
+            #print(len(ret))
+            #p.join()
+            self.openCDF(fileName)
+
         self.plotDataDefault()
 
-    def openFile(self, PATH=None):  # slot when Open pull down is selected
+    def openFF(self, PATH):  # slot when Open pull down is selected
         FID = FF_ID(PATH, status=FF_STATUS.READ | FF_STATUS.EXIST)
         if not FID:
-            return -1, "BAD"
+            print('BAD FLATFILE')
+            return False
 
         self.FID = FID
         self.epoch = self.FID.getEpoch()
@@ -210,43 +233,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.errorFlag *= 0.9 # based off FFSpectra.py line 829
         err = self.FID.open()
         if err < 0:
-            return err, " UNABLE TO OPEN"
-        err, mess = self.loadFile()  # read in the file
-        if err < 0:
-            return err, mess
-        self.resolution = self.FID.getResolution()
-        numpoints = self.FID.FFParm["NROWS"].value
-
-        self.iO = 0
-        self.iE = min(numpoints - 1, len(self.times) - 1) #could maybe just be second part of this min not sure
-        self.iiE = self.iE
-        self.tO = self.times[self.iO]
-        self.tE = self.times[self.iE]
-        # save initial time range
-        self.itO = self.tO
-        self.itE = self.tE  
-
-        print(f'resolution: {self.resolution}')
-        #print(f'iO: {self.iO}')
-        #print(f'iE: {self.iE}')
-        print(f'tO: {self.tO}')
-        print(f'tE: {self.tE}')
+            print('UNABLE TO OPEN')
+            return False
         
-        self.setupSliders()
-
-        if self.tracer is not None:
-            self.tracer.close()
-            self.tracer = None
-
-        if self.edit is not None:
-            self.edit.close()
-            self.edit = None
-
-        return 1, "FILE " + PATH + "read"
-
-    def loadFile(self):
-        if self.FID is None:
-            print("Error in loadFile (not opened yet I think)")
+        # load flatfile
         nRows = self.FID.getRows()
         records = self.FID.DID.sliceArray(row=1, nRow=nRows)
         self.times = records["time"]
@@ -279,7 +269,88 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #datazip.sort(key=lambda tup: tup[1], reverse=True)
         #self.DATASTRINGS = [tup[0] for tup in datazip]
 
-        return 1, "OKAY"
+        self.resolution = self.FID.getResolution()
+        numpoints = self.FID.FFParm["NROWS"].value
+
+        self.iO = 0
+        self.iE = min(numpoints - 1, len(self.times) - 1) #could maybe just be second part of this min not sure
+        self.iiE = self.iE
+        self.tO = self.times[self.iO]
+        self.tE = self.times[self.iE]
+        # save initial time range
+        self.itO = self.tO
+        self.itE = self.tE  
+
+        print(f'resolution: {self.resolution}')
+        #print(f'iO: {self.iO}')
+        #print(f'iE: {self.iE}')
+        print(f'tO: {self.tO}')
+        print(f'tE: {self.tE}')
+
+        self.setupSliders()
+
+        if self.tracer is not None:
+            self.tracer.close()
+            self.tracer = None
+
+        if self.edit is not None:
+            self.edit.close()
+            self.edit = None
+
+        return True
+
+    # currently just reads the columns and data types
+    # maybe separate this out into another file
+    def openCDF(self,PATH):#,q):
+        print(f'opening cdf: {PATH}')
+        cdf = pycdf.CDF(PATH)
+        if not cdf:
+            print('CDF LOAD FAILED')
+
+        #e = cdf['Epoch']
+        #es = cdf['Epoch_state']
+        #print(e[0])
+        #print(es[0])
+
+        for key,value in cdf.items():
+            print(f'{key} : {value}')
+
+            #if 'Epoch' in key:
+                #print(cdf[key][0])
+                #print(cdf[key])
+
+            #attrs = pycdf.zAttrList(cdf[key])
+            #if 'FILLVAL' in attrs:
+                #print(attrs['FILLVAL'])
+            #print('')
+
+        #eArr = MagPy4Window.CDFEpochToTimeTicks(e)
+        #esArr = self.CDFEpochToTimeTicks(es)
+
+        print('done')
+        #print(esArr)
+        #return eArr
+        #q.put([e,es,eArr])
+
+
+    def CDFEpochToTimeTicks(cdfEpoch):
+        """ convert Data data to numpy array of Records"""
+        d2tt2 = pycdf.Library().datetime_to_tt2000
+        num = len(cdfEpoch)
+        arr = np.empty(num)
+
+        #ttmJ2000 = 43167.8160001
+        dt = 32.184   # tai - tt time?
+        div = 10 ** 9
+
+        rng = range(num)
+
+        arr = [d2tt2(cdfEpoch[i]) / div - dt for i in rng]
+
+        # a lot faster if in another process
+        #for i in rng:
+            #arr[i] = d2tt2(cdfEpoch[i]) / div - dt
+        return arr
 
     # update slider tick amount and timers and labels and stuff based on new file
     def setupSliders(self):

@@ -61,7 +61,7 @@ class LinearGraphicsLayout(pg.GraphicsWidget):
         self.layout.setSpacing(*args)
     
 
-# this class is exact copy of pg.PlotCurveItem but with a changed paint function
+# this class is exact copy of pg.PlotCurveItem but with a changed paint function to draw points instead of lines
 # and i removed some random stuff i dont need as well
 import numpy as np
 from pyqtgraph import functions as fn

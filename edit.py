@@ -310,7 +310,6 @@ class Edit(QtWidgets.QFrame, EditUI):
                             combo.setCurrentIndex(combo.count() - 1)
                     else: # add untaken options to list
                         combo.addItem(s)
-                combo.update()
 
         self.setAxisCombosBlocked(False)
 
@@ -333,6 +332,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         for i in self.i:
             for j in self.i:
                 mat[i][j].setText(Edit.formatNumber(m[i][j]))
+                mat[i][j].update() # not repainting in mac?
 
     def axisRotGen(self, axis):
         R = self.genAxisRotationMatrix(axis, self.ui.axisAngle.value())
