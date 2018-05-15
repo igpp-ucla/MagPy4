@@ -310,6 +310,7 @@ class Edit(QtWidgets.QFrame, EditUI):
                             combo.setCurrentIndex(combo.count() - 1)
                     else: # add untaken options to list
                         combo.addItem(s)
+                combo.update()
 
         self.setAxisCombosBlocked(False)
 
