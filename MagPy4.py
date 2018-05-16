@@ -35,6 +35,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
         pg.setConfigOption('antialias', True) #todo add option to toggle this
+        #pg.setConfigOption('useOpenGL', True)
 
         self.app = app
         self.ui = MagPy4UI()
@@ -50,7 +51,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.ui.actionPlot.triggered.connect(self.openTracer)
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True))
-        self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False))
+        #self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False))
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionSpectra.triggered.connect(self.runSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
@@ -87,7 +88,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
         self.trackerPen = pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine)
 
+        self.firstRowStretch = 0
+
         self.plotItems = []
+        self.labelItems = []
         self.trackerLines = []
         starterFile = 'testData/mms15092720'
         self.FID = None #thanks yi 5/14/2018
@@ -182,7 +186,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.app.setWindowIcon(self.marsIcon if self.insightMode else self.magpyIcon)
 
     def resizeEvent(self, event):
-        #print('resize event')
+        #print(event.size())
+        self.additionalResizing()
         pass
 
     def openFileDialog(self, isFlatfile):
@@ -515,6 +520,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # boolMatrix is same shape as the checkBox matrix but just bools
     def plotData(self, bMatrix=None, fMatrix=None):
         self.ui.glw.clear()
+        self.ui.glw.ci.currentRow = 0
+        self.ui.glw.ci.currentCol = 0
 
         if bMatrix is None:
             bMatrix = self.lastPlotMatrix
@@ -524,6 +531,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.lastPlotMatrix = bMatrix #save bool matrix for latest plot
         self.lastLinkMatrix = fMatrix
         self.plotItems = []
+        self.labelItems = []
         self.plotDataStrings = [] # for each plot a list of strings for data contained within
         self.plotTracePens = [] # a list of pens for each trace (saved for consistency with spectra)
 
@@ -538,7 +546,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.trackerLines = []
 
         numPlots = len(bMatrix)
-        plotCount = max(numPlots,4) # always space for at least 4 plots on screen
         for plotIndex,bAxis in enumerate(bMatrix):
             axis = DateAxis(orientation='bottom')
             axis.window = self
@@ -636,21 +643,56 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             else:
                 axisString = axisString[:-1] #remove last newline character
 
-            fontSize = max(15 - numPlots,7)
-
-            # add Y axis label based on traces
+            # add Y axis label based on traces (label gets set in below function)
             li = pg.LabelItem()
-            # could just switch to using <br>'s probably instead
-            li.item.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{axisString}</span>")
-            self.ui.glw.addItem(li)
+            self.labelItems.append([li, axisString, traceCount])
 
+            self.ui.glw.addItem(li)
             self.ui.glw.addItem(pi)
             self.ui.glw.nextRow()
+
+        self.additionalResizing()
 
         ## end of main for loop
         self.updateYRange()
 
     ## end of plot function
+
+    # trying to correctly estimate size of rows. last one needs to be a bit larger since bottom axis
+    # this is super hacked but it seems to work okay
+    def additionalResizing(self):
+        qggl = self.ui.glw.ci.layout
+        rows = qggl.rowCount()
+        plots = rows - 1
+        if self.firstRowStretch < 2:
+            y = 689.0 # hardcoded to match first 2 calls having incorrect size
+            self.firstRowStretch += 1
+        else:
+            y = self.ui.glw.viewRect().height()
+
+        # set font string, resized based on viewsize and plot number
+        # very hardcoded just based on nice numbers i found. the goal here is for the labels to be smaller so the plotItems will dictate scaling
+        # if these labelitems are larger they will cause qgridlayout to stretch and the plots wont be same height which is bad
+        for li,axisString,traceCount in self.labelItems:
+            fontSize = y / plots * 0.07
+            if traceCount > plots and plots > 1:
+                fontSize -= (traceCount - plots)*(1.0 / min(4, plots) + 0.35)
+            fontSize = min(18, max(fontSize,4))
+            li.item.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{axisString}</span>")
+
+        if rows <= 2: # if just one plot dont need to resize bottom one
+            return
+        #print(y)
+
+        y -= 40 + (plots - 1) * 7 # the spaces in between plots hence the -1
+        y -= 20 # for bottom axis text
+        for i in range(rows):
+            if i == 0:
+                continue
+            h = y / plots if i < rows-1 else y / plots + 20
+            qggl.setRowFixedHeight(i, h)
+            qggl.setRowMaximumHeight(i, h) 
+
 
     # just redraws the traces and ensures y range is correct
     # dont need to rebuild everything
@@ -733,7 +775,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 if checked:
                     diff = values[i][1] - values[i][0]
                     l2 = (largest - diff) / 2.0
-                    self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2)
+                    self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2, padding = 0.05)
 
         # for plot items that aren't apart of a group (and has at least one trace) just scale them to themselves
         # so this effectively acts like they are checked in their own group
@@ -741,7 +783,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             if i not in partOfGroup and i not in skipRangeSet:
                 for b in row: # check to see if has at least one trace (not empty row)
                     if b:
-                        self.plotItems[i].setYRange(values[i][0], values[i][1])
+                        self.plotItems[i].setYRange(values[i][0], values[i][1], padding = 0.05)
                         break
 
     # find points at which each spacecraft crosses this value for the first time after this time

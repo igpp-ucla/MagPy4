@@ -25,10 +25,10 @@ class MagPy4UI(object):
         self.actionOpenFF.setShortcut('O')
         self.toolBar.addAction(self.actionOpenFF)
 
-        self.actionOpenCDF = QtWidgets.QAction(MagPy4)
-        self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
-        self.actionOpenCDF.setText('Open CDF')
-        self.toolBar.addAction(self.actionOpenCDF)
+        #self.actionOpenCDF = QtWidgets.QAction(MagPy4)
+        #self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
+        #self.actionOpenCDF.setText('Open CDF')
+        #self.toolBar.addAction(self.actionOpenCDF)
 
         self.actionPlot = QtWidgets.QAction(MagPy4)
         self.actionPlot.setText('Plot Menu')
