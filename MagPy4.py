@@ -105,7 +105,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.tracer.close()
         self.tracer = PlotTracer(self)
 
-        self.tracer.move(50,400)
+        geo = self.geometry()
+        self.tracer.move(geo.x()-8, geo.y() + 100)
         self.tracer.show()
 
     def runSpectra(self):
@@ -626,7 +627,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             fontSize = y / plots * 0.07
             if traceCount > plots and plots > 1:
                 fontSize -= (traceCount - plots) * (1.0 / min(4, plots) + 0.35)
-            fontSize = min(18, max(fontSize,4))
+            fontSize = min(16, max(fontSize,4))
             li.item.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{axisString}</span>")
 
         if rows <= 2: # if just one plot dont need to resize bottom one

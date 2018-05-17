@@ -40,9 +40,9 @@ class SpectraUI(object):
         self.bandWidthSpinBox.setSingleStep(2)
         self.bandWidthSpinBox.setProperty("value", 3)
 
-        self.oneTracePerCheckBox = QtGui.QCheckBox()
-        self.oneTracePerCheckBox.setChecked(True)
-        oneTracePerLabel = QtGui.QLabel("One Trace Per Plot")
+        self.separateTracesCheckBox = QtGui.QCheckBox()
+        self.separateTracesCheckBox.setChecked(True)
+        separateTraces = QtGui.QLabel("Separate Traces")
 
         self.aspectLockedCheckBox = QtGui.QCheckBox()
         self.aspectLockedCheckBox.setChecked(True)
@@ -55,10 +55,10 @@ class SpectraUI(object):
 
         gridLayout = QtWidgets.QGridLayout()
         gridLayout.addWidget(bandWidthLabel, 0, 0, 1, 1)
-        gridLayout.addWidget(oneTracePerLabel, 1, 0, 1, 1)
+        gridLayout.addWidget(separateTraces, 1, 0, 1, 1)
         gridLayout.addWidget(aspectLockedLabel, 2, 0, 1, 1)
         gridLayout.addWidget(self.bandWidthSpinBox, 0, 1, 1, 1)
-        gridLayout.addWidget(self.oneTracePerCheckBox, 1, 1, 1, 1)
+        gridLayout.addWidget(self.separateTracesCheckBox, 1, 1, 1, 1)
         gridLayout.addWidget(self.aspectLockedCheckBox, 2, 1, 1, 1)
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         gridLayout.addItem(spacer, 0, 2, 1, 1)
@@ -157,7 +157,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         
         self.ui.updateButton.clicked.connect(self.updateSpectra)
         self.ui.bandWidthSpinBox.valueChanged.connect(self.updateSpectra)
-        self.ui.oneTracePerCheckBox.stateChanged.connect(self.updateSpectra)
+        self.ui.separateTracesCheckBox.stateChanged.connect(self.updateSpectra)
         self.ui.aspectLockedCheckBox.stateChanged.connect(self.updateSpectra)
 
         self.updateSpectra()
@@ -182,7 +182,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.grid.currentRow = 0 # clear doesnt get rid of grid layout formatting correctly it seems
         self.ui.grid.currentCol = 0
         self.ui.labelLayout.clear()
-        oneTracePerPlot = self.ui.oneTracePerCheckBox.isChecked()
+        oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
         aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
         numberPlots = 0
         curRow = [] # list of plot items in rows of spectra

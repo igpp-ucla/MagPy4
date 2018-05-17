@@ -152,7 +152,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.removeRow.clicked.connect(self.removeHistory)
 
         # setup default BX vector rows
-        self.axisCombos = []
+        self.axisDropdowns = []
         found = []
         maxLen = 0
         for kw in ['BX','BY','BZ']:
@@ -166,16 +166,16 @@ class Edit(QtWidgets.QFrame, EditUI):
         for i in range(maxLen):
             self.addAxisRow()
 
-        self.setAxisCombosBlocked(True)
+        self.setVectorDropdownsBlocked(True)
         for col,dstrs in enumerate(found):
             for row,dstr in enumerate(dstrs):
-                combo = self.axisCombos[row][col]
-                index = combo.findText(dstr)
+                dd = self.axisDropdowns[row][col]
+                index = dd.findText(dstr)
                 if index >= 0:
-                    combo.setCurrentIndex(index)
-        self.setAxisCombosBlocked(False)
+                    dd.setCurrentIndex(index)
+        self.setVectorDropdownsBlocked(False)
 
-        # one run of this so comboboxes are correct
+        # one run of this so dropdowns are correct
         self.checkVectorRows()
         self.updateVectorSelections()
 
@@ -222,12 +222,12 @@ class Edit(QtWidgets.QFrame, EditUI):
             #return f'{n:e}'
         return f'{n}'
 
-    def setAxisCombosBlocked(self, blocked):
-        for row in self.axisCombos:
-            for combo in row:
-                combo.blockSignals(blocked)
+    def setVectorDropdownsBlocked(self, blocked):
+        for row in self.axisDropdowns:
+            for dd in row:
+                dd.blockSignals(blocked)
 
-    def onAxisComboChanged(self, r, c, text):
+    def onAxisDropdownChanged(self, r, c, text):
         #print(f'{r} {c} {text}')
         self.checkVectorRows()
         self.updateVectorSelections()
@@ -238,7 +238,7 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         nonFullRowCount = 0
         emptyRows = []
-        for r,row in enumerate(self.axisCombos):
+        for r,row in enumerate(self.axisDropdowns):
             r0 = not row[0].currentText()  
             r1 = not row[1].currentText()
             r2 = not row[2].currentText()
@@ -247,40 +247,38 @@ class Edit(QtWidgets.QFrame, EditUI):
             if r0 and r1 and r2:
                 emptyRows.append(r)
 
-        if nonFullRowCount == 0: # and len(self.axisCombos) < 4:
+        if nonFullRowCount == 0: # and len(self.axisDropdowns) < 4:
             self.addAxisRow()
         # if theres more than one non full row then delete empty rows
         elif nonFullRowCount > 1 and len(emptyRows) >= 1:
             index = emptyRows[-1]
-            del self.axisCombos[index]
+            del self.axisDropdowns[index]
             layout = self.ui.vectorLayout.takeAt(index)
             while layout.count():
                 layout.takeAt(0).widget().deleteLater()
 
 
     def addAxisRow(self):
-        # init data vector combobox dropdowns
-        r = len(self.axisCombos)
+        # init data vector dropdowns
+        r = len(self.axisDropdowns)
         row = []
         newLayout = QtWidgets.QHBoxLayout()
         for i,ax in enumerate(self.ui.axes):
-            combo = QtGui.QComboBox()
-            #edit = QtGui.QLineEdit(f'B{ax}')
-            #combo.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
-            combo.addItem('')
+            dd = QtGui.QComboBox()
+            dd.addItem('')
             for s in self.window.DATASTRINGS:
                 if ax.lower() in s.lower():
-                    combo.addItem(s)
-            combo.currentTextChanged.connect(functools.partial(self.onAxisComboChanged, r, i))
-            newLayout.addWidget(combo)
-            row.append(combo)
+                    dd.addItem(s)
+            dd.currentTextChanged.connect(functools.partial(self.onAxisDropdownChanged, r, i))
+            newLayout.addWidget(dd)
+            row.append(dd)
         self.ui.vectorLayout.addLayout(newLayout)
-        self.axisCombos.append(row)
+        self.axisDropdowns.append(row)
 
-    # sets up the vector axis comboboxes
-    # if an item is checke it wont be available for the others in same column
+    # sets up the vector axis dropdowns
+    # if an item is checked it wont be available for the others in same column
     def updateVectorSelections(self):
-        self.setAxisCombosBlocked(True) # block signals so we dont recursively explode
+        self.setVectorDropdownsBlocked(True) # block signals so we dont recursively explode
 
         colStrs = [] # total option list for each column
         for i,ax in enumerate(self.ui.axes):
@@ -290,30 +288,30 @@ class Edit(QtWidgets.QFrame, EditUI):
                     col.append(dstr)
             colStrs.append(col)
 
-        for r,row in enumerate(self.axisCombos):
-            for i,combo in enumerate(row):
-                txt = combo.currentText()
+        for r,row in enumerate(self.axisDropdowns):
+            for i,dd in enumerate(row):
+                txt = dd.currentText()
                 col = colStrs[i]
                 if txt in col:
                     # turn this entry into a list (done to keep the ordering correct)
                     # this is kinda stupid but just needed a simple way to mark this entry basically for next operation
                     col[col.index(txt)] = [txt] 
 
-        for r,row in enumerate(self.axisCombos):
-            for i,combo in enumerate(row):
-                txt = combo.currentText()
-                combo.clear()
-                combo.addItem('') # empty option is always first
+        for r,row in enumerate(self.axisDropdowns):
+            for i,dd in enumerate(row):
+                txt = dd.currentText()
+                dd.clear()
+                dd.addItem('') # empty option is always first
                 for s in colStrs[i]:
                     # if its a list
                     if isinstance(s, list):
                         if txt == s[0]: # only add it and set to current if same as txt
-                            combo.addItem(txt)
-                            combo.setCurrentIndex(combo.count() - 1)
+                            dd.addItem(txt)
+                            dd.setCurrentIndex(dd.count() - 1)
                     else: # add untaken options to list
-                        combo.addItem(s)
+                        dd.addItem(s)
 
-        self.setAxisCombosBlocked(False)
+        self.setVectorDropdownsBlocked(False)
 
     # mat is 2D list of label/lineEdits
     def getMatrix(self, mat):
@@ -403,11 +401,11 @@ class Edit(QtWidgets.QFrame, EditUI):
         r = Edit.toString(R)
         i = Edit.identity()
         
-        # for each full vector combo row 
-        for combos in self.axisCombos:
-            xstr = combos[0].currentText()
-            ystr = combos[1].currentText()
-            zstr = combos[2].currentText()
+        # for each full vector dropdown row 
+        for dd in self.axisDropdowns:
+            xstr = dd[0].currentText()
+            ystr = dd[1].currentText()
+            zstr = dd[2].currentText()
 
             if not xstr or not ystr or not zstr: # skip rows with empty selections
                 continue
