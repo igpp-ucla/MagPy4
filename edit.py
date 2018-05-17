@@ -46,10 +46,10 @@ class EditUI(object):
         rightLayout.addWidget(rFrame)
 
         # axis rotation frame
-        bFrame = QtWidgets.QGroupBox('Matrix Builders')
+        builderFrame = QtWidgets.QGroupBox('Matrix Builders')
 
         extraButtons = QtWidgets.QHBoxLayout()
-        bLayout = QtWidgets.QVBoxLayout(bFrame)
+        builderLayout = QtWidgets.QVBoxLayout(builderFrame)
         self.loadIdentity = QtGui.QPushButton('Load Identity')
         self.loadIdentity.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.loadZeros = QtGui.QPushButton('Load Zeros')
@@ -57,7 +57,7 @@ class EditUI(object):
         extraButtons.addWidget(self.loadIdentity)
         extraButtons.addWidget(self.loadZeros)
         extraButtons.addStretch()
-        bLayout.addLayout(extraButtons)
+        builderLayout.addLayout(extraButtons)
 
         axLayout = QtWidgets.QHBoxLayout()
         angleLabel = QtGui.QLabel('Angle')
@@ -77,10 +77,14 @@ class EditUI(object):
             axLayout.addWidget(gb)
             self.genButtons.append(gb)
 
-        bLayout.addLayout(axLayout)
+        builderLayout.addLayout(axLayout)
         #bLayout.addStretch()
 
-        leftLayout.addWidget(bFrame)
+        self.minVarButton = QtGui.QPushButton('Minimum Variance')
+        self.minVarButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        builderLayout.addWidget(self.minVarButton)
+
+        leftLayout.addWidget(builderFrame)
         leftLayout.addStretch()
         
         # history
@@ -131,8 +135,6 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     STRING_PRECISION = 10
-    # i want to have it display and store at minimum precision necesary and go up to STRING_PRECISION
-    # maybe also show as 1eX notation if over 10000? or somethin?
 
     def __init__(self, window, parent=None):
         super(Edit, self).__init__(parent)

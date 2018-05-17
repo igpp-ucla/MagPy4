@@ -101,3 +101,34 @@ class MagPy4UI(object):
         sliderLayout.addWidget(self.endSlider, 1, 1, 1, 1)
 
         layout.addLayout(sliderLayout)
+
+         # update slider tick amount and timers and labels and stuff based on new file
+    def setupSliders(self, tick, max, minDateTime, maxDateTime):
+        #dont want to trigger callbacks from first plot
+        self.startSlider.blockSignals(True)
+        self.endSlider.blockSignals(True)
+        self.startSliderEdit.blockSignals(True)
+        self.endSliderEdit.blockSignals(True)
+
+        self.startSlider.setMinimum(0)
+        self.startSlider.setMaximum(max)
+        self.startSlider.setTickInterval(tick)
+        self.startSlider.setSingleStep(tick)
+        self.startSlider.setValue(0)
+        self.endSlider.setMinimum(0)
+        self.endSlider.setMaximum(max)
+        self.endSlider.setTickInterval(tick)
+        self.endSlider.setSingleStep(tick)
+        self.endSlider.setValue(max)
+
+        self.startSliderEdit.setMinimumDateTime(minDateTime)
+        self.startSliderEdit.setMaximumDateTime(maxDateTime)
+        self.startSliderEdit.setDateTime(minDateTime)
+        self.endSliderEdit.setMinimumDateTime(minDateTime)
+        self.endSliderEdit.setMaximumDateTime(maxDateTime)
+        self.endSliderEdit.setDateTime(maxDateTime)
+
+        self.startSlider.blockSignals(False)
+        self.endSlider.blockSignals(False)
+        self.startSliderEdit.blockSignals(False)
+        self.endSliderEdit.blockSignals(False)

@@ -31,20 +31,20 @@ class PlotTracerUI(object):
         self.addPlotButton = QtWidgets.QPushButton('Add Plot')
         self.plotButton = QtWidgets.QPushButton('Plot')
 
-        self.clearButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.removePlotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.addPlotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.plotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-
-        buttonLayout = QtWidgets.QHBoxLayout()
-        buttonLayout.addWidget(self.clearButton)
-        buttonLayout.addWidget(self.removePlotButton)
-        buttonLayout.addWidget(self.addPlotButton)
+        buttonLayout = QtWidgets.QGridLayout()
+        buttonLayout.addWidget(self.clearButton, 0, 0, 1, 1)
+        buttonLayout.addWidget(self.removePlotButton, 0, 1, 1, 1)
+        buttonLayout.addWidget(self.addPlotButton, 0, 2, 1, 1)
 
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        buttonLayout.addItem(spacer)
+        buttonLayout.addItem(spacer, 0, 3, 1, 1)
+
+        buttonLayout.addWidget(self.plotButton, 1, 0, 1, 3)
+
+        self.switchButton = QtWidgets.QPushButton('Switch')
+        buttonLayout.addWidget(self.switchButton, 0, 4, 1,1)
+
         layout.addLayout(buttonLayout)
-        layout.addWidget(self.plotButton)
 
         self.gridFrame = QtWidgets.QGroupBox('Plot Matrix')
         self.grid = QtWidgets.QGridLayout(self.gridFrame)
@@ -64,51 +64,108 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
         self.window = window
         self.ui = PlotTracerUI()
         self.ui.setupUI(self)
-        self.plotCount = 0
 
-        #self.ui.drawStyleCombo.currentIndexChanged.connect(self.setLineStyle)
         self.ui.clearButton.clicked.connect(self.clearCheckBoxes)
         self.ui.addPlotButton.clicked.connect(self.addPlot)
         self.ui.removePlotButton.clicked.connect(self.removePlot)
         self.ui.plotButton.clicked.connect(self.plotData)
+        self.ui.switchButton.clicked.connect(self.switchModes)
 
-        self.addLabels()
-
-        self.checkBoxes = []
+        self.checkBoxMode = True
+        self.ui.switchButton.setText('Switch to ComboBoxes' if self.checkBoxMode else 'Switch to CheckBoxes')
         self.fcheckBoxes = []
-        self.fLabels = 0
 
-        # set up previous saved plot and link checkboxes
-        if self.window.lastPlotMatrix is not None:
-            for i,axis in enumerate(self.window.lastPlotMatrix):
+        self.initTracer()
+
+        if self.window.lastPlotLinks is not None:
+            links = []
+            for l in self.window.lastPlotLinks:
+                if not isinstance(l, tuple):
+                    links.append(l)
+            self.rebuildPlotLinks(len(links))
+            for i,axis in enumerate(links):
+                for j in axis:
+                    self.fcheckBoxes[i][j].setChecked(True)
+
+    def initTracer(self):
+        self.plotCount = 0
+        self.checkBoxes = []
+        self.comboBoxes = []
+
+        if self.window.lastPlotStrings is None:
+            print('no starting plot matrix!')
+            return
+
+        if self.checkBoxMode:
+            self.addLabels()
+            for i,axis in enumerate(self.window.lastPlotStrings):
                 self.addPlot()
-                for j,b in enumerate(axis):
-                    self.checkBoxes[i][j].setChecked(b)
-        if self.window.lastLinkMatrix is not None:
-            numRows = len(self.window.lastLinkMatrix)
-            self.rebuildPlotLinks(numRows)
-            for i,axis in enumerate(self.window.lastLinkMatrix):
-                for j,b in enumerate(axis):
-                    self.fcheckBoxes[i][j].setChecked(b)
+                for dstr in axis:
+                    di = self.window.DATASTRINGS.index(dstr)
+                    self.checkBoxes[i][di].setChecked(True)
+        else:
+            spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+            self.ui.grid.addItem(spacer,0,100,1,1) # just so its always the last column
+            for i,axis in enumerate(self.window.lastPlotStrings):
+                self.addPlot()
 
-    # returns bool matrix from checkbox matrix
-    def checksToBools(self, cbMatrix, skipEmpty = False):
-        boolMatrix = []
-        for cbAxis in cbMatrix:
-            boolAxis = []
-            nonEmpty = False
-            for cb in cbAxis:
-                b = cb.isChecked()
-                nonEmpty = nonEmpty or b
-                boolAxis.append(b)
-            if nonEmpty or not skipEmpty:
-                boolMatrix.append(boolAxis)
-        return boolMatrix
+    def switchModes(self):
+        # clear widgets
+        while self.ui.grid.count():
+            child = self.ui.grid.takeAt(0)
+            if child.widget() is not None:
+                child.widget().deleteLater()
+
+        # todo: save mode in magpy
+        if self.ui.switchButton.text() == 'Switch to CheckBoxes':
+            self.checkBoxMode = True
+            self.ui.switchButton.setText('Switch to ComboBoxes')
+        else:
+            self.checkBoxMode = False
+            self.ui.switchButton.setText('Switch to CheckBoxes')
+
+        self.initTracer()
+   
+
+    # returns list of list of strings (one list for each plot, one string for each trace)
+    def getPlotInfoFromCheckboxes(self):
+        dstrs = []
+        for cbAxis in self.checkBoxes:
+            row = []
+            for i,cb in enumerate(cbAxis):
+                if cb.isChecked():
+                    row.append(self.window.DATASTRINGS[i])
+            dstrs.append(row)
+        return dstrs
+
+    def getPlotInfoFromDropdowns(self):
+        pass
+
+    def getLinkLists(self):
+        links = []
+        notFound = set([i for i in range(len(self.fcheckBoxes[0]))])
+        for fAxis in self.fcheckBoxes:
+            row = []
+            for i,cb in enumerate(fAxis):
+                if cb.isChecked():
+                    row.append(i)
+                    if i in notFound:
+                        notFound.remove(i)
+            if len(row) > 0:
+                links.append(row)
+        for i in notFound: # for anybody not part of set add them
+            links.append((i,)) # append as tuple so can check for this later
+        return links
 
     def plotData(self):
-        boolMatrix = self.checksToBools(self.checkBoxes)
-        self.window.lastPlotMatrix = boolMatrix
-        self.window.plotData(boolMatrix, self.checksToBools(self.fcheckBoxes))
+        dstrs = self.getPlotInfoFromCheckboxes()
+        links = self.getLinkLists()
+
+        self.window.plotData(dstrs, links)
+
+        #boolMatrix = self.checksToBools(self.checkBoxes)
+        #self.window.lastPlotMatrix = boolMatrix
+        #self.window.plotData(boolMatrix, self.checksToBools(self.fcheckBoxes))
 
     def clearCheckBoxes(self):
         for row in self.checkBoxes:
@@ -143,7 +200,8 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
         return used if used < targ else targ
 
     # rebuild whole link table (tried adding and removing widgets and got pretty close but this was way easier in hindsight)
-    def rebuildPlotLinks(self, targRows = None):
+    # i think callbacks cause this to get called way more than it should but its pretty fast so meh
+    def rebuildPlotLinks(self, targRows=None):
         fgrid = self.ui.fgrid
 
         if targRows is None:
@@ -165,16 +223,16 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
             pLabel = QtWidgets.QLabel()
             pLabel.setText(f'Plot{i+1}')
             pLabel.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
-            fgrid.addWidget(pLabel,0,i+1,1,1)
+            fgrid.addWidget(pLabel,0,i + 1,1,1)
         # add spacer
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        fgrid.addItem(spacer,0,self.plotCount+1,1,1)
+        fgrid.addItem(spacer,0,self.plotCount + 1,1,1)
 
         # add checkBoxes
         for r in range(self.targRows):
             linkGroupLabel = QtWidgets.QLabel()
             linkGroupLabel.setText(f'Group{r+1}')
-            fgrid.addWidget(linkGroupLabel,r+1,0,1,1)
+            fgrid.addWidget(linkGroupLabel,r + 1,0,1,1)
             row = []
             for i in range(self.plotCount):
                 checkBox = QtWidgets.QCheckBox()
@@ -183,8 +241,22 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
                 # add callback with predefined arguments here
                 checkBox.stateChanged.connect(functools.partial(self.checkPlotLinks, checkBox, r, i))
                 row.append(checkBox)
-                fgrid.addWidget(checkBox,r+1,i+1,1,1)      
+                fgrid.addWidget(checkBox,r + 1,i + 1,1,1)      
             self.fcheckBoxes.append(row)
+
+    # returns bool matrix from checkbox matrix
+    def checksToBools(self, cbMatrix, skipEmpty=False):
+        boolMatrix = []
+        for cbAxis in cbMatrix:
+            boolAxis = []
+            nonEmpty = False
+            for cb in cbAxis:
+                b = cb.isChecked()
+                nonEmpty = nonEmpty or b
+                boolAxis.append(b)
+            if nonEmpty or not skipEmpty:
+                boolMatrix.append(boolAxis)
+        return boolMatrix
 
     def addLabels(self):
         self.labels = []
@@ -192,20 +264,30 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
             label = QtWidgets.QLabel()
             label.setText(dstr)
             label.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
-            self.ui.grid.addWidget(label,0,i+1,1,1)
+            self.ui.grid.addWidget(label,0,i + 1,1,1)
 
     def addPlot(self):
         self.plotCount += 1
+
         plotLabel = QtWidgets.QLabel()
         plotLabel.setText(f'Plot{self.plotCount}')
-        checkBoxes = []
-        a = self.plotCount + 1 # first axis is labels so +1
-        self.ui.grid.addWidget(plotLabel,a,0,1,1)
-        for i,dstr in enumerate(self.window.DATASTRINGS):
-            checkBox = QtWidgets.QCheckBox()
-            checkBoxes.append(checkBox)
-            self.ui.grid.addWidget(checkBox,a,i+1,1,1)
-        self.checkBoxes.append(checkBoxes)
+
+        if self.checkBoxMode:
+            checkBoxes = []
+            self.ui.grid.addWidget(plotLabel,self.plotCount + 1,0,1,1)
+            for i,dstr in enumerate(self.window.DATASTRINGS):
+                checkBox = QtWidgets.QCheckBox()
+                checkBoxes.append(checkBox)
+                self.ui.grid.addWidget(checkBox,self.plotCount + 1,i + 1,1,1) # first +1 because axis labels
+            self.checkBoxes.append(checkBoxes)
+        else:
+            self.ui.grid.addWidget(plotLabel,self.plotCount + 1,0,1,1)
+            comboBox = QtWidgets.QComboBox()
+            comboBox.addItem(' ')
+            for dstr in self.window.DATASTRINGS:
+                comboBox.addItem(dstr)
+            self.ui.grid.addWidget(comboBox,self.plotCount + 1,1,1,1)
+            self.comboBoxes.append([comboBox])
 
         self.rebuildPlotLinks()
 
@@ -215,11 +297,15 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
             return
         self.plotCount-=1
 
-        rowLen = len(self.window.DATASTRINGS)+1 # one extra because plot labels row
-        self.checkBoxes = self.checkBoxes[:-1]
+        if self.checkBoxMode:
+            self.checkBoxes = self.checkBoxes[:-1]
+            rowLen = len(self.window.DATASTRINGS) + 1 # one extra because plot labels row
+        else:
+            self.comboBoxes = self.comboBoxes[:-1]
+            rowLen = 1 + 1 # 1 is number of combos , +1 for plotlabel
 
         for i in range(rowLen):
-            child = self.ui.grid.takeAt(self.ui.grid.count()-1) # take items off back
+            child = self.ui.grid.takeAt(self.ui.grid.count() - 1) # take items off back
             if child.widget() is not None:
                 child.widget().deleteLater()
 
