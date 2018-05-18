@@ -19,10 +19,10 @@ import pycdf
 
 from MagPy4UI import MagPy4UI
 from plotTracer import PlotTracer
-from spectra import Spectra, SpectraInfiniteLine
+from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
-from pyqtgraphExtensions import PlotPointsItem
+from pyqtgraphExtensions import DateAxis, PlotPointsItem, LinkedInfiniteLine
 
 import time
 import functools
@@ -66,6 +66,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.lastPlotStrings = None
         self.lastPlotLinks = None
+
+        self.plotTracerCheckBoxMode = False
         self.tracer = None
 
         self.spectraStep = 0
@@ -73,6 +75,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.spectras = []
 
         self.edit = None
+        self.dataDisplay = None
 
         self.magpyIcon = QtGui.QIcon()
         self.magpyIcon.addFile('images/magPy_blue.ico')
@@ -99,6 +102,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.openFF(starterFile)
             self.plotDataDefault()
 
+    # close any subwindows if main window is closed
+    def closeEvent(self, event):
+        if self.tracer:
+            self.tracer.close()
+        if self.edit:
+            self.edit.close()
+        if self.dataDisplay:
+            self.dataDisplay.close()
+        for spectra in self.spectras:
+            spectra.close()
 
     def openTracer(self):
         if self.tracer is not None:
@@ -738,6 +751,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for pi in self.plotItems:
             pi.getViewBox().spectLines[index].setPos(x)
 
+
     def hideAllSpectraLines(self, exc=None): # can allow optional viewbox exception
         for pi in self.plotItems:
             vb = pi.getViewBox()
@@ -766,6 +780,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 return True
         return False
 
+
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
@@ -777,8 +792,13 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         pen = pg.mkPen('#FF0000', width=1, style=QtCore.Qt.DashLine)
         self.vMouseLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pen)
         self.hMouseLine = pg.InfiniteLine(movable=False, angle=0, pos=0, pen=pen)
-        self.spectLines = [SpectraInfiniteLine(self.window, 0, movable=True, angle=90, pos=0, pen=pen),
-                           SpectraInfiniteLine(self.window, 1, movable=True, angle=90, pos=0, pen=pen)]
+        self.spectLines = [LinkedInfiniteLine(functools.partial(window.updateSpectra, 0), movable=True, angle=90, pos=0, pen=pen),
+                           LinkedInfiniteLine(functools.partial(window.updateSpectra, 1), movable=True, angle=90, pos=0, pen=pen)]
+
+        self.generalLines = [LinkedInfiniteLine(functools.partial(window.updateSpectra, 0), movable=True, angle=90, pos=0, pen=pen),
+                             LinkedInfiniteLine(functools.partial(window.updateSpectra, 1), movable=True, angle=90, pos=0, pen=pen)]
+
+        self.generalLines = []
         self.dataText = pg.TextItem('test', fill=(255, 255, 255, 200), html='<div style="text-align: center; color:#FFF;">')
         self.dataText.setZValue(10) #draw over the traces
         self.dataText.border = self.window.pens[3] #black pen
@@ -880,20 +900,6 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     def wheelEvent(self, ev, axis=None):
         ev.ignore()
 
-# subclass based off example here:
-# https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
-class DateAxis(pg.AxisItem):
-    def toUTC(x,window, showMillis=False): # converts seconds since epoch to UTC string
-        t = FFTIME(x, Epoch=window.epoch).UTC
-        t = str(t)
-        t = t.split(' ')[-1]
-        t = t.split(':',1)[1]
-        if not showMillis and window.tE - window.tO > 10:
-            t = t.split('.',1)[0]
-        return t
-
-    def tickStrings(self, values, scale, spacing):
-        return [DateAxis.toUTC(x,self.window) for x in values]
 
 if __name__ == '__main__':
 

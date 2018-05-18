@@ -71,15 +71,17 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
         self.ui.plotButton.clicked.connect(self.plotData)
         self.ui.switchButton.clicked.connect(self.switchModes)
 
-        self.checkBoxMode = True
+        self.checkBoxMode = self.window.plotTracerCheckBoxMode
         self.ui.switchButton.setText('Switch to Dropdowns' if self.checkBoxMode else 'Switch to CheckBoxes')
         self.fcheckBoxes = []
 
-        self.shouldResizeWindow = False
+        self.shouldResizeWindow = False # gets set when switching modes
         self.initTracer()
 
+    def closeEvent(self, event):
+        self.window.plotTracerCheckBoxMode = self.checkBoxMode
 
-    def paintEvent(self, eve):
+    def paintEvent(self, event):
         if self.shouldResizeWindow:
             self.shouldResizeWindow = False
             self.resize(self.ui.layout.sizeHint())

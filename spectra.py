@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
-from pyqtgraphExtensions import LinearGraphicsLayout
+from pyqtgraphExtensions import LinearGraphicsLayout, LogAxis
 from FF_Time import FFTIME
 from dataDisplay import UTCQDate
 
@@ -68,66 +68,6 @@ class SpectraUI(object):
 
         layout.addLayout(gridLayout)
 
-#todo show minor ticks on left side
-#hide minor tick labels always
-class LogAxis(pg.AxisItem):
-    def __init__(self, *args, **kwargs):
-        pg.AxisItem.__init__(self, *args, **kwargs)
-
-        self.tickFont = QtGui.QFont()
-        self.tickFont.setPixelSize(14)
-        self.style['maxTextLevel'] = 1 # never have any subtick labels
-        self.style['textFillLimits'] = [(0,1.1)] # try to always draw labels
-        #self.style['tickLength'] = -10
-        #todo: override AxisItem generateDrawSpecs and custom set tick length
-
-    def tickStrings(self, values, scale, spacing):
-        return [f'{int(x)}    ' for x in values] # spaces are for eyeballing the auto sizing before rich text override below
-
-    def tickSpacing(self, minVal, maxVal, size):
-        #levels = pg.AxisItem.tickSpacing(self,minVal,maxVal,size)
-        levels = [(10.0,0),(1.0,0),(0.5,0)]
-        return levels
-
-    # overriden from source to be able to have superscript text
-    def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
-        p.setRenderHint(p.Antialiasing, False)
-        p.setRenderHint(p.TextAntialiasing, True)
-        
-        ## draw long line along axis
-        pen, p1, p2 = axisSpec
-        p.setPen(pen)
-        p.drawLine(p1, p2)
-        p.translate(0.5,0)  ## resolves some damn pixel ambiguity
-        
-        ## draw ticks
-        for pen, p1, p2 in tickSpecs:
-            p.setPen(pen)
-            p.drawLine(p1, p2)
-
-        ## Draw all text
-        if self.tickFont is not None:
-            p.setFont(self.tickFont)
-        p.setPen(self.pen())
-        for rect, flags, text in textSpecs:
-            qst = QtGui.QStaticText(f'10<sup>{text}</sup>')
-            qst.setTextFormat(QtCore.Qt.RichText)
-            p.drawStaticText(rect.left(), rect.top(), qst)
-            #p.drawText(rect, flags, text)
-            #p.drawRect(rect)
-
-class SpectraInfiniteLine(pg.InfiniteLine):
-    def __init__(self, window, index, *args, **kwds):
-        pg.InfiniteLine.__init__(self, *args, **kwds)
-        self.window = window
-        self.index = index
-
-    def mouseDragEvent(self, ev):
-        pg.InfiniteLine.mouseDragEvent(self, ev)
-        #update all other infinite spectra lines on left or right depending
-        if self.movable and ev.button() == QtCore.Qt.LeftButton:
-            x = self.getXPos()
-            self.window.updateSpectra(self.index,x)
 
 class SpectraViewBox(pg.ViewBox): # custom viewbox event handling
     def __init__(self, *args, **kwds):
@@ -158,14 +98,19 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.updateButton.clicked.connect(self.updateSpectra)
         self.ui.bandWidthSpinBox.valueChanged.connect(self.updateSpectra)
         self.ui.separateTracesCheckBox.stateChanged.connect(self.updateSpectra)
-        self.ui.aspectLockedCheckBox.stateChanged.connect(self.updateSpectra)
+        self.ui.aspectLockedCheckBox.stateChanged.connect(self.setAspect)
 
+        self.plotItems = []
         self.updateSpectra()
 
     # todo only send close event if ur current spectra
     def closeEvent(self, event):
         self.window.spectraStep = 0
         self.window.hideAllSpectraLines()
+
+    def setAspect(self):
+        for pi in self.plotItems:
+            pi.setAspectLocked(self.ui.aspectLockedCheckBox.isChecked())
 
     # some weird stuff is going on in here because there was many conflicts 
     # with combining linked y range between plots of each row, log scale, and fixed aspect ratio settings
@@ -186,6 +131,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
         numberPlots = 0
         curRow = [] # list of plot items in rows of spectra
+        self.plotItems = []
         for listIndex, (strList,penList) in enumerate(plotInfos):
             for i,dstr in enumerate(strList):
                 if i == 0 or oneTracePerPlot:
@@ -216,6 +162,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 if lastPlotInList or oneTracePerPlot:
                     pi.setLabels(title=titleString, left='Power', bottom='Frequency(Hz)')
                     self.ui.grid.addItem(pi)
+                    self.plotItems.append(pi)
                     curRow.append((pi,powers))
                     if numberPlots % 4 == 0 or (lastPlotInList and lastPlotInWhole):
                         self.ui.grid.nextRow()

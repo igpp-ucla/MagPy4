@@ -1,6 +1,87 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
+from FF_Time import FFTIME
+
+# custom extensions to pyqtgraph for the projects needs
+
+# mostly just slightly edited versions of originals
+# vertical by default
+class LinkedInfiniteLine(pg.InfiniteLine):
+    def __init__(self, callback, *args, **kwds):
+        pg.InfiniteLine.__init__(self, *args, **kwds)
+        self.callback = callback
+
+    def mouseDragEvent(self, ev):
+        pg.InfiniteLine.mouseDragEvent(self, ev)
+        if self.movable and ev.button() == QtCore.Qt.LeftButton:
+            self.callback(self.getXPos())
+
+
+#todo show minor ticks on left side
+#hide minor tick labels always
+class LogAxis(pg.AxisItem):
+    def __init__(self, *args, **kwargs):
+        pg.AxisItem.__init__(self, *args, **kwargs)
+
+        self.tickFont = QtGui.QFont()
+        self.tickFont.setPixelSize(14)
+        self.style['maxTextLevel'] = 1 # never have any subtick labels
+        self.style['textFillLimits'] = [(0,1.1)] # try to always draw labels
+        #self.style['tickLength'] = -10
+        #todo: override AxisItem generateDrawSpecs and custom set tick length
+
+    def tickStrings(self, values, scale, spacing):
+        return [f'{int(x)}    ' for x in values] # spaces are for eyeballing the auto sizing before rich text override below
+
+    def tickSpacing(self, minVal, maxVal, size):
+        #levels = pg.AxisItem.tickSpacing(self,minVal,maxVal,size)
+        levels = [(10.0,0),(1.0,0),(0.5,0)]
+        return levels
+
+    # overriden from source to be able to have superscript text
+    def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
+        p.setRenderHint(p.Antialiasing, False)
+        p.setRenderHint(p.TextAntialiasing, True)
+        
+        ## draw long line along axis
+        pen, p1, p2 = axisSpec
+        p.setPen(pen)
+        p.drawLine(p1, p2)
+        p.translate(0.5,0)  ## resolves some damn pixel ambiguity
+        
+        ## draw ticks
+        for pen, p1, p2 in tickSpecs:
+            p.setPen(pen)
+            p.drawLine(p1, p2)
+
+        ## Draw all text
+        if self.tickFont is not None:
+            p.setFont(self.tickFont)
+        p.setPen(self.pen())
+        for rect, flags, text in textSpecs:
+            qst = QtGui.QStaticText(f'10<sup>{text}</sup>')
+            qst.setTextFormat(QtCore.Qt.RichText)
+            p.drawStaticText(rect.left(), rect.top(), qst)
+            #p.drawText(rect, flags, text)
+            #p.drawRect(rect)
+
+
+# subclass based off example here:
+# https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
+class DateAxis(pg.AxisItem):
+    def toUTC(x,window, showMillis=False): # converts seconds since epoch to UTC string
+        t = FFTIME(x, Epoch=window.epoch).UTC
+        t = str(t)
+        t = t.split(' ')[-1]
+        t = t.split(':',1)[1]
+        if not showMillis and window.tE - window.tO > 10:
+            t = t.split('.',1)[0]
+        return t
+
+    def tickStrings(self, values, scale, spacing):
+        return [DateAxis.toUTC(x,self.window) for x in values]
+
 
 # based off class here, except i wanted a linear version (deleted a lot of stuff i wasnt gonna use to save time)
 #https://github.com/pyqtgraph/pyqtgraph/blob/develop/pyqtgraph/graphicsItems/GraphicsLayout.py
@@ -145,7 +226,6 @@ class PlotPointsItem(pg.GraphicsObject):
         self.clickable = s
         if width is not None:
             self.opts['mouseWidth'] = width
-            self._mouseShape = None
             self._boundingRect = None        
         
     def setCompositionMode(self, mode):
@@ -287,28 +367,6 @@ class PlotPointsItem(pg.GraphicsObject):
         self.opts['pen'] = fn.mkPen(*args, **kargs)
         self.invalidateBounds()
         self.update()
-        
-    def setShadowPen(self, *args, **kargs):
-        """Set the shadow pen used to draw behind the primary pen.
-        This pen must have a larger width than the primary 
-        pen to be visible.
-        """
-        self.opts['shadowPen'] = fn.mkPen(*args, **kargs)
-        self.invalidateBounds()
-        self.update()
-
-    def setBrush(self, *args, **kargs):
-        """Set the brush used when filling the area under the curve"""
-        self.opts['brush'] = fn.mkBrush(*args, **kargs)
-        self.invalidateBounds()
-        self.update()
-        
-    def setFillLevel(self, level):
-        """Set the level filled to when filling under the curve"""
-        self.opts['fillLevel'] = level
-        self.fillPath = None
-        self.invalidateBounds()
-        self.update()
 
     def setData(self, *args, **kargs):
         """
@@ -407,21 +465,6 @@ class PlotPointsItem(pg.GraphicsObject):
         points = [QtCore.QPointF(x,y) for x,y in zip(self.xData,self.yData)]
         self.poly = QtGui.QPolygonF(points)
         
-
-        if 'stepMode' in kargs:
-            self.opts['stepMode'] = kargs['stepMode']
-        
-        if self.opts['stepMode'] is True:
-            if len(self.xData) != len(self.yData)+1:  ## allow difference of 1 for step mode plots
-                raise Exception("len(X) must be len(Y)+1 since stepMode=True (got %s and %s)" % (self.xData.shape, self.yData.shape))
-        else:
-            if self.xData.shape != self.yData.shape:  ## allow difference of 1 for step mode plots
-                raise Exception("X and Y arrays must be the same shape--got %s and %s." % (self.xData.shape, self.yData.shape))
-        
-        self.path = None
-        self.fillPath = None
-        self._mouseShape = None
-        #self.xDisp = self.yDisp = None
         
         if 'name' in kargs:
             self.opts['name'] = kargs['name']
@@ -441,42 +484,6 @@ class PlotPointsItem(pg.GraphicsObject):
         self.update()
 
         self.sigPlotChanged.emit(self)
-        
-    def generatePath(self, x, y):
-        if self.opts['stepMode']:
-            ## each value in the x/y arrays generates 2 points.
-            x2 = np.empty((len(x),2), dtype=x.dtype)
-            x2[:] = x[:,np.newaxis]
-            if self.opts['fillLevel'] is None:
-                x = x2.reshape(x2.size)[1:-1]
-                y2 = np.empty((len(y),2), dtype=y.dtype)
-                y2[:] = y[:,np.newaxis]
-                y = y2.reshape(y2.size)
-            else:
-                ## If we have a fill level, add two extra points at either end
-                x = x2.reshape(x2.size)
-                y2 = np.empty((len(y)+2,2), dtype=y.dtype)
-                y2[1:-1] = y[:,np.newaxis]
-                y = y2.reshape(y2.size)[1:-1]
-                y[0] = self.opts['fillLevel']
-                y[-1] = self.opts['fillLevel']
-        
-        path = fn.arrayToQPath(x, y, connect=self.opts['connect'])
-        
-        return path
-
-
-    def getPath(self):
-        if self.path is None:
-            x,y = self.getData()
-            if x is None or len(x) == 0 or y is None or len(y) == 0:
-                self.path = QtGui.QPainterPath()
-            else:
-                self.path = self.generatePath(*self.getData())
-            self.fillPath = None
-            self._mouseShape = None
-            
-        return self.path
 
     # make overload of plotcurveitem
     # TODO override this method and dont do the getpath crap instead try
@@ -502,34 +509,7 @@ class PlotPointsItem(pg.GraphicsObject):
         self.yData = None
         self.xDisp = None  ## display values (after log / fft)
         self.yDisp = None
-        self.path = None
-        self.fillPath = None
-        self._mouseShape = None
-        self._mouseBounds = None
         self._boundsCache = [None, None]
         #del self.xData, self.yData, self.xDisp, self.yDisp, self.path
 
-    def mouseShape(self):
-        """
-        Return a QPainterPath representing the clickable shape of the curve
-        
-        """
-        if self._mouseShape is None:
-            view = self.getViewBox()
-            if view is None:
-                return QtGui.QPainterPath()
-            stroker = QtGui.QPainterPathStroker()
-            path = self.getPath()
-            path = self.mapToItem(view, path)
-            stroker.setWidth(self.opts['mouseWidth'])
-            mousePath = stroker.createStroke(path)
-            self._mouseShape = self.mapFromItem(view, mousePath)
-        return self._mouseShape
-        
-    def mouseClickEvent(self, ev):
-        if not self.clickable or ev.button() != QtCore.Qt.LeftButton:
-            return
-        if self.mouseShape().contains(ev.pos()):
-            ev.accept()
-            self.sigClicked.emit(self)
             

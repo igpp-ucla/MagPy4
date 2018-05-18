@@ -59,7 +59,8 @@ class EditUI(object):
         extraButtons.addStretch()
         builderLayout.addLayout(extraButtons)
 
-        axLayout = QtWidgets.QHBoxLayout()
+        axFrame = QtWidgets.QGroupBox('By Axis Angle')
+        axLayout = QtWidgets.QHBoxLayout(axFrame)
         angleLabel = QtGui.QLabel('Angle')
         angleLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.axisAngle = QtGui.QDoubleSpinBox()
@@ -77,12 +78,17 @@ class EditUI(object):
             axLayout.addWidget(gb)
             self.genButtons.append(gb)
 
-        builderLayout.addLayout(axLayout)
+        #builderLayout.addLayout(axLayout)
+        builderLayout.addWidget(axFrame)
         #bLayout.addStretch()
 
-        self.minVarButton = QtGui.QPushButton('Minimum Variance')
-        self.minVarButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        builderLayout.addWidget(self.minVarButton)
+        mvFrame = QtWidgets.QGroupBox('Minimum Variance')
+        mvLayout = QtWidgets.QHBoxLayout(mvFrame)
+        self.mvMouseSelect = QtGui.QPushButton('By Mouse Select')
+        self.mvMouseSelect.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        mvLayout.addWidget(self.mvMouseSelect)
+
+        builderLayout.addWidget(mvFrame)
 
         leftLayout.addWidget(builderFrame)
         leftLayout.addStretch()
