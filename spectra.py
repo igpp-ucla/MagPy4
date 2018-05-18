@@ -103,9 +103,39 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.plotItems = []
         self.updateSpectra()
 
+    def resizeEvent(self, ev):
+        #w = ev.size().width()
+        #w -= 16
+        #w /= 4
+        #h = ev.size().height()
+
+        l = self.ui.grid.layout
+        #for widget in self.ui.grid.items:
+        #    r = widget.boundingRect()
+        #    print(f'{r.x()} {r.y()}')
+            #print(widget.sizeHint())
+        #self.ui.grid.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred))
+        for i in range(l.columnCount()):
+
+            #print(f'{l.columnStretchFactor(i)}')
+            #print(f'{l.columnSpacing(i)}')
+            #print(f'{l.columnMaximumWidth(i)}')
+            #print(f'{l.columnMinimumWidth(i)}')
+            #print(f'{l.columnPreferredWidth(i)}')
+            #l.setColumnFixedWidth(i, 100)
+            #l.setColumnStretchFactor(i, 10)
+            #l.setColumnMinimumWidth(i, w)
+            #l.setColumnStretchFactor(i, 1)
+            pass
+
+        for i in range(l.rowCount()):
+            #print(f'{l.rowStretchFactor(i)}')
+            l.setRowStretchFactor(i,1)
+            pass
+
     # todo only send close event if ur current spectra
     def closeEvent(self, event):
-        self.window.spectraStep = 0
+        self.window.spectraSelectStep = 0
         self.window.hideAllSpectraLines()
 
     def setAspect(self):
@@ -140,7 +170,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                         pi.setAspectLocked()
                     titleString = ''
                     pi.setLogMode(True, True)
-                    pi.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False) # disabled so doesnt interfere with custom range settings
+                    pi.enableAutoRange(y=False) # disable y auto scaling so doesnt interfere with custom range settings
                     pi.hideButtons() # hide autoscale button
                     numberPlots += 1
                     powers = []

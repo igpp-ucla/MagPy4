@@ -160,7 +160,7 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
     def getLinkLists(self):
         links = []
         if len(self.fcheckBoxes) == 0:
-            return links
+            return [(0,)]
         notFound = set([i for i in range(len(self.fcheckBoxes[0]))])
         for fAxis in self.fcheckBoxes:
             row = []

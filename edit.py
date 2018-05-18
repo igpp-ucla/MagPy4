@@ -83,10 +83,29 @@ class EditUI(object):
         #bLayout.addStretch()
 
         mvFrame = QtWidgets.QGroupBox('Minimum Variance')
-        mvLayout = QtWidgets.QHBoxLayout(mvFrame)
+        mvLayout = QtWidgets.QVBoxLayout(mvFrame)
         self.mvMouseSelect = QtGui.QPushButton('By Mouse Select')
         self.mvMouseSelect.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         mvLayout.addWidget(self.mvMouseSelect)
+
+        sliderFont = QtGui.QFont("Times", 8)#, QtGui.QFont.Bold) 
+        self.startSliderEdit = QtWidgets.QDateTimeEdit()
+        self.endSliderEdit = QtWidgets.QDateTimeEdit()
+        self.startSliderEdit.setFont(sliderFont)
+        self.endSliderEdit.setFont(sliderFont)
+        self.startSliderEdit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.endSliderEdit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.startSliderEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
+        self.endSliderEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
+        minDateTime,maxDateTime = window.getMinAndMaxDateTime()
+        self.startSliderEdit.setMinimumDateTime(minDateTime)
+        self.startSliderEdit.setMaximumDateTime(maxDateTime)
+        self.startSliderEdit.setDateTime(minDateTime)
+        self.endSliderEdit.setMinimumDateTime(minDateTime)
+        self.endSliderEdit.setMaximumDateTime(maxDateTime)
+        self.endSliderEdit.setDateTime(maxDateTime)
+        mvLayout.addWidget(self.startSliderEdit)
+        mvLayout.addWidget(self.endSliderEdit)
 
         builderLayout.addWidget(mvFrame)
 
@@ -192,6 +211,8 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         for i,gb in enumerate(self.ui.genButtons):
             gb.clicked.connect(functools.partial(self.axisRotGen, self.ui.axes[i]))
+
+        #self.ui.mvMouseSelect.clicked.connect()
 
         self.setMatrix(self.ui.R, Edit.IDENTITY)
 

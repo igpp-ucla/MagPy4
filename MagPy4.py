@@ -70,9 +70,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotTracerCheckBoxMode = False
         self.tracer = None
 
-        self.spectraStep = 0
+        self.spectraSelectStep = 0
         self.spectraRange = [0,0]
         self.spectras = []
+
+        self.generalSelectStep = 0
 
         self.edit = None
         self.dataDisplay = None
@@ -103,15 +105,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.plotDataDefault()
 
     # close any subwindows if main window is closed
+    # this should also get called if flatfile changes
     def closeEvent(self, event):
+        self.closeAllSubWindows()
+
+    def closeAllSubWindows(self):
         if self.tracer:
             self.tracer.close()
+            self.tracer = None
         if self.edit:
             self.edit.close()
+            self.edit = None
         if self.dataDisplay:
             self.dataDisplay.close()
+            self.dataDisplay = None
         for spectra in self.spectras:
             spectra.close()
+        self.spectras = []
 
     def openTracer(self):
         if self.tracer is not None:
@@ -128,14 +138,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             for pi in self.plotItems:
                 for line in pi.getViewBox().spectLines:
                     line.hide()
-            self.spectraStep = 1
+            self.spectraSelectStep = 1
             self.ui.actionSpectra.setText('Complete Spectra')
         elif txt == 'Complete Spectra':
             self.ui.actionSpectra.setText('Spectra')
-            if self.spectraStep == 1:
-                self.spectraStep = 0
+            if self.spectraSelectStep == 1:
+                self.spectraSelectStep = 0
                 self.hideAllSpectraLines()
-            if self.spectraStep == 2:
+            if self.spectraSelectStep == 2:
                 spectra = Spectra(self)
                 spectra.show()
                 self.spectras.append(spectra) # so reference is held until closed
@@ -234,6 +244,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #p.join()
             self.openCDF(fileName)
 
+        self.closeAllSubWindows()
+
         self.plotDataDefault()
 
     def openFF(self, PATH):  # slot when Open pull down is selected
@@ -307,17 +319,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         print(f'tE: {self.tE}')
 
         tick = 1.0 / self.resolution * 2.0
-        minDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.times[0], Epoch=self.epoch).UTC)
-        maxDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.times[-1], Epoch=self.epoch).UTC)
+        minDateTime,maxDateTime = self.getMinAndMaxDateTime()
         self.ui.setupSliders(tick, numRecords-1, minDateTime, maxDateTime)
-
-        if self.tracer is not None:
-            self.tracer.close()
-            self.tracer = None
-
-        if self.edit is not None:
-            self.edit.close()
-            self.edit = None
 
         return True
 
@@ -373,6 +376,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #for i in rng:
             #arr[i] = d2tt2(cdfEpoch[i]) / div - dt
         return arr
+    
+    def getMinAndMaxDateTime(self):
+        minDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.times[0], Epoch=self.epoch).UTC)
+        maxDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.times[-1], Epoch=self.epoch).UTC)
+        return minDateTime,maxDateTime
 
     def onStartSliderChanged(self, val):
         self.iO = val
@@ -521,9 +529,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for plotIndex, dstrs in enumerate(dataStrings):
             axis = DateAxis(orientation='bottom')
             axis.window = self
-            vb = MagPyViewBox(self)
+            vb = MagPyViewBox(self, plotIndex)
             pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis})
-            #vb.enableAutoRange(axis=vb.YAxis)
+            vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
             #vb.setAutoVisible(y=True)
             #pi.setDownsampling(auto=True)
 
@@ -734,7 +742,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     continue
                 diff = values[i][1] - values[i][0]
                 l2 = (largest - diff) / 2.0
+                #self.plotItems[i].getViewBox()._updatingRange = True
                 self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2, padding = 0.05)
+                #self.plotItems[i].getViewBox()._updatingRange = False
+                #print(f'{values[i][0] - l2},{values[i][1] + l2}')
 
 
     # find points at which each spacecraft crosses this value for the first time after this time
@@ -746,11 +757,18 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     # updates all spectra lines, index means which set the left or right basically
     # i feel like i did this stupidly but couldnt think of smoother way to do this
-    def updateSpectra(self, index, x):
+    def updateSpectraLines(self, index, x):
         self.spectraRange[index] = x
         for pi in self.plotItems:
-            pi.getViewBox().spectLines[index].setPos(x)
-
+            vb = pi.getViewBox()
+            vb.spectLines[index].setPos(x)
+            
+    def updateGeneralLines(self, index, x):
+        # need to add something to update the datetimespins here too
+        for pi in self.plotItems:
+            vb = pi.getViewBox()
+            vb.generalLines[index].show()
+            vb.generalLines[index].setPos(x)
 
     def hideAllSpectraLines(self, exc=None): # can allow optional viewbox exception
         for pi in self.plotItems:
@@ -775,61 +793,88 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         return plotInfo
 
     def anySpectraSelected(self):
-        for i,pi in enumerate(self.plotItems):
+        for pi in self.plotItems:
             if pi.getViewBox().spectLines[1].isVisible():
                 return True
         return False
+
+    # show label on topmost spectra line pair
+    def setupSpectraLineText(self):
+        foundFirst = False
+        for i,pi in enumerate(self.plotItems):
+            vb = pi.getViewBox()
+            if not foundFirst and vb.spectLines[0].isVisible():
+                vb.spectLines[0].label.show()
+                if vb.spectLines[1].isVisible():
+                    vb.spectLines[1].label.show()
+                foundFirst = True
+            else:
+                vb.spectLines[0].label.hide()
+                vb.spectLines[1].label.hide()
 
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
-    def __init__(self, window, *args, **kwds):
+    def __init__(self, window, viewBoxIndex, *args, **kwds):
         pg.ViewBox.__init__(self, *args, **kwds)
         #self.setMouseMode(self.RectMode)
         self.window = window
-        # add lines to show where left clicks happen
+
+        # setup crosshair
         pen = pg.mkPen('#FF0000', width=1, style=QtCore.Qt.DashLine)
         self.vMouseLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pen)
         self.hMouseLine = pg.InfiniteLine(movable=False, angle=0, pos=0, pen=pen)
-        self.spectLines = [LinkedInfiniteLine(functools.partial(window.updateSpectra, 0), movable=True, angle=90, pos=0, pen=pen),
-                           LinkedInfiniteLine(functools.partial(window.updateSpectra, 1), movable=True, angle=90, pos=0, pen=pen)]
-
-        self.generalLines = [LinkedInfiniteLine(functools.partial(window.updateSpectra, 0), movable=True, angle=90, pos=0, pen=pen),
-                             LinkedInfiniteLine(functools.partial(window.updateSpectra, 1), movable=True, angle=90, pos=0, pen=pen)]
-
-        self.generalLines = []
-        self.dataText = pg.TextItem('test', fill=(255, 255, 255, 200), html='<div style="text-align: center; color:#FFF;">')
-        self.dataText.setZValue(10) #draw over the traces
-        self.dataText.border = self.window.pens[3] #black pen
-
+        self.crosshairText = pg.TextItem('test', fill=(255, 255, 255, 200), html='<div style="text-align: center; color:#FFF;">')
+        self.crosshairText.setZValue(10) #draw over the traces
+        self.crosshairText.border = self.window.pens[3] #black pen
         self.addItem(self.vMouseLine, ignoreBounds=True) #so they dont mess up view range
         self.addItem(self.hMouseLine, ignoreBounds=True)
-        self.addItem(self.dataText, ignoreBounds=True)
-
+        self.addItem(self.crosshairText, ignoreBounds=True)
         self.setCrosshairVisible(False)
-        for line in self.spectLines:
+
+        spen = pg.mkPen('#0000FF', width=1, style=QtCore.Qt.DashLine)
+        self.spectLines = []
+        self.generalLines = []
+        for i in range(2):
+            self.spectLines.append(LinkedInfiniteLine(functools.partial(window.updateSpectraLines, i),movable=True, angle=90, pos=0, pen=pen, label='SPECTRA', labelColor='#FF0000'))
+            label = None if viewBoxIndex > 0 else 'MIN VAR'
+            self.generalLines.append(LinkedInfiniteLine(functools.partial(window.updateGeneralLines, i), movable=True, angle=90, pos=0, pen=spen, label=label, labelColor='#0000FF'))
+
+        for line in (self.spectLines + self.generalLines):
             self.addItem(line, ignoreBounds = True)
             line.setBounds((self.window.itO, self.window.itE))
             line.hide()
-       
+
+    # for debugging sometimes this gets called too much       
+    #def updateAutoRange(self):
+    #    pg.ViewBox.updateAutoRange(self)
+    #    print(f'updating {self._updatingRange}')
+
     def setCrosshairVisible(self, visible):
         self.vMouseLine.setVisible(visible)
         self.hMouseLine.setVisible(visible)
-        self.dataText.setVisible(visible)
+        self.crosshairText.setVisible(visible)
 
     def onLeftClick(self, ev):
          # map the mouse click to data coordinates
-        vr = self.viewRange()
         mc = self.mapToView(ev.pos())
         x = mc.x()
         y = mc.y()
-        if self.window.spectraStep > 0: # if making a spectra selection
-            if self.window.spectraStep == 2:
-                if not self.window.anySpectraSelected():
-                    self.window.spectraStep = 1
+        #print(f'{x} {y}')
 
-            if self.window.spectraStep == 1: # time range is not yet selected
+        if self.window.generalSelectStep > 0 and self.window.generalSelectStep < 3:
+            if self.window.generalSelectStep == 1:
+                self.window.updateGeneralLines(0,x)
+            elif self.window.generalSelectStep == 2:
+                self.window.updateGeneralLines(1,x)
+            self.window.generalSelectStep += 1
+        elif self.window.spectraSelectStep > 0: # if making a spectra selection
+            if self.window.spectraSelectStep == 2:
+                if not self.window.anySpectraSelected():
+                    self.window.spectraSelectStep = 1
+
+            if self.window.spectraSelectStep == 1: # time range is not yet selected
                 if not self.spectLines[0].isVisible():
                     self.spectLines[0].show()
                     self.spectLines[0].setPos(x)
@@ -839,36 +884,39 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                     self.spectLines[1].setPos(x)
                     self.window.spectraRange[0] = self.spectLines[0].getPos()[0]
                     self.window.spectraRange[1] = x
-                    self.window.spectraStep = 2
+                    self.window.spectraSelectStep = 2
                     self.window.hideAllSpectraLines(self)
-            elif self.window.spectraStep == 2: # a time range is already selected
+            elif self.window.spectraSelectStep == 2: # a time range is already selected
                 for i,line in enumerate(self.spectLines):
                     line.show()
                     line.setPos(self.window.spectraRange[i])
+            self.window.setupSpectraLineText()
         else:
             self.setCrosshairVisible(True)
 
             self.vMouseLine.setPos(x)
             self.hMouseLine.setPos(y)
-            self.dataText.setPos(x,y)
+            self.crosshairText.setPos(x,y)
             xt = DateAxis.toUTC(x, self.window, True)
             sf = f'{xt}, {y:.4f}'
             print(sf)
-            self.dataText.setText(sf)
+            self.crosshairText.setText(sf)
 
             #set text anchor based on which quadrant of viewbox dataText crosshair is in
+            vr = self.viewRange()
             centerX = vr[0][0] + (vr[0][1] - vr[0][0]) / 2
             centerY = vr[1][0] + (vr[1][1] - vr[1][0]) / 2
 
             #i think its based on axis ratio of the label so x is about 1/5
             #times of y anchor offset
-            self.dataText.setAnchor((-0.04 if x < centerX else 1.04, 1.2 if y < centerY else -0.2))
+            self.crosshairText.setAnchor((-0.04 if x < centerX else 1.04, 1.2 if y < centerY else -0.2))
 
     def onRightClick(self, ev):
-        if self.window.spectraStep > 0: # cancel spectra on this plot
+        if self.window.spectraSelectStep > 0: # cancel spectra on this plot
             self.setCrosshairVisible(False)
             for line in self.spectLines:
                 line.hide()
+            self.window.setupSpectraLineText()
         else:
             pg.ViewBox.mouseClickEvent(self,ev) # default right click
 

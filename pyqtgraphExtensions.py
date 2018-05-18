@@ -7,16 +7,34 @@ from FF_Time import FFTIME
 
 # mostly just slightly edited versions of originals
 # vertical by default
+# also with built in label support (infiniteline has this but doesnt how i want)
 class LinkedInfiniteLine(pg.InfiniteLine):
-    def __init__(self, callback, *args, **kwds):
+    def __init__(self, callback, label=None, labelColor=None, *args, **kwds):
         pg.InfiniteLine.__init__(self, *args, **kwds)
         self.callback = callback
+
+        if label and labelColor:
+            opts = {'movable':False, 'position':1.0, 'color':labelColor}
+            self.label = LinkedInfLineLabel(self, text=label, **opts)
 
     def mouseDragEvent(self, ev):
         pg.InfiniteLine.mouseDragEvent(self, ev)
         if self.movable and ev.button() == QtCore.Qt.LeftButton:
             self.callback(self.getXPos())
 
+class LinkedInfLineLabel(pg.InfLineLabel):
+    def __init__(self, *args, **kwds):
+        pg.InfLineLabel.__init__(self, *args,**kwds)
+
+    def updatePosition(self):
+        # update text position to relative view location along line
+        self._endpoints = (None, None)
+        pt1, pt2 = self.getEndpoints()
+        if pt1 is None:
+            return
+        pt = pt2 * self.orthoPos + pt1 * (1-self.orthoPos)
+        self.setPos(pt)
+        self.setAnchor((0.5,0.0)) # in middle of line
 
 #todo show minor ticks on left side
 #hide minor tick labels always
@@ -195,12 +213,7 @@ class PlotPointsItem(pg.GraphicsObject):
         self.metaData = {}
         self.opts = {
             'pen': fn.mkPen('w'),
-            'shadowPen': None,
-            'fillLevel': None,
-            'brush': None,
-            'stepMode': False,
             'name': None,
-            'antialias': getConfigOption('antialias'),
             'connect': 'all',
             'mouseWidth': 8, # width of shape responding to mouse click
             'compositionMode': None,
@@ -296,30 +309,20 @@ class PlotPointsItem(pg.GraphicsObject):
             mask = np.isfinite(d)
             d = d[mask]
             b = np.percentile(d, [50 * (1 - frac), 50 * (1 + frac)])
-
-        ## adjust for fill level
-        if ax == 1 and self.opts['fillLevel'] is not None:
-            b = (min(b[0], self.opts['fillLevel']), max(b[1], self.opts['fillLevel']))
             
         ## Add pen width only if it is non-cosmetic.
         pen = self.opts['pen']
-        spen = self.opts['shadowPen']
         if not pen.isCosmetic():
             b = (b[0] - pen.widthF()*0.7072, b[1] + pen.widthF()*0.7072)
-        if spen is not None and not spen.isCosmetic() and spen.style() != QtCore.Qt.NoPen:
-            b = (b[0] - spen.widthF()*0.7072, b[1] + spen.widthF()*0.7072)
             
         self._boundsCache[ax] = [(frac, orthoRange), b]
         return b
             
     def pixelPadding(self):
         pen = self.opts['pen']
-        spen = self.opts['shadowPen']
         w = 0
         if pen.isCosmetic():
             w += pen.widthF()*0.7072
-        if spen is not None and spen.isCosmetic() and spen.style() != QtCore.Qt.NoPen:
-            w = max(w, spen.widthF()*0.7072)
         if self.clickable:
             w = max(w, self.opts['mouseWidth']//2 + 1)
         return w
@@ -375,19 +378,6 @@ class PlotPointsItem(pg.GraphicsObject):
         x, y            (numpy arrays) Data to show 
         pen             Pen to use when drawing. Any single argument accepted by
                         :func:`mkPen <pyqtgraph.mkPen>` is allowed.
-        shadowPen       Pen for drawing behind the primary pen. Usually this
-                        is used to emphasize the curve by providing a 
-                        high-contrast border. Any single argument accepted by
-                        :func:`mkPen <pyqtgraph.mkPen>` is allowed.
-        fillLevel       (float or None) Fill the area 'under' the curve to
-                        *fillLevel*
-        brush           QBrush to use when filling. Any single argument accepted
-                        by :func:`mkBrush <pyqtgraph.mkBrush>` is allowed.
-        antialias       (bool) Whether to use antialiasing when drawing. This
-                        is disabled by default because it decreases performance.
-        stepMode        If True, two orthogonal lines are drawn for each sample
-                        as steps. This is commonly used when drawing histograms.
-                        Note that in this case, len(x) == len(y) + 1
         connect         Argument specifying how vertexes should be connected
                         by line segments. Default is "all", indicating full
                         connection. "pairs" causes only even-numbered segments
@@ -472,14 +462,6 @@ class PlotPointsItem(pg.GraphicsObject):
             self.opts['connect'] = kargs['connect']
         if 'pen' in kargs:
             self.setPen(kargs['pen'])
-        if 'shadowPen' in kargs:
-            self.setShadowPen(kargs['shadowPen'])
-        if 'fillLevel' in kargs:
-            self.setFillLevel(kargs['fillLevel'])
-        if 'brush' in kargs:
-            self.setBrush(kargs['brush'])
-        if 'antialias' in kargs:
-            self.opts['antialias'] = kargs['antialias']
   
         self.update()
 
