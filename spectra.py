@@ -13,7 +13,7 @@ from dataDisplay import UTCQDate
 class SpectraUI(object):
     def setupUI(self, Frame):
         Frame.setWindowTitle('Spectra')
-        Frame.resize(750,500)
+        Frame.resize(1000,700)
 
         layout = QtWidgets.QVBoxLayout(Frame)
 
@@ -103,36 +103,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.plotItems = []
         self.updateSpectra()
 
-    def resizeEvent(self, ev):
-        #w = ev.size().width()
-        #w -= 16
-        #w /= 4
-        #h = ev.size().height()
-
-        l = self.ui.grid.layout
-        #for widget in self.ui.grid.items:
-        #    r = widget.boundingRect()
-        #    print(f'{r.x()} {r.y()}')
-            #print(widget.sizeHint())
-        #self.ui.grid.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred))
-        for i in range(l.columnCount()):
-
-            #print(f'{l.columnStretchFactor(i)}')
-            #print(f'{l.columnSpacing(i)}')
-            #print(f'{l.columnMaximumWidth(i)}')
-            #print(f'{l.columnMinimumWidth(i)}')
-            #print(f'{l.columnPreferredWidth(i)}')
-            #l.setColumnFixedWidth(i, 100)
-            #l.setColumnStretchFactor(i, 10)
-            #l.setColumnMinimumWidth(i, w)
-            #l.setColumnStretchFactor(i, 1)
-            pass
-
-        for i in range(l.rowCount()):
-            #print(f'{l.rowStretchFactor(i)}')
-            l.setRowStretchFactor(i,1)
-            pass
-
     # todo only send close event if ur current spectra
     def closeEvent(self, event):
         self.window.spectraSelectStep = 0
@@ -162,6 +132,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         numberPlots = 0
         curRow = [] # list of plot items in rows of spectra
         self.plotItems = []
+        maxTitleWidth = 0
         for listIndex, (strList,penList) in enumerate(plotInfos):
             for i,dstr in enumerate(strList):
                 if i == 0 or oneTracePerPlot:
@@ -191,6 +162,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 lastPlotInWhole = listIndex == len(plotInfos)-1
                 if lastPlotInList or oneTracePerPlot:
                     pi.setLabels(title=titleString, left='Power', bottom='Frequency(Hz)')
+                    piw = pi.titleLabel._sizeHint[0][0] + 60 # gestimating padding
+                    maxTitleWidth = max(maxTitleWidth,piw)
                     self.ui.grid.addItem(pi)
                     self.plotItems.append(pi)
                     curRow.append((pi,powers))
@@ -209,6 +182,11 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                         for item in curRow:
                             item[0].setYRange(minVal,maxVal)
                         curRow.clear()
+
+        # otherwise gridlayout columns will shrink at different scales based on the title string
+        l = self.ui.grid.layout
+        for i in range(l.columnCount()):
+            l.setColumnMinimumWidth(i, maxTitleWidth)
 
         # draw some text info like time range and file and stuff
         li = pg.LabelItem()
