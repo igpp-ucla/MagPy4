@@ -85,11 +85,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay = None
 
         self.magpyIcon = QtGui.QIcon()
-        self.magpyIcon.addFile('images/magPy_blue.ico')
-        self.app.setWindowIcon(self.magpyIcon)
-
         self.marsIcon = QtGui.QIcon()
-        self.marsIcon.addFile('images/mars.ico')
+        if self.OS == 'mac':
+            self.magpyIcon.addFile('images/magPy_blue.hqx')
+            self.marsIcon.addFile('images/mars.hqx')
+        else:
+            self.magpyIcon.addFile('images/magPy_blue.ico')
+            self.marsIcon.addFile('images/mars.ico')
+
+        self.app.setWindowIcon(self.magpyIcon)
 
         # setup pens
         self.pens = []

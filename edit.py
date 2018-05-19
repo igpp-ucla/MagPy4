@@ -451,7 +451,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         R = self.mult(self.selectedMatrix, self.getMatrix(self.ui.R))
         self.generateData(R)
         #self.addHistory(R, f'Matrix {len(self.history)}')
-        self.addHistory(R, f'{self.lastMatrixGeneratorName}')
+        self.addHistory(R, f'{self.lastGeneratorName}')
 
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R
