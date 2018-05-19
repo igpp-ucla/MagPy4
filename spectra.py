@@ -27,7 +27,7 @@ class SpectraUI(object):
         self.grid.setContentsMargins(0,0,0,0)
         self.labelLayout = GridGraphicsLayout()
         self.labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
-        self.labelLayout.setContentsMargins(0,0,0,25) # for some reason grid layout doesnt care about anything
+        self.labelLayout.setContentsMargins(0,0,0,30) # for some reason grid layout doesnt care about anything
         self.gmain.addItem(self.grid)
         self.gmain.addItem(self.labelLayout)
         layout.addWidget(self.gview)

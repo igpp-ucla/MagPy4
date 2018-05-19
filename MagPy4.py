@@ -669,9 +669,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             return
         #print(y)
 
+        # all of this depends on screen resolution so this is a pretty bad fix for now
         bPadding = 20 # for bottom axis text
-        plotSpacing = 7 # at least on windows, depends on screen resolution and stuff so this isnt a good solution really
-        edgePadding = 80 if self.OS == 'mac' else 40
+        plotSpacing = 10 if self.OS == 'mac' else 7
+        edgePadding = 40
         y -= edgePadding + (plots - 1) * plotSpacing # the spaces in between plots hence the -1
         y -= bPadding 
         for i in range(rows):
