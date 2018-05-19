@@ -13,7 +13,9 @@ import time
 class EditUI(object):
     def setupUI(self, Frame, window):
         Frame.setWindowTitle('Edit')
-        Frame.resize(600,500)
+
+        w = 600 if window.OS == 'windows' else 800
+        Frame.resize(w,500)
         self.axes = ['X','Y','Z']
 
         mainLayout = QtWidgets.QVBoxLayout(Frame)
@@ -88,7 +90,7 @@ class EditUI(object):
         self.mvMouseSelect.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         mvLayout.addWidget(self.mvMouseSelect)
 
-        sliderFont = QtGui.QFont("Times", 8)#, QtGui.QFont.Bold) 
+        sliderFont = QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14)#, QtGui.QFont.Bold) 
         self.startSliderEdit = QtWidgets.QDateTimeEdit()
         self.endSliderEdit = QtWidgets.QDateTimeEdit()
         self.startSliderEdit.setFont(sliderFont)
@@ -139,6 +141,7 @@ class EditUI(object):
         leftButtons.addStretch()
         hBotLayout.addLayout(leftButtons,1)
         self.history = QtWidgets.QListWidget()
+        self.history.setEditTriggers(QtWidgets.QAbstractItemView.SelectedClicked)
         hBotLayout.addWidget(self.history,2)
         hLayout.addWidget(hBotGrid)
 
@@ -208,6 +211,9 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.selectedMatrix = [] # selected matrix from history
         self.history = [] # list of matrices
         self.addHistory(Edit.IDENTITY, 'Identity')
+
+        self.lastGeneratorAbbreviated = 'C'
+        self.lastGeneratorName = 'Custom'
 
         for i,gb in enumerate(self.ui.genButtons):
             gb.clicked.connect(functools.partial(self.axisRotGen, self.ui.axes[i]))
@@ -359,7 +365,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         for i in self.i:
             for j in self.i:
                 mat[i][j].setText(Edit.formatNumber(m[i][j]))
-                mat[i][j].update() # not repainting in mac?
+                mat[i][j].repaint()
 
     def axisRotGen(self, axis):
         R = self.genAxisRotationMatrix(axis, self.ui.axisAngle.value())
@@ -396,8 +402,32 @@ class Edit(QtWidgets.QFrame, EditUI):
     # adds an entry to history matrix list and a list item at end of history ui
     def addHistory(self, mat, name):
         self.history.append(self.copy(mat))
-        self.ui.history.addItem(QtWidgets.QListWidgetItem(f'{name}'))   
-        self.ui.history.setCurrentRow(self.ui.history.count() - 1)
+
+        # get names of items
+        uihist = self.ui.history
+        taken = set()
+        for i in range(uihist.count()):
+            taken.add(uihist.item(i).text())
+            #print(uihist.item(i).text())
+            #flags = uihist.item(i).flags()
+            #flags |= QtCore.Qt.ItemIsEditable
+            #uihist.item(i).setFlags(flags)
+            pass
+
+        newName = name
+        fails = 1
+        while newName in taken:
+            newName = f'{name}({fails})'
+            fails+=1
+        name = newName
+
+        item = QtWidgets.QListWidgetItem(f'{name}')
+        flags = item.flags()
+        flags |= QtCore.Qt.ItemIsEditable
+        item.setFlags(flags)
+
+        uihist.addItem(item)   
+        uihist.setCurrentRow(uihist.count() - 1)
 
     # removes selected history
     def removeHistory(self):
@@ -420,7 +450,8 @@ class Edit(QtWidgets.QFrame, EditUI):
     def apply(self):
         R = self.mult(self.selectedMatrix, self.getMatrix(self.ui.R))
         self.generateData(R)
-        self.addHistory(R, f'Matrix {len(self.history)}')
+        #self.addHistory(R, f'Matrix {len(self.history)}')
+        self.addHistory(R, f'{self.lastMatrixGeneratorName}')
 
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R

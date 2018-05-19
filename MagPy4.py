@@ -41,6 +41,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui = MagPy4UI()
         self.ui.setupUI(self)
 
+        self.OS = os.name
+        if os.name == 'nt':
+            self.OS = 'windows'
+        print(f'OS: {self.OS}')
+
         self.ui.startSlider.valueChanged.connect(self.onStartSliderChanged)
         self.ui.endSlider.valueChanged.connect(self.onEndSliderChanged)
         self.ui.startSlider.sliderReleased.connect(self.setTimes)

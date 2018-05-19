@@ -81,7 +81,7 @@ class MagPy4UI(object):
         #layout.setContentsMargins(0,0,0,0)
 
         # SLIDER setup
-        sliderFont = QtGui.QFont("Times", 14)#, QtGui.QFont.Bold) 
+        sliderFont = QtGui.QFont("monospace", 14)#, QtGui.QFont.Bold) 
         sliderLayout = QtWidgets.QGridLayout() # r, c, w, h
         self.startSlider = QtWidgets.QSlider()
         self.startSlider.setOrientation(QtCore.Qt.Horizontal)
