@@ -4,6 +4,8 @@ from PyQt5.QtWidgets import QSizePolicy
 
 import pyqtgraph as pg
 
+from pyqtgraphExtensions import GridGraphicsLayout
+
 #from qrangeslider import QRangeSlider
 #can add in translation stuff later
 
@@ -30,13 +32,13 @@ class MagPy4UI(object):
         #self.actionOpenCDF.setText('Open CDF')
         #self.toolBar.addAction(self.actionOpenCDF)
 
-        self.actionPlot = QtWidgets.QAction(MagPy4)
-        self.actionPlot.setText('Plot Menu')
-        self.toolBar.addAction(self.actionPlot)
-
         self.actionShowData = QtWidgets.QAction(MagPy4)
         self.actionShowData.setText('Show Data')
         self.toolBar.addAction(self.actionShowData)
+
+        self.actionPlot = QtWidgets.QAction(MagPy4)
+        self.actionPlot.setText('Plot Menu')
+        self.toolBar.addAction(self.actionPlot)
 
         self.actionSpectra = QtWidgets.QAction(MagPy4)
         self.actionSpectra.setText('Spectra')
@@ -75,9 +77,14 @@ class MagPy4UI(object):
 
         self.glw = pg.GraphicsLayoutWidget()#border=(100,100,100))
         self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+
+        self.gview = pg.GraphicsView()
+        self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        self.glw = GridGraphicsLayout() # made this based off pg.GraphicsLayout
+        self.gview.setCentralItem(self.glw)
         
         layout = QtWidgets.QVBoxLayout(self.centralWidget)
-        layout.addWidget(self.glw)
+        layout.addWidget(self.gview)
         #layout.setContentsMargins(0,0,0,0)
 
         # SLIDER setup

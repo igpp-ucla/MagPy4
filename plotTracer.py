@@ -38,11 +38,13 @@ class PlotTracerUI(object):
 
         buttonLayout.addWidget(self.plotButton, 1, 0, 1, 3)
 
+        self.defaultsButton = QtWidgets.QPushButton('Defaults')
+        buttonLayout.addWidget(self.defaultsButton, 0, 3, 1, 1)
         self.switchButton = QtWidgets.QPushButton('Switch')
-        buttonLayout.addWidget(self.switchButton, 0, 3, 1, 1)
+        buttonLayout.addWidget(self.switchButton, 0, 4, 1, 1)
 
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        buttonLayout.addItem(spacer, 0, 4, 1, 1)
+        buttonLayout.addItem(spacer, 0, 10, 1, 1)
 
         self.layout.addLayout(buttonLayout)
 
@@ -69,6 +71,7 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
         self.ui.addPlotButton.clicked.connect(self.addPlot)
         self.ui.removePlotButton.clicked.connect(self.removePlot)
         self.ui.plotButton.clicked.connect(self.plotData)
+        self.ui.defaultsButton.clicked.connect(self.reloadDefaults)
         self.ui.switchButton.clicked.connect(self.switchModes)
 
         self.checkBoxMode = self.window.plotTracerCheckBoxMode
@@ -76,7 +79,7 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
         self.fcheckBoxes = []
 
         self.shouldResizeWindow = False # gets set when switching modes
-        self.initTracer()
+        self.initTracer(self.window.lastPlotStrings, self.window.lastPlotLinks)
 
     def closeEvent(self, event):
         self.window.plotTracerCheckBoxMode = self.checkBoxMode
@@ -95,11 +98,15 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
             self.checkBoxMode = False
             self.ui.switchButton.setText('Switch to CheckBoxes')
 
-        self.initTracer()
+        self.initTracer(self.window.lastPlotStrings, self.window.lastPlotLinks)
         self.shouldResizeWindow = True
         
 
-    def initTracer(self):
+    def reloadDefaults(self):
+        dstrs, links = self.window.getDefaultPlotInfo()
+        self.initTracer(dstrs, links)
+
+    def initTracer(self, dstrs, links):
         self.plotCount = 0
         self.checkBoxes = []
         self.dropdowns = []
@@ -111,23 +118,23 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
 
         if self.checkBoxMode:
             self.addLabels()
-            for i,axis in enumerate(self.window.lastPlotStrings):
+            for i,axis in enumerate(dstrs):
                 self.addPlot()
                 for dstr in axis:
                     di = self.window.DATASTRINGS.index(dstr)
                     self.checkBoxes[i][di].setChecked(True)
         else:
-            for i,axis in enumerate(self.window.lastPlotStrings):
+            for i,axis in enumerate(dstrs):
                 self.plotCount += 1
-            self.rebuildDropdowns(self.window.lastPlotStrings)
+            self.rebuildDropdowns(dstrs)
 
         if self.window.lastPlotLinks is not None:
-            links = []
-            for l in self.window.lastPlotLinks:
+            newLinks = []
+            for l in links:
                 if not isinstance(l, tuple):
-                    links.append(l)
-            self.rebuildPlotLinks(len(links))
-            for i,axis in enumerate(links):
+                    newLinks.append(l)
+            self.rebuildPlotLinks(len(newLinks))
+            for i,axis in enumerate(newLinks):
                 for j in axis:
                     self.fcheckBoxes[i][j].setChecked(True)
 

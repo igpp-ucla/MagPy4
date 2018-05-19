@@ -101,6 +101,14 @@ class DateAxis(pg.AxisItem):
         return [DateAxis.toUTC(x,self.window) for x in values]
 
 
+
+class GridGraphicsLayout(pg.GraphicsLayout):
+    def clear(self):  # clear doesnt get rid of grid layout formatting correctly, todo: make override of this
+        pg.GraphicsLayout.clear(self)
+        self.currentRow = 0
+        self.currentCol = 0
+
+
 # based off class here, except i wanted a linear version (deleted a lot of stuff i wasnt gonna use to save time)
 #https://github.com/pyqtgraph/pyqtgraph/blob/develop/pyqtgraph/graphicsItems/GraphicsLayout.py
 # ref for qt layout component

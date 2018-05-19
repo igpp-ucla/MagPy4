@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
-from pyqtgraphExtensions import LinearGraphicsLayout, LogAxis
+from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis
 from FF_Time import FFTIME
 from dataDisplay import UTCQDate
 
@@ -23,11 +23,11 @@ class SpectraUI(object):
         #apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
         self.gmain.setContentsMargins(11,0,11,0) # left top right bottom
         self.gview.setCentralItem(self.gmain)
-        self.grid = pg.GraphicsLayout() # based on Qt.GridGraphicsLayout
+        self.grid = GridGraphicsLayout()
         self.grid.setContentsMargins(0,0,0,0)
-        self.labelLayout = LinearGraphicsLayout(orientation = QtCore.Qt.Horizontal)
-        self.labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Minimum))
-        self.labelLayout.setContentsMargins(0,0,0,0)
+        self.labelLayout = GridGraphicsLayout()
+        self.labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
+        self.labelLayout.setContentsMargins(0,0,0,25) # for some reason grid layout doesnt care about anything
         self.gmain.addItem(self.grid)
         self.gmain.addItem(self.labelLayout)
         layout.addWidget(self.gview)
@@ -124,9 +124,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             return
 
         self.ui.grid.clear()
-        self.ui.grid.currentRow = 0 # clear doesnt get rid of grid layout formatting correctly it seems
-        self.ui.grid.currentCol = 0
-        self.ui.labelLayout.clear()
+        self.ui.labelLayout.clear()        
+
         oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
         aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
         numberPlots = 0
@@ -159,7 +158,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 # this part figures out layout of plots into rows depending on settings
                 # also links the y scale of each row together
                 lastPlotInList = i == len(strList) - 1
-                lastPlotInWhole = listIndex == len(plotInfos)-1
                 if lastPlotInList or oneTracePerPlot:
                     pi.setLabels(title=titleString, left='Power', bottom='Frequency(Hz)')
                     piw = pi.titleLabel._sizeHint[0][0] + 60 # gestimating padding
@@ -167,32 +165,19 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     self.ui.grid.addItem(pi)
                     self.plotItems.append(pi)
                     curRow.append((pi,powers))
-                    if numberPlots % 4 == 0 or (lastPlotInList and lastPlotInWhole):
-                        self.ui.grid.nextRow()
-                        # scale each plot to use same y range
-                        # the viewRange function was returning incorrect results so had to do manually
-                        minVal = np.inf
-                        maxVal = -np.inf
-                        for item in curRow:
-                            for pow in item[1]:
-                                minVal = min(minVal, min(pow))
-                                maxVal = max(maxVal, max(pow))
-                        minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
-                        maxVal = np.log10(maxVal)
-                        for item in curRow:
-                            item[0].setYRange(minVal,maxVal)
-                        curRow.clear()
+                    if numberPlots % 4 == 0:
+                        self.setYRangeForRow(curRow)
+                        curRow = []
+
+        if curRow:
+            self.setYRangeForRow(curRow)
 
         # otherwise gridlayout columns will shrink at different scales based on the title string
         l = self.ui.grid.layout
         for i in range(l.columnCount()):
             l.setColumnMinimumWidth(i, maxTitleWidth)
 
-        # draw some text info like time range and file and stuff
-        li = pg.LabelItem()
-        li.opts['justify'] = 'left'
-
-        labelText = f'[FILE] {self.window.FID.name.rsplit("/",1)[1]}'
+        # add some text info like time range and file and stuff
 
         #get utc start and stop times
         s0 = self.window.spectraRange[0]
@@ -200,13 +185,35 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         startDate = UTCQDate.removeDOY(FFTIME(min(s0,s1), Epoch=self.window.epoch).UTC)
         endDate = UTCQDate.removeDOY(FFTIME(max(s0,s1), Epoch=self.window.epoch).UTC)
 
-        labelText = f'{labelText}<br>[FREQ BANDS] {self.N}'
-        labelText = f'{labelText}<br>[TIME] {startDate} -> {endDate}'
+        leftLabel = pg.LabelItem({'justify':'left'})
+        rightLabel = pg.LabelItem({'justify':'left'})
 
-        li.item.setHtml(labelText)
-        self.ui.labelLayout.addItem(li)
+        leftLabel.item.setHtml('[FILE]<br>[FREQBANDS]<br>[TIME]')
+        rightLabel.item.setHtml(f'{self.window.FID.name.rsplit("/",1)[1]}<br>{self.N}<br>{startDate} -> {endDate}')
+           
+        self.ui.labelLayout.addItem(leftLabel)
+        self.ui.labelLayout.nextColumn()
+        self.ui.labelLayout.addItem(rightLabel)
 
         ## end of def
+
+    def setYRangeForRow(self, curRow):
+        self.ui.grid.nextRow()
+        # scale each plot to use same y range
+        # the viewRange function was returning incorrect results so had to do manually
+        minVal = np.inf
+        maxVal = -np.inf
+        for item in curRow:
+            for pow in item[1]:
+                minVal = min(minVal, min(pow))
+                maxVal = max(maxVal, max(pow))
+                                    
+        #if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or np.isinf(maxVal):                    
+        minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
+        maxVal = np.log10(maxVal)
+        for item in curRow:
+            item[0].setYRange(minVal,maxVal)
+
 
     def calculateFreqList(self):
         bw = self.ui.bandWidthSpinBox.value()

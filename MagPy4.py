@@ -473,8 +473,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for pi in self.plotItems:
             pi.setXRange(self.tO, self.tE, 0.0)
 
+
+
     # setup default 4 axis magdata plot or 3 axis insight plot
-    def plotDataDefault(self):
+    def getDefaultPlotInfo(self):
         dstrs = []
         keywords = ['BX','BY','BZ']
         links = [[0,1,2]]
@@ -488,6 +490,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 if kw.lower() in dstr.lower():
                     row.append(dstr)
             dstrs.append(row)
+
+        return dstrs, links
+
+    def plotDataDefault(self):
+        dstrs,links = self.getDefaultPlotInfo()
                 
         self.plotData(dstrs, links)
 
@@ -514,8 +521,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # boolMatrix is same shape as the checkBox matrix but just bools
     def plotData(self, dataStrings, links):
         self.ui.glw.clear()
-        self.ui.glw.ci.currentRow = 0
-        self.ui.glw.ci.currentCol = 0
 
         self.lastPlotStrings = dataStrings
         self.lastPlotLinks = links
@@ -641,7 +646,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #for pi in self.plotItems:
         #    print(pi.viewGeometry())
 
-        qggl = self.ui.glw.ci.layout
+        qggl = self.ui.glw.layout
         rows = qggl.rowCount()
         plots = rows - 1
         if self.firstRowStretch < 2:
@@ -664,15 +669,30 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             return
         #print(y)
 
-        y -= 50 + (plots - 1) * 7 # the spaces in between plots hence the -1
-        y -= 20 # for bottom axis text
+        bPadding = 20 # for bottom axis text
+        plotSpacing = 7 # at least on windows, depends on screen resolution and stuff so this isnt a good solution really
+        edgePadding = 80 if self.OS == 'mac' else 40
+        y -= edgePadding + (plots - 1) * plotSpacing # the spaces in between plots hence the -1
+        y -= bPadding 
         for i in range(rows):
             if i == 0:
                 continue
-            h = y / plots if i < rows - 1 else y / plots + 20
+
+            h = y / plots if i < rows - 1 else y / plots + bPadding
             qggl.setRowFixedHeight(i, h)
             qggl.setRowMinimumHeight(i, h)
             qggl.setRowMaximumHeight(i, h) 
+
+        # when running out of room bottom plot starts shrinking
+        # pyqtgraph is doing some additional resizing independent of the underlying qt layout, but cant figure out where
+        # todo: try resizing plotItems also in above function
+        #if len(self.plotItems) >= 2:
+        #    maxHeight = 0
+        #    for pi in self.plotItems[:-1]:
+        #        maxHeight = max(pi.size().height(), maxHeight)
+            #for pi in self.plotItems[:-1]:
+            #    pi.setMinimumHeight(maxHeight)
+            #self.plotItems[-1].setMinimumHeight(maxHeight + bPadding)            
 
 
     # just redraws the traces and ensures y range is correct
