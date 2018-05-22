@@ -15,7 +15,7 @@ import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
-import pycdf
+#import pycdf
 
 from MagPy4UI import MagPy4UI
 from plotTracer import PlotTracer
@@ -80,6 +80,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.spectras = []
 
         self.generalSelectStep = 0
+        self.generalSelectStart = None
+        self.generalSelectEnd = None
 
         self.edit = None
         self.dataDisplay = None
@@ -119,27 +121,45 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeAllSubWindows()
 
     def closeAllSubWindows(self):
-        if self.tracer:
-            self.tracer.close()
-            self.tracer = None
-        if self.edit:
-            self.edit.close()
-            self.edit = None
-        if self.dataDisplay:
-            self.dataDisplay.close()
-            self.dataDisplay = None
+        self.closeTracer()
+        self.closeEdit()
+        self.closeDataDisplay()
         for spectra in self.spectras:
             spectra.close()
         self.spectras = []
 
-    def openTracer(self):
-        if self.tracer is not None:
+    def closeTracer(self):
+        if self.tracer:
             self.tracer.close()
+            self.tracer = None
+
+    def closeEdit(self):
+        if self.edit:
+            self.edit.close()
+            self.edit = None
+
+    def closeDataDisplay(self):
+        if self.dataDisplay:
+            self.dataDisplay.close()
+            self.dataDisplay = None
+
+    def openTracer(self):
+        self.closeTracer()
         self.tracer = PlotTracer(self)
 
         geo = self.geometry()
         self.tracer.move(geo.x()-8, geo.y() + 100)
         self.tracer.show()
+
+    def openEdit(self):
+        self.closeEdit()
+        self.edit = Edit(self)
+        self.edit.show()
+
+    def showData(self):
+        self.closeDataDisplay() # this isnt actually needed it still closes somehow
+        self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
+        self.dataDisplay.show()
 
     def runSpectra(self):
         txt = self.ui.actionSpectra.text()
@@ -158,16 +178,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 spectra = Spectra(self)
                 spectra.show()
                 self.spectras.append(spectra) # so reference is held until closed
-
-    def openEdit(self):
-        if self.edit is not None:
-            self.edit.close()
-        self.edit = Edit(self)
-        self.edit.show()
-
-    def showData(self):
-        self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
-        self.dataDisplay.show()
 
     def toggleAntialiasing(self):
         pg.setConfigOption('antialias', self.ui.antialiasAction.isChecked())
@@ -649,8 +659,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         qggl = self.ui.glw.layout
         rows = qggl.rowCount()
         plots = rows - 1
+        baseRes = 689.0
         if self.firstRowStretch < 2:
-            y = 689.0 # hardcoded to match first 2 calls having incorrect size
+            y = baseRes # hardcoded to match first 2 calls having incorrect size
             self.firstRowStretch += 1
         else:
             y = self.ui.glw.viewRect().height()
@@ -671,10 +682,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # all of this depends on screen resolution so this is a pretty bad fix for now
         bPadding = 20 # for bottom axis text
+        
+        #plotSpacing = 7
+        #edgePadding = 40
+        #y -= (edgePadding + (plots-1) * plotSpacing) / baseRes * y
+
         plotSpacing = 10 if self.OS == 'mac' else 7
         edgePadding = 40
         y -= edgePadding + (plots - 1) * plotSpacing # the spaces in between plots hence the -1
         y -= bPadding 
+
         for i in range(rows):
             if i == 0:
                 continue
@@ -785,6 +802,71 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         dataNames = [f'B{axis}{n}' for n in range(1,5)]
         print(dataNames)
 
+
+    # ------------------------------------------------------------------------
+    # GENERAL SELECT
+    # ------------------------------------------------------------------------
+    # start and end are datetime spins
+    def startGeneralSelect(self, name, start, end):
+        self.generalSelectStep = 1
+        self.generalSelectStart = start
+        self.generalSelectEnd = end
+        start.dateTimeChanged.connect(self.updateGeneralSelectByEdits)
+        end.dateTimeChanged.connect(self.updateGeneralSelectByEdits)
+
+    def endGeneralSelect(self):
+        self.generalSelectStep = 0
+        self.generalSelectStart = None
+        self.generalSelectEnd = None
+
+    # connected to datetimeedits
+    def updateGeneralSelectByEdits(self):
+        if len(self.plotItems) == 0:
+            return
+        if not self.generalSelectStart or not self.generalSelectEnd:
+            print('GENERAL SELECT ERROR: no connected DateTimeEdits')
+            return
+
+        x0 = self.plotItems[0].getViewBox().generalLines[0].getXPos()
+        x1 = self.plotItems[0].getViewBox().generalLines[1].getXPos()
+        t0 = self.times[self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(self.generalSelectStart.dateTime()), Epoch=self.epoch)._tick)]
+        t1 = self.times[self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(self.generalSelectEnd.dateTime()), Epoch=self.epoch)._tick)]
+
+        for pi in self.plotItems:
+            vb = pi.getViewBox()
+            vb.generalLines[0].show()
+            vb.generalLines[1].show()
+            vb.generalLines[0].setPos(t0 if x0 < x1 else t1)
+            vb.generalLines[1].setPos(t1 if x0 < x1 else t0)
+
+
+    def updateGeneralSelectByLines(self, index, x):
+        if len(self.plotItems) == 0:
+            return # prob cant even be called if this is true but just in case
+        if not self.generalSelectStart or not self.generalSelectEnd:
+            print('GENERAL SELECT ERROR: no connected DateTimeEdits')
+            return
+
+        oi = 0 if index == 1 else 1
+        ox = self.plotItems[0].getViewBox().generalLines[oi].getXPos()
+        t0 = UTCQDate.UTC2QDateTime(FFTIME(x, Epoch=self.epoch).UTC)
+        t1 = UTCQDate.UTC2QDateTime(FFTIME(ox, Epoch=self.epoch).UTC)
+
+        self.generalSelectStart.blockSignals(True)
+        self.generalSelectEnd.blockSignals(True)
+        self.generalSelectStart.setDateTime(min(t0,t1))
+        self.generalSelectEnd.setDateTime(max(t0,t1))
+        self.generalSelectStart.blockSignals(False)
+        self.generalSelectEnd.blockSignals(False)
+
+        for pi in self.plotItems:
+            vb = pi.getViewBox()
+            vb.generalLines[index].show()
+            vb.generalLines[index].setPos(x)
+
+    # ------------------------------------------------------------------------
+    # SPECTRA SELECT
+    # ------------------------------------------------------------------------
     # updates all spectra lines, index means which set the left or right basically
     # i feel like i did this stupidly but couldnt think of smoother way to do this
     def updateSpectraLines(self, index, x):
@@ -792,13 +874,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for pi in self.plotItems:
             vb = pi.getViewBox()
             vb.spectLines[index].setPos(x)
-            
-    def updateGeneralLines(self, index, x):
-        # need to add something to update the datetimespins here too
-        for pi in self.plotItems:
-            vb = pi.getViewBox()
-            vb.generalLines[index].show()
-            vb.generalLines[index].setPos(x)
 
     def hideAllSpectraLines(self, exc=None): # can allow optional viewbox exception
         for pi in self.plotItems:
@@ -869,7 +944,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         for i in range(2):
             self.spectLines.append(LinkedInfiniteLine(functools.partial(window.updateSpectraLines, i),movable=True, angle=90, pos=0, pen=pen, label='SPECTRA', labelColor='#FF0000'))
             label = None if viewBoxIndex > 0 else 'MIN VAR'
-            self.generalLines.append(LinkedInfiniteLine(functools.partial(window.updateGeneralLines, i), movable=True, angle=90, pos=0, pen=spen, label=label, labelColor='#0000FF'))
+            self.generalLines.append(LinkedInfiniteLine(functools.partial(window.updateGeneralSelectByLines, i), movable=True, angle=90, pos=0, pen=spen, label=label, labelColor='#0000FF'))
 
         for line in (self.spectLines + self.generalLines):
             self.addItem(line, ignoreBounds = True)
@@ -895,9 +970,9 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
         if self.window.generalSelectStep > 0 and self.window.generalSelectStep < 3:
             if self.window.generalSelectStep == 1:
-                self.window.updateGeneralLines(0,x)
+                self.window.updateGeneralSelectByLines(0,x)
             elif self.window.generalSelectStep == 2:
-                self.window.updateGeneralLines(1,x)
+                self.window.updateGeneralSelectByLines(1,x)
             self.window.generalSelectStep += 1
         elif self.window.spectraSelectStep > 0: # if making a spectra selection
             if self.window.spectraSelectStep == 2:

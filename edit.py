@@ -16,7 +16,6 @@ class EditUI(object):
 
         w = 600 if window.OS == 'windows' else 800
         Frame.resize(w,500)
-        self.axes = ['X','Y','Z']
 
         mainLayout = QtWidgets.QVBoxLayout(Frame)
         upperLayout = QtWidgets.QHBoxLayout()
@@ -73,7 +72,7 @@ class EditUI(object):
         axLayout.addWidget(angleLabel)
         axLayout.addWidget(self.axisAngle)
         self.genButtons = []
-        for ax in self.axes:
+        for ax in Edit.AXES:
             gb = QtGui.QPushButton(f'{ax}')
             gb.setMinimumWidth(5)
             gb.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum))
@@ -84,32 +83,14 @@ class EditUI(object):
         builderLayout.addWidget(axFrame)
         #bLayout.addStretch()
 
-        mvFrame = QtWidgets.QGroupBox('Minimum Variance')
-        mvLayout = QtWidgets.QVBoxLayout(mvFrame)
-        self.mvMouseSelect = QtGui.QPushButton('By Mouse Select')
-        self.mvMouseSelect.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        mvLayout.addWidget(self.mvMouseSelect)
+        #mvFrame = QtWidgets.QGroupBox('Minimum Variance')
+        #mvLayout = QtWidgets.QVBoxLayout(mvFrame)
+        self.minVarButton = QtGui.QPushButton('Minimum Variance')
+        self.minVarButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        #mvLayout.addWidget(self.minVarButton)
+        #builderLayout.addWidget(mvFrame)
+        builderLayout.addWidget(self.minVarButton)
 
-        sliderFont = QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14)#, QtGui.QFont.Bold) 
-        self.startSliderEdit = QtWidgets.QDateTimeEdit()
-        self.endSliderEdit = QtWidgets.QDateTimeEdit()
-        self.startSliderEdit.setFont(sliderFont)
-        self.endSliderEdit.setFont(sliderFont)
-        self.startSliderEdit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.endSliderEdit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.startSliderEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
-        self.endSliderEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
-        minDateTime,maxDateTime = window.getMinAndMaxDateTime()
-        self.startSliderEdit.setMinimumDateTime(minDateTime)
-        self.startSliderEdit.setMaximumDateTime(maxDateTime)
-        self.startSliderEdit.setDateTime(minDateTime)
-        self.endSliderEdit.setMinimumDateTime(minDateTime)
-        self.endSliderEdit.setMaximumDateTime(maxDateTime)
-        self.endSliderEdit.setDateTime(maxDateTime)
-        mvLayout.addWidget(self.startSliderEdit)
-        mvLayout.addWidget(self.endSliderEdit)
-
-        builderLayout.addWidget(mvFrame)
 
         leftLayout.addWidget(builderFrame)
         leftLayout.addStretch()
@@ -163,6 +144,7 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     STRING_PRECISION = 10
+    AXES = ['X','Y','Z']
 
     def __init__(self, window, parent=None):
         super(Edit, self).__init__(parent)
@@ -216,11 +198,25 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.lastGeneratorName = 'Custom'
 
         for i,gb in enumerate(self.ui.genButtons):
-            gb.clicked.connect(functools.partial(self.axisRotGen, self.ui.axes[i]))
+            gb.clicked.connect(functools.partial(self.axisRotGen, Edit.AXES[i]))
 
-        #self.ui.mvMouseSelect.clicked.connect()
+        self.minVar = None
+        self.ui.minVarButton.clicked.connect(self.openMinVar)
 
         self.setMatrix(self.ui.R, Edit.IDENTITY)
+
+    def closeEvent(self, event):
+        self.closeMinVar()
+
+    def closeMinVar(self):
+        if self.minVar:
+            self.minVar.close()
+            self.minVar = None
+
+    def openMinVar(self):
+        self.closeMinVar()
+        self.minVar = MinVar(self, self.window)
+        self.minVar.show()
 
     def empty(self): # return an empty 2D list in 3x3 matrix form
         return [[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]]
@@ -296,7 +292,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         r = len(self.axisDropdowns)
         row = []
         newLayout = QtWidgets.QHBoxLayout()
-        for i,ax in enumerate(self.ui.axes):
+        for i,ax in enumerate(Edit.AXES):
             dd = QtGui.QComboBox()
             dd.addItem('')
             for s in self.window.DATASTRINGS:
@@ -314,7 +310,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.setVectorDropdownsBlocked(True) # block signals so we dont recursively explode
 
         colStrs = [] # total option list for each column
-        for i,ax in enumerate(self.ui.axes):
+        for i,ax in enumerate(Edit.AXES):
             col = []
             for dstr in self.window.DATASTRINGS:
                 if ax.lower() in dstr.lower():
@@ -484,3 +480,64 @@ class Edit(QtWidgets.QFrame, EditUI):
                 self.window.DATADICT[xstr][r] = M[:,0]
                 self.window.DATADICT[ystr][r] = M[:,1]
                 self.window.DATADICT[zstr][r] = M[:,2]
+
+
+class MinVarUI(object):
+    def setupUI(self, Frame, window):
+        Frame.setWindowTitle('Minimum Variance')
+        Frame.resize(500,400)
+
+        mvLayout = QtWidgets.QVBoxLayout(Frame)
+
+        #self.mouseSelectButton = QtWidgets.QPushButton('Mouse Select')
+        #mvLayout.addWidget(self.mouseSelectButton)
+
+
+        vectorLayout = QtWidgets.QHBoxLayout()
+        self.vector = []
+        for i,ax in enumerate(Edit.AXES):
+            v = QtWidgets.QComboBox()
+            for dstr in window.DATASTRINGS:
+                if ax.lower() in dstr.lower():
+                    v.addItem(dstr)
+            self.vector.append(v)
+            vectorLayout.addWidget(v)
+        vectorLayout.addStretch()
+
+        mvLayout.addLayout(vectorLayout)
+
+        sliderFont = QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14)#, QtGui.QFont.Bold) 
+        self.startTimeEdit = QtWidgets.QDateTimeEdit()
+        self.endTimeEdit = QtWidgets.QDateTimeEdit()
+        self.startTimeEdit.setFont(sliderFont)
+        self.endTimeEdit.setFont(sliderFont)
+        self.startTimeEdit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.endTimeEdit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.startTimeEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
+        self.endTimeEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
+        minDateTime,maxDateTime = window.getMinAndMaxDateTime()
+        self.startTimeEdit.setMinimumDateTime(minDateTime)
+        self.startTimeEdit.setMaximumDateTime(maxDateTime)
+        self.startTimeEdit.setDateTime(minDateTime)
+        self.endTimeEdit.setMinimumDateTime(minDateTime)
+        self.endTimeEdit.setMaximumDateTime(maxDateTime)
+        self.endTimeEdit.setDateTime(maxDateTime)
+        mvLayout.addWidget(self.startTimeEdit)
+        mvLayout.addWidget(self.endTimeEdit)
+
+        mvLayout.addStretch()
+
+class MinVar(QtWidgets.QFrame, MinVarUI):
+    def __init__(self, edit, window, parent=None):
+        super(MinVar, self).__init__(parent)
+        self.edit = edit
+        self.window = window
+
+        self.ui = MinVarUI()
+        self.ui.setupUI(self, window)
+
+        self.window.startGeneralSelect('MINVAR', self.ui.startTimeEdit, self.ui.endTimeEdit)
+
+
+    def closeEvent(self, event):
+        self.window.endGeneralSelect()
