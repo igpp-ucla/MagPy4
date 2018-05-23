@@ -69,22 +69,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.bridgeDataGaps.triggered.connect(self.replotData)
         self.ui.drawPoints.triggered.connect(self.replotData)
 
-        self.lastPlotStrings = None
-        self.lastPlotLinks = None
-
-        self.plotTracerCheckBoxMode = False
         self.tracer = None
-
-        self.spectraSelectStep = 0
-        self.spectraRange = [0,0]
-        self.spectras = []
-
-        self.generalSelectStep = 0
-        self.generalSelectStart = None
-        self.generalSelectEnd = None
-
         self.edit = None
         self.dataDisplay = None
+        self.spectras = []
+
+        self.plotTracerCheckBoxMode = False
+
+        self.initVariables()
 
         self.magpyIcon = QtGui.QIcon()
         self.marsIcon = QtGui.QIcon()
@@ -127,6 +119,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for spectra in self.spectras:
             spectra.close()
         self.spectras = []
+
+    # init variables here that should be reset when file changes
+    def initVariables(self):
+        self.lastPlotStrings = None
+        self.lastPlotLinks = None
+        self.spectraSelectStep = 0
+        self.spectraRange = [0,0]
+
+        self.generalSelectStep = 0
+        self.generalSelectStart = None
+        self.generalSelectEnd = None
+
+        self.editHistory = []
 
     def closeTracer(self):
         if self.tracer:
@@ -264,6 +269,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.openCDF(fileName)
 
         self.closeAllSubWindows()
+        self.initVariables()
 
         self.plotDataDefault()
 

@@ -236,10 +236,19 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.checkVectorRows()
         self.updateVectorSelections()
 
-        self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
         self.selectedMatrix = [] # selected matrix from history
         self.history = [] # list of matrices
-        self.addHistory(Edit.IDENTITY, 'Identity')
+        if self.window.editHistory:
+            for mat,name in self.window.editHistory:
+                if mat:
+                    self.addHistory(mat, name)
+                else:
+                    self.ui.history.setCurrentRow(name)
+        else:
+            self.addHistory(Edit.IDENTITY, 'Identity')
+
+        self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
+        self.onHistoryChanged(self.ui.history.currentRow())
 
         self.lastGeneratorAbbreviated = 'C'
         self.lastGeneratorName = 'Custom'
@@ -253,6 +262,15 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.setMatrix(self.ui.R, Edit.IDENTITY)
 
     def closeEvent(self, event):
+        # save edit history
+        hist = []
+        for i in range(len(self.history)):
+            hist.append((self.history[i],self.ui.history.item(i).text()))
+            #print(f'{hist[i][0]} {hist[i][1]}' )
+        hist.append(([], self.ui.history.currentRow())) # save row that was selected as last element
+
+        self.window.editHistory = hist
+
         self.closeMinVar()
 
     def closeMinVar(self):
@@ -442,6 +460,7 @@ class Edit(QtWidgets.QFrame, EditUI):
             print('cannot remove original data')
             return
         del self.history[curRow]
+        #self.ui.history.blockSignals(True)
         self.ui.history.setCurrentRow(curRow - 1) # change before take item otherwise onHistory gets called with wrong row
         self.ui.history.takeItem(curRow)
         # todo: check to see if memory consumption gets out of hand because not deleting data out of main window dictionaries ever
