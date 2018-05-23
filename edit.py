@@ -447,7 +447,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         # todo: check to see if memory consumption gets out of hand because not deleting data out of main window dictionaries ever
 
     def onHistoryChanged(self, row):
-        print(f'CHANGED {row}')
+        #print(f'CHANGED {row}')
         self.selectedMatrix = self.history[row]
         self.setMatrix(self.ui.M, self.selectedMatrix)
         self.window.MATRIX = Edit.toString(self.selectedMatrix)

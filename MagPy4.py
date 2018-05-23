@@ -554,6 +554,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             axis.window = self
             vb = MagPyViewBox(self, plotIndex)
             pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis})
+            self.plotItems.append(pi) #save it for ref elsewhere
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
             #vb.setAutoVisible(y=True)
             #pi.setDownsampling(auto=True)
@@ -563,7 +564,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             pi.addItem(trackerLine)
             self.trackerLines.append(trackerLine)
 
-            self.plotItems.append(pi) #save it for ref elsewhere
+            # add horizontal zero line
+            zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
+            zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
+            pi.addItem(zeroLine, ignoreBounds=True)
 
             pi.hideButtons() # hide autoscale button
 
@@ -638,15 +642,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         ## end of main for loop
         self.updateYRange()
-
-        # draw horizontal line if plot crosses zero
-        for pi in self.plotItems:
-            vr = pi.viewRange()
-            if vr[1][0] < 0 and vr[1][1] > 0:
-                zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
-                zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
-                pi.addItem(zeroLine, ignoreBounds=True)
-
+            
     ## end of plot function
 
     # trying to correctly estimate size of rows. last one needs to be a bit larger since bottom axis
@@ -819,6 +815,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.generalSelectStep = 0
         self.generalSelectStart = None
         self.generalSelectEnd = None
+        for pi in self.plotItems:
+            vb = pi.getViewBox()
+            for line in vb.generalLines:
+                line.hide()
 
     def getGeneralSelectTicks(self):
         i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(self.generalSelectStart.dateTime()), Epoch=self.epoch)._tick)
