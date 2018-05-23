@@ -508,7 +508,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 
         self.plotData(dstrs, links)
 
-    # todo: have
     def getData(self, dstr):
         return self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY]
 
@@ -617,13 +616,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
             self.plotTracePens.append(tracePens)
 
-            # draw horizontal line if plot crosses zero
-            vr = pi.viewRange()
-            if vr[1][0] < 0 and vr[1][1] > 0:
-                zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
-                zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
-                pi.addItem(zeroLine, ignoreBounds=True)
-
             # set plot to current range based on time sliders
             pi.setXRange(self.tO, self.tE, 0.0)
             pi.setLimits(xMin=self.itO, xMax=self.itE)
@@ -646,6 +638,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         ## end of main for loop
         self.updateYRange()
+
+        # draw horizontal line if plot crosses zero
+        for pi in self.plotItems:
+            vr = pi.viewRange()
+            if vr[1][0] < 0 and vr[1][1] > 0:
+                zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
+                zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
+                pi.addItem(zeroLine, ignoreBounds=True)
 
     ## end of plot function
 
@@ -791,6 +791,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 l2 = (largest - diff) / 2.0
                 #self.plotItems[i].getViewBox()._updatingRange = True
                 self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2, padding = 0.05)
+                
                 #self.plotItems[i].getViewBox()._updatingRange = False
                 #print(f'{values[i][0] - l2},{values[i][1] + l2}')
 
@@ -819,6 +820,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.generalSelectStart = None
         self.generalSelectEnd = None
 
+    def getGeneralSelectTicks(self):
+        i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(self.generalSelectStart.dateTime()), Epoch=self.epoch)._tick)
+        i1 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(self.generalSelectEnd.dateTime()), Epoch=self.epoch)._tick)
+        return (i0,i1) if i0 < i1 else (i1,i0)
+
     # connected to datetimeedits
     def updateGeneralSelectByEdits(self):
         if len(self.plotItems) == 0:
@@ -829,8 +835,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         x0 = self.plotItems[0].getViewBox().generalLines[0].getXPos()
         x1 = self.plotItems[0].getViewBox().generalLines[1].getXPos()
-        t0 = self.times[self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(self.generalSelectStart.dateTime()), Epoch=self.epoch)._tick)]
-        t1 = self.times[self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(self.generalSelectEnd.dateTime()), Epoch=self.epoch)._tick)]
+        i0,i1 = self.getGeneralSelectTicks()
+        t0 = self.times[i0]
+        t1 = self.times[i1]
 
         for pi in self.plotItems:
             vb = pi.getViewBox()

@@ -145,6 +145,54 @@ class Edit(QtWidgets.QFrame, EditUI):
     IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     STRING_PRECISION = 10
     AXES = ['X','Y','Z']
+    i = [0, 1, 2]
+
+    def empty(): # return an empty 2D list in 3x3 matrix form
+        return [[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]]
+        # returns a copy of array a
+
+    def copy(a):
+        return [[a[0][0],a[0][1],a[0][2]],
+                [a[1][0],a[1][1],a[1][2]],
+                [a[2][0],a[2][1],a[2][2]]]
+
+    # manual matrix mult with matrix list format
+    def mult(a, b):
+        N = Edit.empty()
+        for r in Edit.i:
+            for c in Edit.i:
+                for i in Edit.i:
+                    N[r][c] += a[r][i] * b[i][c]
+        return N
+
+    # converts float to string
+    def formatNumber(num):
+        n = round(num, Edit.STRING_PRECISION)
+        #if n >= 10000 or n <= 0.0001: #not sure how to handle this for now
+            #return f'{n:e}'
+        return f'{n}'
+
+    # matrix are stringified to use as keys in data table
+    # DATADICT is dict with dicts for each dstr with (k, v) : (matrix str, modified data)
+    # this is probably stupid but i dont know what im doing
+    def toString(m, p=STRING_PRECISION):
+        return (f'''[{Edit.formatNumber(m[0][0])}]
+                    [{Edit.formatNumber(m[0][1])}]
+                    [{Edit.formatNumber(m[0][2])}]
+                    [{Edit.formatNumber(m[1][0])}]
+                    [{Edit.formatNumber(m[1][1])}]
+                    [{Edit.formatNumber(m[1][2])}]
+                    [{Edit.formatNumber(m[2][0])}]
+                    [{Edit.formatNumber(m[2][1])}]
+                    [{Edit.formatNumber(m[2][2])}]''')
+
+    def identity():
+        return Edit.toString(Edit.IDENTITY)
+
+
+    # ------------------------------------------------------------------
+    # END OF STATICS
+    # ------------------------------------------------------------------
 
     def __init__(self, window, parent=None):
         super(Edit, self).__init__(parent)
@@ -152,12 +200,11 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui = EditUI()
         self.ui.setupUI(self, window)
 
-        self.i = [0, 1, 2]
         self.FLAG = 1.e-10
         self.D2R = pi / 180.0 # degree to rad conversion constant
 
         self.ui.loadIdentity.clicked.connect(functools.partial(self.setMatrix, self.ui.R, Edit.IDENTITY))
-        self.ui.loadZeros.clicked.connect(functools.partial(self.setMatrix, self.ui.R, self.empty()))
+        self.ui.loadZeros.clicked.connect(functools.partial(self.setMatrix, self.ui.R, Edit.empty()))
         self.ui.apply.clicked.connect(self.apply)
         self.ui.removeRow.clicked.connect(self.removeHistory)
 
@@ -217,39 +264,6 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.closeMinVar()
         self.minVar = MinVar(self, self.window)
         self.minVar.show()
-
-    def empty(self): # return an empty 2D list in 3x3 matrix form
-        return [[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]]
-
-    # returns a copy of array a
-    def copy(self, a):
-        return [[a[0][0],a[0][1],a[0][2]],
-                [a[1][0],a[1][1],a[1][2]],
-                [a[2][0],a[2][1],a[2][2]]]
-
-    # matrix are stringified to use as keys in data table
-    # DATADICT is dict with dicts for each dstr with (k, v) : (matrix str, modified data)
-    # this is probably stupid but i dont know what im doing
-    def toString(m, p=STRING_PRECISION):
-        return (f'''[{Edit.formatNumber(m[0][0])}]
-                    [{Edit.formatNumber(m[0][1])}]
-                    [{Edit.formatNumber(m[0][2])}]
-                    [{Edit.formatNumber(m[1][0])}]
-                    [{Edit.formatNumber(m[1][1])}]
-                    [{Edit.formatNumber(m[1][2])}]
-                    [{Edit.formatNumber(m[2][0])}]
-                    [{Edit.formatNumber(m[2][1])}]
-                    [{Edit.formatNumber(m[2][2])}]''')
-
-    def identity():
-        return Edit.toString(Edit.IDENTITY)
-
-    # converts float to string
-    def formatNumber(num):
-        n = round(num, Edit.STRING_PRECISION)
-        #if n >= 10000 or n <= 0.0001: #not sure how to handle this for now
-            #return f'{n:e}'
-        return f'{n}'
 
     def setVectorDropdownsBlocked(self, blocked):
         for row in self.axisDropdowns:
@@ -344,9 +358,9 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     # mat is 2D list of label/lineEdits
     def getMatrix(self, mat):
-        M = self.empty()
-        for i in self.i:
-            for j in self.i:
+        M = Edit.empty()
+        for i in Edit.i:
+            for j in Edit.i:
                 s = mat[i][j].text()
                 try:
                     f = float(s)
@@ -358,14 +372,19 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     # mat is 2D list of label/lineEdits, m is 2D list of floats
     def setMatrix(self, mat, m):
-        for i in self.i:
-            for j in self.i:
+        for i in Edit.i:
+            for j in Edit.i:
                 mat[i][j].setText(Edit.formatNumber(m[i][j]))
                 mat[i][j].repaint()
 
+    def setRotationMatrix(self, m, name):
+        self.setMatrix(self.ui.R, m)
+        self.lastGeneratorName = name
+
     def axisRotGen(self, axis):
-        R = self.genAxisRotationMatrix(axis, self.ui.axisAngle.value())
-        self.setMatrix(self.ui.R, R)
+        angle = self.ui.axisAngle.value()
+        R = self.genAxisRotationMatrix(axis, angle)
+        self.setRotationMatrix(R, f'{axis}{angle}rot')
 
     # axis is x,y,z
     def genAxisRotationMatrix(self, axis, angle):
@@ -384,20 +403,11 @@ class Edit(QtWidgets.QFrame, EditUI):
         if ax == 'z':
             return [[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]]
         print(f'unknown axis "{ax}"')
-        return self.copy(Edit.IDENTITY)
-
-    # manual matrix mult with my list format
-    def mult(self, a, b):
-        N = self.empty()
-        for r in self.i:
-            for c in self.i:
-                for i in self.i:
-                    N[r][c] += a[r][i] * b[i][c]
-        return N
+        return Edit.copy(Edit.IDENTITY)
 
     # adds an entry to history matrix list and a list item at end of history ui
     def addHistory(self, mat, name):
-        self.history.append(self.copy(mat))
+        self.history.append(Edit.copy(mat))
 
         # get names of items
         uihist = self.ui.history
@@ -434,19 +444,18 @@ class Edit(QtWidgets.QFrame, EditUI):
         del self.history[curRow]
         self.ui.history.setCurrentRow(curRow - 1) # change before take item otherwise onHistory gets called with wrong row
         self.ui.history.takeItem(curRow)
-        # todo: check to see if memory consumption gets out of hand because not deleting anything currently
+        # todo: check to see if memory consumption gets out of hand because not deleting data out of main window dictionaries ever
 
     def onHistoryChanged(self, row):
-        #print(f'CHANGED {row}')
+        print(f'CHANGED {row}')
         self.selectedMatrix = self.history[row]
         self.setMatrix(self.ui.M, self.selectedMatrix)
         self.window.MATRIX = Edit.toString(self.selectedMatrix)
         self.window.replotData()
 
     def apply(self):
-        R = self.mult(self.selectedMatrix, self.getMatrix(self.ui.R))
+        R = Edit.mult(self.selectedMatrix, self.getMatrix(self.ui.R))
         self.generateData(R)
-        #self.addHistory(R, f'Matrix {len(self.history)}')
         self.addHistory(R, f'{self.lastGeneratorName}')
 
     # given current axis vector selections
@@ -487,12 +496,9 @@ class MinVarUI(object):
         Frame.setWindowTitle('Minimum Variance')
         Frame.resize(500,400)
 
-        mvLayout = QtWidgets.QVBoxLayout(Frame)
+        self.layout = QtWidgets.QVBoxLayout(Frame)
 
-        #self.mouseSelectButton = QtWidgets.QPushButton('Mouse Select')
-        #mvLayout.addWidget(self.mouseSelectButton)
-
-
+        # setup xyz vector dropdowns
         vectorLayout = QtWidgets.QHBoxLayout()
         self.vector = []
         for i,ax in enumerate(Edit.AXES):
@@ -504,8 +510,9 @@ class MinVarUI(object):
             vectorLayout.addWidget(v)
         vectorLayout.addStretch()
 
-        mvLayout.addLayout(vectorLayout)
+        self.layout.addLayout(vectorLayout)
 
+        # setup datetime edits
         sliderFont = QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14)#, QtGui.QFont.Bold) 
         self.startTimeEdit = QtWidgets.QDateTimeEdit()
         self.endTimeEdit = QtWidgets.QDateTimeEdit()
@@ -522,14 +529,21 @@ class MinVarUI(object):
         self.endTimeEdit.setMinimumDateTime(minDateTime)
         self.endTimeEdit.setMaximumDateTime(maxDateTime)
         self.endTimeEdit.setDateTime(maxDateTime)
-        mvLayout.addWidget(self.startTimeEdit)
-        mvLayout.addWidget(self.endTimeEdit)
+        self.layout.addWidget(self.startTimeEdit)
+        self.layout.addWidget(self.endTimeEdit)
 
-        mvLayout.addStretch()
+        self.eigenValsLabel = QtWidgets.QLabel('')
+        self.layout.addWidget(self.eigenValsLabel)
+
+        self.layout.addStretch()
+
+        self.applyButton = QtWidgets.QPushButton('Apply')
+        self.applyButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+        self.layout.addWidget(self.applyButton)
 
 class MinVar(QtWidgets.QFrame, MinVarUI):
     def __init__(self, edit, window, parent=None):
-        super(MinVar, self).__init__(parent)
+        super(MinVar, self).__init__(parent)#, QtCore.Qt.WindowStaysOnTopHint)
         self.edit = edit
         self.window = window
 
@@ -538,6 +552,78 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
 
         self.window.startGeneralSelect('MINVAR', self.ui.startTimeEdit, self.ui.endTimeEdit)
 
+        self.ui.applyButton.clicked.connect(self.calcMinVar)
+
+        self.shouldResizeWindow = True
 
     def closeEvent(self, event):
         self.window.endGeneralSelect()
+
+    def paintEvent(self, event):
+        if self.shouldResizeWindow:
+            self.shouldResizeWindow = False
+            size = self.ui.layout.sizeHint()
+            #size.x += 100
+            self.resize(size)
+
+    def average(self, vector):
+        if vector is None:
+            return 0
+        size = vector.size
+        if size == 0:
+            return 0
+        return np.sum(vector) / size
+
+    def calcMinVar(self):
+        # todo: test if need version of data where data gaps are removed and not smoothed, like makes array shorter
+        # so you could select a length of data and it returns an array of only the valid values
+        # otherwise minvar calcs prob get messed up when smoothed data probably affects the average
+
+        iO,iE = self.window.getGeneralSelectTicks()
+
+        xyz = []
+        avg = []
+        for v in self.ui.vector:
+            data = self.window.getData(v.currentText())[iO:iE]
+            xyz.append(data)
+            avg.append(self.average(data))
+
+        items = len(xyz[0])
+
+        covar = Edit.empty()
+        CoVar = Edit.empty()
+        eigen = Edit.empty()
+
+        for i in Edit.i:
+            for j in Edit.i[i:]:
+                for k in range(items):
+                    covar[i][j] = covar[i][j] + xyz[i][k] * xyz[j][k]
+        for i in Edit.i:
+            for j in Edit.i[i:]:
+                CoVar[i][j] = (covar[i][j] / items) - avg[i] * avg[j]
+        # fill out lower triangle
+        CoVar[1][0] = CoVar[0][1]
+        CoVar[2][0] = CoVar[0][2]
+        CoVar[2][1] = CoVar[1][2]
+
+        A = np.array(CoVar)
+        w, v = np.linalg.eigh(A, UPLO="U")
+
+        for i in Edit.i:
+            for j in Edit.i:
+                eigen[2 - i][j] = v[j][i]
+        eigenval = [w[2], w[1], w[0]]
+        # force to be right handed
+        e20 = eigen[0][1] * eigen[1][2] - eigen[0][2] * eigen[1][1]
+        if e20 * eigen[2][0] < 0:
+            eigen[2] = np.negative(eigen[2])
+        if (eigen[0][2] < 0.):
+            eigen[0] = np.negative(eigen[0])
+            eigen[1] = np.negative(eigen[1])
+        if (eigen[2][0] < 0.):
+            eigen[1] = np.negative(eigen[1])
+            eigen[2] = np.negative(eigen[2])
+        
+        self.edit.setRotationMatrix(eigen, 'minvar')
+        print('min var calculation completed')
+        print(eigenval)
