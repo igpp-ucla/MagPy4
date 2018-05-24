@@ -23,6 +23,7 @@ from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
 from pyqtgraphExtensions import DateAxis, PlotPointsItem, LinkedInfiniteLine
+from mth import Mth
 
 import time
 import functools
@@ -312,8 +313,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ORIGDATADICT = {} # maps string to original data array
         self.DATADICT = {}  # stores smoothed version of data and all modifications (dict of dicts)
         self.UNITDICT = {} # maps data strings to unit strings
-        self.IDENTITY = Edit.identity()
-        self.MATRIX = Edit.identity() # temp until i add matrix chooser dropdown in plot tracer
+        self.IDENTITY = Mth.identity()
+        self.MATRIX = Mth.identity() # temp until i add matrix chooser dropdown in plot tracer
         for i, dstr in enumerate(self.DATASTRINGS):
             datas = np.array(self.dataByRec[:,i])
             self.ORIGDATADICT[dstr] = datas
@@ -986,6 +987,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 self.window.updateGeneralSelectByLines(0,x)
             elif self.window.generalSelectStep == 2:
                 self.window.updateGeneralSelectByLines(1,x)
+                Edit.moveToFront(self.window.edit.minVar)
             self.window.generalSelectStep += 1
         elif self.window.spectraSelectStep > 0: # if making a spectra selection
             if self.window.spectraSelectStep == 2:

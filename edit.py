@@ -10,189 +10,19 @@ from math import sin, cos, acos, fabs, pi
 import functools
 import time
 
-class EditUI(object):
-    def setupUI(self, Frame, window):
-        Frame.setWindowTitle('Edit')
+from editUI import EditUI, ManRotUI, MinVarUI
 
-        w = 600 if window.OS == 'windows' else 800
-        Frame.resize(w,500)
-
-        mainLayout = QtWidgets.QVBoxLayout(Frame)
-        upperLayout = QtWidgets.QHBoxLayout()
-        leftLayout = QtWidgets.QVBoxLayout()
-        rightLayout = QtWidgets.QVBoxLayout()
-        upperLayout.addLayout(leftLayout,1)
-        upperLayout.addLayout(rightLayout,1)
-        mainLayout.addLayout(upperLayout)
-
-        # this part gets built dynamically
-        vectorFrame = QtWidgets.QGroupBox('Data Vectors')
-        self.vectorLayout = QtWidgets.QVBoxLayout(vectorFrame)
-        leftLayout.addWidget(vectorFrame)
-
-        # matrix A setup
-        self.R = [] # current rotation matrix
-        rFrame = QtWidgets.QGroupBox('Rotation Matrix')
-        rLayout = QtWidgets.QGridLayout(rFrame)
-        for y in range(3):
-            row = []
-            for x in range(3):
-                edit = QtGui.QLineEdit()
-                edit.setInputMethodHints(QtCore.Qt.ImhFormattedNumbersOnly) #i dont even know if this does anything
-                edit.setText('0.0')
-                rLayout.addWidget(edit, y, x, 1, 1)
-                row.append(edit)
-            self.R.append(row)
-
-        rightLayout.addWidget(rFrame)
-
-        # axis rotation frame
-        builderFrame = QtWidgets.QGroupBox('Matrix Builders')
-
-        extraButtons = QtWidgets.QHBoxLayout()
-        builderLayout = QtWidgets.QVBoxLayout(builderFrame)
-        self.loadIdentity = QtGui.QPushButton('Load Identity')
-        self.loadIdentity.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.loadZeros = QtGui.QPushButton('Load Zeros')
-        self.loadZeros.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        extraButtons.addWidget(self.loadIdentity)
-        extraButtons.addWidget(self.loadZeros)
-        extraButtons.addStretch()
-        builderLayout.addLayout(extraButtons)
-
-        axFrame = QtWidgets.QGroupBox('By Axis Angle')
-        axLayout = QtWidgets.QHBoxLayout(axFrame)
-        angleLabel = QtGui.QLabel('Angle')
-        angleLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.axisAngle = QtGui.QDoubleSpinBox()
-        self.axisAngle.setWrapping(True)
-        self.axisAngle.setMaximum(360.0)
-        self.axisAngle.setSuffix('\u00B0')
-        self.axisAngle.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        axLayout.addWidget(angleLabel)
-        axLayout.addWidget(self.axisAngle)
-        self.genButtons = []
-        for ax in Edit.AXES:
-            gb = QtGui.QPushButton(f'{ax}')
-            gb.setMinimumWidth(5)
-            gb.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum))
-            axLayout.addWidget(gb)
-            self.genButtons.append(gb)
-
-        #builderLayout.addLayout(axLayout)
-        builderLayout.addWidget(axFrame)
-        #bLayout.addStretch()
-
-        #mvFrame = QtWidgets.QGroupBox('Minimum Variance')
-        #mvLayout = QtWidgets.QVBoxLayout(mvFrame)
-        self.minVarButton = QtGui.QPushButton('Minimum Variance')
-        self.minVarButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        #mvLayout.addWidget(self.minVarButton)
-        #builderLayout.addWidget(mvFrame)
-        builderLayout.addWidget(self.minVarButton)
-
-
-        leftLayout.addWidget(builderFrame)
-        leftLayout.addStretch()
-        
-        # history
-        hFrame = QtWidgets.QGroupBox('Matrix History')
-        hLayout = QtWidgets.QVBoxLayout(hFrame)
-
-        mGrid = QtWidgets.QGridLayout()
-        self.M = [] # matrix that is displayed in history
-        for y in range(3):
-            row = []
-            for x in range(3):
-                label = QtGui.QLabel('0.0')
-                #label.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-                mGrid.addWidget(label, y, x, 1, 1)
-                row.append(label)
-            self.M.append(row)
-
-        hLayout.addLayout(mGrid)
-
-        hBotGrid = QtWidgets.QGroupBox()
-        hBotLayout = QtWidgets.QHBoxLayout(hBotGrid)
-        leftButtons = QtWidgets.QVBoxLayout()
-        #loadMat = QtWidgets.QPushButton('Load Matrix')
-        self.removeRow = QtWidgets.QPushButton('Remove Matrix')
-        #leftButtons.addWidget(loadMat)
-        leftButtons.addWidget(self.removeRow)
-        leftButtons.addStretch()
-        hBotLayout.addLayout(leftButtons,1)
-        self.history = QtWidgets.QListWidget()
-        self.history.setEditTriggers(QtWidgets.QAbstractItemView.SelectedClicked)
-        hBotLayout.addWidget(self.history,2)
-        hLayout.addWidget(hBotGrid)
-
-        rightLayout.addWidget(hFrame)
-
-        mainLayout.addStretch()
-
-        # bottom area with apply button
-        bottomLayout = QtGui.QHBoxLayout()
-        self.apply = QtGui.QPushButton('Apply')
-        self.apply.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-        bottomLayout.addWidget(self.apply)
-        applyLabel = QtGui.QLabel('Multiplies each data vector by (selected history matrix multiplied by rotation matrix)')
-        bottomLayout.addWidget(applyLabel)
-        mainLayout.addLayout(bottomLayout)
-
+from mth import Mth
 
 class Edit(QtWidgets.QFrame, EditUI):
 
-    IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-    STRING_PRECISION = 10
-    AXES = ['X','Y','Z']
-    i = [0, 1, 2]
+    def moveToFront(window):
+        # this will remove minimized status 
+        # and restore window with keeping maximized/normal state
+        window.setWindowState(window.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
+        # this will activate the window
+        window.activateWindow()
 
-    def empty(): # return an empty 2D list in 3x3 matrix form
-        return [[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]]
-        # returns a copy of array a
-
-    def copy(a):
-        return [[a[0][0],a[0][1],a[0][2]],
-                [a[1][0],a[1][1],a[1][2]],
-                [a[2][0],a[2][1],a[2][2]]]
-
-    # manual matrix mult with matrix list format
-    def mult(a, b):
-        N = Edit.empty()
-        for r in Edit.i:
-            for c in Edit.i:
-                for i in Edit.i:
-                    N[r][c] += a[r][i] * b[i][c]
-        return N
-
-    # converts float to string
-    def formatNumber(num):
-        n = round(num, Edit.STRING_PRECISION)
-        #if n >= 10000 or n <= 0.0001: #not sure how to handle this for now
-            #return f'{n:e}'
-        return f'{n}'
-
-    # matrix are stringified to use as keys in data table
-    # DATADICT is dict with dicts for each dstr with (k, v) : (matrix str, modified data)
-    # this is probably stupid but i dont know what im doing
-    def toString(m, p=STRING_PRECISION):
-        return (f'''[{Edit.formatNumber(m[0][0])}]
-                    [{Edit.formatNumber(m[0][1])}]
-                    [{Edit.formatNumber(m[0][2])}]
-                    [{Edit.formatNumber(m[1][0])}]
-                    [{Edit.formatNumber(m[1][1])}]
-                    [{Edit.formatNumber(m[1][2])}]
-                    [{Edit.formatNumber(m[2][0])}]
-                    [{Edit.formatNumber(m[2][1])}]
-                    [{Edit.formatNumber(m[2][2])}]''')
-
-    def identity():
-        return Edit.toString(Edit.IDENTITY)
-
-
-    # ------------------------------------------------------------------
-    # END OF STATICS
-    # ------------------------------------------------------------------
 
     def __init__(self, window, parent=None):
         super(Edit, self).__init__(parent)
@@ -200,12 +30,6 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui = EditUI()
         self.ui.setupUI(self, window)
 
-        self.FLAG = 1.e-10
-        self.D2R = pi / 180.0 # degree to rad conversion constant
-
-        self.ui.loadIdentity.clicked.connect(functools.partial(self.setMatrix, self.ui.R, Edit.IDENTITY))
-        self.ui.loadZeros.clicked.connect(functools.partial(self.setMatrix, self.ui.R, Edit.empty()))
-        self.ui.apply.clicked.connect(self.apply)
         self.ui.removeRow.clicked.connect(self.removeHistory)
 
         # setup default BX vector rows
@@ -245,7 +69,7 @@ class Edit(QtWidgets.QFrame, EditUI):
                 else:
                     self.ui.history.setCurrentRow(name)
         else:
-            self.addHistory(Edit.IDENTITY, 'Identity')
+            self.addHistory(Mth.IDENTITY, 'Identity')
 
         self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
         self.onHistoryChanged(self.ui.history.currentRow())
@@ -253,13 +77,11 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.lastGeneratorAbbreviated = 'C'
         self.lastGeneratorName = 'Custom'
 
-        for i,gb in enumerate(self.ui.genButtons):
-            gb.clicked.connect(functools.partial(self.axisRotGen, Edit.AXES[i]))
-
         self.minVar = None
         self.ui.minVarButton.clicked.connect(self.openMinVar)
+        self.manRot = None
+        self.ui.manRotButton.clicked.connect(self.openManRot)
 
-        self.setMatrix(self.ui.R, Edit.IDENTITY)
 
     def closeEvent(self, event):
         # save edit history
@@ -271,17 +93,27 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         self.window.editHistory = hist
 
+        self.closeManRot()
         self.closeMinVar()
 
-    def closeMinVar(self):
-        if self.minVar:
-            self.minVar.close()
-            self.minVar = None
+    def openManRot(self):
+        self.closeManRot()
+        self.manRot = ManRot(self, self.window)
+        self.manRot.show()
+    def closeManRot(self):
+        if self.manRot:
+            self.manRot.close()
+            self.manRot = None
 
     def openMinVar(self):
         self.closeMinVar()
         self.minVar = MinVar(self, self.window)
         self.minVar.show()
+    def closeMinVar(self):
+        if self.minVar:
+            self.minVar.close()
+            self.minVar = None
+
 
     def setVectorDropdownsBlocked(self, blocked):
         for row in self.axisDropdowns:
@@ -324,7 +156,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         r = len(self.axisDropdowns)
         row = []
         newLayout = QtWidgets.QHBoxLayout()
-        for i,ax in enumerate(Edit.AXES):
+        for i,ax in enumerate(Mth.AXES):
             dd = QtGui.QComboBox()
             dd.addItem('')
             for s in self.window.DATASTRINGS:
@@ -342,7 +174,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.setVectorDropdownsBlocked(True) # block signals so we dont recursively explode
 
         colStrs = [] # total option list for each column
-        for i,ax in enumerate(Edit.AXES):
+        for i,ax in enumerate(Mth.AXES):
             col = []
             for dstr in self.window.DATASTRINGS:
                 if ax.lower() in dstr.lower():
@@ -374,69 +206,19 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         self.setVectorDropdownsBlocked(False)
 
-    # mat is 2D list of label/lineEdits
-    def getMatrix(self, mat):
-        M = Edit.empty()
-        for i in Edit.i:
-            for j in Edit.i:
-                s = mat[i][j].text()
-                try:
-                    f = float(s)
-                except ValueError:
-                    print(f'matrix has non-number at location {i},{j}')
-                    f = 0.0
-                M[i][j] = f
-        return M
-
-    # mat is 2D list of label/lineEdits, m is 2D list of floats
-    def setMatrix(self, mat, m):
-        for i in Edit.i:
-            for j in Edit.i:
-                mat[i][j].setText(Edit.formatNumber(m[i][j]))
-                mat[i][j].repaint()
-
-    def setRotationMatrix(self, m, name):
-        self.setMatrix(self.ui.R, m)
-        self.lastGeneratorName = name
-
-    def axisRotGen(self, axis):
-        angle = self.ui.axisAngle.value()
-        R = self.genAxisRotationMatrix(axis, angle)
-        self.setRotationMatrix(R, f'{axis}{angle}rot')
-
-    # axis is x,y,z
-    def genAxisRotationMatrix(self, axis, angle):
-        angle *= self.D2R
-        s = sin(angle)
-        c = cos(angle)
-        if fabs(s) < self.FLAG:
-            s = 0.0
-        if fabs(c) < self.FLAG:
-            c = 0.0
-        ax = axis.lower()
-        if ax == 'x':
-            return [[1.0, 0.0, 0.0], [0.0, c, s], [0.0, -s, c]]
-        if ax == 'y':
-            return [[c, 0.0, -s], [0.0, 1.0, 0.0], [s, 0.0, c]]
-        if ax == 'z':
-            return [[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]]
-        print(f'unknown axis "{ax}"')
-        return Edit.copy(Edit.IDENTITY)
+    #def setRotationMatrix(self, m, name):
+    #    Mth.setMatrix(self.ui.R, m)
+    #    self.lastGeneratorName = name
 
     # adds an entry to history matrix list and a list item at end of history ui
     def addHistory(self, mat, name):
-        self.history.append(Edit.copy(mat))
+        self.history.append(Mth.copy(mat))
 
         # get names of items
         uihist = self.ui.history
         taken = set()
         for i in range(uihist.count()):
             taken.add(uihist.item(i).text())
-            #print(uihist.item(i).text())
-            #flags = uihist.item(i).flags()
-            #flags |= QtCore.Qt.ItemIsEditable
-            #uihist.item(i).setFlags(flags)
-            pass
 
         newName = name
         fails = 1
@@ -468,20 +250,20 @@ class Edit(QtWidgets.QFrame, EditUI):
     def onHistoryChanged(self, row):
         #print(f'CHANGED {row}')
         self.selectedMatrix = self.history[row]
-        self.setMatrix(self.ui.M, self.selectedMatrix)
-        self.window.MATRIX = Edit.toString(self.selectedMatrix)
+        Mth.setMatrix(self.ui.M, self.selectedMatrix)
+        self.window.MATRIX = Mth.matToString(self.selectedMatrix)
         self.window.replotData()
 
-    def apply(self):
-        R = Edit.mult(self.selectedMatrix, self.getMatrix(self.ui.R))
+    def apply(self, mat, name):
+        R = Mth.mult(self.selectedMatrix, mat)
         self.generateData(R)
-        self.addHistory(R, f'{self.lastGeneratorName}')
+        self.addHistory(R, f'{name}')
 
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R
     def generateData(self, R):
-        r = Edit.toString(R)
-        i = Edit.identity()
+        r = Mth.matToString(R)
+        i = Mth.identity()
         
         # for each full vector dropdown row 
         for dd in self.axisDropdowns:
@@ -510,55 +292,61 @@ class Edit(QtWidgets.QFrame, EditUI):
                 self.window.DATADICT[zstr][r] = M[:,2]
 
 
-class MinVarUI(object):
-    def setupUI(self, Frame, window):
-        Frame.setWindowTitle('Minimum Variance')
-        Frame.resize(500,400)
 
-        self.layout = QtWidgets.QVBoxLayout(Frame)
 
-        # setup xyz vector dropdowns
-        vectorLayout = QtWidgets.QHBoxLayout()
-        self.vector = []
-        for i,ax in enumerate(Edit.AXES):
-            v = QtWidgets.QComboBox()
-            for dstr in window.DATASTRINGS:
-                if ax.lower() in dstr.lower():
-                    v.addItem(dstr)
-            self.vector.append(v)
-            vectorLayout.addWidget(v)
-        vectorLayout.addStretch()
+class ManRot(QtWidgets.QFrame, ManRotUI):
+    def __init__(self, edit, window, parent=None):
+        super(ManRot, self).__init__(parent)#, QtCore.Qt.WindowStaysOnTopHint)
+        self.edit = edit
+        self.window = window
 
-        self.layout.addLayout(vectorLayout)
+        self.ui = ManRotUI()
+        self.ui.setupUI(self, window)
 
-        # setup datetime edits
-        sliderFont = QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14)#, QtGui.QFont.Bold) 
-        self.startTimeEdit = QtWidgets.QDateTimeEdit()
-        self.endTimeEdit = QtWidgets.QDateTimeEdit()
-        self.startTimeEdit.setFont(sliderFont)
-        self.endTimeEdit.setFont(sliderFont)
-        self.startTimeEdit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.endTimeEdit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.startTimeEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
-        self.endTimeEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
-        minDateTime,maxDateTime = window.getMinAndMaxDateTime()
-        self.startTimeEdit.setMinimumDateTime(minDateTime)
-        self.startTimeEdit.setMaximumDateTime(maxDateTime)
-        self.startTimeEdit.setDateTime(minDateTime)
-        self.endTimeEdit.setMinimumDateTime(minDateTime)
-        self.endTimeEdit.setMaximumDateTime(maxDateTime)
-        self.endTimeEdit.setDateTime(maxDateTime)
-        self.layout.addWidget(self.startTimeEdit)
-        self.layout.addWidget(self.endTimeEdit)
+        self.FLAG = 1.e-10
+        self.D2R = pi / 180.0 # degree to rad conversion constant
 
-        self.eigenValsLabel = QtWidgets.QLabel('')
-        self.layout.addWidget(self.eigenValsLabel)
+        for i,gb in enumerate(self.ui.genButtons):
+            gb.clicked.connect(functools.partial(self.axisRotGen, Mth.AXES[i]))
 
-        self.layout.addStretch()
+        self.ui.loadIdentity.clicked.connect(functools.partial(Mth.setMatrix, self.ui.R, Mth.IDENTITY))
+        self.ui.loadZeros.clicked.connect(functools.partial(Mth.setMatrix, self.ui.R, Mth.empty()))
+        self.ui.applyButton.clicked.connect(self.apply)
 
-        self.applyButton = QtWidgets.QPushButton('Apply')
-        self.applyButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-        self.layout.addWidget(self.applyButton)
+        self.lastOpName = 'Custom'
+
+        Mth.setMatrix(self.ui.R, Mth.IDENTITY)
+        
+    def apply(self):
+        # figure out if custom on axisrot
+        self.edit.apply(Mth.getMatrix(self.ui.R), self.lastOpName)
+        Edit.moveToFront(self.edit)
+
+    def axisRotGen(self, axis):
+        angle = self.ui.axisAngle.value()
+        R = self.genAxisRotationMatrix(axis, angle)
+        Mth.setMatrix(self.ui.R, R)
+        self.lastOpName = f'{axis}{angle}rot'
+
+    # axis is x,y,z
+    def genAxisRotationMatrix(self, axis, angle):
+        angle *= self.D2R
+        s = sin(angle)
+        c = cos(angle)
+        if fabs(s) < self.FLAG:
+            s = 0.0
+        if fabs(c) < self.FLAG:
+            c = 0.0
+        ax = axis.lower()
+        if ax == 'x':
+            return [[1.0, 0.0, 0.0], [0.0, c, s], [0.0, -s, c]]
+        if ax == 'y':
+            return [[c, 0.0, -s], [0.0, 1.0, 0.0], [s, 0.0, c]]
+        if ax == 'z':
+            return [[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]]
+        print(f'unknown axis "{ax}"')
+        return Mth.copy(Mth.IDENTITY)
+
 
 class MinVar(QtWidgets.QFrame, MinVarUI):
     def __init__(self, edit, window, parent=None):
@@ -573,7 +361,7 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
 
         self.ui.applyButton.clicked.connect(self.calcMinVar)
 
-        self.shouldResizeWindow = True
+        self.shouldResizeWindow = False
 
     def closeEvent(self, event):
         self.window.endGeneralSelect()
@@ -609,16 +397,16 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
 
         items = len(xyz[0])
 
-        covar = Edit.empty()
-        CoVar = Edit.empty()
-        eigen = Edit.empty()
+        covar = Mth.empty()
+        CoVar = Mth.empty()
+        eigen = Mth.empty()
 
-        for i in Edit.i:
-            for j in Edit.i[i:]:
+        for i in Mth.i:
+            for j in Mth.i[i:]:
                 for k in range(items):
                     covar[i][j] = covar[i][j] + xyz[i][k] * xyz[j][k]
-        for i in Edit.i:
-            for j in Edit.i[i:]:
+        for i in Mth.i:
+            for j in Mth.i[i:]:
                 CoVar[i][j] = (covar[i][j] / items) - avg[i] * avg[j]
         # fill out lower triangle
         CoVar[1][0] = CoVar[0][1]
@@ -628,10 +416,9 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         A = np.array(CoVar)
         w, v = np.linalg.eigh(A, UPLO="U")
 
-        for i in Edit.i:
-            for j in Edit.i:
+        for i in Mth.i:
+            for j in Mth.i:
                 eigen[2 - i][j] = v[j][i]
-        eigenval = [w[2], w[1], w[0]]
         # force to be right handed
         e20 = eigen[0][1] * eigen[1][2] - eigen[0][2] * eigen[1][1]
         if e20 * eigen[2][0] < 0:
@@ -643,6 +430,11 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
             eigen[1] = np.negative(eigen[1])
             eigen[2] = np.negative(eigen[2])
         
-        self.edit.setRotationMatrix(eigen, 'minvar')
+
+        self.edit.apply(eigen, 'minvar')
+        Edit.moveToFront(self.edit)
+        ev = [w[2], w[1], w[0]]
+        prec = 6
+        self.ui.eigenValsLabel.setText(f'EigenVals: {ev[0]:.{prec}f}, {ev[1]:.{prec}f}, {ev[2]:.{prec}f}')
         print('min var calculation completed')
-        print(eigenval)
+        print(ev)
