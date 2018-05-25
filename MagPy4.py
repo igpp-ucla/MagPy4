@@ -318,7 +318,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for i, dstr in enumerate(self.DATASTRINGS):
             datas = np.array(self.dataByRec[:,i])
             self.ORIGDATADICT[dstr] = datas
-            self.DATADICT[dstr] = { self.IDENTITY : self.replaceErrorsWithLast(datas) }
+            self.DATADICT[dstr] = { self.IDENTITY : [self.replaceErrorsWithLast(datas),dstr,''] }
             self.UNITDICT[dstr] = units[i]
 
         # sorts by units alphabetically
@@ -516,7 +516,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotData(dstrs, links)
 
     def getData(self, dstr):
-        return self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY]
+        return self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY][0]
+
+    def getLabel(self, dstr):
+        return self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY][1]
 
     def getSegments(self, Y):
         segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
@@ -595,17 +598,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             if plotIndex != len(dataStrings) - 1:
                 ba.setStyle(showValues=False)
 
-            # add traces for each data checked for this axis
-            axisString = ''
-            unit = ''
             tracePens = []
-            traceCount = len(dstrs)
+            # add traces on this plot for each dstr
             for i,dstr in enumerate(dstrs):
                 u = self.UNITDICT[dstr]
 
                 # figure out which pen to use
                 numPens = len(self.pens)
-                if traceCount == 1: # if just one trace then base it off which plot
+                if len(dstrs) == 1: # if just one trace then base it off which plot
                     penIndex = plotIndex % numPens
                 else: # else if base off trace index, capped at pen count
                     penIndex = min(i,numPens - 1) 
@@ -616,30 +616,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 self.plotTrace(pi, dstr, pen)
 
-                # figure out if each axis trace shares same unit
-                if unit == '':
-                    unit = u
-                elif unit != None and unit != u:
-                    unit = None
-
-                # build the axis label string for this plot
-                axisString += f"<span style='color:{pen.color().name()};'>{dstr}</span>\n" #font-weight: bold
-
             self.plotTracePens.append(tracePens)
 
             # set plot to current range based on time sliders
             pi.setXRange(self.tO, self.tE, 0.0)
             pi.setLimits(xMin=self.itO, xMax=self.itE)
 
-            # add unit label if each trace on this plot shares same unit
-            if unit != None and unit != '':
-                axisString += f"<span style='color:#888888;'>[{unit}]</span>\n"
-            else:
-                axisString = axisString[:-1] #remove last newline character
-
-            # add Y axis label based on traces (label gets set in below function)
+            # add Y axis label based on traces (label gets set below)
             li = pg.LabelItem()
-            self.labelItems.append([li, axisString, traceCount])
+            self.labelItems.append(li)
 
             self.ui.glw.addItem(li)
             self.ui.glw.addItem(pi)
@@ -651,6 +636,38 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.updateYRange()
             
     ## end of plot function
+
+    def setYAxisLabels(self):
+        plots = len(self.plotItems)
+        for dstrs,pens,li in zip(self.lastPlotStrings,self.plotTracePens,self.labelItems):
+            traceCount = len(dstrs)
+            alab = ''
+            unit = ''
+            for dstr,pen in zip(dstrs,pens):
+                u = self.UNITDICT[dstr]
+                # figure out if each axis trace shares same unit
+                if unit == '':
+                    unit = u
+                elif unit != None and unit != u:
+                    unit = None
+
+                l = self.getLabel(dstr)
+                alab += f"<span style='color:{pen.color().name()};'>{l}</span>\n"
+
+            # add unit label if each trace on this plot shares same unit
+            if unit != None and unit != '':
+                alab += f"<span style='color:#888888;'>[{unit}]</span>\n"
+            else:
+                alab = alab[:-1] #remove last newline character
+
+            fontSize = self.suggestedFontSize
+            if traceCount > plots and plots > 1:
+                fontSize -= (traceCount - plots) * (1.0 / min(4, plots) + 0.35)
+            fontSize = min(16, max(fontSize,4))
+            li.item.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{alab}</span>")
+            li.updateMin()
+            li.updateGeometry()
+
 
     # trying to correctly estimate size of rows. last one needs to be a bit larger since bottom axis
     # this is super hacked but it seems to work okay
@@ -669,15 +686,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         else:
             y = self.ui.glw.viewRect().height()
 
-        # set font string, resized based on viewsize and plot number
+        # set font size, based on viewsize and plot number
         # very hardcoded just based on nice numbers i found. the goal here is for the labels to be smaller so the plotItems will dictate scaling
         # if these labelitems are larger they will cause qgridlayout to stretch and the plots wont be same height which is bad
-        for li,axisString,traceCount in self.labelItems:
-            fontSize = y / plots * 0.07
-            if traceCount > plots and plots > 1:
-                fontSize -= (traceCount - plots) * (1.0 / min(4, plots) + 0.35)
-            fontSize = min(16, max(fontSize,4))
-            li.item.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{axisString}</span>")
+        self.suggestedFontSize = y / plots * 0.07
+        self.setYAxisLabels()
 
         if rows <= 2: # if just one plot dont need to resize bottom one
             return
@@ -727,8 +740,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             pi.clearPlots()
             for i,dstr in enumerate(plotStrs):
                 self.plotTrace(pi, dstr, pens[i])
-
+        self.setYAxisLabels()
         self.updateYRange()
+        #self.ui.glw.layoutChanged()
 
     # both plotData and replot use this function internally
     def plotTrace(self, pi, dstr, pen):

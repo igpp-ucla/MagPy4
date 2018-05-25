@@ -254,21 +254,34 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.extraLabel.setText(hist[1])
         Mth.setMatrix(self.ui.M, self.selectedMatrix)
         self.window.MATRIX = Mth.matToString(self.selectedMatrix)
+        self.updateLabelNamesByMatrix(self.window.MATRIX, self.ui.history.item(row).text())
         self.window.replotData()
 
     def apply(self, mat, extra, name):
         R = Mth.mult(self.selectedMatrix, mat)
-        self.generateData(R)
+        self.generateData(R, '*')
         self.addHistory(R, extra, f'{name}')
+
+    # matrix needs to be in string form
+    def updateLabelNamesByMatrix(self, mat, name):
+        isIdentity = mat == Mth.identity()
+        for dstr in self.window.DATASTRINGS:
+            datas = self.window.DATADICT[dstr]
+            if mat in datas:
+                datas[mat][1] = dstr if isIdentity else self.getEditedName(dstr, datas[mat][2], name)
+
+    # generates a name based off name of edit rotation and what position in axis vector dstr data was
+    def getEditedName(self, dstr, axis, nmod):
+        return f'{dstr}*' if nmod=='*' else f'{axis}{nmod}'
 
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R
-    def generateData(self, R):
+    def generateData(self, R, nmod=None):
         r = Mth.matToString(R)
         i = Mth.identity()
         
         # for each full vector dropdown row 
-        for dd in self.axisDropdowns:
+        for di, dd in enumerate(self.axisDropdowns):
             xstr = dd[0].currentText()
             ystr = dd[1].currentText()
             zstr = dd[2].currentText()
@@ -282,18 +295,16 @@ class Edit(QtWidgets.QFrame, EditUI):
                 r not in self.window.DATADICT[zstr]):
 
                 # get original data
-                X = self.window.DATADICT[xstr][i]
-                Y = self.window.DATADICT[ystr][i]
-                Z = self.window.DATADICT[zstr][i]
+                X = self.window.DATADICT[xstr][i][0]
+                Y = self.window.DATADICT[ystr][i][0]
+                Z = self.window.DATADICT[zstr][i][0]
 
                 A = np.column_stack((X,Y,Z))
                 M = np.matmul(A,R)
 
-                self.window.DATADICT[xstr][r] = M[:,0]
-                self.window.DATADICT[ystr][r] = M[:,1]
-                self.window.DATADICT[zstr][r] = M[:,2]
-
-
+                self.window.DATADICT[xstr][r] = [M[:,0], xstr, f'X{di+1}']
+                self.window.DATADICT[ystr][r] = [M[:,1], ystr, f'Y{di+1}']
+                self.window.DATADICT[zstr][r] = [M[:,2], zstr, f'Z{di+1}']
 
 
 class ManRot(QtWidgets.QFrame, ManRotUI):
