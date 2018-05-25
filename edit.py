@@ -61,15 +61,15 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.updateVectorSelections()
 
         self.selectedMatrix = [] # selected matrix from history
-        self.history = [] # list of matrices
+        self.history = [] # list tuples of matrices and string for extra data (ie eigenvalues)
         if self.window.editHistory:
             for mat,name in self.window.editHistory:
                 if mat:
-                    self.addHistory(mat, name)
+                    self.addHistory(mat[0], mat[1], name)
                 else:
                     self.ui.history.setCurrentRow(name)
         else:
-            self.addHistory(Mth.IDENTITY, 'Identity')
+            self.addHistory(Mth.IDENTITY, 'original data', 'Identity')
 
         self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
         self.onHistoryChanged(self.ui.history.currentRow())
@@ -211,8 +211,8 @@ class Edit(QtWidgets.QFrame, EditUI):
     #    self.lastGeneratorName = name
 
     # adds an entry to history matrix list and a list item at end of history ui
-    def addHistory(self, mat, name):
-        self.history.append(Mth.copy(mat))
+    def addHistory(self, mat, extra, name):
+        self.history.append((Mth.copy(mat),extra))
 
         # get names of items
         uihist = self.ui.history
@@ -249,15 +249,17 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     def onHistoryChanged(self, row):
         #print(f'CHANGED {row}')
-        self.selectedMatrix = self.history[row]
+        hist = self.history[row]
+        self.selectedMatrix = hist[0]
+        self.ui.extraLabel.setText(hist[1])
         Mth.setMatrix(self.ui.M, self.selectedMatrix)
         self.window.MATRIX = Mth.matToString(self.selectedMatrix)
         self.window.replotData()
 
-    def apply(self, mat, name):
+    def apply(self, mat, extra, name):
         R = Mth.mult(self.selectedMatrix, mat)
         self.generateData(R)
-        self.addHistory(R, f'{name}')
+        self.addHistory(R, extra, f'{name}')
 
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R
@@ -311,6 +313,7 @@ class ManRot(QtWidgets.QFrame, ManRotUI):
 
         self.ui.loadIdentity.clicked.connect(functools.partial(Mth.setMatrix, self.ui.R, Mth.IDENTITY))
         self.ui.loadZeros.clicked.connect(functools.partial(Mth.setMatrix, self.ui.R, Mth.empty()))
+        self.ui.loadCurrentEditMatrix.clicked.connect(self.loadCurrentEditMatrix)
         self.ui.applyButton.clicked.connect(self.apply)
 
         self.lastOpName = 'Custom'
@@ -319,7 +322,7 @@ class ManRot(QtWidgets.QFrame, ManRotUI):
         
     def apply(self):
         # figure out if custom on axisrot
-        self.edit.apply(Mth.getMatrix(self.ui.R), self.lastOpName)
+        self.edit.apply(Mth.getMatrix(self.ui.R), '', self.lastOpName)
         Edit.moveToFront(self.edit)
 
     def axisRotGen(self, axis):
@@ -346,6 +349,10 @@ class ManRot(QtWidgets.QFrame, ManRotUI):
             return [[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]]
         print(f'unknown axis "{ax}"')
         return Mth.copy(Mth.IDENTITY)
+
+    def loadCurrentEditMatrix(self):
+        mat = Mth.getMatrix(self.edit.ui.M)
+        Mth.setMatrix(self.ui.R, mat)
 
 
 class MinVar(QtWidgets.QFrame, MinVarUI):
@@ -431,10 +438,11 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
             eigen[2] = np.negative(eigen[2])
         
 
-        self.edit.apply(eigen, 'minvar')
-        Edit.moveToFront(self.edit)
         ev = [w[2], w[1], w[0]]
         prec = 6
-        self.ui.eigenValsLabel.setText(f'EigenVals: {ev[0]:.{prec}f}, {ev[1]:.{prec}f}, {ev[2]:.{prec}f}')
-        print('min var calculation completed')
-        print(ev)
+        eigenText = f'EigenVals: {ev[0]:.{prec}f}, {ev[1]:.{prec}f}, {ev[2]:.{prec}f}'
+        self.ui.eigenValsLabel.setText(eigenText)
+        self.edit.apply(eigen, eigenText, 'minvar')
+        Edit.moveToFront(self.edit)
+        #print('min var calculation completed')
+        #print(ev)

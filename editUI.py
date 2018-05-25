@@ -38,13 +38,12 @@ class EditUI(object):
         self.minVarButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         builderLayout.addWidget(self.minVarButton)
 
-
         leftLayout.addWidget(builderFrame)
         leftLayout.addStretch()
         
         # history
-        hFrame = QtWidgets.QGroupBox('Matrix History')
-        hLayout = QtWidgets.QVBoxLayout(hFrame)
+        matFrame = QtWidgets.QGroupBox('Matrix History')
+        matLayout = QtWidgets.QVBoxLayout(matFrame)
 
         mGrid = QtWidgets.QGridLayout()
         self.M = [] # matrix that is displayed in history
@@ -52,30 +51,38 @@ class EditUI(object):
             row = []
             for x in range(3):
                 label = QtGui.QLabel('0.0')
+                #label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
                 #label.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
                 mGrid.addWidget(label, y, x, 1, 1)
                 row.append(label)
             self.M.append(row)
 
-        hLayout.addLayout(mGrid)
+        matLayout.addLayout(mGrid)
 
-        hBotGrid = QtWidgets.QGroupBox()
-        hBotLayout = QtWidgets.QHBoxLayout(hBotGrid)
+        self.extraLabel = QtWidgets.QLabel('')
+        self.extraLabel.setContentsMargins(0,10,0,0) # left top right bottom
+        self.extraLabel.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        matLayout.addWidget(self.extraLabel)
+
+        rightLayout.addWidget(matFrame)
+
+        histFrame = QtWidgets.QGroupBox()
+
+        histLayout = QtWidgets.QHBoxLayout(histFrame)
         leftButtons = QtWidgets.QVBoxLayout()
         #loadMat = QtWidgets.QPushButton('Load Matrix')
         self.removeRow = QtWidgets.QPushButton('Remove Matrix')
         #leftButtons.addWidget(loadMat)
         leftButtons.addWidget(self.removeRow)
         leftButtons.addStretch()
-        hBotLayout.addLayout(leftButtons,1)
+        histLayout.addLayout(leftButtons,1)
         self.history = QtWidgets.QListWidget()
         self.history.setEditTriggers(QtWidgets.QAbstractItemView.SelectedClicked)
-        hBotLayout.addWidget(self.history,2)
-        hLayout.addWidget(hBotGrid)
+        histLayout.addWidget(self.history,2)
 
-        rightLayout.addWidget(hFrame)
+        rightLayout.addWidget(histFrame)
 
-        mainLayout.addStretch()
+        #mainLayout.addStretch()
 
         ## bottom area with apply button
         #bottomLayout = QtGui.QHBoxLayout()
@@ -85,6 +92,12 @@ class EditUI(object):
         #applyLabel = QtGui.QLabel('Multiplies each data vector by (selected history matrix multiplied by rotation matrix)')
         #bottomLayout.addWidget(applyLabel)
         #mainLayout.addLayout(bottomLayout)
+
+    def makeHorizontalLine(self):
+        horizontal = QtWidgets.QFrame()
+        horizontal.setFrameShape(QtWidgets.QFrame.HLine)
+        horizontal.setFrameShadow(QtWidgets.QFrame.Sunken)
+        return horizontal
         
 
 class ManRotUI(object):
@@ -115,8 +128,11 @@ class ManRotUI(object):
         self.loadIdentity.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.loadZeros = QtGui.QPushButton('Load Zeros')
         self.loadZeros.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.loadCurrentEditMatrix = QtGui.QPushButton('Load Current Edit Matrix')
+        self.loadCurrentEditMatrix.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         extraButtons.addWidget(self.loadIdentity)
         extraButtons.addWidget(self.loadZeros)
+        extraButtons.addWidget(self.loadCurrentEditMatrix)
         extraButtons.addStretch()
         self.layout.addLayout(extraButtons)
 
