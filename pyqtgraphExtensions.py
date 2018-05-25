@@ -100,14 +100,18 @@ class DateAxis(pg.AxisItem):
     def tickStrings(self, values, scale, spacing):
         return [DateAxis.toUTC(x,self.window) for x in values]
 
-
-
 class GridGraphicsLayout(pg.GraphicsLayout):
     def clear(self):  # clear doesnt get rid of grid layout formatting correctly, todo: make override of this
         pg.GraphicsLayout.clear(self)
         self.currentRow = 0
         self.currentCol = 0
 
+class BLabelItem(pg.LabelItem):
+    def setHtml(self, html):
+        self.item.setHtml(html)
+        self.updateMin()
+        self.resizeEvent(None)
+        self.updateGeometry()
 
 # based off class here, except i wanted a linear version (deleted a lot of stuff i wasnt gonna use to save time)
 #https://github.com/pyqtgraph/pyqtgraph/blob/develop/pyqtgraph/graphicsItems/GraphicsLayout.py

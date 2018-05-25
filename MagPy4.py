@@ -22,7 +22,7 @@ from plotTracer import PlotTracer
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
-from pyqtgraphExtensions import DateAxis, PlotPointsItem, LinkedInfiniteLine
+from pyqtgraphExtensions import DateAxis, PlotPointsItem, LinkedInfiniteLine, BLabelItem
 from mth import Mth
 
 import time
@@ -550,9 +550,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotTracePens = [] # a list of pens for each trace (saved for consistency with spectra)
 
         # add label for file name at top right
-        fileNameLabel = pg.LabelItem()
+        fileNameLabel = BLabelItem()
         fileNameLabel.opts['justify'] = 'right'
-        fileNameLabel.item.setHtml(f"<span style='font-size:10pt;'>{self.FID.name}</span>")
+        fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.FID.name}</span>")
         self.ui.glw.nextColumn()
         self.ui.glw.addItem(fileNameLabel)
         self.ui.glw.nextRow()
@@ -623,7 +623,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             pi.setLimits(xMin=self.itO, xMax=self.itE)
 
             # add Y axis label based on traces (label gets set below)
-            li = pg.LabelItem()
+            li = BLabelItem()
             self.labelItems.append(li)
 
             self.ui.glw.addItem(li)
@@ -664,9 +664,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             if traceCount > plots and plots > 1:
                 fontSize -= (traceCount - plots) * (1.0 / min(4, plots) + 0.35)
             fontSize = min(16, max(fontSize,4))
-            li.item.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{alab}</span>")
-            li.updateMin()
-            li.updateGeometry()
+            li.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{alab}</span>")
 
 
     # trying to correctly estimate size of rows. last one needs to be a bit larger since bottom axis

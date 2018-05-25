@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
-from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis
+from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis, BLabelItem
 from FF_Time import FFTIME
 from dataDisplay import UTCQDate
 
@@ -27,7 +27,6 @@ class SpectraUI(object):
         self.grid.setContentsMargins(0,0,0,0)
         self.labelLayout = GridGraphicsLayout()
         self.labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
-        self.labelLayout.setContentsMargins(0,0,0,30) # for some reason grid layout doesnt care about anything
         self.gmain.addItem(self.grid)
         self.gmain.addItem(self.labelLayout)
         layout.addWidget(self.gview)
@@ -185,11 +184,11 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         startDate = UTCQDate.removeDOY(FFTIME(min(s0,s1), Epoch=self.window.epoch).UTC)
         endDate = UTCQDate.removeDOY(FFTIME(max(s0,s1), Epoch=self.window.epoch).UTC)
 
-        leftLabel = pg.LabelItem({'justify':'left'})
-        rightLabel = pg.LabelItem({'justify':'left'})
+        leftLabel = BLabelItem({'justify':'left'})
+        rightLabel = BLabelItem({'justify':'left'})
 
-        leftLabel.item.setHtml('[FILE]<br>[FREQBANDS]<br>[TIME]')
-        rightLabel.item.setHtml(f'{self.window.FID.name.rsplit("/",1)[1]}<br>{self.N}<br>{startDate} -> {endDate}')
+        leftLabel.setHtml('[FILE]<br>[FREQBANDS]<br>[TIME]')
+        rightLabel.setHtml(f'{self.window.FID.name.rsplit("/",1)[1]}<br>{self.N}<br>{startDate} -> {endDate}')
            
         self.ui.labelLayout.addItem(leftLabel)
         self.ui.labelLayout.nextColumn()
