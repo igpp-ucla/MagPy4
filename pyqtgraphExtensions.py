@@ -14,7 +14,7 @@ class LinkedInfiniteLine(pg.InfiniteLine):
         self.callback = callback
 
         if label and labelColor:
-            opts = {'movable':False, 'position':1.0, 'color':labelColor}
+            opts = {'movable':False, 'position':1.0, 'color':labelColor }
             self.label = LinkedInfLineLabel(self, text=label, **opts)
 
     def mouseDragEvent(self, ev):
@@ -23,8 +23,8 @@ class LinkedInfiniteLine(pg.InfiniteLine):
             self.callback(self.getXPos())
 
 class LinkedInfLineLabel(pg.InfLineLabel):
-    def __init__(self, *args, **kwds):
-        pg.InfLineLabel.__init__(self, *args,**kwds)
+    #def __init__(self, *args, **kwds):
+    #    pg.InfLineLabel.__init__(self, *args,**kwds)
 
     def updatePosition(self):
         # update text position to relative view location along line
@@ -88,14 +88,20 @@ class LogAxis(pg.AxisItem):
 # subclass based off example here:
 # https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
 class DateAxis(pg.AxisItem):
-    def toUTC(x,window, showMillis=False): # converts seconds since epoch to UTC string
-        t = FFTIME(x, Epoch=window.epoch).UTC
-        t = str(t)
+    def toUTC(x, window, showFull=False): # converts seconds since epoch to UTC string
+        # get current selected range, if greater than hour then show hour marks
+        rng = window.getSelectedTimeRange()
+        t = str(FFTIME(x, Epoch=window.epoch).UTC)
         t = t.split(' ')[-1]
-        t = t.split(':',1)[1]
-        if not showMillis and window.tE - window.tO > 10:
-            t = t.split('.',1)[0]
-        return t
+        if showFull:
+            return t
+
+        #t format at this point hh:mm:ss.mmm
+        if rng > 30*60: # if over half hour show hh:mm:ss
+            return t.rsplit('.',1)[0]
+        elif rng > 5: # if over 5 seconds show mm:ss
+            return t.split(':',1)[1].split('.')[0]
+        return t.split(':',1)[1] # else show mm:ss.mmm
 
     def tickStrings(self, values, scale, spacing):
         return [DateAxis.toUTC(x,self.window) for x in values]

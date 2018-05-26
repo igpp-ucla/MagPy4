@@ -272,7 +272,7 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     # generates a name based off name of edit rotation and what position in axis vector dstr data was
     def getEditedName(self, dstr, axis, nmod):
-        return f'{dstr}*' if nmod=='*' else f'{axis}{nmod}'
+        return f'{dstr}*' if nmod=='*' else f'{axis}{nmod}' #{dstr[:2]} somewhere could add first 2 characters of dstr, usually pretty descriptive
 
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R

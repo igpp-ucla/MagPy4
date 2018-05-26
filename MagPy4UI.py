@@ -3,8 +3,9 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 import pyqtgraph as pg
+import functools
 
-from pyqtgraphExtensions import GridGraphicsLayout
+from pyqtgraphExtensions import GridGraphicsLayout,LinearGraphicsLayout,BLabelItem
 
 #from qrangeslider import QRangeSlider
 #can add in translation stuff later
@@ -75,17 +76,17 @@ class MagPy4UI(object):
         self.switchMode.setText('Switch to MarsPy')
         self.toolBar.addAction(self.switchMode)
 
-        self.glw = pg.GraphicsLayoutWidget()#border=(100,100,100))
-        self.glw.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = GridGraphicsLayout() # made this based off pg.GraphicsLayout
+        #self.glw.setContentsMargins(0,0,0,0)
+        self.timeLabel = BLabelItem()
+        self.gview.sceneObj.addItem(self.timeLabel)
+
         self.gview.setCentralItem(self.glw)
-        
+
         layout = QtWidgets.QVBoxLayout(self.centralWidget)
         layout.addWidget(self.gview)
-        #layout.setContentsMargins(0,0,0,0)
 
         # SLIDER setup
         sliderFont = QtGui.QFont("monospace", 14)#, QtGui.QFont.Bold) 
@@ -109,6 +110,11 @@ class MagPy4UI(object):
 
         layout.addLayout(sliderLayout)
 
+        self.sliderMinDateTime = None
+        self.sliderMaxDateTime = None
+        self.startSliderEdit.editingFinished.connect(functools.partial(self.enforceMinMax, self.startSliderEdit))
+        self.endSliderEdit.editingFinished.connect(functools.partial(self.enforceMinMax, self.endSliderEdit))
+
          # update slider tick amount and timers and labels and stuff based on new file
     def setupSliders(self, tick, max, minDateTime, maxDateTime):
         #dont want to trigger callbacks from first plot
@@ -128,14 +134,18 @@ class MagPy4UI(object):
         self.endSlider.setSingleStep(tick)
         self.endSlider.setValue(max)
 
-        self.startSliderEdit.setMinimumDateTime(minDateTime)
-        self.startSliderEdit.setMaximumDateTime(maxDateTime)
+        self.sliderMinDateTime = minDateTime
+        self.sliderMaxDateTime = maxDateTime
         self.startSliderEdit.setDateTime(minDateTime)
-        self.endSliderEdit.setMinimumDateTime(minDateTime)
-        self.endSliderEdit.setMaximumDateTime(maxDateTime)
         self.endSliderEdit.setDateTime(maxDateTime)
 
         self.startSlider.blockSignals(False)
         self.endSlider.blockSignals(False)
         self.startSliderEdit.blockSignals(False)
         self.endSliderEdit.blockSignals(False)
+
+    def enforceMinMax(self, dte):
+        min = self.sliderMinDateTime
+        max = self.sliderMaxDateTime
+        dt = dte.dateTime()
+        dte.setDateTime(min if dt < min else max if dt > max else dt)

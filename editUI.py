@@ -3,6 +3,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 from mth import Mth
+import functools
 
 class EditUI(object):
 
@@ -197,11 +198,9 @@ class MinVarUI(object):
         self.startTimeEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
         self.endTimeEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
         minDateTime,maxDateTime = window.getMinAndMaxDateTime()
-        self.startTimeEdit.setMinimumDateTime(minDateTime)
-        self.startTimeEdit.setMaximumDateTime(maxDateTime)
+        self.startTimeEdit.editingFinished.connect(functools.partial(self.enforceMinMax, self.startTimeEdit, minDateTime, maxDateTime))
         self.startTimeEdit.setDateTime(minDateTime)
-        self.endTimeEdit.setMinimumDateTime(minDateTime)
-        self.endTimeEdit.setMaximumDateTime(maxDateTime)
+        self.endTimeEdit.editingFinished.connect(functools.partial(self.enforceMinMax, self.endTimeEdit, minDateTime, maxDateTime))
         self.endTimeEdit.setDateTime(maxDateTime)
         self.layout.addWidget(self.startTimeEdit)
         self.layout.addWidget(self.endTimeEdit)
@@ -214,3 +213,7 @@ class MinVarUI(object):
         self.applyButton = QtWidgets.QPushButton('Apply')
         self.applyButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
         self.layout.addWidget(self.applyButton)
+
+    def enforceMinMax(self, dte, min, max):
+        dt = dte.dateTime()
+        dte.setDateTime(min if dt < min else max if dt > max else dt)

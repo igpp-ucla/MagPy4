@@ -330,7 +330,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         numpoints = self.FID.FFParm["NROWS"].value
 
         self.iO = 0
-        self.iE = min(numpoints - 1, len(self.times) - 1) #could maybe just be second part of this min not sure
+        self.iE = len(self.times) - 1
         self.iiE = self.iE
         self.tO = self.times[self.iO]
         self.tE = self.times[self.iE]
@@ -343,6 +343,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #print(f'iE: {self.iE}')
         print(f'tO: {self.tO}')
         print(f'tE: {self.tE}')
+
+        # generate resolution data
+        dstr = 'resolution'
+        resData = np.diff(self.times)
+        np.append(resData, resData[-1])
+        self.DATASTRINGS.append(dstr)
+        self.ORIGDATADICT[dstr] = resData
+        self.DATADICT[dstr] = { self.IDENTITY : [self.replaceErrorsWithLast(resData),dstr,''] }
+        self.UNITDICT[dstr] = 'sec'
 
         tick = 1.0 / self.resolution * 2.0
         minDateTime,maxDateTime = self.getMinAndMaxDateTime()
@@ -447,7 +456,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # this might be inaccurate...
     def calcTickIndexByTime(self, t):
         perc = (t - self.itO) / (self.itE - self.itO)
-        v = int(self.iiE * perc)
+        v = int((self.iiE+1) * perc)
         return 0 if v < 0 else self.iiE if v > self.iiE else v
 
     def setSliderNoCallback(self, slider, i):
@@ -459,6 +468,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def onStartEditChanged(self, val):
         utc = UTCQDate.QDateTime2UTC(val)
         self.iO = self.calcTickIndexByTime(FFTIME(utc, Epoch=self.epoch)._tick)
+        #print(val)
+        #print(utc)
+        #tt = self.times[self.iO] 
+        #print(tt)
+        #newutc = FFTIME(tt, Epoch=self.epoch).UTC
+        #print(newutc)
+        #dt = UTCQDate.UTC2QDateTime(newutc)
+        #print(dt)
         self.setSliderNoCallback(self.ui.startSlider, self.iO)
         for line in self.trackerLines:
             line.hide()
@@ -486,10 +503,22 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.updateXRange()
         self.updateYRange()
 
+    # in seconds, abs for just incase backwards
+    def getSelectedTimeRange(self):
+        return abs(self.tE - self.tO)
+
     def updateXRange(self):
+        rng = self.getSelectedTimeRange()
+        self.ui.timeLabel.setText('yellow')
+        if rng > 30*60: # if over half hour show hh:mm:ss
+            self.ui.timeLabel.setText('HR:MIN:SEC')
+        elif rng > 5: # if over 5 seconds show mm:ss
+            self.ui.timeLabel.setText('MIN:SEC')
+        else:
+            self.ui.timeLabel.setText('MIN:SEC.MS')
+
         for pi in self.plotItems:
             pi.setXRange(self.tO, self.tE, 0.0)
-
 
 
     # setup default 4 axis magdata plot or 3 axis insight plot
@@ -515,11 +544,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 
         self.plotData(dstrs, links)
 
+    def getDataAndLabel(self, dstr):
+        return self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY]
+
     def getData(self, dstr):
-        return self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY][0]
+        return self.getDataAndLabel(dstr)[0]
 
     def getLabel(self, dstr):
-        return self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY][1]
+        return self.getDataAndLabel(dstr)[1]
 
     def getSegments(self, Y):
         segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
@@ -586,7 +618,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             la.style['textFillLimits'] = [(0,1.1)] # no limits basically to force labels by each tick no matter what
 
             ba = pi.getAxis('bottom')
-            ba.style['textFillLimits'] = [(0,1.1)]
+            #ba.style['textFillLimits'] = [(0,1.1)]
             ta = pi.getAxis('top')
             ra = pi.getAxis('right')
             ta.show()
@@ -633,6 +665,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.additionalResizing()
 
         ## end of main for loop
+        self.updateXRange()
         self.updateYRange()
             
     ## end of plot function
@@ -677,40 +710,40 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         qggl = self.ui.glw.layout
         rows = qggl.rowCount()
         plots = rows - 1
-        baseRes = 689.0
+
         if self.firstRowStretch < 2:
-            y = baseRes # hardcoded to match first 2 calls having incorrect size
+            width = 1280.0
+            height = 689.0 # hardcoded to match first 2 calls having incorrect size
             self.firstRowStretch += 1
         else:
-            y = self.ui.glw.viewRect().height()
+            width = self.ui.glw.viewRect().width()
+            height = self.ui.glw.viewRect().height()
+
+        self.ui.timeLabel.setPos(width/2,height-30)
 
         # set font size, based on viewsize and plot number
         # very hardcoded just based on nice numbers i found. the goal here is for the labels to be smaller so the plotItems will dictate scaling
         # if these labelitems are larger they will cause qgridlayout to stretch and the plots wont be same height which is bad
-        self.suggestedFontSize = y / plots * 0.07
-        self.setYAxisLabels()
+        if plots > 0:
+            self.suggestedFontSize = height / plots * 0.065
+            self.setYAxisLabels()
 
-        if rows <= 2: # if just one plot dont need to resize bottom one
+        if plots <= 1: # if just one plot dont need to resize bottom one
             return
-        #print(y)
 
         # all of this depends on screen resolution so this is a pretty bad fix for now
         bPadding = 20 # for bottom axis text
-        
-        #plotSpacing = 7
-        #edgePadding = 40
-        #y -= (edgePadding + (plots-1) * plotSpacing) / baseRes * y
+        #plotSpacing = 10 if self.OS == 'mac' else 7
+        plotSpacing = 0.01 * height   #7/689 is about 1% of screen
 
-        plotSpacing = 10 if self.OS == 'mac' else 7
-        edgePadding = 40
-        y -= edgePadding + (plots - 1) * plotSpacing # the spaces in between plots hence the -1
-        y -= bPadding 
+        edgePadding = 60
+        height -= bPadding + edgePadding + (plots - 1) * plotSpacing # the spaces in between plots hence the -1
 
         for i in range(rows):
             if i == 0:
                 continue
 
-            h = y / plots if i < rows - 1 else y / plots + bPadding
+            h = height / plots if i < rows - 1 else height / plots + bPadding
             qggl.setRowFixedHeight(i, h)
             qggl.setRowMinimumHeight(i, h)
             qggl.setRowMaximumHeight(i, h) 
