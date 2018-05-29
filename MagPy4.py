@@ -968,13 +968,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for i,pi in enumerate(self.plotItems):
             vb = pi.getViewBox()
             if not foundFirst and vb.spectLines[0].isVisible():
-                vb.spectLines[0].label.show()
+                vb.spectLines[0].mylabel.show()
                 if vb.spectLines[1].isVisible():
-                    vb.spectLines[1].label.show()
+                    vb.spectLines[1].mylabel.show()
                 foundFirst = True
             else:
-                vb.spectLines[0].label.hide()
-                vb.spectLines[1].label.hide()
+                vb.spectLines[0].mylabel.hide()
+                vb.spectLines[1].mylabel.hide()
 
 
 # look at the source here to see what functions you might want to override or call
@@ -1001,9 +1001,9 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         self.spectLines = []
         self.generalLines = []
         for i in range(2):
-            self.spectLines.append(LinkedInfiniteLine(functools.partial(window.updateSpectraLines, i),movable=True, angle=90, pos=0, pen=pen, label='SPECTRA', labelColor='#FF0000'))
+            self.spectLines.append(LinkedInfiniteLine(functools.partial(window.updateSpectraLines, i),movable=True, angle=90, pos=0, pen=pen, mylabel='SPECTRA', labelColor='#FF0000'))
             label = None if viewBoxIndex > 0 else 'MIN VAR'
-            self.generalLines.append(LinkedInfiniteLine(functools.partial(window.updateGeneralSelectByLines, i), movable=True, angle=90, pos=0, pen=spen, label=label, labelColor='#0000FF'))
+            self.generalLines.append(LinkedInfiniteLine(functools.partial(window.updateGeneralSelectByLines, i), movable=True, angle=90, pos=0, pen=spen, mylabel=label, labelColor='#0000FF'))
 
         for line in (self.spectLines + self.generalLines):
             self.addItem(line, ignoreBounds = True)

@@ -9,13 +9,13 @@ from FF_Time import FFTIME
 # vertical by default
 # also with built in label support (infiniteline has this but doesnt how i want)
 class LinkedInfiniteLine(pg.InfiniteLine):
-    def __init__(self, callback, label=None, labelColor=None, *args, **kwds):
+    def __init__(self, callback, mylabel=None, labelColor=None, *args, **kwds):
         pg.InfiniteLine.__init__(self, *args, **kwds)
         self.callback = callback
 
-        if label and labelColor:
+        if mylabel and labelColor:
             opts = {'movable':False, 'position':1.0, 'color':labelColor }
-            self.label = LinkedInfLineLabel(self, text=label, **opts)
+            self.mylabel = LinkedInfLineLabel(self, text=mylabel, **opts)
 
     def mouseDragEvent(self, ev):
         pg.InfiniteLine.mouseDragEvent(self, ev)
