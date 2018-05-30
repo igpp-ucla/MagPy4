@@ -9,9 +9,11 @@ import numpy as np
 from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis, BLabelItem
 from FF_Time import FFTIME
 from dataDisplay import UTCQDate
+from MagPy4UI import TimeEdit
+import functools
 
 class SpectraUI(object):
-    def setupUI(self, Frame):
+    def setupUI(self, Frame, window):
         Frame.setWindowTitle('Spectra')
         Frame.resize(1000,700)
 
@@ -47,25 +49,40 @@ class SpectraUI(object):
         self.aspectLockedCheckBox.setChecked(True)
         aspectLockedLabel = QtGui.QLabel("Lock Aspect Ratio")
 
+
+        optFrame = QtWidgets.QGroupBox()
+
+        optLayout = QtWidgets.QGridLayout(optFrame)
+        optLayout.addWidget(bandWidthLabel, 0, 0, 1, 1)
+        optLayout.addWidget(separateTraces, 1, 0, 1, 1)
+        optLayout.addWidget(aspectLockedLabel, 2, 0, 1, 1)
+        optLayout.addWidget(self.bandWidthSpinBox, 0, 1, 1, 1)
+        optLayout.addWidget(self.separateTracesCheckBox, 1, 1, 1, 1)
+        optLayout.addWidget(self.aspectLockedCheckBox, 2, 1, 1, 1)
+
+        bottomLayout.addWidget(optFrame)
+
+        timeFrame = QtWidgets.QGroupBox()
+        timeLayout = QtWidgets.QVBoxLayout(timeFrame)
+
+        # setup datetime edits
+        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14))
+        self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
+
+        timeLayout.addWidget(self.timeEdit.start)
+        timeLayout.addWidget(self.timeEdit.end)
+
+        bottomLayout.addWidget(timeFrame)
+
+        bottomLayout.addStretch()
+
         self.updateButton = QtWidgets.QPushButton('Update')
         self.updateButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        bottomLayout.addWidget(self.updateButton)
+
+
         layout.addLayout(bottomLayout)
-        layout.addWidget(self.updateButton)
-
-        gridLayout = QtWidgets.QGridLayout()
-        gridLayout.addWidget(bandWidthLabel, 0, 0, 1, 1)
-        gridLayout.addWidget(separateTraces, 1, 0, 1, 1)
-        gridLayout.addWidget(aspectLockedLabel, 2, 0, 1, 1)
-        gridLayout.addWidget(self.bandWidthSpinBox, 0, 1, 1, 1)
-        gridLayout.addWidget(self.separateTracesCheckBox, 1, 1, 1, 1)
-        gridLayout.addWidget(self.aspectLockedCheckBox, 2, 1, 1, 1)
-        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        gridLayout.addItem(spacer, 0, 2, 1, 1)
-
-        gridLayout.addWidget(self.updateButton, 0, 3, 1, 1)
-        self.updateButton
-
-        layout.addLayout(gridLayout)
+        
 
 
 class SpectraViewBox(pg.ViewBox): # custom viewbox event handling
@@ -92,7 +109,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         super(Spectra, self).__init__(parent)
         self.window = window
         self.ui = SpectraUI()
-        self.ui.setupUI(self)
+        self.ui.setupUI(self, window)
         
         self.ui.updateButton.clicked.connect(self.updateSpectra)
         self.ui.bandWidthSpinBox.valueChanged.connect(self.updateSpectra)
@@ -100,12 +117,12 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.aspectLockedCheckBox.stateChanged.connect(self.setAspect)
 
         self.plotItems = []
-        self.updateSpectra()
+        #self.updateSpectra()
 
     # todo only send close event if ur current spectra
     def closeEvent(self, event):
         self.window.spectraSelectStep = 0
-        self.window.hideAllSpectraLines()
+        self.window.setLinesVisible(False, 'spectra')
 
     def setAspect(self):
         for pi in self.plotItems:
@@ -177,10 +194,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             l.setColumnMinimumWidth(i, maxTitleWidth)
 
         # add some text info like time range and file and stuff
-
         #get utc start and stop times
-        s0 = self.window.spectraRange[0]
-        s1 = self.window.spectraRange[1]
+        s0 = self.window.times[indices[0]]
+        s1 = self.window.times[indices[1]]
         startDate = UTCQDate.removeDOY(FFTIME(min(s0,s1), Epoch=self.window.epoch).UTC)
         endDate = UTCQDate.removeDOY(FFTIME(max(s0,s1), Epoch=self.window.epoch).UTC)
 
@@ -248,6 +264,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         return power
 
     def calculateCoherence(self):
+        pass
+
+    def calculatePhase(self):
         pass
 
 

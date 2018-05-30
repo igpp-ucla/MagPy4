@@ -375,7 +375,7 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         self.ui = MinVarUI()
         self.ui.setupUI(self, window)
 
-        self.window.startGeneralSelect('MINVAR', self.ui.startTimeEdit, self.ui.endTimeEdit)
+        self.window.startGeneralSelect('MINVAR', self.ui.timeEdit)
 
         self.ui.applyButton.clicked.connect(self.calcMinVar)
 
@@ -404,7 +404,7 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         # so you could select a length of data and it returns an array of only the valid values
         # otherwise minvar calcs prob get messed up when smoothed data probably affects the average
 
-        iO,iE = self.window.getGeneralSelectTicks()
+        iO,iE = self.window.getTimeSelectTicks(self.window.generalTimeEdit)
 
         xyz = []
         avg = []

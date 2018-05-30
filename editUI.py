@@ -3,6 +3,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 from mth import Mth
+from MagPy4UI import TimeEdit
 import functools
 
 class EditUI(object):
@@ -188,22 +189,11 @@ class MinVarUI(object):
         self.layout.addLayout(vectorLayout)
 
         # setup datetime edits
-        sliderFont = QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14)#, QtGui.QFont.Bold) 
-        self.startTimeEdit = QtWidgets.QDateTimeEdit()
-        self.endTimeEdit = QtWidgets.QDateTimeEdit()
-        self.startTimeEdit.setFont(sliderFont)
-        self.endTimeEdit.setFont(sliderFont)
-        self.startTimeEdit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.endTimeEdit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.startTimeEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
-        self.endTimeEdit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
-        minDateTime,maxDateTime = window.getMinAndMaxDateTime()
-        self.startTimeEdit.editingFinished.connect(functools.partial(self.enforceMinMax, self.startTimeEdit, minDateTime, maxDateTime))
-        self.startTimeEdit.setDateTime(minDateTime)
-        self.endTimeEdit.editingFinished.connect(functools.partial(self.enforceMinMax, self.endTimeEdit, minDateTime, maxDateTime))
-        self.endTimeEdit.setDateTime(maxDateTime)
-        self.layout.addWidget(self.startTimeEdit)
-        self.layout.addWidget(self.endTimeEdit)
+        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14))
+        self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
+
+        self.layout.addWidget(self.timeEdit.start)
+        self.layout.addWidget(self.timeEdit.end)
 
         self.eigenValsLabel = QtWidgets.QLabel('')
         self.layout.addWidget(self.eigenValsLabel)
@@ -214,6 +204,3 @@ class MinVarUI(object):
         self.applyButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
         self.layout.addWidget(self.applyButton)
 
-    def enforceMinMax(self, dte, min, max):
-        dt = dte.dateTime()
-        dte.setDateTime(min if dt < min else max if dt > max else dt)

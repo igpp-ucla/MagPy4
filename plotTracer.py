@@ -367,8 +367,8 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
         self.rebuildPlotLinks()
 
     def removePlot(self):
-        if self.plotCount == 0:
-            print('no plots to delete')
+        if self.plotCount <= 1:
+            print('need at least one plot')
             return
         self.plotCount-=1
 
