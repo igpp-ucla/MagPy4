@@ -825,14 +825,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 #print(f'{values[i][0] - l2},{values[i][1] + l2}')
 
 
-    # find points at which each spacecraft crosses this value for the first time after this time
-    # [CURRENTLY UNUSED] but the start to the required velocity calculation code
-    def findTimes(self, time, value, axis):
-        #first need to get correct Y datas based on axis
-        dataNames = [f'B{axis}{n}' for n in range(1,5)]
-        print(dataNames)
-
-
     def startGeneralSelect(self, name, timeEdit):
         # todo have name rename the lines label
         self.generalSelectStep = 1
