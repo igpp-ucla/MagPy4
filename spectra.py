@@ -37,8 +37,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         for pi in self.plotItems:
             pi.setAspectLocked(self.ui.aspectLockedCheckBox.isChecked())
 
-    # some weird stuff is going on in here because there was many conflicts 
-    # with combining linked y range between plots of each row, log scale, and fixed aspect ratio settings
+    # some weird stuff is going on in here because there was many conflicts
+    # with combining linked y range between plots of each row, log scale, and
+    # fixed aspect ratio settings
     def updateSpectra(self):
         plotInfos = self.window.getSpectraPlotInfo()
         indices = self.window.getSpectraRangeIndices()
@@ -80,7 +81,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 pi.plot(freq, power, pen=pen)
                 powers.append(power)
 
-                # this part figures out layout of plots into rows depending on settings
+                # this part figures out layout of plots into rows depending on
+                # settings
                 # also links the y scale of each row together
                 lastPlotInList = i == len(strList) - 1
                 if lastPlotInList or oneTracePerPlot:
@@ -97,7 +99,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         if curRow:
             self.setYRangeForRow(curRow)
 
-        # otherwise gridlayout columns will shrink at different scales based on the title string
+        # otherwise gridlayout columns will shrink at different scales based on
+        # the title string
         l = self.ui.grid.layout
         for i in range(l.columnCount()):
             l.setColumnMinimumWidth(i, maxTitleWidth)
@@ -124,7 +127,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     def setYRangeForRow(self, curRow):
         self.ui.grid.nextRow()
         # scale each plot to use same y range
-        # the viewRange function was returning incorrect results so had to do manually
+        # the viewRange function was returning incorrect results so had to do
+        # manually
         minVal = np.inf
         maxVal = -np.inf
         for item in curRow:
@@ -132,7 +136,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 minVal = min(minVal, min(pow))
                 maxVal = max(maxVal, max(pow))
                                     
-        #if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or np.isinf(maxVal):                    
+        #if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or
+        #np.isinf(maxVal):
         minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
         maxVal = np.log10(maxVal)
         for item in curRow:
@@ -172,18 +177,51 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
         return power
 
-    def calculateCoherence(self, fft):
+    # get pair 1 and 2 from dropdowns as kx and ky
+    # should prob put coherence on separate tab with its own ui section
+    # also phase too
+    def calculateCoherenceAndPhase(self, fft0, fft1):
 
         bw = self.ui.bandWidthSpinBox.value()
-        half = int(bw/2)
+        kmo = int((bw + 1) * 0.5)
+        nband = (self.N - 1) / 2
+        half = int(bw / 2)
+        nfreq = int(nband - bw + 1)
+        kStart = kmo - half
+        kSpan = half * 4 + 1
         
-        # need to save fft results
-        # get pair 1 and 2 from dropdowns as kx and ky
+        csA = fft0[:-1] * fft1[:-1] + fft0[1:] * fft1[1:]
+        qsA = fft0[:-1] * fft1[1:] - fft1[:-1] * fft0[1:]
+        pAA = fft0[:-1] * fft0[:-1] + fft0[1:] * fft0[1:]
+        pBA = fft1[:-1] * fft1[:-1] + fft1[1:] * fft1[1:]
 
-        pass
+        csSum = zeros(nFreq)
+        qsSum = zeros(nFreq)
+        pASum = zeros(nFreq)
+        pBSum = zeros(nFreq)
 
-    def calculatePhase(self):
-        pass
+        for n in range(nFreq):
+            # km = kmO + n
+            # kO = int(km - half)
+            # kE = int(km + half) + 1
+            KO = (kStart + n) * 2 - 1
+            KE = KO + kSpan
+            csSum[n] = np.sum(csA[KO:KE:2])
+            qsSum[n] = np.sum(qsA[KO:KE:2])
+            pASum[n] = np.sum(pAA[KO:KE:2])
+            pBSum[n] = np.sum(pBA[KO:KE:2])
+        #   for k in range(kO, kE):
+        #       i = 2 * k - 1
+        #       csSum[n] = csA[i] + csSum[n]
+        #       qsSum[n] = qsA[i] + qsSum[n]
+        #       pASum[n] = pAA[i] + pASum[n]
+        #       pBSum[n] = pBA[i] + pBSum[n]
+
+        coh = (csSum * csSum + qsSum * qsSum) / (pASum * pBSum)
+        pha = arctan2(qsSum, csSum) * 57.2957
+
+        return coh,pha
+
 
     #def calculateCoherence(self):
     #    # assume that there are no data gaps

@@ -7,25 +7,57 @@ from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxi
 from MagPy4UI import TimeEdit
 
 class SpectraUI(object):
+
+    def buildSpectraView(self):
+        gview = pg.GraphicsView()
+        gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        gmain = LinearGraphicsLayout() # made this based off pg.GraphicsLayout
+        #apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
+        gmain.setContentsMargins(11,0,11,0) # left top right bottom
+        gview.setCentralItem(gmain)
+        grid = GridGraphicsLayout()
+        grid.setContentsMargins(0,0,0,0)
+        labelLayout = GridGraphicsLayout()
+        labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
+        gmain.addItem(grid)
+        gmain.addItem(labelLayout)
+        return gview, grid, labelLayout
+
     def setupUI(self, Frame, window):
         Frame.setWindowTitle('Spectra')
         Frame.resize(1000,700)
 
         layout = QtWidgets.QVBoxLayout(Frame)
 
-        self.gview = pg.GraphicsView()
-        self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        self.gmain = LinearGraphicsLayout() # made this based off pg.GraphicsLayout
-        #apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
-        self.gmain.setContentsMargins(11,0,11,0) # left top right bottom
-        self.gview.setCentralItem(self.gmain)
-        self.grid = GridGraphicsLayout()
-        self.grid.setContentsMargins(0,0,0,0)
-        self.labelLayout = GridGraphicsLayout()
-        self.labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
-        self.gmain.addItem(self.grid)
-        self.gmain.addItem(self.labelLayout)
-        layout.addWidget(self.gview)
+        self.tabs = QtWidgets.QTabWidget()
+        layout.addWidget(self.tabs)
+
+        #self.gview = pg.GraphicsView()
+        #self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        #self.gmain = LinearGraphicsLayout() # made this based off pg.GraphicsLayout
+        ##apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
+        #self.gmain.setContentsMargins(11,0,11,0) # left top right bottom
+        #self.gview.setCentralItem(self.gmain)
+        #self.grid = GridGraphicsLayout()
+        #self.grid.setContentsMargins(0,0,0,0)
+        #labelLayout = GridGraphicsLayout()
+        #labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
+        #self.gmain.addItem(self.grid)
+        #self.gmain.addItem(labelLayout)
+
+        self.gview, self.grid, self.labelLayout = self.buildSpectraView()
+
+        self.tabs.addTab(self.gview, 'Spectra')
+
+        self.cohView, self.cohGrid, self.cohLabelLayout = self.buildSpectraView()
+
+        self.tabs.addTab(self.cohView, 'Coherence')
+
+        self.phaseView, self.phaseGrid, self.phaseLabelLayout = self.buildSpectraView()
+
+        self.tabs.addTab(self.phaseView, 'Phase')
+
+        #layout.addWidget(self.gview)
 
         # bandwidth label and spinbox
         bottomLayout = QtWidgets.QHBoxLayout()
