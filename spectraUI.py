@@ -49,13 +49,13 @@ class SpectraUI(object):
 
         self.tabs.addTab(self.gview, 'Spectra')
 
-        self.cohView, self.cohGrid, self.cohLabelLayout = self.buildSpectraView()
+        #self.cohView, self.cohGrid, self.cohLabelLayout = self.buildSpectraView()
 
-        self.tabs.addTab(self.cohView, 'Coherence')
+        #self.tabs.addTab(self.cohView, 'Coherence')
 
-        self.phaseView, self.phaseGrid, self.phaseLabelLayout = self.buildSpectraView()
+        #self.phaseView, self.phaseGrid, self.phaseLabelLayout = self.buildSpectraView()
 
-        self.tabs.addTab(self.phaseView, 'Phase')
+        #self.tabs.addTab(self.phaseView, 'Phase')
 
         #layout.addWidget(self.gview)
 
@@ -100,14 +100,14 @@ class SpectraUI(object):
 
         bottomLayout.addWidget(timeFrame)
 
-        cohPair1 = QtWidgets.QComboBox()
-        bottomLayout.addWidget(cohPair1)
-        cohPair2 = QtWidgets.QComboBox()
-        bottomLayout.addWidget(cohPair2)
-        for dstrs in window.lastPlotStrings:
-            for dstr in dstrs:
-                cohPair1.addItem(dstr)
-                cohPair2.addItem(dstr)
+        #cohPair1 = QtWidgets.QComboBox()
+        #bottomLayout.addWidget(cohPair1)
+        #cohPair2 = QtWidgets.QComboBox()
+        #bottomLayout.addWidget(cohPair2)
+        #for dstrs in window.lastPlotStrings:
+        #    for dstr in dstrs:
+        #        cohPair1.addItem(dstr)
+        #        cohPair2.addItem(dstr)
 
         bottomLayout.addStretch()
 

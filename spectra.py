@@ -81,8 +81,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 pi.plot(freq, power, pen=pen)
                 powers.append(power)
 
-                # this part figures out layout of plots into rows depending on
-                # settings
+                # this part figures out layout of plots into rows depending on settings
                 # also links the y scale of each row together
                 lastPlotInList = i == len(strList) - 1
                 if lastPlotInList or oneTracePerPlot:
@@ -127,8 +126,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     def setYRangeForRow(self, curRow):
         self.ui.grid.nextRow()
         # scale each plot to use same y range
-        # the viewRange function was returning incorrect results so had to do
-        # manually
+        # the viewRange function was returning incorrect results so had to do manually
         minVal = np.inf
         maxVal = -np.inf
         for item in curRow:

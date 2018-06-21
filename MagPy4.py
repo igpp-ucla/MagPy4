@@ -28,6 +28,7 @@ from mth import Mth
 import time
 import functools
 import multiprocessing as mp
+import traceback
 
 class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def __init__(self, app, parent=None):
@@ -57,7 +58,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.ui.actionPlot.triggered.connect(self.openTracer)
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True))
-        #self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False))
+        self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False))
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionSpectra.triggered.connect(self.runSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
@@ -272,6 +273,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #info = self.FID.FFInfo
         # errorFlag is usually 1e34 but sometimes less. still huge though
         self.errorFlag = self.FID.FFInfo['ERROR_FLAG'].value
+        self.errorFlag = 1e31 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
         print(f'error flag: {self.errorFlag}') # not being used currently
         self.errorFlag *= 0.9 # based off FFSpectra.py line 829
         err = self.FID.open()
@@ -356,9 +358,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #es = cdf['Epoch_state']
         #print(e[0])
         #print(es[0])
-
+        epochNames = []
         for key,value in cdf.items():
             print(f'{key} : {value}')
+            if 'epoch' in key.lower() or 'time' in key.lower():
+                l = len(value)
+                epochNames.append((key, l))
+
+        print('found times?---------------')
+        for k,v in epochNames:
+            print(f'{k} {v}')
 
             #if 'Epoch' in key:
                 #print(cdf[key][0])
@@ -372,7 +381,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #eArr = MagPy4Window.CDFEpochToTimeTicks(e)
         #esArr = self.CDFEpochToTimeTicks(es)
 
-        print('done')
         #print(esArr)
         #return eArr
         #q.put([e,es,eArr])
@@ -1080,6 +1088,11 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         ev.ignore()
 
 
+def myexepthook(type, value, tb):
+    print(f'{type} {value}')
+    traceback.print_tb(tb,limit=3)
+    os.system('pause')
+
 if __name__ == '__main__':
 
     app = QtWidgets.QApplication(sys.argv)
@@ -1093,4 +1106,5 @@ if __name__ == '__main__':
     main = MagPy4Window(app)
     main.show()
 
+    sys.excepthook = myexepthook
     sys.exit(app.exec_())

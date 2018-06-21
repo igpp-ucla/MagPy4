@@ -46,10 +46,12 @@ coll = COLLECT(exe,
 exeDir = "build/dist/MagPy4/"
 shutil.copy2("ffPy/tai-utc.dat", exeDir)
 shutil.copytree("images/", f'{exeDir}images')
-#shutil.copytree("build/styles/", f'{exeDir}PyQt5/Qt/plugins/styles') #updated pyinstaller and now this is recognized as should be imported
 
 fname = 'mms15092720'
-dpath = 'mmsTestData/L2/merged/2015/09/27/'
+dpath = 'testData/'
 os.makedirs(f'{exeDir}{dpath}')
 shutil.copy(f'{dpath}{fname}.ffh', f'{exeDir}{dpath}{fname}.ffh')
 shutil.copy(f'{dpath}{fname}.ffd', f'{exeDir}{dpath}{fname}.ffd')
+
+exampDir = 'testData/BX_examples/'
+shutil.copytree(exampDir,f'{exeDir}{exampDir}')
