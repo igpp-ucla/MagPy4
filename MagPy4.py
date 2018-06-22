@@ -18,7 +18,7 @@ from FF_Time import FFTIME, leapFile
 import pycdf
 
 from MagPy4UI import MagPy4UI
-from plotTracer import PlotMenu
+from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
@@ -150,7 +150,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def openPlotMenu(self):
         self.closePlotMenu()
-        self.tracer = PlotMenu(self)
+        self.plotMenu = PlotMenu(self)
 
         geo = self.geometry()
         self.plotMenu.move(geo.x()-8, geo.y() + 100)

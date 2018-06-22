@@ -54,7 +54,7 @@
     </Compile>
     <Compile Include="MagPy4.py" />
     <Compile Include="MagPy4UI.py" />
-    <Compile Include="plotTracer.py">
+    <Compile Include="plotMenu.py">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="spectra.py">
