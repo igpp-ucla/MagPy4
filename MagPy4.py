@@ -15,7 +15,7 @@ import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
-import pycdf
+#import pycdf
 
 from MagPy4UI import MagPy4UI
 from plotMenu import PlotMenu
@@ -248,13 +248,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             if not self.openFF(fileName):
                 return
         else:
-            # trying to speed up the conversion
-            #q = mp.Queue()
-            #p = mp.Process(target=MagPy4Window.openCDF, args=(fileName,q))
-            #p.start()
-            #ret = q.get()
-            #print(len(ret))
-            #p.join()
             self.openCDF(fileName)
 
         self.closeAllSubWindows()
@@ -328,12 +321,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.itE = self.tE  
 
         print(f'resolution: {self.resolution}')
-        #print(f'iO: {self.iO}')
-        #print(f'iE: {self.iE}')
         print(f'tO: {self.tO}')
         print(f'tE: {self.tE}')
 
-        # generate resolution data column
+        # generate resolution data column (to visualize when it isn't constant)
         dstr = 'resolution'
         resData = np.diff(self.times)
         np.append(resData, resData[-1])
@@ -355,10 +346,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if not cdf:
             print('CDF LOAD FAILED')
 
-        #e = cdf['Epoch']
-        #es = cdf['Epoch_state']
-        #print(e[0])
-        #print(es[0])
         datas = []
         epochs = []
         epochLengths = set()
@@ -395,24 +382,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             for v in value:
                 print(f'  {v}')
 
-        #for k,v in epochs:
-        #    print(f'{k} {v}')
 
-            #if 'Epoch' in key:
-                #print(cdf[key][0])
-                #print(cdf[key])
-
-            #attrs = pycdf.zAttrList(cdf[key])
-            #if 'FILLVAL' in attrs:
-                #print(attrs['FILLVAL'])
-            #print('')
-
+        #attrs = pycdf.zAttrList(cdf[key])
+        #if 'FILLVAL' in attrs:
+            #print(attrs['FILLVAL'])
         #eArr = MagPy4Window.CDFEpochToTimeTicks(e)
         #esArr = self.CDFEpochToTimeTicks(es)
 
-        #print(esArr)
-        #return eArr
-        #q.put([e,es,eArr])
 
 
     def CDFEpochToTimeTicks(cdfEpoch):
@@ -979,15 +955,22 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
         # setup crosshair
         pen = pg.mkPen('#FF0000', width=1, style=QtCore.Qt.DashLine)
-        self.vMouseLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pen)
-        self.hMouseLine = pg.InfiniteLine(movable=False, angle=0, pos=0, pen=pen)
-        self.crosshairText = pg.TextItem('test', fill=(255, 255, 255, 200), html='<div style="text-align: center; color:#FFF;">')
-        self.crosshairText.setZValue(10) #draw over the traces
-        self.crosshairText.border = self.window.pens[3] #black pen
-        self.addItem(self.vMouseLine, ignoreBounds=True) #so they dont mess up view range
-        self.addItem(self.hMouseLine, ignoreBounds=True)
-        self.addItem(self.crosshairText, ignoreBounds=True)
-        self.setCrosshairVisible(False)
+        #self.vMouseLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pen)
+        #self.hMouseLine = pg.InfiniteLine(movable=False, angle=0, pos=0, pen=pen)
+
+        #values=[496656036,496657036]
+        self.dragging = False
+        self.region = pg.LinearRegionItem(orientation = pg.LinearRegionItem.Vertical)
+        self.addItem(self.region, ignoreBounds=True)
+        self.region.setVisible(False)
+
+        #self.crosshairText = pg.TextItem('test', fill=(255, 255, 255, 200), html='<div style="text-align: center; color:#FFF;">')
+        #self.crosshairText.setZValue(10) #draw over the traces
+        #self.crosshairText.border = self.window.pens[3] #black pen
+        #self.addItem(self.vMouseLine, ignoreBounds=True) #so they dont mess up view range
+        #self.addItem(self.hMouseLine, ignoreBounds=True)
+        #self.addItem(self.crosshairText, ignoreBounds=True)
+        #self.setCrosshairVisible(False)
 
         spen = pg.mkPen('#0000FF', width=1, style=QtCore.Qt.DashLine)
         spectLines = []
@@ -1010,10 +993,10 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     #    pg.ViewBox.updateAutoRange(self)
     #    print(f'updating {self._updatingRange}')
 
-    def setCrosshairVisible(self, visible):
-        self.vMouseLine.setVisible(visible)
-        self.hMouseLine.setVisible(visible)
-        self.crosshairText.setVisible(visible)
+    #def setCrosshairVisible(self, visible):
+    #    self.vMouseLine.setVisible(visible)
+    #    self.hMouseLine.setVisible(visible)
+    #    self.crosshairText.setVisible(visible)
 
     def onLeftClick(self, ev):
          # map the mouse click to data coordinates
@@ -1051,39 +1034,43 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 spect[0].show()
                 spect[1].show()
             self.window.setupSpectraLineText()
-        else:
-            self.setCrosshairVisible(True)
+        else: # normal click
+            if not self.region.isVisible():
+                self.region.setVisible(True)
+                vr = self.viewRange()
+                rng = (vr[0][1] - vr[0][0]) * 0.01
+                self.region.setRegion([x - rng, x + rng])
 
-            self.vMouseLine.setPos(x)
-            self.hMouseLine.setPos(y)
-            self.crosshairText.setPos(x,y)
-            xt = DateAxis.toUTC(x, self.window, True)
-            sf = f'{xt}, {y:.4f}'
-            print(sf)
-            self.crosshairText.setText(sf)
+            #self.vMouseLine.setPos(x)
+            #self.hMouseLine.setPos(y)
+            #self.crosshairText.setPos(x,y)
+            #xt = DateAxis.toUTC(x, self.window, True)
+            #sf = f'{xt}, {y:.4f}'
+            #print(sf)
+            #self.crosshairText.setText(sf)
 
-            #set text anchor based on which quadrant of viewbox dataText crosshair is in
-            vr = self.viewRange()
-            centerX = vr[0][0] + (vr[0][1] - vr[0][0]) / 2
-            centerY = vr[1][0] + (vr[1][1] - vr[1][0]) / 2
+            ##set text anchor based on which quadrant of viewbox dataText crosshair is in
+            #vr = self.viewRange()
+            #centerX = vr[0][0] + (vr[0][1] - vr[0][0]) / 2
+            #centerY = vr[1][0] + (vr[1][1] - vr[1][0]) / 2
 
-            #i think its based on axis ratio of the label so x is about 1/5
-            #times of y anchor offset
-            self.crosshairText.setAnchor((-0.04 if x < centerX else 1.04, 1.2 if y < centerY else -0.2))
+            ##i think its based on axis ratio of the label so x is about 1/5
+            ##times of y anchor offset
+            #self.crosshairText.setAnchor((-0.04 if x < centerX else 1.04, 1.2 if y < centerY else -0.2))
 
     def onRightClick(self, ev):
+        wasVisible = self.region.isVisible()
+        self.region.setVisible(False)
         if self.window.spectraSelectStep > 0: # cancel spectra on this plot
-            self.setCrosshairVisible(False)
             for line in self.lines['spectra']:
                 line.hide()
             self.window.setupSpectraLineText()
-        else:
+        elif not wasVisible:
             pg.ViewBox.mouseClickEvent(self,ev) # default right click
 
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
             if ev.double(): # double clicking will hide the lines
-                self.setCrosshairVisible(False)
                 for line in self.lines['spectra']:
                     line.hide()
                 self.window.setupSpectraLineText()

@@ -7,10 +7,21 @@ import functools
 
 from pyqtgraphExtensions import GridGraphicsLayout,LinearGraphicsLayout,BLabelItem
 
-#from qrangeslider import QRangeSlider
-#can add in translation stuff later
-
 class MagPy4UI(object):
+
+    def buildPopup(self, name, actions):
+                # add options popup menu for toggled things
+        popup = QtWidgets.QToolButton()
+        menu = QtWidgets.QMenu()
+
+        for action in actions:
+            menu.addAction(action)
+
+        popup.setMenu(menu)
+        popup.setText(f'{name} ') # extra space for little arrow icon
+        popup.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        return popup 
+
     def setupUI(self, window):
 
         # gives default window options in top right
@@ -20,61 +31,67 @@ class MagPy4UI(object):
         self.centralWidget = QtWidgets.QWidget(window)
         window.setCentralWidget(self.centralWidget)
 
-        self.toolBar = QtWidgets.QToolBar(window)
-        window.addToolBar(QtCore.Qt.TopToolBarArea, self.toolBar)
+        # define actions
         self.actionOpenFF = QtWidgets.QAction(window)
         self.actionOpenFF.setPriority(QtWidgets.QAction.HighPriority)
         self.actionOpenFF.setText('Open FF')
         self.actionOpenFF.setShortcut('O')
-        self.toolBar.addAction(self.actionOpenFF)
 
         self.actionOpenCDF = QtWidgets.QAction(window)
         self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
         self.actionOpenCDF.setText('Open CDF')
-        self.toolBar.addAction(self.actionOpenCDF)
 
         self.actionShowData = QtWidgets.QAction(window)
-        self.actionShowData.setText('Show Data')
-        self.toolBar.addAction(self.actionShowData)
+        self.actionShowData.setText('Data')
 
         self.actionPlot = QtWidgets.QAction(window)
-        self.actionPlot.setText('Plot Menu')
-        self.toolBar.addAction(self.actionPlot)
+        self.actionPlot.setText('Plot')
 
         self.actionSpectra = QtWidgets.QAction(window)
         self.actionSpectra.setText('Spectra')
-        self.toolBar.addAction(self.actionSpectra)
 
         self.actionEdit = QtWidgets.QAction(window)
         self.actionEdit.setText('Edit')
-        self.toolBar.addAction(self.actionEdit)
-
-        # add options popup menu for toggled things
-        options = QtWidgets.QToolButton()
-        menu = QtWidgets.QMenu()
 
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('Scale y range to current time selection',checkable=True,checked=True)
         self.antialiasAction = QtWidgets.QAction('Smooth lines (antialiasing)',checkable=True,checked=True)
         self.bridgeDataGaps = QtWidgets.QAction('Bridge Data Gaps', checkable=True, checked=False)
         self.drawPoints = QtWidgets.QAction('Draw Points', checkable=True, checked=False)
 
-        menu.addAction(self.scaleYToCurrentTimeAction)
-        menu.addAction(self.antialiasAction)
-        menu.addAction(self.bridgeDataGaps)
-        menu.addAction(self.drawPoints)
-        options.setMenu(menu)
-        options.setText('Options ') # extra space for little arrow icon
-        options.setPopupMode(QtWidgets.QToolButton.InstantPopup)
-        self.toolBar.addWidget(options)        
+        self.switchMode = QtWidgets.QAction(window)
+        self.switchMode.setText('Switch to MarsPy')
+
+
+        # build toolbar
+        self.toolBar = QtWidgets.QToolBar(window)
+        window.addToolBar(QtCore.Qt.TopToolBarArea, self.toolBar)
+
+        file = self.buildPopup('File', [self.actionOpenFF, self.actionOpenCDF])
+        self.toolBar.addWidget(file)
+        #self.toolBar.addAction(self.actionOpenFF)
+        #self.toolBar.addAction(self.actionOpenCDF)
+
+        view = self.buildPopup('View', [self.actionShowData])
+        self.toolBar.addWidget(view)
+
+        #self.toolBar.addAction(self.actionShowData)
+        self.toolBar.addAction(self.actionPlot)
+
+        tools = self.buildPopup('Tools', [self.actionSpectra, self.actionEdit])
+        self.toolBar.addWidget(tools)
+        #self.toolBar.addAction(self.actionSpectra)
+        #self.toolBar.addAction(self.actionEdit)
+
+        options = self.buildPopup('Options', [self.scaleYToCurrentTimeAction, self.antialiasAction, self.bridgeDataGaps, self.drawPoints])
+        self.toolBar.addWidget(options) 
 
         #empty widget (cant use spacer in toolbar?) does same thing tho so this action goes far right
         spacer = QtWidgets.QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.toolBar.addWidget(spacer)
 
-        self.switchMode = QtWidgets.QAction(window)
-        self.switchMode.setText('Switch to MarsPy')
         self.toolBar.addAction(self.switchMode)
+
 
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
