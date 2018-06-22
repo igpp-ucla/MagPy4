@@ -31,7 +31,7 @@ class MagPy4UI(object):
         self.actionOpenCDF = QtWidgets.QAction(window)
         self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
         self.actionOpenCDF.setText('Open CDF')
-        #self.toolBar.addAction(self.actionOpenCDF)
+        self.toolBar.addAction(self.actionOpenCDF)
 
         self.actionShowData = QtWidgets.QAction(window)
         self.actionShowData.setText('Show Data')

@@ -15,10 +15,10 @@ import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
-#import pycdf
+import pycdf
 
 from MagPy4UI import MagPy4UI
-from plotTracer import PlotTracer
+from plotTracer import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
@@ -56,7 +56,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.timeEdit.start.dateTimeChanged.connect(self.onStartEditChanged)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
 
-        self.ui.actionPlot.triggered.connect(self.openTracer)
+        self.ui.actionPlot.triggered.connect(self.openPlotMenu)
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True))
         self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False))
         self.ui.actionShowData.triggered.connect(self.showData)
@@ -71,12 +71,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.bridgeDataGaps.triggered.connect(self.replotData)
         self.ui.drawPoints.triggered.connect(self.replotData)
 
-        self.tracer = None
+        self.plotMenu = None
         self.edit = None
         self.dataDisplay = None
         self.spectras = []
 
-        self.plotTracerCheckBoxMode = False
+        self.plotMenuCheckBoxMode = False
 
         self.initVariables()
 
@@ -115,7 +115,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeAllSubWindows()
 
     def closeAllSubWindows(self):
-        self.closeTracer()
+        self.closePlotMenu()
         self.closeEdit()
         self.closeDataDisplay()
         for spectra in self.spectras:
@@ -133,10 +133,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.editHistory = []
 
-    def closeTracer(self):
-        if self.tracer:
-            self.tracer.close()
-            self.tracer = None
+    def closePlotMenu(self):
+        if self.plotMenu:
+            self.plotMenu.close()
+            self.plotMenu = None
 
     def closeEdit(self):
         if self.edit:
@@ -148,13 +148,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.dataDisplay.close()
             self.dataDisplay = None
 
-    def openTracer(self):
-        self.closeTracer()
-        self.tracer = PlotTracer(self)
+    def openPlotMenu(self):
+        self.closePlotMenu()
+        self.tracer = PlotMenu(self)
 
         geo = self.geometry()
-        self.tracer.move(geo.x()-8, geo.y() + 100)
-        self.tracer.show()
+        self.plotMenu.move(geo.x()-8, geo.y() + 100)
+        self.plotMenu.show()
 
     def openEdit(self):
         self.closeEdit()
@@ -180,8 +180,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 spectra.updateSpectra()
 
     # this smooths over data gaps, required for spectra analysis?
-    # faster than naive way
-    def replaceErrorsWithLast(self,dataOrig):
+    # errors before first and after last or just extended from those points
+    # errors between are lerped between nearest points
+    def interpolateErrors(self,dataOrig):
         data = np.copy(dataOrig)
         segs = self.getSegments(data)
         if len(segs) == 0: # data is pure errors
@@ -302,11 +303,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.DATADICT = {}  # stores smoothed version of data and all modifications (dict of dicts)
         self.UNITDICT = {} # maps data strings to unit strings
         self.IDENTITY = Mth.identity()
-        self.MATRIX = Mth.identity() # temp until i add matrix chooser dropdown in plot tracer
+        self.MATRIX = Mth.identity() # maybe add matrix dropdown in plotmenu somewhere
         for i, dstr in enumerate(self.DATASTRINGS):
             datas = np.array(self.dataByRec[:,i])
             self.ORIGDATADICT[dstr] = datas
-            self.DATADICT[dstr] = { self.IDENTITY : [self.replaceErrorsWithLast(datas),dstr,''] }
+            self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(datas),dstr,''] }
             self.UNITDICT[dstr] = units[i]
 
         # sorts by units alphabetically
@@ -332,13 +333,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         print(f'tO: {self.tO}')
         print(f'tE: {self.tE}')
 
-        # generate resolution data
+        # generate resolution data column
         dstr = 'resolution'
         resData = np.diff(self.times)
         np.append(resData, resData[-1])
         self.DATASTRINGS.append(dstr)
         self.ORIGDATADICT[dstr] = resData
-        self.DATADICT[dstr] = { self.IDENTITY : [self.replaceErrorsWithLast(resData),dstr,''] }
+        self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(resData),dstr,''] }
         self.UNITDICT[dstr] = 'sec'
 
         tick = 1.0 / self.resolution * 2.0
@@ -358,16 +359,44 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #es = cdf['Epoch_state']
         #print(e[0])
         #print(es[0])
-        epochNames = []
+        datas = []
+        epochs = []
+        epochLengths = set()
         for key,value in cdf.items():
             print(f'{key} : {value}')
-            if 'epoch' in key.lower() or 'time' in key.lower():
-                l = len(value)
-                epochNames.append((key, l))
+            length = len(value)
+            item = (key,length)
+            if length <= 1:
+                continue
 
-        print('found times?---------------')
-        for k,v in epochNames:
-            print(f'{k} {v}')
+            if 'epoch' in key.lower() or 'time' in key.lower():
+                epochs.append(item)
+                # not sure how to handle this scenario tho I think it would be rare if anything
+                if length in epochLengths:
+                    print(f'WARNING: 2 epochs with same length detected')
+                epochLengths.add(length)
+            else:
+                datas.append(item)
+
+        # pair epoch name with lists of data names that use that time
+        epochsWithData = {}
+        for en, el in epochs:
+            edata = []
+            for dn, dl in datas:
+                if el == dl:
+                    edata.append(dn)
+            if len(edata) > 0:
+                epochsWithData[en] = edata
+            else:
+                print(f'no data found for this epoch: {en}')
+
+        for key,value in epochsWithData.items():
+            print(f'{key} {len(cdf[key])}')
+            for v in value:
+                print(f'  {v}')
+
+        #for k,v in epochs:
+        #    print(f'{k} {v}')
 
             #if 'Epoch' in key:
                 #print(cdf[key][0])
@@ -433,7 +462,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         tt = self.times[self.iE]
         for line in self.trackerLines:
             line.show()
-            line.setValue(tt + 1)#offset by linewidth so its not visible once released
+            line.setValue(tt + 1) #offset by linewidth so its not visible once released
 
         dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
         self.ui.timeEdit.setEndNoCallback(dt)
@@ -442,7 +471,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.endSlider.underMouse():
             self.setTimes()
 
-    # this might be inaccurate...
+    # relys on constant time series resolution which isn't always the case
+    # really just a UI problem though if thats not true so not critical
     def calcTickIndexByTime(self, t):
         perc = (t - self.itO) / (self.itE - self.itO)
         v = int((self.iiE+1) * perc)
@@ -457,14 +487,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def onStartEditChanged(self, val):
         utc = UTCQDate.QDateTime2UTC(val)
         self.iO = self.calcTickIndexByTime(FFTIME(utc, Epoch=self.epoch)._tick)
-        #print(val)
-        #print(utc)
-        #tt = self.times[self.iO] 
-        #print(tt)
-        #newutc = FFTIME(tt, Epoch=self.epoch).UTC
-        #print(newutc)
-        #dt = UTCQDate.UTC2QDateTime(newutc)
-        #print(dt)
         self.setSliderNoCallback(self.ui.startSlider, self.iO)
         for line in self.trackerLines:
             line.hide()

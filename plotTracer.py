@@ -4,9 +4,9 @@ from PyQt5.QtWidgets import QSizePolicy
 
 import functools
 
-class PlotTracerUI(object):
+class PlotMenuUI(object):
     def setupUI(self, Frame):
-        Frame.setWindowTitle('Plot Tracer')
+        Frame.setWindowTitle('Plot Menu')
         Frame.resize(100,100)
 
         checkBoxStyle = """
@@ -59,12 +59,12 @@ class PlotTracerUI(object):
         # make invisible stretch to take up rest of space
         self.layout.addStretch()
 
-class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
+class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
     def __init__(self, window, parent=None):
-        super(PlotTracer, self).__init__(parent)
+        super(PlotMenu, self).__init__(parent)
 
         self.window = window
-        self.ui = PlotTracerUI()
+        self.ui = PlotMenuUI()
         self.ui.setupUI(self)
 
         self.ui.clearButton.clicked.connect(self.clearRows)
@@ -74,15 +74,15 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
         self.ui.defaultsButton.clicked.connect(self.reloadDefaults)
         self.ui.switchButton.clicked.connect(self.switchModes)
 
-        self.checkBoxMode = self.window.plotTracerCheckBoxMode
+        self.checkBoxMode = self.window.plotMenuCheckBoxMode
         self.ui.switchButton.setText('Switch to Dropdowns' if self.checkBoxMode else 'Switch to CheckBoxes')
         self.fcheckBoxes = []
 
         self.shouldResizeWindow = False # gets set when switching modes
-        self.initTracer(self.window.lastPlotStrings, self.window.lastPlotLinks)
+        self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)
 
     def closeEvent(self, event):
-        self.window.plotTracerCheckBoxMode = self.checkBoxMode
+        self.window.plotMenuCheckBoxMode = self.checkBoxMode
 
     def paintEvent(self, event):
         if self.shouldResizeWindow:
@@ -98,15 +98,15 @@ class PlotTracer(QtWidgets.QFrame, PlotTracerUI):
             self.checkBoxMode = False
             self.ui.switchButton.setText('Switch to CheckBoxes')
 
-        self.initTracer(self.window.lastPlotStrings, self.window.lastPlotLinks)
+        self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)
         self.shouldResizeWindow = True
         
 
     def reloadDefaults(self):
         dstrs, links = self.window.getDefaultPlotInfo()
-        self.initTracer(dstrs, links)
+        self.initPlotMenu(dstrs, links)
 
-    def initTracer(self, dstrs, links):
+    def initPlotMenu(self, dstrs, links):
         self.plotCount = 0
         self.checkBoxes = []
         self.dropdowns = []
