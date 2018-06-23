@@ -84,16 +84,6 @@ class EditUI(object):
 
         rightLayout.addWidget(histFrame)
 
-        #mainLayout.addStretch()
-
-        ## bottom area with apply button
-        #bottomLayout = QtGui.QHBoxLayout()
-        #self.apply = QtGui.QPushButton('Apply')
-        #self.apply.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-        #bottomLayout.addWidget(self.apply)
-        #applyLabel = QtGui.QLabel('Multiplies each data vector by (selected history matrix multiplied by rotation matrix)')
-        #bottomLayout.addWidget(applyLabel)
-        #mainLayout.addLayout(bottomLayout)
 
     def makeHorizontalLine(self):
         horizontal = QtWidgets.QFrame()

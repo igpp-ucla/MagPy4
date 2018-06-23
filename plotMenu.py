@@ -3,6 +3,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 import functools
+from MagPy4UI import PyQtUtils
 
 class PlotMenuUI(object):
     def setupUI(self, Frame):
@@ -110,7 +111,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.plotCount = 0
         self.checkBoxes = []
         self.dropdowns = []
-        self.clearLayout(self.ui.grid)
+        PyQtUtils.clearLayout(self.ui.grid)
 
         if self.window.lastPlotStrings is None:
             print('no starting plot matrix!')
@@ -137,12 +138,6 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             for i,axis in enumerate(newLinks):
                 for j in axis:
                     self.fcheckBoxes[i][j].setChecked(True)
-
-    def clearLayout(self, layout):
-        while layout.count():
-            child = layout.takeAt(0)
-            if child.widget() is not None:
-                child.widget().deleteLater()
 
     # returns list of list of strings (one list for each plot, one string for each trace)
     def getPlotInfo(self):
@@ -227,7 +222,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         self.checkBoxes = []
         self.dropdowns = []
-        self.clearLayout(self.ui.grid)
+        PyQtUtils.clearLayout(self.ui.grid)
         
         for di,drops in enumerate(dropList):
             strs = self.window.DATASTRINGS[:]
@@ -298,7 +293,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         cbools = self.checksToBools(self.fcheckBoxes, True)
         self.fcheckBoxes = [] # clear list after
 
-        self.clearLayout(fgrid)
+        PyQtUtils.clearLayout(fgrid)
 
         # add top plot labels
         for i in range(self.plotCount):

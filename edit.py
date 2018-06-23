@@ -13,6 +13,7 @@ import time
 from editUI import EditUI, ManRotUI, MinVarUI
 
 from mth import Mth
+from MagPy4UI import PyQtUtils
 
 class Edit(QtWidgets.QFrame, EditUI):
 
@@ -147,9 +148,7 @@ class Edit(QtWidgets.QFrame, EditUI):
             index = emptyRows[-1]
             del self.axisDropdowns[index]
             layout = self.ui.vectorLayout.takeAt(index)
-            while layout.count():
-                layout.takeAt(0).widget().deleteLater()
-
+            PyQtUtils.clearLayout(layout)
 
     def addAxisRow(self):
         # init data vector dropdowns

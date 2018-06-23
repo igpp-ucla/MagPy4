@@ -15,15 +15,17 @@ import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
-#import pycdf
+import pycdf
 
 from MagPy4UI import MagPy4UI
 from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
+from traceStats import TraceStats
 from pyqtgraphExtensions import DateAxis, PlotPointsItem, LinkedInfiniteLine, BLabelItem
 from mth import Mth
+import bisect
 
 import time
 import functools
@@ -75,6 +77,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.edit = None
         self.dataDisplay = None
         self.spectras = []
+        self.traceStats = None
 
         self.plotMenuCheckBoxMode = False
 
@@ -117,7 +120,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def closeAllSubWindows(self):
         self.closePlotMenu()
         self.closeEdit()
-        self.closeDataDisplay()
+        self.closeData()
+        self.closeTraceStats()
         for spectra in self.spectras:
             spectra.close()
         self.spectras = []
@@ -126,34 +130,33 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def initVariables(self):
         self.lastPlotStrings = None
         self.lastPlotLinks = None
-
         self.spectraSelectStep = 0
-
         self.generalSelectStep = 0
-
         self.editHistory = []
 
     def closePlotMenu(self):
         if self.plotMenu:
             self.plotMenu.close()
             self.plotMenu = None
-
     def closeEdit(self):
         if self.edit:
             self.edit.close()
             self.edit = None
-
-    def closeDataDisplay(self):
+    def closeData(self):
         if self.dataDisplay:
             self.dataDisplay.close()
             self.dataDisplay = None
+    def closeTraceStats(self):
+        if self.traceStats:
+            self.traceStats.close()
+            self.traceStats = None
 
     def openPlotMenu(self):
         self.closePlotMenu()
         self.plotMenu = PlotMenu(self)
 
         geo = self.geometry()
-        self.plotMenu.move(geo.x()-8, geo.y() + 100)
+        self.plotMenu.move(geo.x() - 8, geo.y() + 100)
         self.plotMenu.show()
 
     def openEdit(self):
@@ -162,9 +165,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.edit.show()
 
     def showData(self):
-        self.closeDataDisplay() # this isnt actually needed it still closes somehow
+        self.closeData() # this isnt actually needed it still closes somehow
         self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
         self.dataDisplay.show()
+
+    def openTraceStats(self, region, plotIndex):
+        self.traceStats = TraceStats(self, region, plotIndex)
+        self.traceStats.show()
+        region.sigRegionChanged.connect(self.traceStats.onRegionChange)
+        self.traceStats.onRegionChange()
 
     def runSpectra(self):
         spectra = Spectra(self)
@@ -334,7 +343,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.UNITDICT[dstr] = 'sec'
 
         tick = 1.0 / self.resolution * 2.0
-        self.ui.setupSliders(tick, numRecords-1, self.getMinAndMaxDateTime())
+        self.ui.setupSliders(tick, numRecords - 1, self.getMinAndMaxDateTime())
 
         return True
 
@@ -388,7 +397,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #print(attrs['FILLVAL'])
         #eArr = MagPy4Window.CDFEpochToTimeTicks(e)
         #esArr = self.CDFEpochToTimeTicks(es)
-
 
 
     def CDFEpochToTimeTicks(cdfEpoch):
@@ -447,12 +455,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.endSlider.underMouse():
             self.setTimes()
 
-    # relys on constant time series resolution which isn't always the case
-    # really just a UI problem though if thats not true so not critical
     def calcTickIndexByTime(self, t):
-        perc = (t - self.itO) / (self.itE - self.itO)
-        v = int((self.iiE+1) * perc)
-        return 0 if v < 0 else self.iiE if v > self.iiE else v
+        return Mth.clamp(bisect.bisect(self.times,t)-1, 0, self.iiE)
 
     def setSliderNoCallback(self, slider, i):
         slider.blockSignals(True)
@@ -497,7 +501,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def updateXRange(self):
         rng = self.getSelectedTimeRange()
         self.ui.timeLabel.setText('yellow')
-        if rng > 30*60: # if over half hour show hh:mm:ss
+        if rng > 30 * 60: # if over half hour show hh:mm:ss
             self.ui.timeLabel.setText('HR:MIN:SEC')
         elif rng > 5: # if over 5 seconds show mm:ss
             self.ui.timeLabel.setText('MIN:SEC')
@@ -539,6 +543,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def getLabel(self, dstr):
         return self.getDataAndLabel(dstr)[1]
+
+    # returns data with error values removed
+    def getPrunedData(self, dstr, a, b):
+        data = self.getData(dstr)[a:b]
+        return data[data < self.errorFlag]
 
     def getSegments(self, Y):
         segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
@@ -706,7 +715,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             width = self.ui.glw.viewRect().width()
             height = self.ui.glw.viewRect().height()
 
-        self.ui.timeLabel.setPos(width/2,height-30)
+        self.ui.timeLabel.setPos(width / 2,height - 30)
 
         # set font size, based on viewsize and plot number
         # very hardcoded just based on nice numbers i found. the goal here is for the labels to be smaller so the plotItems will dictate scaling
@@ -769,7 +778,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             print(f'Error: insufficient Y data for column "{dstr}"')
             return
         if not self.ui.bridgeDataGaps.isChecked():
-            segs = self.getSegments(self.ORIGDATADICT[dstr])                    
+            segs = self.getSegments(self.ORIGDATADICT[dstr])    
             for a,b in segs:
                 if self.ui.drawPoints.isChecked():
                     pi.addItem(PlotPointsItem(self.times[a:b], Y[a:b], pen=pen))
@@ -869,7 +878,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.updateLinesPos(lineStr, 0, t0 if x0 < x1 else t1)
         self.updateLinesPos(lineStr, 1, t1 if x0 < x1 else t0)
 
-    def updateTimeEditByLines(self, timeEdit, lineStr, index ):
+    def updateTimeEditByLines(self, timeEdit, lineStr, index):
         oi = 0 if index == 1 else 1 # i wonder if this works lol, int(not bool(index))
         x = self.plotItems[0].getViewBox().lines[lineStr][index].getXPos()
         ox = self.plotItems[0].getViewBox().lines[lineStr][oi].getXPos()
@@ -907,6 +916,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                         line.setVisible(isVisible)
                 else:
                     vb.lines[lineStr][index].setVisible(isVisible)
+
+    def hideTraceStatRegions(self, exc=None):
+        for pi in self.plotItems:
+            vb = pi.getViewBox()
+            if exc is not vb:
+                vb.region.setVisible(False)        
 
     # gets indices into time array for selected spectra range
     # makes sure first is less than second
@@ -948,20 +963,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
-    def __init__(self, window, viewBoxIndex, *args, **kwds):
+    def __init__(self, window, plotIndex, *args, **kwds):
         pg.ViewBox.__init__(self, *args, **kwds)
         #self.setMouseMode(self.RectMode)
         self.window = window
+        self.plotIndex = plotIndex
 
         # setup crosshair
         pen = pg.mkPen('#FF0000', width=1, style=QtCore.Qt.DashLine)
         #self.vMouseLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pen)
         #self.hMouseLine = pg.InfiniteLine(movable=False, angle=0, pos=0, pen=pen)
 
-        #values=[496656036,496657036]
-        self.dragging = False
         self.region = pg.LinearRegionItem(orientation = pg.LinearRegionItem.Vertical)
         self.addItem(self.region, ignoreBounds=True)
+        self.region.setBounds((self.window.itO, self.window.itE))
         self.region.setVisible(False)
 
         #self.crosshairText = pg.TextItem('test', fill=(255, 255, 255, 200), html='<div style="text-align: center; color:#FFF;">')
@@ -977,7 +992,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         generalLines = []
         for i in range(2):
             spectLines.append(LinkedInfiniteLine(functools.partial(window.updateSpectraLines, i),movable=True, angle=90, pos=0, pen=pen, mylabel='SPECTRA', labelColor='#FF0000'))
-            label = None if viewBoxIndex > 0 else 'MIN VAR'
+            label = None if self.plotIndex > 0 else 'MIN VAR'
             generalLines.append(LinkedInfiniteLine(functools.partial(window.updateGeneralLines, i), movable=True, angle=90, pos=0, pen=spen, mylabel=label, labelColor='#0000FF'))
 
         self.lines = {'spectra':spectLines, 'general':generalLines}
@@ -1036,10 +1051,13 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
             self.window.setupSpectraLineText()
         else: # normal click
             if not self.region.isVisible():
+                self.window.hideTraceStatRegions(self)
                 self.region.setVisible(True)
                 vr = self.viewRange()
                 rng = (vr[0][1] - vr[0][0]) * 0.01
                 self.region.setRegion([x - rng, x + rng])
+
+                self.window.openTraceStats(self.region, self.plotIndex)
 
             #self.vMouseLine.setPos(x)
             #self.hMouseLine.setPos(y)
@@ -1060,6 +1078,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
     def onRightClick(self, ev):
         wasVisible = self.region.isVisible()
+        self.window.closeTraceStats()
         self.region.setVisible(False)
         if self.window.spectraSelectStep > 0: # cancel spectra on this plot
             for line in self.lines['spectra']:

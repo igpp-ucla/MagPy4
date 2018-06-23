@@ -32,19 +32,6 @@ class SpectraUI(object):
         self.tabs = QtWidgets.QTabWidget()
         layout.addWidget(self.tabs)
 
-        #self.gview = pg.GraphicsView()
-        #self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        #self.gmain = LinearGraphicsLayout() # made this based off pg.GraphicsLayout
-        ##apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
-        #self.gmain.setContentsMargins(11,0,11,0) # left top right bottom
-        #self.gview.setCentralItem(self.gmain)
-        #self.grid = GridGraphicsLayout()
-        #self.grid.setContentsMargins(0,0,0,0)
-        #labelLayout = GridGraphicsLayout()
-        #labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
-        #self.gmain.addItem(self.grid)
-        #self.gmain.addItem(labelLayout)
-
         self.gview, self.grid, self.labelLayout = self.buildSpectraView()
 
         self.tabs.addTab(self.gview, 'Spectra')

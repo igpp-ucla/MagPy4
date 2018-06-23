@@ -70,3 +70,6 @@ class Mth:
                     f = 0.0
                 M[i][j] = f
         return M
+
+    def clamp(value, minimum, maximum):
+        return max(min(value,maximum),minimum)

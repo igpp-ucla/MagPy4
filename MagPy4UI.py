@@ -71,16 +71,16 @@ class MagPy4UI(object):
         #self.toolBar.addAction(self.actionOpenFF)
         #self.toolBar.addAction(self.actionOpenCDF)
 
-        view = self.buildPopup('View', [self.actionShowData])
-        self.toolBar.addWidget(view)
+        #view = self.buildPopup('View', [self.actionShowData])
+        #self.toolBar.addWidget(view)
 
-        #self.toolBar.addAction(self.actionShowData)
+        self.toolBar.addAction(self.actionShowData)
         self.toolBar.addAction(self.actionPlot)
 
-        tools = self.buildPopup('Tools', [self.actionSpectra, self.actionEdit])
-        self.toolBar.addWidget(tools)
-        #self.toolBar.addAction(self.actionSpectra)
-        #self.toolBar.addAction(self.actionEdit)
+        #tools = self.buildPopup('Tools', [self.actionSpectra, self.actionEdit])
+        #self.toolBar.addWidget(tools)
+        self.toolBar.addAction(self.actionSpectra)
+        self.toolBar.addAction(self.actionEdit)
 
         options = self.buildPopup('Options', [self.scaleYToCurrentTimeAction, self.antialiasAction, self.bridgeDataGaps, self.drawPoints])
         self.toolBar.addWidget(options) 
@@ -183,3 +183,11 @@ class TimeEdit():
         dt = dte.dateTime()
         dte.setDateTime(min if dt < min else max if dt > max else dt)
     
+
+# pyqt utils
+class PyQtUtils:
+    def clearLayout(layout):
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget() is not None:
+                child.widget().deleteLater()
