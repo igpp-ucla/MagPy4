@@ -18,11 +18,12 @@ from MagPy4UI import PyQtUtils
 class Edit(QtWidgets.QFrame, EditUI):
 
     def moveToFront(window):
-        # this will remove minimized status 
-        # and restore window with keeping maximized/normal state
-        window.setWindowState(window.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
-        # this will activate the window
-        window.activateWindow()
+        if window:
+            # this will remove minimized status 
+            # and restore window with keeping maximized/normal state
+            window.setWindowState(window.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
+            # this will activate the window
+            window.activateWindow()
 
 
     def __init__(self, window, parent=None):
@@ -374,7 +375,7 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         self.ui = MinVarUI()
         self.ui.setupUI(self, window)
 
-        self.window.startGeneralSelect('MINVAR', self.ui.timeEdit)
+        self.window.startGeneralSelect('MINVAR', '#0000FF', self.ui.timeEdit)
 
         self.ui.applyButton.clicked.connect(self.calcMinVar)
 

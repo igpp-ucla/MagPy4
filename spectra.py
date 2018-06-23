@@ -30,8 +30,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
     # todo only send close event if ur current spectra
     def closeEvent(self, event):
-        self.window.spectraSelectStep = 0
-        self.window.setLinesVisible(False, 'spectra')
+        self.window.generalSelectStep = 0
+        self.window.setLinesVisible(False, 'general')
 
     def setAspect(self):
         for pi in self.plotItems:
@@ -41,8 +41,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     # with combining linked y range between plots of each row, log scale, and
     # fixed aspect ratio settings
     def updateSpectra(self):
-        plotInfos = self.window.getSpectraPlotInfo()
-        indices = self.window.getSpectraRangeIndices()
+        plotInfos = self.window.getSelectedPlotInfo()
+        indices = self.window.getSelectedRangeIndices()
         self.N = indices[1] - indices[0]
         #print(self.N)
         freq = self.calculateFreqList()

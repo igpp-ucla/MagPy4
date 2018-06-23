@@ -36,6 +36,9 @@ class LinkedInfLineLabel(pg.InfLineLabel):
         self.setPos(pt)
         self.setAnchor((0.5,0.0)) # in middle of line
 
+    def valueChanged(self): # default behaviour will override mylabel changes
+        pass
+
 #todo show minor ticks on left side
 #hide minor tick labels always
 class LogAxis(pg.AxisItem):
