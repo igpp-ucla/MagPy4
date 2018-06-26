@@ -55,7 +55,7 @@ class SpectraUI(object):
         self.bandWidthSpinBox.setProperty("value", 3)
 
         self.separateTracesCheckBox = QtGui.QCheckBox()
-        self.separateTracesCheckBox.setChecked(True)
+        #self.separateTracesCheckBox.setChecked(True)
         separateTraces = QtGui.QLabel("Separate Traces")
 
         self.aspectLockedCheckBox = QtGui.QCheckBox()

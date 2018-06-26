@@ -14,7 +14,7 @@ class TraceStatsUI(object):
 
         cbLayout = QtWidgets.QHBoxLayout()
         self.onTopCheckBox = QtWidgets.QCheckBox()
-        cbLabel = QtWidgets.QLabel('Always on top')
+        cbLabel = QtWidgets.QLabel('Stay on top')
         cbLayout.addWidget(self.onTopCheckBox)
         cbLayout.addWidget(cbLabel)
         cbLayout.addStretch()
@@ -36,22 +36,21 @@ class TraceStatsUI(object):
 
 
 class TraceStats(QtWidgets.QFrame, TraceStatsUI):
-    def __init__(self, window, region, plotIndex, parent=None):
+    def __init__(self, window, plotIndex, parent=None):
         super(TraceStats, self).__init__(parent)
 
         self.window = window
-        self.region = region
         self.plotIndex = plotIndex
         self.ui = TraceStatsUI()
         self.ui.setupUI(self, window)
         self.ui.onTopCheckBox.clicked.connect(self.toggleWindowHint)
 
         self.penColors = [p.color().name() for p in self.window.plotTracePens[self.plotIndex]]
-        self.funcStrs = ['','min', 'max', 'mean', 'median','std dev']
+        self.funcStrs = ['','start','min', 'max', 'mean', 'median','std dev']
         self.funcs = [np.min, np.max, np.mean, np.median, np.std]
 
     def closeEvent(self, event):
-        self.window.hideTraceStatRegions()
+        self.window.endGeneralSelect()
 
     def toggleWindowHint(self, val):
         flags = self.windowFlags()
@@ -60,13 +59,15 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         self.setWindowFlags(flags)
         self.show()
 
-    def onRegionChange(self):
+    def onChange(self):
         # clear layout
         PyQtUtils.clearLayout(self.ui.gridLayout)
 
-        reg = self.region.getRegion()
-        i0 = self.window.calcTickIndexByTime(reg[0])
-        i1 = self.window.calcTickIndexByTime(reg[1])
+        i0,i1 = self.window.getTicksFromLines()
+        print(f'{i0} {i1}')
+
+        #if self.window.generalSelectStep == 1:
+        #    return
 
         dstrs = self.window.lastPlotStrings[self.plotIndex]
        
@@ -75,11 +76,13 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         for i,dstr in enumerate(dstrs):
             pruned = self.window.getPrunedData(dstr,i0,i1)
             row = [dstr]
-            for func in self.funcs:
-                if len(pruned) > 0:
-                    row.append(f'{func(pruned):.{prec}f}')
-                else:
-                    row.append('---')
+            row.append(f'{self.window.getData(dstr)[i0]:.{prec}f}')
+            if self.window.generalSelectStep > 1:
+                for func in self.funcs:
+                    if len(pruned) > 0:
+                        row.append(f'{func(pruned):.{prec}f}')
+                    else:
+                        row.append('---')
             grid.append([row, self.penColors[i]])
 
         for r,gridRow in enumerate(grid):

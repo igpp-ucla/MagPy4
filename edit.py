@@ -404,7 +404,7 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         # so you could select a length of data and it returns an array of only the valid values
         # otherwise minvar calcs prob get messed up when smoothed data probably affects the average
 
-        iO,iE = self.window.getTimeSelectTicks(self.window.generalTimeEdit)
+        iO,iE = self.window.getTicksFromLines()
 
         xyz = []
         avg = []

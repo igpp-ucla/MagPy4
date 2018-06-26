@@ -130,6 +130,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def initVariables(self):
         self.lastPlotStrings = None
         self.lastPlotLinks = None
+        # 0: not selecting, 1 : no lines, 2 : one line, 3+ : two lines
         self.generalSelectStep = 0
         self.generalSelectCanHide = False
         self.editHistory = []
@@ -169,11 +170,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
         self.dataDisplay.show()
 
-    def openTraceStats(self, region, plotIndex):
-        self.traceStats = TraceStats(self, region, plotIndex)
+    def openTraceStats(self, plotIndex):
+        self.traceStats = TraceStats(self, plotIndex)
         self.traceStats.show()
-        region.sigRegionChanged.connect(self.traceStats.onRegionChange)
-        self.traceStats.onRegionChange()
 
     def runSpectra(self):
         spectra = Spectra(self)
@@ -191,6 +190,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # this smooths over data gaps, required for spectra analysis?
     # errors before first and after last or just extended from those points
     # errors between are lerped between nearest points
+    # todo: try modifying using np.interp (prob faster)
     def interpolateErrors(self,dataOrig):
         data = np.copy(dataOrig)
         segs = self.getSegments(data)
@@ -329,9 +329,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.itO = self.tO
         self.itE = self.tE  
 
-        print(f'resolution: {self.resolution}')
+        #print(f'resolution: {self.resolution}')
         print(f'tO: {self.tO}')
         print(f'tE: {self.tE}')
+        print(f'time resolution : {1.0 / self.resolution} Hz')
 
         # generate resolution data column (to visualize when it isn't constant)
         dstr = 'resolution'
@@ -341,7 +342,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ORIGDATADICT[dstr] = resData
         self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(resData),dstr,''] }
         self.UNITDICT[dstr] = 'sec'
-
+        resolutions = np.unique(resData)
+        print(f'resolutions: {", ".join(map(str,resolutions))}')
         tick = 1.0 / self.resolution * 2.0
         self.ui.setupSliders(tick, numRecords - 1, self.getMinAndMaxDateTime())
 
@@ -595,7 +597,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.plotItems.append(pi) #save it for ref elsewhere
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
             #vb.setAutoVisible(y=True)
-            #pi.setDownsampling(auto=True)
+            pi.setDownsampling(ds=100., auto=True, mode='peak')
+            # auto will redo the downsampling every time view is changed (so ds variable doesnt matter)
+            # todo: override onViewChanged from plotdataitem and only redo the downsampling every so often
+            # remember the last ds and calculate new one and only change every so often basically
+            # maybe calculate multiple different downsamplings upon creation and choose closest like, ds 2,4,8,16,32,64,128
 
             # add some lines used to show where time series sliders will zoom
             trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=self.trackerPen)
@@ -857,15 +863,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.generalTimeEdit = None
         self.setLinesVisible(False, 'general')
 
-    def getTimeSelectTicks(self, timeEdit):
-        i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick)
-        i1 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.end.dateTime()), Epoch=self.epoch)._tick)
-        return (i0,i1) if i0 < i1 else (i1,i0)
-
     def updateLinesByTimeEdit(self, timeEdit, lineStr):
         x0 = self.plotItems[0].getViewBox().lines[lineStr][0].getXPos()
         x1 = self.plotItems[0].getViewBox().lines[lineStr][1].getXPos()
-        i0,i1 = self.getTimeSelectTicks(timeEdit)
+        i0,i1 = self.getTicksFromTimeEdit(timeEdit)
         t0 = self.times[i0]
         t1 = self.times[i1]
 
@@ -891,6 +892,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def updateLinesPos(self, lineStr, index, x):
         for pi in self.plotItems:
             pi.getViewBox().lines[lineStr][index].setPos(x)
+        # add callback here about line changed
+        if self.traceStats:
+            self.traceStats.onChange()
 
     def resetLinesPos(self, lineStr):
         self.updateLinesPos(lineStr, 0, self.times[0])
@@ -905,21 +909,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     for line in vb.lines[lineStr]:
                         line.setVisible(isVisible)
                 else:
-                    vb.lines[lineStr][index].setVisible(isVisible)
-
-    def hideTraceStatRegions(self, exc=None):
-        for pi in self.plotItems:
-            vb = pi.getViewBox()
-            if exc is not vb:
-                vb.region.setVisible(False)        
+                    vb.lines[lineStr][index].setVisible(isVisible)      
 
     # gets indices into time array for selected spectra range
     # makes sure first is less than second
-    def getSelectedRangeIndices(self):
+    def getTicksFromLines(self):
         sl = self.plotItems[0].getViewBox().lines['general']
-        r0 = self.calcTickIndexByTime(sl[0].getXPos())
-        r1 = self.calcTickIndexByTime(sl[1].getXPos())
-        return [min(r0,r1),max(r0,r1)]
+        i0 = self.calcTickIndexByTime(sl[0].getXPos())
+        i1 = self.calcTickIndexByTime(sl[1].getXPos())
+        return (i0,i1) if i0 < i1 else (i1,i0)
+
+    def getTicksFromTimeEdit(self, timeEdit):
+        i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick)
+        i1 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.end.dateTime()), Epoch=self.epoch)._tick)
+        return (i0,i1) if i0 < i1 else (i1,i0)
 
     # based on which plots have active spectra lines, return list for each plot of the datastr and pen for each trace
     def getSelectedPlotInfo(self):
@@ -961,11 +964,6 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         self.window = window
         self.plotIndex = plotIndex
 
-        self.region = pg.LinearRegionItem(orientation = pg.LinearRegionItem.Vertical)
-        self.addItem(self.region, ignoreBounds=True)
-        self.region.setBounds((self.window.itO, self.window.itE))
-        self.region.setVisible(False)
-
         generalLines = []
         for i in range(2):
             generalLines.append(LinkedInfiniteLine(functools.partial(window.updateGeneralLines, i), movable=True, angle=90, pos=0, mylabel='GENERAL', labelColor='#000000'))
@@ -983,6 +981,10 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         y = mc.y()
         #print(f'{x} {y}')
 
+        if self.window.generalSelectStep == 0:
+            self.window.openTraceStats(self.plotIndex)
+            self.window.startGeneralSelect('STATS', '#009900', self.window.traceStats.ui.timeEdit, True)
+
         if self.window.generalSelectStep >= 3 and not self.window.getSelectedPlotInfo():
             self.window.generalSelectStep = 1
 
@@ -998,18 +1000,19 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
             self.window.updateLineTextPos()
             
-        else: # normal click
-            if self.window.generalSelectStep >= 3 and not self.anyLinesVisible():
-                self.SetLinesVisible(True)
+        # reselect this plot if it was deselected
+        elif self.window.generalSelectStep >= 3 and not self.anyLinesVisible():
+            self.SetLinesVisible(True)
 
-            elif not self.region.isVisible():
-                self.window.hideTraceStatRegions(self)
-                self.region.setVisible(True)
-                vr = self.viewRange()
-                rng = (vr[0][1] - vr[0][0]) * 0.01
-                self.region.setRegion([x - rng, x + rng])
+            #elif not self.region.isVisible():
+            #    self.window.hideTraceStatRegions(self)
+            #    self.region.setVisible(True)
+            #    vr = self.viewRange()
+            #    rng = (vr[0][1] - vr[0][0]) * 0.01
+            #    self.region.setRegion([x - rng, x + rng])
 
-                self.window.openTraceStats(self.region, self.plotIndex)
+            #    self.window.openTraceStats(self.region, self.plotIndex)
+
 
     def anyLinesVisible(self):
         lines = self.lines['general']
@@ -1021,13 +1024,13 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         self.window.updateLineTextPos()
 
     def onRightClick(self, ev):
-        wasVisible = self.region.isVisible()
-        self.window.closeTraceStats()
-        self.region.setVisible(False)
         if self.window.generalSelectStep > 2 and self.window.generalSelectCanHide: # cancel selection on this plot (if able to)
             self.SetLinesVisible(False)
-        elif not wasVisible:
+        else:
             pg.ViewBox.mouseClickEvent(self,ev) # default right click
+
+        if not self.window.getSelectedPlotInfo(): # no plots then close
+            self.window.closeTraceStats()
 
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:

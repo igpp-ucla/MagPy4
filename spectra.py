@@ -42,7 +42,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     # fixed aspect ratio settings
     def updateSpectra(self):
         plotInfos = self.window.getSelectedPlotInfo()
-        indices = self.window.getSelectedRangeIndices()
+        indices = self.window.getTicksFromLines()
         self.N = indices[1] - indices[0]
         #print(self.N)
         freq = self.calculateFreqList()
