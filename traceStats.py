@@ -45,8 +45,8 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         self.ui.setupUI(self, window)
         self.ui.onTopCheckBox.clicked.connect(self.toggleWindowHint)
 
-        self.penColors = [p.color().name() for p in self.window.plotTracePens[self.plotIndex]]
-        self.funcStrs = ['','start','min', 'max', 'mean', 'median','std dev']
+        #self.penColors = [p.color().name() for p in self.window.plotTracePens[self.plotIndex]]
+        self.funcStrs = ['','min', 'max', 'mean', 'median','std dev']
         self.funcs = [np.min, np.max, np.mean, np.median, np.std]
 
     def closeEvent(self, event):
@@ -64,26 +64,26 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         PyQtUtils.clearLayout(self.ui.gridLayout)
 
         i0,i1 = self.window.getTicksFromLines()
-        print(f'{i0} {i1}')
+        #print(f'{i0} {i1} {self.window.generalSelectStep}')
 
-        #if self.window.generalSelectStep == 1:
-        #    return
-
-        dstrs = self.window.lastPlotStrings[self.plotIndex]
+        plotInfo = self.window.getSelectedPlotInfo()
        
-        grid = [[self.funcStrs, '#000000']]
+        grid = [[['','value'] if self.window.generalSelectStep <= 2 else self.funcStrs, '#000000']]
         prec = 6
-        for i,dstr in enumerate(dstrs):
-            pruned = self.window.getPrunedData(dstr,i0,i1)
-            row = [dstr]
-            row.append(f'{self.window.getData(dstr)[i0]:.{prec}f}')
-            if self.window.generalSelectStep > 1:
-                for func in self.funcs:
-                    if len(pruned) > 0:
-                        row.append(f'{func(pruned):.{prec}f}')
-                    else:
-                        row.append('---')
-            grid.append([row, self.penColors[i]])
+
+        for dstrs,pens in plotInfo:
+            for i,dstr in enumerate(dstrs):
+                row = [self.window.getLabel(dstr)]
+                if self.window.generalSelectStep <= 2:
+                    row.append(f'{self.window.getData(dstr)[i0]:.{prec}f}')
+                else:
+                    pruned = self.window.getPrunedData(dstr,i0,i1)
+                    for func in self.funcs:
+                        if len(pruned) > 0:
+                            row.append(f'{func(pruned):.{prec}f}')
+                        else:
+                            row.append('---')
+                grid.append([row, pens[i].color().name()])
 
         for r,gridRow in enumerate(grid):
             color = gridRow[1]
@@ -93,6 +93,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
                 lab = QtWidgets.QLabel()
                 lab.setText(s)
                 lab.setStyleSheet(f'color:{color}')
+                lab.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
                 lab.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
                 self.ui.gridLayout.addWidget(lab, r, c, 1, 1)
 

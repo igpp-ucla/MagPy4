@@ -543,6 +543,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getData(self, dstr):
         return self.getDataAndLabel(dstr)[0]
 
+    # returns the current dstr label (based on edit transformations)
     def getLabel(self, dstr):
         return self.getDataAndLabel(dstr)[1]
 
@@ -928,7 +929,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getSelectedPlotInfo(self):
         plotInfo = []
         for i,pi in enumerate(self.plotItems):
-            if pi.getViewBox().lines['general'][1].isVisible():
+            if pi.getViewBox().lines['general'][0].isVisible():
                 plotInfo.append((self.lastPlotStrings[i], self.plotTracePens[i]))
         return plotInfo
 
@@ -990,13 +991,14 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
         if self.window.generalSelectStep > 0 and self.window.generalSelectStep < 3:
             if self.window.generalSelectStep == 1:
-                self.window.updateGeneralLines(0,x)
+                self.window.generalSelectStep += 1
                 self.window.setLinesVisible(True, 'general', 0)
+                self.window.updateGeneralLines(0,x)
             elif self.window.generalSelectStep == 2:
-                self.window.updateGeneralLines(1,x)
+                self.window.generalSelectStep += 1
                 self.window.setLinesVisible(True, 'general', 1)
+                self.window.updateGeneralLines(1,x)
                 #Edit.moveToFront(self.window.edit.minVar)
-            self.window.generalSelectStep += 1
 
             self.window.updateLineTextPos()
             
