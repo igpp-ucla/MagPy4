@@ -408,8 +408,11 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
 
         xyz = []
         avg = []
+        vstrs = []
         for v in self.ui.vector:
-            data = self.window.getData(v.currentText())[iO:iE]
+            vstr = v.currentText()
+            vstrs.append(vstr)
+            data = self.window.getData(vstr)[iO:iE]
             xyz.append(data)
             avg.append(self.average(data))
 
@@ -453,7 +456,8 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         prec = 6
         eigenText = f'EigenVals: {ev[0]:.{prec}f}, {ev[1]:.{prec}f}, {ev[2]:.{prec}f}'
         self.ui.eigenValsLabel.setText(eigenText)
-        self.edit.apply(eigen, eigenText, 'minvar')
+        ts = self.ui.timeEdit.toString()
+        labelText = f'{", ".join(vstrs)}\n{eigenText}\n{ts[0]}->{ts[1]}'
+        self.edit.apply(eigen, labelText, 'minvar')
         Edit.moveToFront(self.edit)
-        #print('min var calculation completed')
-        #print(ev)
+

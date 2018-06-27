@@ -846,6 +846,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 #self.plotItems[i].getViewBox()._updatingRange = False
                 #print(f'{values[i][0] - l2},{values[i][1] + l2}')
 
+    def updateTraceStats(self):
+        if self.traceStats:
+            self.traceStats.onChange()
+
     # color is hex string ie: '#ff0000'
     def startGeneralSelect(self, name, color, timeEdit, canHide = False):
         self.updateLinesAppearance(name, color)
@@ -893,24 +897,26 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def updateLinesPos(self, lineStr, index, x):
         for pi in self.plotItems:
             pi.getViewBox().lines[lineStr][index].setPos(x)
-        # add callback here about line changed
-        if self.traceStats:
-            self.traceStats.onChange()
+        self.updateTraceStats()
 
     def resetLinesPos(self, lineStr):
         self.updateLinesPos(lineStr, 0, self.times[0])
         self.updateLinesPos(lineStr, 1, self.times[self.iiE])
 
-    def setLinesVisible(self, isVisible, lineStr, index=None, exc=None):
+    def setLinesVisible(self, isVisible, lineStr, index=None):
         #print(f'{isVisible} {lineStr} {index} {exc}')
         for pi in self.plotItems:
             vb = pi.getViewBox()
-            if exc is not vb:
-                if index is None:
-                    for line in vb.lines[lineStr]:
-                        line.setVisible(isVisible)
-                else:
-                    vb.lines[lineStr][index].setVisible(isVisible)      
+            if index is None:
+                for line in vb.lines[lineStr]:
+                    line.setVisible(isVisible)
+            else:
+                vb.lines[lineStr][index].setVisible(isVisible)      
+
+    def matchLinesVisible(self, lineStr):
+        for pi in self.plotItems:
+            vb = pi.getViewBox()
+            vb.lines[lineStr][1].setVisible(vb.lines[lineStr][0].isVisible())
 
     # gets indices into time array for selected spectra range
     # makes sure first is less than second
@@ -996,48 +1002,44 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 self.window.updateGeneralLines(0,x)
             elif self.window.generalSelectStep == 2:
                 self.window.generalSelectStep += 1
-                self.window.setLinesVisible(True, 'general', 1)
+                self.window.matchLinesVisible('general')
                 self.window.updateGeneralLines(1,x)
-                #Edit.moveToFront(self.window.edit.minVar)
+                if self.window.edit:
+                    Edit.moveToFront(self.window.edit.minVar)
 
             self.window.updateLineTextPos()
             
         # reselect this plot if it was deselected
         elif self.window.generalSelectStep >= 3 and not self.anyLinesVisible():
-            self.SetLinesVisible(True)
+            self.SetMyLinesVisible(True)
 
-            #elif not self.region.isVisible():
-            #    self.window.hideTraceStatRegions(self)
-            #    self.region.setVisible(True)
-            #    vr = self.viewRange()
-            #    rng = (vr[0][1] - vr[0][0]) * 0.01
-            #    self.region.setRegion([x - rng, x + rng])
-
-            #    self.window.openTraceStats(self.region, self.plotIndex)
+        self.window.updateTraceStats()
 
 
     def anyLinesVisible(self):
         lines = self.lines['general']
         return lines[0].isVisible() or lines[1].isVisible()
 
-    def SetLinesVisible(self, isVisible):
+    def SetMyLinesVisible(self, isVisible):
         for line in self.lines['general']:
             line.setVisible(isVisible)
         self.window.updateLineTextPos()
 
     def onRightClick(self, ev):
-        if self.window.generalSelectStep > 2 and self.window.generalSelectCanHide: # cancel selection on this plot (if able to)
-            self.SetLinesVisible(False)
+        if self.window.generalSelectStep > 1 and self.window.generalSelectCanHide: # cancel selection on this plot (if able to)
+            self.SetMyLinesVisible(False)
         else:
             pg.ViewBox.mouseClickEvent(self,ev) # default right click
 
         if not self.window.getSelectedPlotInfo(): # no plots then close
             self.window.closeTraceStats()
+        else:
+            self.window.updateTraceStats()
 
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
-            if ev.double(): # double clicking will hide the lines
-                self.SetLinesVisible(False)
+            if ev.double(): # double clicking will do same as right click
+                self.onRightClick(ev)
             else:
                self.onLeftClick(ev)
 

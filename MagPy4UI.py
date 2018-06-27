@@ -182,7 +182,13 @@ class TimeEdit():
         max = self.maxDateTime
         dt = dte.dateTime()
         dte.setDateTime(min if dt < min else max if dt > max else dt)
-    
+
+    def toString(self):
+        #form = "yyyy MM dd hh mm ss zzz"
+        form = "yyyy MMM dd hh:mm:ss.zzz"
+        d0 = self.start.dateTime().toString(form)
+        d1 = self.end.dateTime().toString(form)
+        return d0,d1    
 
 # pyqt utils
 class PyQtUtils:
