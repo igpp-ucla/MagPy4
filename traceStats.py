@@ -14,24 +14,28 @@ class TraceStatsUI(object):
 
         cbLayout = QtWidgets.QHBoxLayout()
         self.onTopCheckBox = QtWidgets.QCheckBox()
+        self.onTopCheckBox.setChecked(window.traceStatsOnTop)
         cbLabel = QtWidgets.QLabel('Stay on top')
         cbLayout.addWidget(self.onTopCheckBox)
         cbLayout.addWidget(cbLabel)
         cbLayout.addStretch()
         self.layout.addLayout(cbLayout)
 
-        self.gridLayout = QtWidgets.QGridLayout()
-        self.layout.addLayout(self.gridLayout)
+        self.table = QtWidgets.QTableWidget()
+        self.table.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
+        self.table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
-        timeFrame = QtWidgets.QGroupBox()
-        timeLayout = QtWidgets.QVBoxLayout(timeFrame)
+        self.layout.addWidget(self.table)
 
         # setup datetime edits
+        timeFrame = QtWidgets.QGroupBox()
+        timeLayout = QtWidgets.QVBoxLayout(timeFrame)
         self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14))
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
-
         timeLayout.addWidget(self.timeEdit.start)
         timeLayout.addWidget(self.timeEdit.end)
+
         self.layout.addWidget(timeFrame)
 
 
@@ -43,14 +47,18 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         self.plotIndex = plotIndex
         self.ui = TraceStatsUI()
         self.ui.setupUI(self, window)
+        if self.ui.onTopCheckBox.isChecked():
+            self.toggleWindowHint(True)
         self.ui.onTopCheckBox.clicked.connect(self.toggleWindowHint)
 
-        #self.penColors = [p.color().name() for p in self.window.plotTracePens[self.plotIndex]]
-        self.funcStrs = ['','min', 'max', 'mean', 'median','std dev']
+        self.funcStrs = ['min', 'max', 'mean', 'median','std dev']
         self.funcs = [np.min, np.max, np.mean, np.median, np.std]
+
+        self.clip = QtGui.QApplication.clipboard()
 
     def closeEvent(self, event):
         self.window.endGeneralSelect()
+        self.window.traceStatsOnTop = self.ui.onTopCheckBox.isChecked()
 
     def toggleWindowHint(self, val):
         flags = self.windowFlags()
@@ -59,21 +67,21 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         self.setWindowFlags(flags)
         self.show()
 
-    def onChange(self):
-        # clear layout
-        PyQtUtils.clearLayout(self.ui.gridLayout)
-
+    def update(self):
         i0,i1 = self.window.getTicksFromLines()
-        #print(f'{i0} {i1} {self.window.generalSelectStep}')
 
         plotInfo = self.window.getSelectedPlotInfo()
        
-        grid = [[['','value'] if self.window.generalSelectStep <= 2 else self.funcStrs, '#000000']]
-        prec = 6
+        colStrs = ['value'] if self.window.generalSelectStep <= 2 else self.funcStrs
+        rowStrs = []
 
+        grid = []
+        prec = 6
         for dstrs,pens in plotInfo:
+            group = []
             for i,dstr in enumerate(dstrs):
-                row = [self.window.getLabel(dstr)]
+                rowStrs.append([self.window.getLabel(dstr), pens[i].color().name()])
+                row = []
                 if self.window.generalSelectStep <= 2:
                     row.append(f'{self.window.getData(dstr)[i0]:.{prec}f}')
                 else:
@@ -83,19 +91,63 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
                             row.append(f'{func(pruned):.{prec}f}')
                         else:
                             row.append('---')
-                grid.append([row, pens[i].color().name()])
+                group.append(row)
+            grid.append(group)
 
-        for r,gridRow in enumerate(grid):
-            color = gridRow[1]
-            for c,s in enumerate(gridRow[0]):
-                if not s:
-                    continue
-                lab = QtWidgets.QLabel()
-                lab.setText(s)
-                lab.setStyleSheet(f'color:{color}')
-                lab.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-                lab.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
-                self.ui.gridLayout.addWidget(lab, r, c, 1, 1)
+        self.ui.table.clearContents()
+        self.ui.table.setRowCount(len(rowStrs))
+        self.ui.table.setColumnCount(len(colStrs))
+        for i,colStr in enumerate(colStrs):
+            self.ui.table.setHorizontalHeaderItem(i,QtWidgets.QTableWidgetItem(colStr))
+        rowIndex = -1
+        altBackground = QtGui.QColor(230,230,230)
+        for g,gridGroup in enumerate(grid):
+            for gridRow in gridGroup:
+                rowIndex += 1
+                rowData = rowStrs[rowIndex]
+                rowHeader = QtWidgets.QTableWidgetItem(rowData[0])
+                rowHeader.setForeground(QtGui.QColor(rowData[1]))
+                if g %2 == 1:
+                    rowHeader.setBackground(altBackground)
+                self.ui.table.setVerticalHeaderItem(rowIndex,rowHeader)
 
-        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self.ui.gridLayout.addItem(spacer, 100, 100, 1, 1)
+                for c,s in enumerate(gridRow):
+                    item = QtWidgets.QTableWidgetItem(s)
+                    if g % 2 == 1:
+                        item.setBackground(altBackground)
+                    self.ui.table.setItem(rowIndex,c,item)
+
+        self.ui.table.resizeColumnsToContents()
+        self.ui.table.resizeRowsToContents()
+
+        size = self.ui.layout.sizeHint()
+        self.resize(size)
+
+        # trying to do something with auto scrollbar if window tall enough but not working exactly
+        #maxHeight = 300
+        #if size.height() > maxHeight:
+        #    self.ui.table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        #    size = self.ui.layout.sizeHint()
+        #    size = QtCore.QSize(size.width(),maxHeight)
+        #else:
+        #    self.ui.table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+
+    # todo: work on formatting here, oftentimes one tab is too short when strings are long
+    # could just calculate purely with spaces
+    def keyPressEvent(self, e):
+        if (e.modifiers() & QtCore.Qt.ControlModifier):
+            selected = self.ui.table.selectedRanges()
+
+            if e.key() == QtCore.Qt.Key_C: #copy
+                s = '\t'+"\t".join([str(self.ui.table.horizontalHeaderItem(i).text()) for i in range(selected[0].leftColumn(), selected[0].rightColumn()+1)])
+                s = s + '\n'
+
+                for r in range(selected[0].topRow(), selected[0].bottomRow()+1):
+                    s += self.ui.table.verticalHeaderItem(r).text() + '\t'
+                    for c in range(selected[0].leftColumn(), selected[0].rightColumn()+1):
+                        try:
+                            s += str(self.ui.table.item(r,c).text()) + "\t"
+                        except AttributeError:
+                            s += "\t"
+                    s = s[:-1] + "\n" #eliminate last '\t'
+                self.clip.setText(s)

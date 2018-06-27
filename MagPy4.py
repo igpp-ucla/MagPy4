@@ -79,8 +79,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.spectras = []
         self.traceStats = None
 
+        # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False
+        self.traceStatsOnTop = False
 
+        # this is where options for plot lifetime are saved
         self.initVariables()
 
         self.magpyIcon = QtGui.QIcon()
@@ -134,6 +137,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.generalSelectStep = 0
         self.generalSelectCanHide = False
         self.editHistory = []
+        
 
     def closePlotMenu(self):
         if self.plotMenu:
@@ -848,7 +852,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def updateTraceStats(self):
         if self.traceStats:
-            self.traceStats.onChange()
+            self.traceStats.update()
 
     # color is hex string ie: '#ff0000'
     def startGeneralSelect(self, name, color, timeEdit, canHide = False):
