@@ -334,6 +334,7 @@ class ManRot(QtWidgets.QFrame, ManRotUI):
     def apply(self):
         # figure out if custom on axisrot
         self.edit.apply(Mth.getMatrix(self.ui.R), '', self.lastOpName)
+        self.edit.closeManRot()
         Edit.moveToFront(self.edit)
 
     def axisRotGen(self, axis):
@@ -459,5 +460,6 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         ts = self.ui.timeEdit.toString()
         labelText = f'{", ".join(vstrs)}\n{eigenText}\n{ts[0]}->{ts[1]}'
         self.edit.apply(eigen, labelText, 'minvar')
+        #self.edit.closeMinVar()
         Edit.moveToFront(self.edit)
 

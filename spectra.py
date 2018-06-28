@@ -27,11 +27,12 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
         self.plotItems = []
         #self.updateSpectra()
+        self.window.setLinesVisible(False, 'general')
 
     # todo only send close event if ur current spectra
     def closeEvent(self, event):
         self.window.generalSelectStep = 0
-        self.window.setLinesVisible(False, 'general')
+        self.window.setLinesVisible(False, 'general')  # prob bad if open second spectra and start selecting but then close first one
 
     def setAspect(self):
         for pi in self.plotItems:

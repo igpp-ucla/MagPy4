@@ -1,10 +1,9 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from FF_Time import FFTIME, FF_EPOCH
-import datetime
 import numpy as np
-import os
-import time
+import datetime, time
+import os, csv, io
 from tqdm import tqdm
 
 try:
@@ -181,6 +180,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.data = data
         self.setActions()
         self.update()
+        self.clip = QtGui.QApplication.clipboard()
 
     def update(self):
         parm = self.FID.FFParm
@@ -278,3 +278,24 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 #       printButton = QPushButton("Print Data")
 #       printPanelButton.clicked.connect(self.printPanel)
 #       buttonBox.addButton(printButton, QDialogButtonBox.ApplyRole)
+
+
+    def keyPressEvent(self, e):
+        if (e.modifiers() & QtCore.Qt.ControlModifier):
+            if e.key() == QtCore.Qt.Key_C: #copy
+                selection = self.ui.dataTableView.selectedIndexes()
+                if selection:
+                    rows = sorted(index.row() for index in selection)
+                    columns = sorted(index.column() for index in selection)
+                    rowcount = rows[-1] - rows[0] + 1
+                    colcount = columns[-1] - columns[0] + 1
+                    table = [[''] * colcount for _ in range(rowcount)]
+                    for index in selection:
+                        row = index.row() - rows[0]
+                        column = index.column() - columns[0]
+                        table[row][column] = index.data()
+                    stream = io.StringIO()
+                    csv.writer(stream).writerows(table)
+                    self.clip.setText(stream.getvalue())
+
+

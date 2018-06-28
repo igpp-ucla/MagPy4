@@ -23,7 +23,7 @@ from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
 from traceStats import TraceStats
-from pyqtgraphExtensions import DateAxis, PlotPointsItem, LinkedInfiniteLine, BLabelItem
+from pyqtgraphExtensions import DateAxis, PlotPointsItem, PlotDataItemBDS, LinkedInfiniteLine, BLabelItem
 from mth import Mth
 import bisect
 
@@ -165,6 +165,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotMenu.show()
 
     def openEdit(self):
+        self.closeTraceStats()
         self.closeEdit()
         self.edit = Edit(self)
         self.edit.show()
@@ -175,10 +176,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay.show()
 
     def openTraceStats(self, plotIndex):
+        self.closeTraceStats()
         self.traceStats = TraceStats(self, plotIndex)
         self.traceStats.show()
 
     def runSpectra(self):
+        self.closeTraceStats()
         spectra = Spectra(self)
         spectra.show()
         self.spectras.append(spectra) # so reference is held until closed
@@ -599,10 +602,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             axis.window = self
             vb = MagPyViewBox(self, plotIndex)
             pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis})
+            #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             self.plotItems.append(pi) #save it for ref elsewhere
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
             #vb.setAutoVisible(y=True)
-            pi.setDownsampling(ds=100., auto=True, mode='peak')
+            startDS = 10 if len(self.times) > 10000 else 1 # on start doesnt refresh the downsampling so gotta manual it
+            pi.setDownsampling(ds=startDS, auto=True, mode='peak')
             # auto will redo the downsampling every time view is changed (so ds variable doesnt matter)
             # todo: override onViewChanged from plotdataitem and only redo the downsampling every so often
             # remember the last ds and calculate new one and only change every so often basically
@@ -794,12 +799,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 if self.ui.drawPoints.isChecked():
                     pi.addItem(PlotPointsItem(self.times[a:b], Y[a:b], pen=pen))
                 else:
-                    pi.plot(self.times[a:b], Y[a:b], pen=pen)
+                    #pi.plot(self.times[a:b], Y[a:b], pen=pen)
+                    pi.addItem(PlotDataItemBDS(self.times[a:b], Y[a:b], pen=pen))
         else:
             if self.ui.drawPoints.isChecked():
                 pi.addItem(PlotPointsItem(self.times, Y, pen=pen))
             else:
-                pi.plot(self.times, Y, pen = pen)
+                #pi.plot(self.times, Y, pen = pen)
+                pi.addItem(PlotDataItemBDS(self.times, Y, pen = pen))
 
     # pyqtgraph has y axis linking but not wat is needed
     # this function scales them to have equal sized ranges but not the same actual range

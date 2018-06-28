@@ -180,15 +180,123 @@ class LinearGraphicsLayout(pg.GraphicsWidget):
     def setSpacing(self, *args):
         self.layout.setSpacing(*args)
     
+# same as pdi but with better down sampling (bds) #abbreviations my boy lol
+class PlotDataItemBDS(pg.PlotDataItem):
+    def __init__(self, *args, **kwargs):
+        pg.PlotDataItem.__init__(self, *args, **kwargs)
+
+        self.downSamples = {}
+
+    # returns the next lowest power of 2
+    def getLowerPOT(self, value):
+        p = 2
+        while p <= value:
+            p *= 2
+        return int(p / 2)
+
+    def viewRangeChanged(self):
+        # view range has changed; re-plot if needed
+        if self.opts['clipToView'] or self.opts['autoDownsample']:
+            self.xDisp = self.yDisp = None
+            self.updateItems()
+            #print(f'ds {self.calcIdealDS()}')
+
+    # pretty much same as source but with cached downsampling tiers
+    # at beginning calculate ideal DS for whole data, say its like 20
+    # then calculate and store downsampled data at 2, 4, 8, 16
+    # then when getData just return cached data at next lowest from ideal    
+    # todo investigate if this actually helps lol, drawing at a less accurately sampled might be slower than what the caching saves       
+    def getData(self):
+        if self.xData is None:
+            return (None, None)
+        
+        if self.xDisp is None:
+            x = self.xData
+            y = self.yData
+
+            if self.opts['fftMode']:
+                x,y = self._fourierTransform(x, y)
+                # Ignore the first bin for fft data if we have a logx scale
+                if self.opts['logMode'][0]:
+                    x=x[1:]
+                    y=y[1:]                
+            if self.opts['logMode'][0]:
+                x = np.log10(x)
+            if self.opts['logMode'][1]:
+                y = np.log10(y)
+                
+            ds = self.calculateDownSampling()
+
+            if ds > 1:
+                ds = self.getLowerPOT(ds)
+                if ds in self.downSamples:
+                    x,y = self.downSamples[ds]
+                    #print(f'using cached downsample: {ds}')
+                else:
+                    x,y = self.calculateDownSampledData(ds)
+                    self.downSamples[ds] = x,y
+                    #print(f'calculating downsample: {ds}')
+            else:
+                #print('using original data')
+                pass
+
+            if self.opts['clipToView']:
+                print('clipToView not supported') # seemed buggy so i didnt port the code over
+
+            self.xDisp = x;
+            self.yDisp = y
+
+        return self.xDisp, self.yDisp
+
+    def calculateDownSampling(self):
+        ds = self.opts['downsample']
+        if not isinstance(ds, int):
+            ds = 1
+        if self.opts['autoDownsample']:
+            # this option presumes that x-values have uniform spacing
+            range = self.viewRect()
+            if range is not None:
+                x = self.xData
+                y = self.yData
+                dx = float(x[-1]-x[0]) / (len(x)-1)
+                x0 = (range.left()-x[0]) / dx
+                x1 = (range.right()-x[0]) / dx
+                width = self.getViewBox().width()
+                if width != 0.0:
+                    ds = int(max(1, int((x1-x0) / (width*self.opts['autoDownsampleFactor']))))
+        return ds
+
+    def calculateDownSampledData(self, ds):
+        x = self.xData
+        y = self.yData
+        if ds > 1:
+            if self.opts['downsampleMethod'] == 'subsample':
+                x = x[::ds]
+                y = y[::ds]
+            elif self.opts['downsampleMethod'] == 'mean':
+                n = len(x) // ds
+                x = x[:n*ds:ds]
+                y = y[:n*ds].reshape(n,ds).mean(axis=1)
+            elif self.opts['downsampleMethod'] == 'peak':
+                n = len(x) // ds
+                x1 = np.empty((n,2))
+                x1[:] = x[:n*ds:ds,np.newaxis]
+                x = x1.reshape(n*2)
+                y1 = np.empty((n,2))
+                y2 = y[:n*ds].reshape((n, ds))
+                y1[:,0] = y2.max(axis=1)
+                y1[:,1] = y2.min(axis=1)
+                y = y1.reshape(n*2)
+        return x,y
 
 # this class is exact copy of pg.PlotCurveItem but with a changed paint function to draw points instead of lines
 # and i removed some random stuff i dont need as well
+# prob could have just override that function only but im an idiot and its too late lol. got rid of a bunch of unnecessary stuff at least
 import numpy as np
 from pyqtgraph import functions as fn
 from pyqtgraph import Point
 import struct, sys
 from pyqtgraph import getConfigOption
-
 __all__ = ['PlotPointsItem']
 class PlotPointsItem(pg.GraphicsObject):
     """
