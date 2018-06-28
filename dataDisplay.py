@@ -3,7 +3,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from FF_Time import FFTIME, FF_EPOCH
 import numpy as np
 import datetime, time
-import os, csv, io
+import os
 from tqdm import tqdm
 
 try:
@@ -209,9 +209,9 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))
         self.ui.dateTimeEdit.setMinimumDateTime(UTCQDate.UTC2QDateTime(start.UTC))
         self.ui.dateTimeEdit.setMaximumDateTime(UTCQDate.UTC2QDateTime(stop_.UTC))
-        header = self.FID.getColumnDescriptor("NAME")
+        self.headerStrings = self.FID.getColumnDescriptor("NAME")
         units = self.FID.getColumnDescriptor("UNITS")
-        header = [f'{h} ({u})' for h,u in zip(header,units)]
+        header = [f'{h} ({u})' for h,u in zip(self.headerStrings,units)]
         if self.data is not None:
             tm = FFTableModel(self.time, self.data, header, parent=None, epoch=parm["EPOCH"].value)
             tm.setUTC(not self.ui.checkBox.isChecked())
@@ -283,19 +283,25 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
     def keyPressEvent(self, e):
         if (e.modifiers() & QtCore.Qt.ControlModifier):
             if e.key() == QtCore.Qt.Key_C: #copy
-                selection = self.ui.dataTableView.selectedIndexes()
-                if selection:
-                    rows = sorted(index.row() for index in selection)
-                    columns = sorted(index.column() for index in selection)
+                selected = self.ui.dataTableView.selectedIndexes()
+                if selected:
+                    # sort the indexes to get them in order and put them in string table
+                    rows = sorted(index.row() for index in selected)
+                    columns = sorted(index.column() for index in selected)
                     rowcount = rows[-1] - rows[0] + 1
                     colcount = columns[-1] - columns[0] + 1
                     table = [[''] * colcount for _ in range(rowcount)]
-                    for index in selection:
+                    for index in selected:
                         row = index.row() - rows[0]
                         column = index.column() - columns[0]
                         table[row][column] = index.data()
-                    stream = io.StringIO()
-                    csv.writer(stream).writerows(table)
-                    self.clip.setText(stream.getvalue())
+                    # build final string to copy to clipboard
+                    s = 'Record\t' + '\t'.join(self.headerStrings[columns[0]:columns[-1]+1])
+                    for r,row in enumerate(table):
+                        s = f'{s}\n{rows[0]+r}\t'
+                        s = s + '\t'.join(row)
+                        s = s[:-1]
+                    
+                    self.clip.setText(s)
 
 

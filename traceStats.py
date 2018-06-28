@@ -136,18 +136,18 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
     # could just calculate purely with spaces
     def keyPressEvent(self, e):
         if (e.modifiers() & QtCore.Qt.ControlModifier):
-            selected = self.ui.table.selectedRanges()
-
             if e.key() == QtCore.Qt.Key_C: #copy
-                s = '\t'+"\t".join([str(self.ui.table.horizontalHeaderItem(i).text()) for i in range(selected[0].leftColumn(), selected[0].rightColumn()+1)])
-                s = s + '\n'
+                selected = self.ui.table.selectedRanges()
+                if selected:
+                    s = '\t'+"\t".join([str(self.ui.table.horizontalHeaderItem(i).text()) for i in range(selected[0].leftColumn(), selected[0].rightColumn()+1)])
+                    s = s + '\n'
 
-                for r in range(selected[0].topRow(), selected[0].bottomRow()+1):
-                    s += self.ui.table.verticalHeaderItem(r).text() + '\t'
-                    for c in range(selected[0].leftColumn(), selected[0].rightColumn()+1):
-                        try:
-                            s += str(self.ui.table.item(r,c).text()) + "\t"
-                        except AttributeError:
-                            s += "\t"
-                    s = s[:-1] + "\n" #eliminate last '\t'
-                self.clip.setText(s)
+                    for r in range(selected[0].topRow(), selected[0].bottomRow()+1):
+                        s += self.ui.table.verticalHeaderItem(r).text() + '\t'
+                        for c in range(selected[0].leftColumn(), selected[0].rightColumn()+1):
+                            try:
+                                s += str(self.ui.table.item(r,c).text()) + "\t"
+                            except AttributeError:
+                                s += "\t"
+                        s = s[:-1] + "\n" #eliminate last '\t'
+                    self.clip.setText(s)
