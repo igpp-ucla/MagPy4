@@ -95,7 +95,7 @@ class MagPy4UI(object):
 
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        self.glw = GridGraphicsLayout() # made this based off pg.GraphicsLayout
+        self.glw = GridGraphicsLayout(window) # made this based off pg.GraphicsLayout
         #self.glw.setContentsMargins(0,0,0,0)
         self.timeLabel = BLabelItem()
         self.gview.sceneObj.addItem(self.timeLabel)

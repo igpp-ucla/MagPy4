@@ -110,10 +110,28 @@ class DateAxis(pg.AxisItem):
         return [DateAxis.toUTC(x,self.window) for x in values]
 
 class GridGraphicsLayout(pg.GraphicsLayout):
+    def __init__(self, window=None, *args, **kwargs):
+        pg.GraphicsLayout.__init__(self, *args, **kwargs)
+        self.window = window
+        self.lastWidth = 0
+        self.lastHeight = 0
+
     def clear(self):  # clear doesnt get rid of grid layout formatting correctly, todo: make override of this
         pg.GraphicsLayout.clear(self)
         self.currentRow = 0
         self.currentCol = 0
+
+    def paint(self, p, *args):
+        pg.GraphicsLayout.paint(self,p,*args)
+        if not self.window:
+            return
+        vr = self.viewRect()
+        w = vr.width()
+        h = vr.height()
+        if w != self.lastWidth or h != self.lastHeight:
+            self.window.additionalResizing()
+            self.lastWidth = w
+            self.lastHeight = h
 
 class BLabelItem(pg.LabelItem):
     def setHtml(self, html):
@@ -205,7 +223,7 @@ class PlotDataItemBDS(pg.PlotDataItem):
     # at beginning calculate ideal DS for whole data, say its like 20
     # then calculate and store downsampled data at 2, 4, 8, 16
     # then when getData just return cached data at next lowest from ideal    
-    # todo investigate if this actually helps lol, drawing at a less accurately sampled might be slower than what the caching saves       
+    # todo investigate if this actually helps lol, drawing at less accurately sampled levels might be slower than what the caching saves in the first place
     def getData(self):
         if self.xData is None:
             return (None, None)
@@ -288,6 +306,22 @@ class PlotDataItemBDS(pg.PlotDataItem):
                 y1[:,1] = y2.min(axis=1)
                 y = y1.reshape(n*2)
         return x,y
+
+class LinkedAxis(pg.AxisItem):
+    def calcDesiredWidth(self):
+        w = 0
+        if not self.style['showValues']:
+            w = 0
+        elif self.style['autoExpandTextSpace'] is True:
+            w = self.textWidth
+        else:
+            w = self.style['tickTextWidth']
+        w += self.style['tickTextOffset'][0] if self.style['showValues'] else 0
+        w += max(0, self.style['tickLength'])
+        if self.label.isVisible():
+            w += self.label.boundingRect().height() * 0.8  ## bounding rect is usually an overestimate
+        return w
+
 
 # this class is exact copy of pg.PlotCurveItem but with a changed paint function to draw points instead of lines
 # and i removed some random stuff i dont need as well

@@ -23,7 +23,7 @@ from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
 from traceStats import TraceStats
-from pyqtgraphExtensions import DateAxis, PlotPointsItem, PlotDataItemBDS, LinkedInfiniteLine, BLabelItem
+from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, LinkedInfiniteLine, BLabelItem
 from mth import Mth
 import bisect
 
@@ -103,8 +103,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for c in colors:
             self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
         self.trackerPen = pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine)
-
-        self.firstRowStretch = 0
 
         self.plotItems = []
         self.labelItems = []
@@ -240,7 +238,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def resizeEvent(self, event):
         #print(event.size())
-        self.additionalResizing()
+        #self.additionalResizing()
         pass
 
     def openFileDialog(self, isFlatfile):
@@ -465,7 +463,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.setTimes()
 
     def calcTickIndexByTime(self, t):
-        return Mth.clamp(bisect.bisect(self.times,t)-1, 0, self.iiE)
+        return Mth.clamp(bisect.bisect(self.times,t) - 1, 0, self.iiE)
 
     def setSliderNoCallback(self, slider, i):
         slider.blockSignals(True)
@@ -601,19 +599,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             axis = DateAxis(orientation='bottom')
             axis.window = self
             vb = MagPyViewBox(self, plotIndex)
-            pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis})
+            pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis, 'left': LinkedAxis(orientation='left') })
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             self.plotItems.append(pi) #save it for ref elsewhere
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
             #vb.setAutoVisible(y=True)
             startDS = 10 if len(self.times) > 10000 else 1 # on start doesnt refresh the downsampling so gotta manual it
             pi.setDownsampling(ds=startDS, auto=True, mode='peak')
-            # auto will redo the downsampling every time view is changed (so ds variable doesnt matter)
-            # todo: override onViewChanged from plotdataitem and only redo the downsampling every so often
-            # remember the last ds and calculate new one and only change every so often basically
-            # maybe calculate multiple different downsamplings upon creation and choose closest like, ds 2,4,8,16,32,64,128
 
-            # add some lines used to show where time series sliders will zoom
+            # add some lines used to show where time series sliders will zoom to
             trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=self.trackerPen)
             pi.addItem(trackerLine)
             self.trackerLines.append(trackerLine)
@@ -628,6 +622,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             # show top and right axis, but hide labels (they are off by default apparently)
             la = pi.getAxis('left')
             la.style['textFillLimits'] = [(0,1.1)] # no limits basically to force labels by each tick no matter what
+            #la.setWidth(50) # this also kinda works but a little space wasteful, saving as reminder incase dynamic solution messes up
 
             ba = pi.getAxis('bottom')
             #ba.style['textFillLimits'] = [(0,1.1)]
@@ -711,7 +706,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             fontSize = min(16, max(fontSize,4))
             li.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{alab}</span>")
 
-
     # trying to correctly estimate size of rows. last one needs to be a bit larger since bottom axis
     # this is super hacked but it seems to work okay
     def additionalResizing(self):
@@ -719,19 +713,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #for pi in self.plotItems:
         #    print(pi.viewGeometry())
 
+        #print('additionally resizing')
+
         qggl = self.ui.glw.layout
         rows = qggl.rowCount()
         plots = rows - 1
 
-        if self.firstRowStretch < 2:
-            width = 1280.0
-            height = 689.0 # hardcoded to match first 2 calls having incorrect size
-            self.firstRowStretch += 1
-        else:
-            width = self.ui.glw.viewRect().width()
-            height = self.ui.glw.viewRect().height()
+        width = self.ui.glw.viewRect().width()
+        height = self.ui.glw.viewRect().height()
 
-        self.ui.timeLabel.setPos(width / 2,height - 30)
+        self.ui.timeLabel.setPos(width / 2, height - 30)
 
         # set font size, based on viewsize and plot number
         # very hardcoded just based on nice numbers i found. the goal here is for the labels to be smaller so the plotItems will dictate scaling
@@ -740,7 +731,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.suggestedFontSize = height / plots * 0.065
             self.setYAxisLabels()
 
-        if plots <= 1: # if just one plot dont need to resize bottom one
+        if plots <= 1: # if just one plot dont need handle multiplot problems
             return
 
         # all of this depends on screen resolution so this is a pretty bad fix for now
@@ -751,6 +742,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         edgePadding = 60
         height -= bPadding + edgePadding + (plots - 1) * plotSpacing # the spaces in between plots hence the -1
 
+        # when running out of room bottom plot starts shrinking
+        # pyqtgraph is doing some additional resizing independent of the underlying qt layout, but cant figure out where (this kind of works)
         for i in range(rows):
             if i == 0:
                 continue
@@ -760,16 +753,18 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             qggl.setRowMinimumHeight(i, h)
             qggl.setRowMaximumHeight(i, h) 
 
-        # when running out of room bottom plot starts shrinking
-        # pyqtgraph is doing some additional resizing independent of the underlying qt layout, but cant figure out where
-        # todo: try resizing plotItems also in above function
-        #if len(self.plotItems) >= 2:
-        #    maxHeight = 0
-        #    for pi in self.plotItems[:-1]:
-        #        maxHeight = max(pi.size().height(), maxHeight)
-            #for pi in self.plotItems[:-1]:
-            #    pi.setMinimumHeight(maxHeight)
-            #self.plotItems[-1].setMinimumHeight(maxHeight + bPadding)            
+        # this ensures the plots always have same physical width (important because they all share bottom time axis)
+        # it works but at start of plot its wrong because the bounds and stuff isnt correct yet
+        # this is a recurring problem in multiple areas but not sure how to figure out yet and its not that bad in this case
+        maxWidth = 0
+        for pi in self.plotItems:
+            la = pi.getAxis('left')
+            maxWidth = max(maxWidth, la.calcDesiredWidth())
+        for pi in self.plotItems:
+            la = pi.getAxis('left')
+            la.setWidth(maxWidth)
+        #print(maxWidth)
+        
 
 
     # just redraws the traces and ensures y range is correct
@@ -862,7 +857,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.traceStats.update()
 
     # color is hex string ie: '#ff0000'
-    def startGeneralSelect(self, name, color, timeEdit, canHide = False):
+    def startGeneralSelect(self, name, color, timeEdit, canHide=False):
         self.updateLinesAppearance(name, color)
         self.generalSelectStep = 1
         self.generalSelectCanHide = canHide
