@@ -54,6 +54,7 @@ class PlotMenuUI(object):
         self.layout.addWidget(self.gridFrame)
 
         self.fgridFrame = QtWidgets.QGroupBox('Y Axis Link Groups')
+        self.fgridFrame.setToolTip('Link the Y axes of each plot in each group to have the same scale with each other')
         self.fgrid = QtWidgets.QGridLayout(self.fgridFrame)
         self.layout.addWidget(self.fgridFrame)
 

@@ -13,7 +13,7 @@ class MagPy4UI(object):
                 # add options popup menu for toggled things
         popup = QtWidgets.QToolButton()
         menu = QtWidgets.QMenu()
-
+        menu.setToolTipsVisible(True)
         for action in actions:
             menu.addAction(action)
 
@@ -36,22 +36,28 @@ class MagPy4UI(object):
         self.actionOpenFF.setPriority(QtWidgets.QAction.HighPriority)
         self.actionOpenFF.setText('Open FF')
         self.actionOpenFF.setShortcut('O')
+        self.actionOpenFF.setToolTip('Opens a flatfile (requires valid .ffd and .ffh files)')
 
         self.actionOpenCDF = QtWidgets.QAction(window)
         self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
         self.actionOpenCDF.setText('Open CDF')
+        self.actionOpenCDF.setToolTip('Opens a .cdf file (experimental)')
 
         self.actionShowData = QtWidgets.QAction(window)
         self.actionShowData.setText('Data')
+        self.actionShowData.setToolTip('Shows the loaded data in a table view')
 
         self.actionPlot = QtWidgets.QAction(window)
         self.actionPlot.setText('Plot')
+        self.actionPlot.setToolTip('Opens plot menu')
 
         self.actionSpectra = QtWidgets.QAction(window)
         self.actionSpectra.setText('Spectra')
+        self.actionSpectra.setToolTip('Opens spectral analysis window')
 
         self.actionEdit = QtWidgets.QAction(window)
         self.actionEdit.setText('Edit')
+        self.actionEdit.setToolTip('Opens edit window that allows you to rotate the data with matrices')
 
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('Scale y range to current time selection',checkable=True,checked=True)
         self.antialiasAction = QtWidgets.QAction('Smooth lines (antialiasing)',checkable=True,checked=True)
@@ -60,6 +66,7 @@ class MagPy4UI(object):
 
         self.switchMode = QtWidgets.QAction(window)
         self.switchMode.setText('Switch to MarsPy')
+        self.switchMode.setToolTip('Loads various presets specific to the Insight mission')
 
         # build toolbar
         self.toolBar = QtWidgets.QToolBar(window)
@@ -67,17 +74,10 @@ class MagPy4UI(object):
 
         file = self.buildPopup('File', [self.actionOpenFF, self.actionOpenCDF])
         self.toolBar.addWidget(file)
-        #self.toolBar.addAction(self.actionOpenFF)
-        #self.toolBar.addAction(self.actionOpenCDF)
-
-        #view = self.buildPopup('View', [self.actionShowData])
-        #self.toolBar.addWidget(view)
 
         self.toolBar.addAction(self.actionShowData)
         self.toolBar.addAction(self.actionPlot)
 
-        #tools = self.buildPopup('Tools', [self.actionSpectra, self.actionEdit])
-        #self.toolBar.addWidget(tools)
         self.toolBar.addAction(self.actionSpectra)
         self.toolBar.addAction(self.actionEdit)
 
@@ -90,7 +90,6 @@ class MagPy4UI(object):
         self.toolBar.addWidget(spacer)
 
         self.toolBar.addAction(self.switchMode)
-
 
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
@@ -152,6 +151,8 @@ class TimeEdit():
         self.end.setFont(font)
         self.start.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.end.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        #self.start.setToolTip('Start Time'); # not always true if they get reversed...
+        #self.end.setToolTip('End Time');
         self.start.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
         self.end.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
         self.start.editingFinished.connect(functools.partial(self.enforceMinMax, self.start))

@@ -232,7 +232,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         txt = self.ui.switchMode.text()
         self.insightMode = not self.insightMode
         txt = 'Switch to MMS' if self.insightMode else 'Switch to MarsPy'
+        tooltip = 'Loads various presets specific to the MMS mission and better for general use cases' if self.insightMode else 'Loads various presets specific to the Insight mission'
         self.ui.switchMode.setText(txt)
+        self.ui.switchMode.setToolTip(tooltip)
         self.plotDataDefault()
         self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
         self.app.setWindowIcon(self.marsIcon if self.insightMode else self.magpyIcon)
@@ -605,7 +607,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             self.plotItems.append(pi) #save it for ref elsewhere
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
-            #vb.setAutoVisible(y=True)
             startDS = 10 if len(self.times) > 10000 else 1 # on start doesnt refresh the downsampling so gotta manual it
             pi.setDownsampling(ds=startDS, auto=True, mode='peak')
 

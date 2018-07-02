@@ -24,6 +24,7 @@ class EditUI(object):
 
         # this part gets built dynamically
         vectorFrame = QtWidgets.QGroupBox('Data Vectors')
+        vectorFrame.setToolTip('Select x y z vectors of data to be rotated by next matrix')
         self.vectorLayout = QtWidgets.QVBoxLayout(vectorFrame)
         leftLayout.addWidget(vectorFrame)
 
@@ -34,10 +35,12 @@ class EditUI(object):
 
         self.manRotButton = QtGui.QPushButton('Custom Rotation')
         self.manRotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.manRotButton.setToolTip('Enter a custom matrix, or build one with simple builders')
         builderLayout.addWidget(self.manRotButton)
 
         self.minVarButton = QtGui.QPushButton('Minimum Variance')
         self.minVarButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.minVarButton.setToolTip('Build a rotation matrix by selecting a minimum variance window')
         builderLayout.addWidget(self.minVarButton)
 
         leftLayout.addWidget(builderFrame)
@@ -72,9 +75,9 @@ class EditUI(object):
 
         histLayout = QtWidgets.QHBoxLayout(histFrame)
         leftButtons = QtWidgets.QVBoxLayout()
-        #loadMat = QtWidgets.QPushButton('Load Matrix')
+
         self.removeRow = QtWidgets.QPushButton('Remove Matrix')
-        #leftButtons.addWidget(loadMat)
+        self.removeRow.setToolTip('Removes currently selected matrix from history')
         leftButtons.addWidget(self.removeRow)
         leftButtons.addStretch()
         histLayout.addLayout(leftButtons,1)
