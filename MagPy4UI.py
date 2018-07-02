@@ -56,11 +56,10 @@ class MagPy4UI(object):
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('Scale y range to current time selection',checkable=True,checked=True)
         self.antialiasAction = QtWidgets.QAction('Smooth lines (antialiasing)',checkable=True,checked=True)
         self.bridgeDataGaps = QtWidgets.QAction('Bridge Data Gaps', checkable=True, checked=False)
-        self.drawPoints = QtWidgets.QAction('Draw Points', checkable=True, checked=False)
+        self.drawPoints = QtWidgets.QAction('Draw Points (unoptimized)', checkable=True, checked=False)
 
         self.switchMode = QtWidgets.QAction(window)
         self.switchMode.setText('Switch to MarsPy')
-
 
         # build toolbar
         self.toolBar = QtWidgets.QToolBar(window)

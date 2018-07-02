@@ -159,7 +159,7 @@ class FFTableModel(QtCore.QAbstractTableModel):
             if orientation == QtCore.Qt.Horizontal: # column labels
                 return self.headerdata[section]
             else: # row labels
-                return section + 1
+                return section
         return None
 
     def tableDetailHeader(self, col, orientation, role): # i think this is unused
@@ -170,14 +170,15 @@ class FFTableModel(QtCore.QAbstractTableModel):
 
 class DataDisplay(QtGui.QFrame, DataDisplayUI):
     """ file data dialog """
-    def __init__(self, FID, time, data, Title=None, parent=None):
+    def __init__(self, FID, time, dataByCol, dataByRec, Title=None, parent=None):
         QtGui.QWidget.__init__(self, parent)
         self.ui = DataDisplayUI()
         self.ui.setupUi(self)
         self.title = Title
         self.FID = FID
         self.time = time
-        self.data = data
+        self.dataByCol = dataByCol
+        self.dataByRec = dataByRec
         self.setActions()
         self.update()
         self.clip = QtGui.QApplication.clipboard()
@@ -212,8 +213,8 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.headerStrings = self.FID.getColumnDescriptor("NAME")
         units = self.FID.getColumnDescriptor("UNITS")
         header = [f'{h} ({u})' for h,u in zip(self.headerStrings,units)]
-        if self.data is not None:
-            tm = FFTableModel(self.time, self.data, header, parent=None, epoch=parm["EPOCH"].value)
+        if self.dataByCol is not None:
+            tm = FFTableModel(self.time, self.dataByCol, header, parent=None, epoch=parm["EPOCH"].value)
             tm.setUTC(not self.ui.checkBox.isChecked())
             self.ui.dataTableView.setModel(tm)
             self.ui.dataTableView.resizeColumnToContents(0) # make time column resize to fit
@@ -222,7 +223,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
     def saveData(self):
         QQ = QtGui.QFileDialog(self)
         QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
-        path = os.path.expanduser("~")
+        path = os.path.expanduser(".")
         QQ.setDirectory(path)
         fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='Text files (*.txt)')
         if fullname is None:
@@ -233,15 +234,41 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             return
         np.set_printoptions(formatter={'float': '{:+10.4f}'.format}, linewidth=10000)
         print(fullname)
-        file = open(fullname[0], "+w")
         epoch = self.FID.FFParm["EPOCH"].value
         nRows = len(self.time)
+
+		#have option for 'readable format' vs 'excel ready'
+        #print('reshaping data for printing...')
+
+        shape = np.shape(self.dataByRec)
+        dataShaped = np.zeros((shape[0], shape[1]+1))
+        dataShaped[:,1:] = self.dataByRec
+        dataShaped[:,0] = self.time
         print(f'Writing {nRows} records to {fullname[0]}...')
-        for i in tqdm(range(nRows),ascii=True):
-            UTC = FFTIME(self.time[i], Epoch=epoch).UTC
-            file.write(f'{UTC} {str(self.data[:,i])[1:-2]}\n')
-        file.close()
+        np.savetxt(fullname[0], dataShaped, fmt = '%+10.4f')
+
+        #file = open(fullname[0], "+w")
+        
+        #fileStr = ''
+        #utcs = [UTCQDate.removeDOY(FFTIME(t, Epoch=epoch).UTC) for t in self.time]
+        #fileStrs = [f'{utcs[i]} {str(self.dataByCol[:,1])[1:-2]}' for i in range(nRows)]
+
+        #utc = FFTIME(self.time, Epoch=epoch).UTC
+        #for i in tqdm(range(nRows),ascii=True):
+            #UTC = FFTIME(self.time[i], Epoch=epoch).UTC
+            #UTC = UTCQDate.removeDOY(UTC)
+
+            #file.write(f'{UTC} {str(self.dataByCol[:,i])[1:-2]}\n')
+            #fileStrs.append(f'{utcs} {str(self.dataByCol[:,i])[1:-2]}')
+
+        #file.write('\n'.join(fileStrs))
+        #file.write(fileStr)
+        #file.close()
+
         print(f'Save complete')
+        # should auto open the file here afterwards?
+
+
 
     def toggleTimeDisplay(self):
         self.update()
@@ -290,6 +317,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
                     columns = sorted(index.column() for index in selected)
                     rowcount = rows[-1] - rows[0] + 1
                     colcount = columns[-1] - columns[0] + 1
+
                     table = [[''] * colcount for _ in range(rowcount)]
                     for index in selected:
                         row = index.row() - rows[0]

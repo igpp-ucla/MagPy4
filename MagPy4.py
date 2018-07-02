@@ -26,6 +26,7 @@ from traceStats import TraceStats
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, LinkedInfiniteLine, BLabelItem
 from mth import Mth
 import bisect
+from dataBase import Database
 
 import time
 import functools
@@ -170,7 +171,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def showData(self):
         self.closeData() # this isnt actually needed it still closes somehow
-        self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, Title='Flatfile Data')
+        self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, self.dataByRec, Title='Flatfile Data')
         self.dataDisplay.show()
 
     def openTraceStats(self, plotIndex):
@@ -306,9 +307,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.DATASTRINGS = self.FID.getColumnDescriptor("NAME")[1:]
         units = self.FID.getColumnDescriptor("UNITS")[1:]
 
-        self.ORIGDATADICT = {} # maps string to original data array
-        self.DATADICT = {}  # stores smoothed version of data and all modifications (dict of dicts)
+        self.ORIGDATADICT = {} # maps data strings to original data array
+        self.DATADICT = {}  # stores smoothed version of data and all edit modifications (dict of dicts)
         self.UNITDICT = {} # maps data strings to unit strings
+        self.TIMES = Database() # maps multiple dstrs to appropriate time array
         self.IDENTITY = Mth.identity()
         self.MATRIX = Mth.identity() # maybe add matrix dropdown in plotmenu somewhere
         for i, dstr in enumerate(self.DATASTRINGS):
@@ -407,7 +409,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
 
     def CDFEpochToTimeTicks(cdfEpoch):
-        """ convert Data data to numpy array of Records"""
+        """ convert date data to numpy array of Records"""
         d2tt2 = pycdf.Library().datetime_to_tt2000
         num = len(cdfEpoch)
         arr = np.empty(num)
