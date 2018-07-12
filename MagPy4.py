@@ -15,7 +15,7 @@ import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
-import pycdf
+#import pycdf
 
 from MagPy4UI import MagPy4UI
 from plotMenu import PlotMenu
@@ -83,6 +83,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False
         self.traceStatsOnTop = False
+        self.minTime = None
+        self.maxTime = None
+        self.iiE = None
 
         # this is where options for plot lifetime are saved
         self.initVariables()
@@ -272,6 +275,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.plotDataDefault()
 
+
     def openFF(self, PATH):  # slot when Open pull down is selected
         FID = FF_ID(PATH, status=FF_STATUS.READ | FF_STATUS.EXIST)
         if not FID:
@@ -295,7 +299,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # load flatfile
         nRows = self.FID.getRows()
         records = self.FID.DID.sliceArray(row=1, nRow=nRows)
-        self.times = records["time"]
+        fftime = records["time"]
         self.dataByRec = records["data"]
         self.dataByCol = arrayToColumns(records["data"])
         self.epoch = self.FID.getEpoch()
@@ -308,11 +312,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # ignoring first column because that is time, hence [1:]
         self.DATASTRINGS = self.FID.getColumnDescriptor("NAME")[1:]
         units = self.FID.getColumnDescriptor("UNITS")[1:]
-
         self.ORIGDATADICT = {} # maps data strings to original data array
         self.DATADICT = {}  # stores smoothed version of data and all edit modifications (dict of dicts)
         self.UNITDICT = {} # maps data strings to unit strings
-        self.TIMES = Database() # maps multiple dstrs to appropriate time array
+        self.TIMEDB = [fftime] # list of loaded time series
+        self.TIMEINDEX = {} # mapping of dstr to index into timeDB (tried to use multimap thing but didnt work)
         self.IDENTITY = Mth.identity()
         self.MATRIX = Mth.identity() # maybe add matrix dropdown in plotmenu somewhere
         for i, dstr in enumerate(self.DATASTRINGS):
@@ -320,6 +324,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.ORIGDATADICT[dstr] = datas
             self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(datas),dstr,''] }
             self.UNITDICT[dstr] = units[i]
+            self.TIMEINDEX[dstr] = 0 # all flat file data (from same file) map to same time series
 
         # sorts by units alphabetically
         #datazip = list(zip(self.DATASTRINGS, units))
@@ -329,14 +334,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.resolution = self.FID.getResolution()
         numpoints = self.FID.FFParm["NROWS"].value
 
+        # iterate over time database and find min and max???
+        for times in self.TIMEDB:
+            assert(len(times) > 2)
+            self.minTime = times[0] if not self.minTime else min(self.minTime, times[0])
+            self.maxTime = times[-1] if not self.maxTime else max(self.maxTime, times[-1])
+
+        # prob dont edit these two on subsequent file loads..?
         self.iO = 0
-        self.iE = len(self.times) - 1
+        self.iE = int((self.maxTime - self.minTime) / self.resolution)
+        #self.iiE = self.iE if not self.iiE else max(self.iE, self.iiE)
         self.iiE = self.iE
-        self.tO = self.times[self.iO]
-        self.tE = self.times[self.iE]
-        # save initial time range
-        self.itO = self.tO
-        self.itE = self.tE  
+        print(f'iiE: {self.iiE}')
+        self.tO = self.minTime
+        self.tE = self.maxTime
 
         #print(f'resolution: {self.resolution}')
         print(f'tO: {self.tO}')
@@ -345,12 +356,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # generate resolution data column (to visualize when it isn't constant)
         dstr = 'resolution'
-        resData = np.diff(self.times)
+        resData = np.diff(fftime)
         np.append(resData, resData[-1])
         self.DATASTRINGS.append(dstr)
         self.ORIGDATADICT[dstr] = resData
         self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(resData),dstr,''] }
         self.UNITDICT[dstr] = 'sec'
+        self.TIMEINDEX[dstr] = 0
         resolutions = np.unique(resData)
         print(f'resolutions: {", ".join(map(str,resolutions))}')
         tick = 1.0 / self.resolution * 2.0
@@ -430,15 +442,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         return arr
     
     def getMinAndMaxDateTime(self):
-        minDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.times[0], Epoch=self.epoch).UTC)
-        maxDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.times[-1], Epoch=self.epoch).UTC)
+        minDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.minTime, Epoch=self.epoch).UTC)
+        maxDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.maxTime, Epoch=self.epoch).UTC)
         return minDateTime,maxDateTime
 
     def onStartSliderChanged(self, val):
         self.iO = val
 
         # move tracker lines to show where new range will be
-        tt = self.times[self.iO]
+        tt = self.getTimeFromTick(self.iO)
         for line in self.trackerLines:
             line.show()
             line.setValue(tt)
@@ -454,7 +466,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.iE = val
 
         # move tracker lines to show where new range will be
-        tt = self.times[self.iE]
+        tt = self.getTimeFromTick(self.iE)
         for line in self.trackerLines:
             line.show()
             line.setValue(tt + 1) #offset by linewidth so its not visible once released
@@ -467,7 +479,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.setTimes()
 
     def calcTickIndexByTime(self, t):
-        return Mth.clamp(bisect.bisect(self.times,t) - 1, 0, self.iiE)
+        perc = t - self.minTime / (self.maxTime - self.minTime)
+        return perc * self.iiE
+        #return Mth.clamp(bisect.bisect(self.times,t) - 1, 0, self.iiE)
+        pass
+
 
     def setSliderNoCallback(self, slider, i):
         slider.blockSignals(True)
@@ -500,10 +516,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             else:
                 self.iO -= 1
 
-        self.tO = self.times[self.iO]
-        self.tE = self.times[self.iE]
+        self.tO = self.getTimeFromTick(self.iO)
+        self.tE = self.getTimeFromTick(self.iE)
         self.updateXRange()
         self.updateYRange()
+
+    def getTimeFromTick(self, tick):
+        assert(tick >= 0 and tick <= self.iiE)
+        return self.minTime + (self.maxTime - self.minTime) * tick / self.iiE
 
     # in seconds, abs for just incase backwards
     def getSelectedTimeRange(self):
@@ -607,7 +627,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             self.plotItems.append(pi) #save it for ref elsewhere
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
-            startDS = 10 if len(self.times) > 10000 else 1 # on start doesnt refresh the downsampling so gotta manual it
+            startDS = 10 if self.iiE > 10000 else 1 # on start doesnt refresh the downsampling so gotta manual it
             pi.setDownsampling(ds=startDS, auto=True, mode='peak')
 
             # add some lines used to show where time series sliders will zoom to
@@ -662,7 +682,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
             # set plot to current range based on time sliders
             pi.setXRange(self.tO, self.tE, 0.0)
-            pi.setLimits(xMin=self.itO, xMax=self.itE)
+
+            #todo: needs to be set for current min and max of all time ranges
+            pi.setLimits(xMin=self.minTime, xMax=self.maxTime)
 
             # add Y axis label based on traces (label gets set below)
             li = BLabelItem()
@@ -791,20 +813,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if len(Y) <= 1: # not sure if this can happen but just incase
             print(f'Error: insufficient Y data for column "{dstr}"')
             return
+        times = self.TIMEDB[self.TIMEINDEX[dstr]]
         if not self.ui.bridgeDataGaps.isChecked():
             segs = self.getSegments(self.ORIGDATADICT[dstr])    
             for a,b in segs:
                 if self.ui.drawPoints.isChecked():
-                    pi.addItem(PlotPointsItem(self.times[a:b], Y[a:b], pen=pen))
+                    pi.addItem(PlotPointsItem(times[a:b], Y[a:b], pen=pen))
                 else:
-                    #pi.plot(self.times[a:b], Y[a:b], pen=pen)
-                    pi.addItem(PlotDataItemBDS(self.times[a:b], Y[a:b], pen=pen))
+                    pi.addItem(PlotDataItemBDS(times[a:b], Y[a:b], pen=pen))
         else:
             if self.ui.drawPoints.isChecked():
-                pi.addItem(PlotPointsItem(self.times, Y, pen=pen))
+                pi.addItem(PlotPointsItem(times, Y, pen=pen))
             else:
-                #pi.plot(self.times, Y, pen = pen)
-                pi.addItem(PlotDataItemBDS(self.times, Y, pen = pen))
+                pi.addItem(PlotDataItemBDS(times, Y, pen = pen))
 
     # pyqtgraph has y axis linking but not wat is needed
     # this function scales them to have equal sized ranges but not the same actual range
@@ -881,8 +902,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         x0 = self.plotItems[0].getViewBox().lines[lineStr][0].getXPos()
         x1 = self.plotItems[0].getViewBox().lines[lineStr][1].getXPos()
         i0,i1 = self.getTicksFromTimeEdit(timeEdit)
-        t0 = self.times[i0]
-        t1 = self.times[i1]
+        t0 = self.getTimeFromTick(i0)
+        t1 = self.getTimeFromTick(i1)
 
         self.updateLinesPos(lineStr, 0, t0 if x0 < x1 else t1)
         self.updateLinesPos(lineStr, 1, t1 if x0 < x1 else t0)
@@ -909,8 +930,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.updateTraceStats()
 
     def resetLinesPos(self, lineStr):
-        self.updateLinesPos(lineStr, 0, self.times[0])
-        self.updateLinesPos(lineStr, 1, self.times[self.iiE])
+        self.updateLinesPos(lineStr, 0, self.minTime)
+        self.updateLinesPos(lineStr, 1, self.maxTime)
 
     def setLinesVisible(self, isVisible, lineStr, index=None):
         #print(f'{isVisible} {lineStr} {index} {exc}')
@@ -987,7 +1008,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         for key,lines in self.lines.items():
             for line in lines:
                 self.addItem(line, ignoreBounds = True)
-                line.setBounds((self.window.itO, self.window.itE))
+                line.setBounds((self.window.minTime, self.window.maxTime))
                 line.hide()
 
     def onLeftClick(self, ev):
