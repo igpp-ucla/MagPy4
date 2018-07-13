@@ -334,6 +334,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.resolution = self.FID.getResolution()
         numpoints = self.FID.FFParm["NROWS"].value
 
+        self.minTime = None # temp reset until figure out better way to specify if want file to be loaded fresh or appended to current loading
+        self.maxTime = None
+
         # iterate over time database and find min and max???
         for times in self.TIMEDB:
             assert(len(times) > 2)
@@ -343,15 +346,18 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # prob dont edit these two on subsequent file loads..?
         self.iO = 0
         self.iE = int((self.maxTime - self.minTime) / self.resolution)
+        print(f'{self.iE} {len(fftime)-1}')
+        #assert(self.iE == len(fftime)-1)
         #self.iiE = self.iE if not self.iiE else max(self.iE, self.iiE)
         self.iiE = self.iE
         print(f'iiE: {self.iiE}')
-        self.tO = self.minTime
+        self.tO = self.minTime # currently selected time range
         self.tE = self.maxTime
 
         #print(f'resolution: {self.resolution}')
         print(f'tO: {self.tO}')
         print(f'tE: {self.tE}')
+        print(f'tick resolution : {self.resolution}')
         print(f'time resolution : {1.0 / self.resolution} Hz')
 
         # generate resolution data column (to visualize when it isn't constant)
@@ -363,9 +369,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(resData),dstr,''] }
         self.UNITDICT[dstr] = 'sec'
         self.TIMEINDEX[dstr] = 0
+        # doesnt make sense to print this when some differences are actually just data gaps
         resolutions = np.unique(resData)
-        print(f'resolutions: {", ".join(map(str,resolutions))}')
-        tick = 1.0 / self.resolution * 2.0
+        print(f'detected {len(resolutions)} resolutions')
+        #print(f'resolutions: {", ".join(map(str,resolutions))}')
+        tick = 1.0 / self.resolution
         self.ui.setupSliders(tick, numRecords - 1, self.getMinAndMaxDateTime())
 
         return True
@@ -479,11 +487,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.setTimes()
 
     def calcTickIndexByTime(self, t):
-        perc = t - self.minTime / (self.maxTime - self.minTime)
-        return perc * self.iiE
-        #return Mth.clamp(bisect.bisect(self.times,t) - 1, 0, self.iiE)
-        pass
+        perc = (t - self.minTime) / (self.maxTime - self.minTime)
+        return int(perc * self.iiE)
 
+    # given corresponding time array for data, and time, calculate index into data array
+    def calcDataIndexByTime(self, times, t):
+        assert(len(times) > 2)
+        if t <= times[0]:
+            return 0
+        if t >= times[-1]:
+            return len(times)
+        b = bisect.bisect(times, t) # can bin search because times are sorted
+        assert(b)
+        return b
 
     def setSliderNoCallback(self, slider, i):
         slider.blockSignals(True)
@@ -807,13 +823,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.updateYRange()
         #self.ui.glw.layoutChanged()
 
+    def getTimes(self, dstr):
+        return self.TIMEDB[self.TIMEINDEX[dstr]]
+
     # both plotData and replot use this function internally
     def plotTrace(self, pi, dstr, pen):
         Y = self.getData(dstr)
         if len(Y) <= 1: # not sure if this can happen but just incase
             print(f'Error: insufficient Y data for column "{dstr}"')
             return
-        times = self.TIMEDB[self.TIMEINDEX[dstr]]
+        times = self.getTimes(dstr)
         if not self.ui.bridgeDataGaps.isChecked():
             segs = self.getSegments(self.ORIGDATADICT[dstr])    
             for a,b in segs:
@@ -826,6 +845,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 pi.addItem(PlotPointsItem(times, Y, pen=pen))
             else:
                 pi.addItem(PlotDataItemBDS(times, Y, pen = pen))
+
+    
+
 
     # pyqtgraph has y axis linking but not wat is needed
     # this function scales them to have equal sized ranges but not the same actual range
@@ -843,11 +865,22 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             # find min and max values out of all traces on this plot
             for dstr in dstrs:
                 scaleYToCurrent = self.ui.scaleYToCurrentTimeAction.isChecked()
-                a = self.iO if scaleYToCurrent else 0
-                b = self.iE if scaleYToCurrent else self.iiE
+
+                # cant use io and ie anymore because those relate to slider ticks
+                # think i need to use tO and tE now and do some bisection nonsense to find range in current time series
+
+                X = self.getTimes(dstr)
+                a = self.calcDataIndexByTime(X, self.tO)
+                b = self.calcDataIndexByTime(X, self.tE)
+                if a == b: # both are out of range on same side so data shouldnt be plotted
+                    print(f'"{dstr}" out of range, not plotting') # can get rid of this warning later but want to see it in action first
+                    continue
+
                 if a > b: # so sliders work either way
                     a,b = b,a
+
                 Y = self.getData(dstr)[a:b]
+
                 minVal = min(minVal, Y.min())
                 maxVal = max(maxVal, Y.max())
             # if range is bad then dont change this plot
