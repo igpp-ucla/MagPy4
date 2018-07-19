@@ -15,7 +15,7 @@ import pyqtgraph as pg
 
 from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
 from FF_Time import FFTIME, leapFile
-#import pycdf
+import pycdf
 
 from MagPy4UI import MagPy4UI
 from plotMenu import PlotMenu
@@ -309,6 +309,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         print(f'number records: {numRecords}')
         print(f'number columns: {numColumns}')
 
+
+        # need to generalize this setup to be mostly independent from cdf and ff loading so had persistence between
+        # also need to ensure loaded times are on same epoch, or do a conversion at least when plotting
+        # loading files with same datastring names should either concatenate or just append a subnumber onto end
+
         # ignoring first column because that is time, hence [1:]
         self.DATASTRINGS = self.FID.getColumnDescriptor("NAME")[1:]
         units = self.FID.getColumnDescriptor("UNITS")[1:]
@@ -374,7 +379,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         print(f'detected {len(resolutions)} resolutions')
         #print(f'resolutions: {", ".join(map(str,resolutions))}')
         tick = 1.0 / self.resolution
-        self.ui.setupSliders(tick, numRecords - 1, self.getMinAndMaxDateTime())
+        self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
 
         return True
 
@@ -486,21 +491,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.endSlider.underMouse():
             self.setTimes()
 
-    def calcTickIndexByTime(self, t):
-        perc = (t - self.minTime) / (self.maxTime - self.minTime)
-        return int(perc * self.iiE)
-
-    # given corresponding time array for data, and time, calculate index into data array
-    def calcDataIndexByTime(self, times, t):
-        assert(len(times) > 2)
-        if t <= times[0]:
-            return 0
-        if t >= times[-1]:
-            return len(times)
-        b = bisect.bisect(times, t) # can bin search because times are sorted
-        assert(b)
-        return b
-
     def setSliderNoCallback(self, slider, i):
         slider.blockSignals(True)
         slider.setValue(i)
@@ -585,12 +575,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getDataAndLabel(self, dstr):
         return self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY]
 
-    def getData(self, dstr):
-        return self.getDataAndLabel(dstr)[0]
-
     # returns the current dstr label (based on edit transformations)
     def getLabel(self, dstr):
         return self.getDataAndLabel(dstr)[1]
+
+    def getData(self, dstr):
+        return self.getDataAndLabel(dstr)[0]
 
     # returns data with error values removed
     def getPrunedData(self, dstr, a, b):
@@ -913,7 +903,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.traceStats:
             self.traceStats.update()
 
-    # color is hex string ie: '#ff0000'
+    # color is hex string ie: '#ff0000' for red
     def startGeneralSelect(self, name, color, timeEdit, canHide=False):
         self.updateLinesAppearance(name, color)
         self.generalSelectStep = 1
@@ -936,13 +926,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         x1 = self.plotItems[0].getViewBox().lines[lineStr][1].getXPos()
         i0,i1 = self.getTicksFromTimeEdit(timeEdit)
         t0 = self.getTimeFromTick(i0)
-        t1 = self.getTimeFromTick(i1)
-
+        t1 = self.getTimeFromTick(i1+1)
+        assert(t0 <= t1)
         self.updateLinesPos(lineStr, 0, t0 if x0 < x1 else t1)
         self.updateLinesPos(lineStr, 1, t1 if x0 < x1 else t0)
 
     def updateTimeEditByLines(self, timeEdit, lineStr, index):
-        oi = 0 if index == 1 else 1 # i wonder if this works lol, int(not bool(index))
+        oi = 0 if index == 1 else 1
         x = self.plotItems[0].getViewBox().lines[lineStr][index].getXPos()
         ox = self.plotItems[0].getViewBox().lines[lineStr][oi].getXPos()
         t0 = UTCQDate.UTC2QDateTime(FFTIME(x, Epoch=self.epoch).UTC)
@@ -981,18 +971,50 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             vb = pi.getViewBox()
             vb.lines[lineStr][1].setVisible(vb.lines[lineStr][0].isVisible())
 
-    # gets indices into time array for selected spectra range
-    # makes sure first is less than second
+    # get slider ticks from lines
     def getTicksFromLines(self):
-        sl = self.plotItems[0].getViewBox().lines['general']
-        i0 = self.calcTickIndexByTime(sl[0].getXPos())
-        i1 = self.calcTickIndexByTime(sl[1].getXPos())
-        return (i0,i1) if i0 < i1 else (i1,i0)
+        t0,t1 = self.getSelectionStartEndTimes()
+        i0 = self.calcTickIndexByTime(t0)
+        i1 = self.calcTickIndexByTime(t1)
+        assert(i0 <= i1)
+        return i0,i1
 
+    # get slider ticks from time edit
     def getTicksFromTimeEdit(self, timeEdit):
         i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick)
         i1 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.end.dateTime()), Epoch=self.epoch)._tick)
-        return (i0,i1) if i0 < i1 else (i1,i0)
+        return (i0,i1) if i0 < i1 else (i1,i0) #need parenthesis here, otherwise it will eval like 3 piece tuple with if in the middle lol
+
+    # tick index now refers to slider indices
+    def calcTickIndexByTime(self, t):
+        perc = (t - self.minTime) / (self.maxTime - self.minTime)
+        return int(perc * self.iiE)
+
+    # given the corresponding time array for data and the time, calculate index into data array
+    def calcDataIndexByTime(self, times, t):
+        assert(len(times) >= 2)
+        if t <= times[0]:
+            return 0
+        if t >= times[-1]:
+            return len(times)
+        b = bisect.bisect_left(times, t) # can bin search because times are sorted
+        assert(b)
+        return b
+
+    # given a data string, calculate its indices based on currently selected time range
+    def calcDataIndicesFromLines(self, dstr):
+        times = self.getTimes(dstr)
+        t0,t1 = self.getSelectionStartEndTimes()
+        i0 = self.calcDataIndexByTime(times, t0)
+        i1 = self.calcDataIndexByTime(times, t1)
+        assert(i0 <= i1)
+        return i0,i1
+
+    def getSelectionStartEndTimes(self):
+        lines = self.plotItems[0].getViewBox().lines['general']
+        t0 = lines[0].getXPos()
+        t1 = lines[1].getXPos()
+        return (t0,t1) if t0 <= t1 else (t1,t0) # need parens here!
 
     # based on which plots have active spectra lines, return list for each plot of the datastr and pen for each trace
     def getSelectedPlotInfo(self):

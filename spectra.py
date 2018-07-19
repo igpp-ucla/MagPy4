@@ -43,15 +43,12 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     # fixed aspect ratio settings
     def updateSpectra(self):
         plotInfos = self.window.getSelectedPlotInfo()
-        indices = self.window.getTicksFromLines()
-        self.N = indices[1] - indices[0]
-        #print(self.N)
-        freq = self.calculateFreqList()
-        if freq is None:
-            return
 
         self.ui.grid.clear()
         self.ui.labelLayout.clear()
+
+        maxN = 0
+        freqDict = {}
 
         oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
         aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
@@ -72,10 +69,22 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     numberPlots += 1
                     powers = []
 
+                i0,i1 = self.window.calcDataIndicesFromLines(dstr) #need to give something here
+                N = i1-i0
+                #print(N)
+                maxN = max(maxN, N)
+                if N in freqDict: # cache frequency distributions that can be shared between spectras
+                    freq = freqDict[N]
+                else:
+                    freq = self.calculateFreqList(N)
+                    freqDict[N] = freq
+                if freq is None:
+                    return
+
                 # calculate spectra
-                data = self.window.getData(dstr)[indices[0]:indices[1]]
+                data = self.window.getData(dstr)[i0:i1]
                 fft = fftpack.rfft(data.tolist())
-                power = self.calculatePower(fft)
+                power = self.calculatePower(fft, N)
 
                 pen = penList[i]
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{dstr}</span>"
@@ -106,17 +115,15 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             l.setColumnMinimumWidth(i, maxTitleWidth)
 
         # add some text info like time range and file and stuff
-        #get utc start and stop times
-        s0 = self.window.times[indices[0]]
-        s1 = self.window.times[indices[1]]
-        startDate = UTCQDate.removeDOY(FFTIME(min(s0,s1), Epoch=self.window.epoch).UTC)
-        endDate = UTCQDate.removeDOY(FFTIME(max(s0,s1), Epoch=self.window.epoch).UTC)
+        t0,t1 = self.window.getSelectionStartEndTimes()
+        startDate = UTCQDate.removeDOY(FFTIME(t0, Epoch=self.window.epoch).UTC)
+        endDate = UTCQDate.removeDOY(FFTIME(t1, Epoch=self.window.epoch).UTC)
 
         leftLabel = BLabelItem({'justify':'left'})
         rightLabel = BLabelItem({'justify':'left'})
 
         leftLabel.setHtml('[FILE]<br>[FREQBANDS]<br>[TIME]')
-        rightLabel.setHtml(f'{self.window.FID.name.rsplit("/",1)[1]}<br>{self.N}<br>{startDate} -> {endDate}')
+        rightLabel.setHtml(f'{self.window.FID.name.rsplit("/",1)[1]}<br>{maxN}<br>{startDate} -> {endDate}')
            
         self.ui.labelLayout.addItem(leftLabel)
         self.ui.labelLayout.nextColumn()
@@ -143,13 +150,13 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             item[0].setYRange(minVal,maxVal)
 
 
-    def calculateFreqList(self):
+    def calculateFreqList(self, N):
         bw = self.ui.bandWidthSpinBox.value()
         km = int((bw + 1.0) * 0.5)
-        nband = (self.N - 1) / 2
+        nband = (N - 1) / 2
         half = int(bw / 2)
         nfreq = int(nband - half + 1) #try to match power length
-        C = self.N * self.window.resolution
+        C = N * self.window.resolution
         freq = np.arange(km, nfreq) / C
         #return np.log10(freq)
         if len(freq) < 2:
@@ -157,33 +164,33 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             return None
         return freq
 
-    def calculatePower(self, fft):
+    def calculatePower(self, fft, N):
         bw = self.ui.bandWidthSpinBox.value()
         kmo = int((bw + 1) * 0.5)
-        nband = (self.N - 1) / 2
+        nband = (N - 1) / 2
         half = int(bw / 2)
         nfreq = int(nband - bw + 1)
 
-        C = 2 * self.window.resolution / self.N
+        C = 2 * self.window.resolution / N
         fsqr = [ft * ft for ft in fft]
         power = [0] * nfreq
-        for n in range(nfreq):
-            km = kmo + n
+        for i in range(nfreq):
+            km = kmo + i
             kO = int(km - half)
             kE = int(km + half) + 1
 
-            power[n] = sum(fsqr[kO * 2 - 1:kE * 2 - 1]) / bw * C
+            power[i] = sum(fsqr[kO * 2 - 1:kE * 2 - 1]) / bw * C
 
         return power
 
     # get pair 1 and 2 from dropdowns as kx and ky
     # should prob put coherence on separate tab with its own ui section
     # also phase too
-    def calculateCoherenceAndPhase(self, fft0, fft1):
+    def calculateCoherenceAndPhase(self, fft0, fft1, N):
 
         bw = self.ui.bandWidthSpinBox.value()
         kmo = int((bw + 1) * 0.5)
-        nband = (self.N - 1) / 2
+        nband = (N - 1) / 2
         half = int(bw / 2)
         nfreq = int(nband - bw + 1)
         kStart = kmo - half
@@ -222,6 +229,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         return coh,pha
 
 
+
+    #old coherence code here for reference (can delete once retranslated module is tested and stuff)
     #def calculateCoherence(self):
     #    # assume that there are no data gaps
     #    # N -> number data points for all
