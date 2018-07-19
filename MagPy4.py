@@ -60,7 +60,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
 
         self.ui.actionPlot.triggered.connect(self.openPlotMenu)
-        self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True))
+        self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True, True))
+        self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True))
         self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False))
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionSpectra.triggered.connect(self.runSpectra)
@@ -83,9 +84,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False
         self.traceStatsOnTop = False
-        self.minTime = None
-        self.maxTime = None
-        self.iiE = None
 
         self.initDataStorageStructures()
 
@@ -249,7 +247,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #self.additionalResizing()
         pass
 
-    def openFileDialog(self, isFlatfile):
+    def openFileDialog(self, isFlatfile, clearCurrent=False):
+        if clearCurrent:
+            self.initDataStorageStructures()
+
         if isFlatfile:
             fileName = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
         else:
@@ -293,6 +294,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # not sure if these should be in here but keeping for now
         self.IDENTITY = Mth.identity()
         self.MATRIX = Mth.identity() # maybe add matrix dropdown in plotmenu somewhere
+
+        self.minTime = None
+        self.maxTime = None
+        self.iiE = None
 
 
     def openFF(self, PATH):  # slot when Open pull down is selected
@@ -371,7 +376,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # prob dont edit these two on subsequent file loads..?
         self.iO = 0
         self.iE = int((self.maxTime - self.minTime) / self.resolution)
-        print(f'{self.iE} {len(fftime)-1}')
         #assert(self.iE == len(fftime)-1)
         #self.iiE = self.iE if not self.iiE else max(self.iE, self.iiE)
         self.iiE = self.iE

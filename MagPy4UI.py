@@ -38,6 +38,11 @@ class MagPy4UI(object):
         self.actionOpenFF.setShortcut('O')
         self.actionOpenFF.setToolTip('Opens a flatfile (requires valid .ffd and .ffh files)')
 
+        self.actionAddFF = QtWidgets.QAction(window)
+        self.actionAddFF.setPriority(QtWidgets.QAction.HighPriority)
+        self.actionAddFF.setText('Add FF')
+        self.actionAddFF.setToolTip('Adds a flatfile to current (requires valid .ffd and .ffh files)')
+
         self.actionOpenCDF = QtWidgets.QAction(window)
         self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
         self.actionOpenCDF.setText('Open CDF')
@@ -72,7 +77,7 @@ class MagPy4UI(object):
         self.toolBar = QtWidgets.QToolBar(window)
         window.addToolBar(QtCore.Qt.TopToolBarArea, self.toolBar)
 
-        file = self.buildPopup('File', [self.actionOpenFF, self.actionOpenCDF])
+        file = self.buildPopup('File', [self.actionOpenFF, self.actionAddFF, self.actionOpenCDF])
         self.toolBar.addWidget(file)
 
         self.toolBar.addAction(self.actionShowData)
