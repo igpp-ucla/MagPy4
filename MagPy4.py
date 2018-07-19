@@ -87,6 +87,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.maxTime = None
         self.iiE = None
 
+        self.initDataStorageStructures()
+
         # this is where options for plot lifetime are saved
         self.initVariables()
 
@@ -275,6 +277,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.plotDataDefault()
 
+    # initializes all data structures used for storing loaded data
+    # file opening operations can either append to or re init these structures based on open preference (prob have multiple buttons for this)
+    # can have some warnings like 'file to be loaded has way different time than current files' or something
+    # may want to additionally separate it by file as well so u could unload whole file if wanted
+        # ya def should have first dropdown be file selection so other dropdowns downs dont become huge!
+    def initDataStorageStructures(self):
+        self.DATASTRINGS = [] # list of all the data strings (could just iterate over keys of datadict actually since python3.6+ guarantees ordering i think
+        self.ORIGDATADICT = {} # maps data strings to original data array
+        self.DATADICT = {}  # stores smoothed version of data and all edit modifications (dict of dicts)
+        self.UNITDICT = {} # maps data strings to unit strings
+        self.TIMES = [] # list of loaded time series
+        self.TIMEINDEX = {} # mapping of dstr to index into times (tried to use multimap thing but didnt work)
+
+        # not sure if these should be in here but keeping for now
+        self.IDENTITY = Mth.identity()
+        self.MATRIX = Mth.identity() # maybe add matrix dropdown in plotmenu somewhere
+
 
     def openFF(self, PATH):  # slot when Open pull down is selected
         FID = FF_ID(PATH, status=FF_STATUS.READ | FF_STATUS.EXIST)
@@ -309,41 +328,42 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         print(f'number records: {numRecords}')
         print(f'number columns: {numColumns}')
 
-
-        # need to generalize this setup to be mostly independent from cdf and ff loading so had persistence between
-        # also need to ensure loaded times are on same epoch, or do a conversion at least when plotting
-        # loading files with same datastring names should either concatenate or just append a subnumber onto end
+        datas = [np.array(col) for col in self.dataByCol]
 
         # ignoring first column because that is time, hence [1:]
-        self.DATASTRINGS = self.FID.getColumnDescriptor("NAME")[1:]
+        newDataStrings = self.FID.getColumnDescriptor("NAME")[1:]
         units = self.FID.getColumnDescriptor("UNITS")[1:]
-        self.ORIGDATADICT = {} # maps data strings to original data array
-        self.DATADICT = {}  # stores smoothed version of data and all edit modifications (dict of dicts)
-        self.UNITDICT = {} # maps data strings to unit strings
-        self.TIMEDB = [fftime] # list of loaded time series
-        self.TIMEINDEX = {} # mapping of dstr to index into timeDB (tried to use multimap thing but didnt work)
-        self.IDENTITY = Mth.identity()
-        self.MATRIX = Mth.identity() # maybe add matrix dropdown in plotmenu somewhere
-        for i, dstr in enumerate(self.DATASTRINGS):
-            datas = np.array(self.dataByRec[:,i])
-            self.ORIGDATADICT[dstr] = datas
-            self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(datas),dstr,''] }
+
+        self.resolution = self.FID.getResolution()  # flatfile define resolution isnt always correct but whatever
+        # generate resolution data column (to visualize when it isn't constant)
+        newDataStrings.append('resolution')
+        units.append('sec')
+        resData = np.diff(fftime)
+        np.append(resData, resData[-1]) # append last value to make same length as time series
+        datas.append(resData)
+
+        resolutions = np.unique(resData)
+        print(f'detected {len(resolutions)} resolutions')
+        # doesnt make sense to print this when some differences are actually just data gaps
+        #print(f'resolutions: {", ".join(map(str,resolutions))}')
+
+        # need to ensure loaded times are on same epoch, or do a conversion when plotting
+        # loading files with same datastring names should either concatenate or just append a subnumber onto end
+
+        self.DATASTRINGS.extend(newDataStrings)
+        self.TIMES.append(fftime) # all flat file data (from same file) map to same time series
+        for i, dstr in enumerate(newDataStrings):
+            self.ORIGDATADICT[dstr] = datas[i]
+            self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(datas[i]),dstr,''] }
             self.UNITDICT[dstr] = units[i]
-            self.TIMEINDEX[dstr] = 0 # all flat file data (from same file) map to same time series
+            self.TIMEINDEX[dstr] = len(self.TIMES)-1 # index is of the time series we just added to end of list
 
-        # sorts by units alphabetically
-        #datazip = list(zip(self.DATASTRINGS, units))
-        #datazip.sort(key=lambda tup: tup[1], reverse=True)
-        #self.DATASTRINGS = [tup[0] for tup in datazip]
-
-        self.resolution = self.FID.getResolution()
-        numpoints = self.FID.FFParm["NROWS"].value
 
         self.minTime = None # temp reset until figure out better way to specify if want file to be loaded fresh or appended to current loading
         self.maxTime = None
 
-        # iterate over time database and find min and max???
-        for times in self.TIMEDB:
+        # iterate over times and find min and max???
+        for times in self.TIMES:
             assert(len(times) > 2)
             self.minTime = times[0] if not self.minTime else min(self.minTime, times[0])
             self.maxTime = times[-1] if not self.maxTime else max(self.maxTime, times[-1])
@@ -359,26 +379,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.tO = self.minTime # currently selected time range
         self.tE = self.maxTime
 
+        tick = 1.0 / self.resolution
         #print(f'resolution: {self.resolution}')
         print(f'tO: {self.tO}')
         print(f'tE: {self.tE}')
         print(f'tick resolution : {self.resolution}')
-        print(f'time resolution : {1.0 / self.resolution} Hz')
+        print(f'time resolution : {tick} Hz')
 
-        # generate resolution data column (to visualize when it isn't constant)
-        dstr = 'resolution'
-        resData = np.diff(fftime)
-        np.append(resData, resData[-1])
-        self.DATASTRINGS.append(dstr)
-        self.ORIGDATADICT[dstr] = resData
-        self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(resData),dstr,''] }
-        self.UNITDICT[dstr] = 'sec'
-        self.TIMEINDEX[dstr] = 0
-        # doesnt make sense to print this when some differences are actually just data gaps
-        resolutions = np.unique(resData)
-        print(f'detected {len(resolutions)} resolutions')
-        #print(f'resolutions: {", ".join(map(str,resolutions))}')
-        tick = 1.0 / self.resolution
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
 
         return True
@@ -538,7 +545,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def updateXRange(self):
         rng = self.getSelectedTimeRange()
         self.ui.timeLabel.setText('yellow')
-        if rng > 30 * 60: # if over half hour show hh:mm:ss
+
+        if rng > 60 * 60 * 24:
+            self.ui.timeLabel.setText('DOM:HR')
+        elif rng > 30 * 60: # if over half hour show hh:mm:ss
             self.ui.timeLabel.setText('HR:MIN:SEC')
         elif rng > 5: # if over 5 seconds show mm:ss
             self.ui.timeLabel.setText('MIN:SEC')
@@ -603,7 +613,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # returns empty list if data is pure errors
         return segList
 
-    # boolMatrix is same shape as the checkBox matrix but just bools
+
     def plotData(self, dataStrings, links):
         self.ui.glw.clear()
 
@@ -814,7 +824,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #self.ui.glw.layoutChanged()
 
     def getTimes(self, dstr):
-        return self.TIMEDB[self.TIMEINDEX[dstr]]
+        return self.TIMES[self.TIMEINDEX[dstr]]
 
     # both plotData and replot use this function internally
     def plotTrace(self, pi, dstr, pen):
@@ -849,6 +859,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         skipRangeSet = set() # set of plots where the min and max values are infinite so they should be ignored
         # for each plot, find min and max values for current time selection (consider every trace)
         # otherwise just use the whole visible range self.iiO self.iiE
+        outOfRangeCount = 0
         for plotIndex, dstrs in enumerate(self.lastPlotStrings):
             minVal = np.inf
             maxVal = -np.inf
@@ -863,7 +874,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 a = self.calcDataIndexByTime(X, self.tO)
                 b = self.calcDataIndexByTime(X, self.tE)
                 if a == b: # both are out of range on same side so data shouldnt be plotted
-                    print(f'"{dstr}" out of range, not plotting') # can get rid of this warning later but want to see it in action first
+                    #print(f'"{dstr}" out of range, not plotting') # can get rid of this warning later but want to see it in action first
+                    outOfRangeCount += 1
                     continue
 
                 if a > b: # so sliders work either way
@@ -877,6 +889,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or np.isinf(maxVal):
                 skipRangeSet.add(plotIndex)
             values.append((minVal,maxVal))
+
+        if outOfRangeCount > 0:
+            print(f'{outOfRangeCount} data columns out of range, not plotting')
 
         for row in self.lastPlotLinks:
             # find largest range in group
@@ -988,6 +1003,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # tick index now refers to slider indices
     def calcTickIndexByTime(self, t):
         perc = (t - self.minTime) / (self.maxTime - self.minTime)
+        perc = Mth.clamp(perc, 0, 1)
+        assert(perc >= 0 and perc <= 1)
         return int(perc * self.iiE)
 
     # given the corresponding time array for data and the time, calculate index into data array
