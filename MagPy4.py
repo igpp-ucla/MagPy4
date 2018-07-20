@@ -80,6 +80,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay = None
         self.spectras = []
         self.traceStats = None
+        self.FIDs = []
 
         # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False
@@ -112,7 +113,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.labelItems = []
         self.trackerLines = []
         starterFile = 'testData/mms15092720'
-        self.FID = None #thanks yi 5/14/2018
         if os.path.exists(starterFile + '.ffd'):
             self.openFF(starterFile)
             self.plotDataDefault()
@@ -173,8 +173,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.edit.show()
 
     def showData(self):
+        msg = QtWidgets.QMessageBox()
+        msg.setIcon(QtWidgets.QMessageBox.Critical)
+        msg.setText("Data display window is disabled for now sorry!")
+        msg.setWindowTitle("Error")
+        msg.exec_()
+        return
+
         self.closeData() # this isnt actually needed it still closes somehow
-        self.dataDisplay = DataDisplay(self.FID, self.times, self.dataByCol, self.dataByRec, Title='Flatfile Data')
+        self.dataDisplay = DataDisplay(self.FIDs[-1], self.TIMES[-1], self.dataByCol, self.dataByRec, Title='Flatfile Data')
         self.dataDisplay.show()
 
     def openTraceStats(self, plotIndex):
@@ -200,6 +207,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # errors before first and after last or just extended from those points
     # errors between are lerped between nearest points
     # todo: try modifying using np.interp (prob faster)
+    # PROBLEM: many files have gaps in the time but no error values to read in between
+    # so this function cant register them as actual gaps in that case still!! 
+    # so this function only detects errors really
+    # could make separate function to detect actual gaps in time so we have option not to draw lines between huge gaps
     def interpolateErrors(self,dataOrig):
         data = np.copy(dataOrig)
         segs = self.getSegments(data)
@@ -248,30 +259,32 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         pass
 
     def openFileDialog(self, isFlatfile, clearCurrent=False):
-        if clearCurrent:
-            self.initDataStorageStructures()
-
         if isFlatfile:
-            fileName = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
         else:
-            fileName = QtWidgets.QFileDialog.getOpenFileName(self, caption="Open Cdf", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF (*.cdf)')[0]
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Cdf", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF (*.cdf)')[0]
 
-        if fileName is "":
-            print('OPEN FILE FAILED')
+        fileNames = list(fileNames)
+        for fileName in fileNames:
+            if '.' not in fileName: # lazy extension check
+                print(f'Bad file found, cancelling open operation')
+                return
+        if not fileNames:
+            print(f'No files selected, cancelling open operation')
             return
 
-        if self.FID is not None:
-            self.FID.close()
+        if clearCurrent:
+            for fid in self.FIDs:
+                fid.close()
+            self.FIDs = []
+            self.initDataStorageStructures()
 
-        if isFlatfile:        
-            fileName = fileName.rsplit(".", 1)[0]
-            if fileName is None:
-                print('OPEN FILE FAILED (split)')
-                return
-            if not self.openFF(fileName):
-                return
-        else:
-            self.openCDF(fileName)
+        for fileName in fileNames:
+            if isFlatfile:        
+                fileName = fileName.rsplit(".", 1)[0] #remove extension
+                self.openFF(fileName)
+            else:
+                self.openCDF(fileName)
 
         self.closeAllSubWindows()
         self.initVariables()
@@ -299,34 +312,33 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.maxTime = None
         self.iiE = None
 
-
     def openFF(self, PATH):  # slot when Open pull down is selected
         FID = FF_ID(PATH, status=FF_STATUS.READ | FF_STATUS.EXIST)
         if not FID:
             print('BAD FLATFILE')
             return False
-
-        self.FID = FID
-        self.epoch = self.FID.getEpoch()
-        print(f'epoch: {self.epoch}')
-        #info = self.FID.FFInfo
-        # errorFlag is usually 1e34 but sometimes less. still huge though
-        self.errorFlag = self.FID.FFInfo['ERROR_FLAG'].value
-        self.errorFlag = 1e31 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
-        print(f'error flag: {self.errorFlag}') # not being used currently
-        self.errorFlag *= 0.9 # based off FFSpectra.py line 829
-        err = self.FID.open()
+        err = FID.open()
         if err < 0:
             print('UNABLE TO OPEN')
             return False
+
+        print(f'\nOPEN {FID.name}')
+
+        self.epoch = FID.getEpoch()
+        print(f'epoch: {self.epoch}')
+        #info = FID.FFInfo
+        # errorFlag is usually 1e34 but sometimes less. still huge though
+        self.errorFlag = FID.FFInfo['ERROR_FLAG'].value
+        self.errorFlag = 1e31 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
+        print(f'error flag: {self.errorFlag}') # not being used currently
+        self.errorFlag *= 0.9 # based off FFSpectra.py line 829
         
         # load flatfile
-        nRows = self.FID.getRows()
-        records = self.FID.DID.sliceArray(row=1, nRow=nRows)
-        fftime = records["time"]
+        nRows = FID.getRows()
+        records = FID.DID.sliceArray(row=1, nRow=nRows)
+        ffTime = records["time"]
         self.dataByRec = records["data"]
         self.dataByCol = arrayToColumns(records["data"])
-        self.epoch = self.FID.getEpoch()
 
         numRecords = len(self.dataByRec)
         numColumns = len(self.dataByCol)
@@ -336,14 +348,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         datas = [np.array(col) for col in self.dataByCol]
 
         # ignoring first column because that is time, hence [1:]
-        newDataStrings = self.FID.getColumnDescriptor("NAME")[1:]
-        units = self.FID.getColumnDescriptor("UNITS")[1:]
+        newDataStrings = FID.getColumnDescriptor("NAME")[1:]
+        units = FID.getColumnDescriptor("UNITS")[1:]
 
-        self.resolution = self.FID.getResolution()  # flatfile define resolution isnt always correct but whatever
+        self.resolution = FID.getResolution()  # flatfile define resolution isnt always correct but whatever
         # generate resolution data column (to visualize when it isn't constant)
         newDataStrings.append('resolution')
         units.append('sec')
-        resData = np.diff(fftime)
+        resData = np.diff(ffTime)
         np.append(resData, resData[-1]) # append last value to make same length as time series
         datas.append(resData)
 
@@ -355,18 +367,47 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # need to ensure loaded times are on same epoch, or do a conversion when plotting
         # loading files with same datastring names should either concatenate or just append a subnumber onto end
 
-        self.DATASTRINGS.extend(newDataStrings)
-        self.TIMES.append(fftime) # all flat file data (from same file) map to same time series
-        for i, dstr in enumerate(newDataStrings):
-            self.ORIGDATADICT[dstr] = datas[i]
-            self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(datas[i]),dstr,''] }
-            self.UNITDICT[dstr] = units[i]
-            self.TIMEINDEX[dstr] = len(self.TIMES)-1 # index is of the time series we just added to end of list
+        # if all data strings currently exist in main data then append everything instead
+        allMatch = True
+        for dstr in newDataStrings:
+            if dstr not in self.DATADICT:
+                allMatch = False
+                break
+        if allMatch:
+            # either need to prepend or append
+            print(f'DATA MATCHES CURRENT, COMBINING...')
+            # since all our strings are present just get the current time 
+            ti = self.TIMEINDEX[newDataStrings[0]]
+            curTime = self.TIMES[ti]
+            if curTime[0] < ffTime[0] and curTime[-1] < ffTime[0]: # new times comes after
+                self.TIMES[ti] = np.concatenate((curTime, ffTime))
+                for i,dstr in enumerate(newDataStrings):
+                    self.ORIGDATADICT[dstr] = np.concatenate((self.ORIGDATADICT[dstr], datas[i]))
+                    self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(self.ORIGDATADICT[dstr]),dstr,''] }
+            elif ffTime[0] < curTime[0] and ffTime[-1] < curTime[0]: # new times comes before
+                self.TIMES[ti] = np.concatenate((ffTime, curTime))
+                for i,dstr in enumerate(newDataStrings):
+                    self.ORIGDATADICT[dstr] = np.concatenate((datas[i], self.ORIGDATADICT[dstr]))
+                    self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(self.ORIGDATADICT[dstr]),dstr,''] }
+            else:
+                print(f'ERROR: times overlap, no merge operation is defined for this yet')
+                return False
 
+        else:
+
+            self.DATASTRINGS.extend(newDataStrings)
+            self.TIMES.append(ffTime) # all flat file data (from same file) map to same time series
+            for i, dstr in enumerate(newDataStrings):
+                self.ORIGDATADICT[dstr] = datas[i]
+                self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(datas[i]),dstr,''] }
+                self.UNITDICT[dstr] = units[i]
+                self.TIMEINDEX[dstr] = len(self.TIMES) - 1 # index is of the time series we just added to end of list
+
+
+        self.FIDs.append(FID)
 
         self.minTime = None # temp reset until figure out better way to specify if want file to be loaded fresh or appended to current loading
         self.maxTime = None
-
         # iterate over times and find min and max???
         for times in self.TIMES:
             assert(len(times) > 2)
@@ -632,7 +673,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # add label for file name at top right
         fileNameLabel = BLabelItem()
         fileNameLabel.opts['justify'] = 'right'
-        fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.FID.name}</span>")
+        if len(self.FIDs) > 1:
+            name = ', '.join([os.path.split(FID.name)[1] for FID in self.FIDs])
+        elif len(self.FIDs) > 0:
+            name = self.FIDs[0].name
+        fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{name}</span>")
         self.ui.glw.nextColumn()
         self.ui.glw.addItem(fileNameLabel)
         self.ui.glw.nextRow()
@@ -851,8 +896,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 pi.addItem(PlotDataItemBDS(times, Y, pen = pen))
 
     
-
-
     # pyqtgraph has y axis linking but not wat is needed
     # this function scales them to have equal sized ranges but not the same actual range
     # also this replicates pyqtgraph setAutoVisible to have scaling for currently selected time vs the whole file
@@ -862,7 +905,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         values = [] # (min,max)
         skipRangeSet = set() # set of plots where the min and max values are infinite so they should be ignored
         # for each plot, find min and max values for current time selection (consider every trace)
-        # otherwise just use the whole visible range self.iiO self.iiE
+        # otherwise just use the whole visible range * -> self.iiE
         outOfRangeCount = 0
         for plotIndex, dstrs in enumerate(self.lastPlotStrings):
             minVal = np.inf
@@ -945,7 +988,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         x1 = self.plotItems[0].getViewBox().lines[lineStr][1].getXPos()
         i0,i1 = self.getTicksFromTimeEdit(timeEdit)
         t0 = self.getTimeFromTick(i0)
-        t1 = self.getTimeFromTick(i1+1)
+        t1 = self.getTimeFromTick(i1 + 1)
         assert(t0 <= t1)
         self.updateLinesPos(lineStr, 0, t0 if x0 < x1 else t1)
         self.updateLinesPos(lineStr, 1, t1 if x0 < x1 else t0)
