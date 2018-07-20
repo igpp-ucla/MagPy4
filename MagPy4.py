@@ -203,6 +203,37 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             if spectra is not None:
                 spectra.updateSpectra()
 
+    # returns data with error values removed
+    def getPrunedData(self, dstr, a, b):
+        data = self.getData(dstr)[a:b]
+        return data[data < self.errorFlag]
+
+    # returns list of segments divided by error values
+    def getSegments(self, dstr):
+        Y = self.ORIGDATADICT[dstr]
+        res = self.RESOLUTIONS[self.TIMEINDEX[dstr]]
+        segments = np.where(np.logical_or(Y >= self.errorFlag, res > self.resolution * 2))[0].tolist() # find spots where there are errors and make segments
+        #segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
+
+        segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
+        #print(f'SEGMENTS {len(segments)}')
+        segList = []
+        st = 0 #start index
+        for seg in segments: # collect start and end range of each segment
+            while st in segments:
+                st += 1
+            if st >= seg:
+                continue
+            segList.append((st,seg))
+            st = seg + 1
+        # returns empty list if data is pure errors
+        return segList
+
+    # returns list of segments divided by gaps in resolution
+    def detectGaps(self, dataOrig):
+        pass
+    
+
     # this smooths over data gaps, required for spectra analysis?
     # errors before first and after last or just extended from those points
     # errors between are lerped between nearest points
@@ -211,9 +242,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # so this function cant register them as actual gaps in that case still!! 
     # so this function only detects errors really
     # could make separate function to detect actual gaps in time so we have option not to draw lines between huge gaps
-    def interpolateErrors(self,dataOrig):
-        data = np.copy(dataOrig)
-        segs = self.getSegments(data)
+    def interpolateErrors(self,dstr):
+        data = np.copy(self.ORIGDATADICT[dstr])
+        segs = self.getSegments(dstr)
         if len(segs) == 0: # data is pure errors
             return data
 
@@ -302,6 +333,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.DATADICT = {}  # stores smoothed version of data and all edit modifications (dict of dicts)
         self.UNITDICT = {} # maps data strings to unit strings
         self.TIMES = [] # list of loaded time series
+        self.RESOLUTIONS = [] # list of gaps between each time series
         self.TIMEINDEX = {} # mapping of dstr to index into times (tried to use multimap thing but didnt work)
 
         # not sure if these should be in here but keeping for now
@@ -352,17 +384,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         units = FID.getColumnDescriptor("UNITS")[1:]
 
         self.resolution = FID.getResolution()  # flatfile define resolution isnt always correct but whatever
-        # generate resolution data column (to visualize when it isn't constant)
-        newDataStrings.append('resolution')
-        units.append('sec')
-        resData = np.diff(ffTime)
-        np.append(resData, resData[-1]) # append last value to make same length as time series
-        datas.append(resData)
-
-        resolutions = np.unique(resData)
-        print(f'detected {len(resolutions)} resolutions')
-        # doesnt make sense to print this when some differences are actually just data gaps
-        #print(f'resolutions: {", ".join(map(str,resolutions))}')
 
         # need to ensure loaded times are on same epoch, or do a conversion when plotting
         # loading files with same datastring names should either concatenate or just append a subnumber onto end
@@ -375,20 +396,31 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 break
         if allMatch:
             # either need to prepend or append
-            print(f'DATA MATCHES CURRENT, COMBINING...')
-            # since all our strings are present just get the current time 
+            print(f'CONCATENATING WITH EXISTING DATA')
+            # since all our strings are present just get the current time of one of them
             ti = self.TIMEINDEX[newDataStrings[0]]
             curTime = self.TIMES[ti]
-            if curTime[0] < ffTime[0] and curTime[-1] < ffTime[0]: # new times comes after
-                self.TIMES[ti] = np.concatenate((curTime, ffTime))
+
+            comesAfter = curTime[0] < ffTime[0] and curTime[-1] < ffTime[0]  # new times comes after
+            comesBefore = ffTime[0] < curTime[0] and ffTime[-1] < curTime[0] # new times comes before
+
+            if comesAfter or comesBefore:
+                joinedTimes = (curTime, ffTime) if comesAfter else (ffTime,curTime)
+                self.TIMES[ti] = np.concatenate(joinedTimes)
+                newRes = np.diff(self.TIMES[ti])
+                newRes = np.append(newRes, newRes[-1])
+                
+                resolutions = np.unique(newRes)
+                print(f'detected {len(resolutions)} resolutions')
+                # doesnt make sense to print this when some differences are actually just data gaps
+                print(f'resolutions: {", ".join(map(str,resolutions))}')
+
+                self.RESOLUTIONS[ti] = newRes
                 for i,dstr in enumerate(newDataStrings):
-                    self.ORIGDATADICT[dstr] = np.concatenate((self.ORIGDATADICT[dstr], datas[i]))
-                    self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(self.ORIGDATADICT[dstr]),dstr,''] }
-            elif ffTime[0] < curTime[0] and ffTime[-1] < curTime[0]: # new times comes before
-                self.TIMES[ti] = np.concatenate((ffTime, curTime))
-                for i,dstr in enumerate(newDataStrings):
-                    self.ORIGDATADICT[dstr] = np.concatenate((datas[i], self.ORIGDATADICT[dstr]))
-                    self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(self.ORIGDATADICT[dstr]),dstr,''] }
+                    joinedData = (self.ORIGDATADICT[dstr], datas[i]) if comesAfter else (datas[i], self.ORIGDATADICT[dstr])
+                    self.ORIGDATADICT[dstr] = np.concatenate(joinedData)
+                    self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(dstr),dstr,''] }
+
             else:
                 print(f'ERROR: times overlap, no merge operation is defined for this yet')
                 return False
@@ -397,11 +429,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
             self.DATASTRINGS.extend(newDataStrings)
             self.TIMES.append(ffTime) # all flat file data (from same file) map to same time series
+            resData = np.diff(ffTime)
+            resData = np.append(resData, resData[-1]) # append last value to make same length as time series
+            self.RESOLUTIONS.append(resData)
             for i, dstr in enumerate(newDataStrings):
-                self.ORIGDATADICT[dstr] = datas[i]
-                self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(datas[i]),dstr,''] }
-                self.UNITDICT[dstr] = units[i]
                 self.TIMEINDEX[dstr] = len(self.TIMES) - 1 # index is of the time series we just added to end of list
+                self.ORIGDATADICT[dstr] = datas[i]
+                self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(dstr),dstr,''] }
+                self.UNITDICT[dstr] = units[i]
+
+            # generate resolution data column (to visualize when it isn't constant)
+            #newDataStrings.append('resolution')
+            #units.append('sec')
+            # need to fix plotting of resolution after this
+            #resolutions = np.unique(resData)
+            #print(f'detected {len(resolutions)} resolutions')
+            # doesnt make sense to print this when some differences are actually just data gaps
+            #print(f'resolutions: {", ".join(map(str,resolutions))}')
 
 
         self.FIDs.append(FID)
@@ -637,28 +681,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getData(self, dstr):
         return self.getDataAndLabel(dstr)[0]
 
-    # returns data with error values removed
-    def getPrunedData(self, dstr, a, b):
-        data = self.getData(dstr)[a:b]
-        return data[data < self.errorFlag]
-
-    def getSegments(self, Y):
-        segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
-        segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
-        #print(f'SEGMENTS {len(segments)}')
-        segList = []
-        st = 0 #start index
-        for seg in segments: # collect start and end range of each segment
-            while st in segments:
-                st += 1
-            if st >= seg:
-                continue
-            segList.append((st,seg))
-            st = seg + 1
-        # returns empty list if data is pure errors
-        return segList
-
-
     def plotData(self, dataStrings, links):
         self.ui.glw.clear()
 
@@ -673,8 +695,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # add label for file name at top right
         fileNameLabel = BLabelItem()
         fileNameLabel.opts['justify'] = 'right'
+
         if len(self.FIDs) > 1:
-            name = ', '.join([os.path.split(FID.name)[1] for FID in self.FIDs])
+            names = [os.path.split(FID.name)[1] for FID in self.FIDs]
+            if len(names) > 4:
+                del[names[3:len(names) - 1]]
+                names.insert(3,'... ')
+            name = ', '.join(names)
         elif len(self.FIDs) > 0:
             name = self.FIDs[0].name
         fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{name}</span>")
@@ -883,7 +910,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             return
         times = self.getTimes(dstr)
         if not self.ui.bridgeDataGaps.isChecked():
-            segs = self.getSegments(self.ORIGDATADICT[dstr])    
+            segs = self.getSegments(dstr)    
             for a,b in segs:
                 if self.ui.drawPoints.isChecked():
                     pi.addItem(PlotPointsItem(times[a:b], Y[a:b], pen=pen))
