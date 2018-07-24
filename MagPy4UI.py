@@ -10,7 +10,7 @@ from pyqtgraphExtensions import GridGraphicsLayout,LinearGraphicsLayout,BLabelIt
 class MagPy4UI(object):
 
     def buildPopup(self, name, actions):
-                # add options popup menu for toggled things
+        # add options popup menu for toggled things
         popup = QtWidgets.QToolButton()
         menu = QtWidgets.QMenu()
         menu.setToolTipsVisible(True)
@@ -69,6 +69,10 @@ class MagPy4UI(object):
         self.bridgeDataGaps = QtWidgets.QAction('Bridge Data Gaps', checkable=True, checked=False)
         self.drawPoints = QtWidgets.QAction('Draw Points (unoptimized)', checkable=True, checked=False)
 
+        self.runTests = QtWidgets.QAction(window)
+        self.runTests.setText('Run Tests')
+        self.runTests.setToolTip('Runs unit tests for code')
+
         self.switchMode = QtWidgets.QAction(window)
         self.switchMode.setText('Switch to MarsPy')
         self.switchMode.setToolTip('Loads various presets specific to the Insight mission')
@@ -95,6 +99,7 @@ class MagPy4UI(object):
         self.toolBar.addWidget(spacer)
 
         self.toolBar.addAction(self.switchMode)
+        self.toolBar.addAction(self.runTests)
 
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
@@ -165,8 +170,8 @@ class TimeEdit():
 
     def setupMinMax(self, minmax):
         min,max = minmax
-        self.minDateTime = min;
-        self.maxDateTime = max;
+        self.minDateTime = min
+        self.maxDateTime = max
         self.setStartNoCallback(min)
         self.setEndNoCallback(max)
 

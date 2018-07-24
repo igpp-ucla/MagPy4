@@ -1,4 +1,6 @@
 
+import numpy as np
+
 class Mth:
 
     IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
@@ -73,3 +75,69 @@ class Mth:
 
     def clamp(value, minimum, maximum):
         return max(min(value,maximum),minimum)
+
+
+    def getSegmentsFromErrorsAndGaps( data, res, errorFlag, maxRes):
+        segments = np.where(np.logical_or(data >= errorFlag, res > maxRes))[0].tolist() 
+        return Mth.__processSegmentList(segments, len(data))
+
+    def getSegmentsFromErrors(data, errorFlag):
+        segments = np.where(data >= errorFlag)[0].tolist()
+        return Mth.__processSegmentList(segments, len(data))
+
+    def getSegmentsFromTimeGaps( res, maxRes):
+        segments = np.where(res > maxRes)[0].tolist() 
+        return Mth.__processSegmentList(segments, len(res))
+
+    def __processSegmentList( segments, dataLen):
+        segments.append(dataLen) # add one to end so last segment will be added (also if no errors)
+        #print(f'SEGMENTS {len(segments)}')
+        segList = []
+        st = 0 #start index
+        for seg in segments: # collect start and end range of each segment
+            while st in segments:
+                st += 1
+            if st >= seg:
+                continue
+            segList.append((st,seg))
+            st = seg + 1
+        # returns empty list if data is pure errors
+        return segList    
+
+    # this smooths over data gaps, required for spectra analysis?
+    # errors before first and after last or just extended from those points
+    # errors between are lerped between nearest points
+    # todo: try modifying using np.interp (prob faster)
+    # PROBLEM: many files have gaps in the time but no error values to read in between
+    # so this function cant register them as actual gaps in that case still!! 
+    # so this function only detects errors really
+    # could make separate function to detect actual gaps in time so we have option not to draw lines between huge gaps
+    def interpolateErrors(origData, errorFlag):
+        segs = Mth.getSegmentsFromErrors(origData, errorFlag)
+        data = np.copy(origData)
+        if len(segs) == 0: # data is pure errors
+            return data
+
+        # if first segment doesnt start at 0 
+        # set data 0 - X to data at X
+        first = segs[0][0]
+        if first != 0: 
+            data[:first] = data[first]
+
+        # interate over the gaps in the segment list
+        # this could prob be sped up somehow
+        for si in range(len(segs) - 1):
+            gO = segs[si][1] # start of gap
+            gE = segs[si + 1][0] # end of gap
+            gSize = gE - gO + 1 # gap size
+            for i in range(gO,gE): # calculate gap values by lerping from start to end
+                t = (i - gO + 1) / gSize
+                data[i] = (1 - t) * data[gO - 1] + t * data[gE]
+
+        # if last segment doesnt end with last index of data
+        # then set data X - end based on X
+        last = segs[-1][1]
+        if last != len(data):
+            data[last - 1:len(data)] = data[last - 1]
+
+        return data

@@ -25,6 +25,7 @@ from edit import Edit
 from traceStats import TraceStats
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, LinkedInfiniteLine, BLabelItem
 from mth import Mth
+from tests import Tests
 import bisect
 from dataBase import Database
 
@@ -67,6 +68,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionSpectra.triggered.connect(self.runSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.switchMode.triggered.connect(self.swapMode)
+        self.ui.runTests.triggered.connect(self.runTests)
         self.insightMode = False
 
         # options menu dropdown
@@ -116,10 +118,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if os.path.exists(starterFile + '.ffd'):
             self.openFF(starterFile)
             self.plotDataDefault()
-
-
-        test = [0, 1, 2, 3, 4]
-
 
 
     # close any subwindows if main window is closed
@@ -213,80 +211,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         data = self.getData(dstr)[a:b]
         return data[data < self.errorFlag]
 
-    # returns list of segments divided by error values
-    # mode is 0 for both, 1 for just errors, and 2 for just time gaps
-
-
-    # ok heres wat i was working on, do some more tests with this where you can provide own max resolution
-    # maybe split into two functions, 
-
-
-    def getSegments(self, dstr, maxRes = None, mode = 0):
-        Y = self.ORIGDATADICT[dstr]
-        res = self.RESOLUTIONS[self.TIMEINDEX[dstr]]
-        if mode == 0:
-            segments = np.where(np.logical_or(Y >= self.errorFlag, res > self.resolution * 2))[0].tolist() # find spots where there are errors and make segments
-        elif mode == 1:
-            segments = np.where(Y >= self.errorFlag)[0].tolist()
-        elif mode == 2:
-            segments = np.where(res > self.resolution * 2)[0].tolist()
-        else:
-            assert(False), f'incorrect getSegments mode: {mode}'
-
-        segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
-        #print(f'SEGMENTS {len(segments)}')
-        segList = []
-        st = 0 #start index
-        for seg in segments: # collect start and end range of each segment
-            while st in segments:
-                st += 1
-            if st >= seg:
-                continue
-            segList.append((st,seg))
-            st = seg + 1
-        # returns empty list if data is pure errors
-        return segList
-    
-
-    # this smooths over data gaps, required for spectra analysis?
-    # errors before first and after last or just extended from those points
-    # errors between are lerped between nearest points
-    # todo: try modifying using np.interp (prob faster)
-    # PROBLEM: many files have gaps in the time but no error values to read in between
-    # so this function cant register them as actual gaps in that case still!! 
-    # so this function only detects errors really
-    # could make separate function to detect actual gaps in time so we have option not to draw lines between huge gaps
-    def interpolateErrors(self,dstr):
-        data = np.copy(self.ORIGDATADICT[dstr])
-        segs = self.getSegments(dstr, mode = 1)
-        if len(segs) == 0: # data is pure errors
-            return data
-
-        # if first segment doesnt start at 0 
-        # set data 0 - X to data at X
-        first = segs[0][0]
-        if first != 0: 
-            data[0:first] = data[first]
-
-        # interate over the gaps in the segment list
-        # this could prob be sped up somehow
-        for si in range(len(segs) - 1):
-            gO = segs[si][1] # start of gap
-            gE = segs[si + 1][0] # end of gap
-            gSize = gE - gO + 1 # gap size
-            for i in range(gO,gE): # calculate gap values by lerping from start to end
-                t = (i - gO + 1) / gSize
-                data[i] = (1 - t) * data[gO - 1] + t * data[gE]
-
-        # if last segment doesnt end with last index of data
-        # then set data X - end based on X
-        last = segs[-1][1]
-        if last != len(data):
-            data[last - 1:len(data)] = data[last - 1]
-
-        return data
-
-
     def swapMode(self): #todo: add option to just compile to one version or other with a bool swap as well
         txt = self.ui.switchMode.text()
         self.insightMode = not self.insightMode
@@ -297,6 +221,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotDataDefault()
         self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
         self.app.setWindowIcon(self.marsIcon if self.insightMode else self.magpyIcon)
+
+    def runTests(self):
+        Tests.runTests()
 
     def resizeEvent(self, event):
         #print(event.size())
@@ -416,10 +343,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             ti = self.TIMEINDEX[arbStr]
             curTime = self.TIMES[ti]
 
-            segments = self.getSegments(arbStr, mode=2)
+            res = self.getResolutions(arbStr)
+            segments = Mth.getSegmentsFromTimeGaps(res, self.resolution * 2)
             f0 = ffTime[0]
             f1 = ffTime[-1]
-            print(segments)
             segLen = len(segments)
             for si in range(segLen):
                 s0 = segments[si][0]
@@ -460,7 +387,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                             joinedData = (origData[:segments[si-1][1]+1], datas[di], origData[s0:])
 
                         self.ORIGDATADICT[dstr] = np.concatenate(joinedData)
-                        self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(dstr),dstr,''] }
+                        self.DATADICT[dstr] = { self.IDENTITY : [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag),dstr,''] }
 
                     print(f'CONCATENATING WITH EXISTING DATA')
                     break
@@ -480,7 +407,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             for i, dstr in enumerate(newDataStrings):
                 self.TIMEINDEX[dstr] = len(self.TIMES) - 1 # index is of the time series we just added to end of list
                 self.ORIGDATADICT[dstr] = datas[i]
-                self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(dstr),dstr,''] }
+                self.DATADICT[dstr] = { self.IDENTITY : [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag),dstr,''] }
                 self.UNITDICT[dstr] = units[i]
 
             # generate resolution data column (to visualize when it isn't constant)
@@ -930,7 +857,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #print(maxWidth)
         
 
-
     # just redraws the traces and ensures y range is correct
     # dont need to rebuild everything
     # maybe make this part of main plot function?
@@ -949,6 +875,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getTimes(self, dstr):
         return self.TIMES[self.TIMEINDEX[dstr]]
 
+    def getResolutions(self, dstr):
+        return self.RESOLUTIONS[self.TIMEINDEX[dstr]]
+
     # both plotData and replot use this function internally
     def plotTrace(self, pi, dstr, pen):
         Y = self.getData(dstr)
@@ -957,7 +886,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             return
         times = self.getTimes(dstr)
         if not self.ui.bridgeDataGaps.isChecked():
-            segs = self.getSegments(dstr)    
+            od = self.ORIGDATADICT[dstr]
+            res = self.getResolutions(dstr)
+            segs = Mth.getSegmentsFromErrorsAndGaps(od, res, self.errorFlag, self.resolution * 2)   
             for a,b in segs:
                 if self.ui.drawPoints.isChecked():
                     pi.addItem(PlotPointsItem(times[a:b], Y[a:b], pen=pen))
