@@ -117,6 +117,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.openFF(starterFile)
             self.plotDataDefault()
 
+
+        test = [0, 1, 2, 3, 4]
+
+
+
     # close any subwindows if main window is closed
     # this should also get called if flatfile changes
     def closeEvent(self, event):
@@ -209,11 +214,24 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         return data[data < self.errorFlag]
 
     # returns list of segments divided by error values
-    def getSegments(self, dstr):
+    # mode is 0 for both, 1 for just errors, and 2 for just time gaps
+
+
+    # ok heres wat i was working on, do some more tests with this where you can provide own max resolution
+    # maybe split into two functions, 
+
+
+    def getSegments(self, dstr, maxRes = None, mode = 0):
         Y = self.ORIGDATADICT[dstr]
         res = self.RESOLUTIONS[self.TIMEINDEX[dstr]]
-        segments = np.where(np.logical_or(Y >= self.errorFlag, res > self.resolution * 2))[0].tolist() # find spots where there are errors and make segments
-        #segments = np.where(Y >= self.errorFlag)[0].tolist() # find spots where there are errors and make segments
+        if mode == 0:
+            segments = np.where(np.logical_or(Y >= self.errorFlag, res > self.resolution * 2))[0].tolist() # find spots where there are errors and make segments
+        elif mode == 1:
+            segments = np.where(Y >= self.errorFlag)[0].tolist()
+        elif mode == 2:
+            segments = np.where(res > self.resolution * 2)[0].tolist()
+        else:
+            assert(False), f'incorrect getSegments mode: {mode}'
 
         segments.append(len(Y)) # add one to end so last segment will be added (also if no errors)
         #print(f'SEGMENTS {len(segments)}')
@@ -228,10 +246,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             st = seg + 1
         # returns empty list if data is pure errors
         return segList
-
-    # returns list of segments divided by gaps in resolution
-    def detectGaps(self, dataOrig):
-        pass
     
 
     # this smooths over data gaps, required for spectra analysis?
@@ -244,7 +258,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # could make separate function to detect actual gaps in time so we have option not to draw lines between huge gaps
     def interpolateErrors(self,dstr):
         data = np.copy(self.ORIGDATADICT[dstr])
-        segs = self.getSegments(dstr)
+        segs = self.getSegments(dstr, mode = 1)
         if len(segs) == 0: # data is pure errors
             return data
 
@@ -394,36 +408,67 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             if dstr not in self.DATADICT:
                 allMatch = False
                 break
-        if allMatch:
-            # either need to prepend or append
-            print(f'CONCATENATING WITH EXISTING DATA')
+
+        if allMatch: # not sure if necessarily required but safest for now
+
             # since all our strings are present just get the current time of one of them
-            ti = self.TIMEINDEX[newDataStrings[0]]
+            arbStr = newDataStrings[0]
+            ti = self.TIMEINDEX[arbStr]
             curTime = self.TIMES[ti]
 
-            comesAfter = curTime[0] < ffTime[0] and curTime[-1] < ffTime[0]  # new times comes after
-            comesBefore = ffTime[0] < curTime[0] and ffTime[-1] < curTime[0] # new times comes before
+            segments = self.getSegments(arbStr, mode=2)
+            f0 = ffTime[0]
+            f1 = ffTime[-1]
+            print(segments)
+            segLen = len(segments)
+            for si in range(segLen):
+                s0 = segments[si][0]
+                s1 = segments[si][1]
+                t0 = curTime[s0]
+                t1 = curTime[s1-1]
 
-            if comesAfter or comesBefore:
-                joinedTimes = (curTime, ffTime) if comesAfter else (ffTime,curTime)
-                self.TIMES[ti] = np.concatenate(joinedTimes)
-                newRes = np.diff(self.TIMES[ti])
-                newRes = np.append(newRes, newRes[-1])
+                startsBefore = f0 < t0 and f1 < t0  # starts entirely before this time
+                startsAfter = f0 > t0 and f0 > t1   # starts entirely after this time
+                startsBeforeFirst = startsBefore and si == 0
+                startsAfterLast = startsAfter and si == segLen-1
+                if startsBefore or startsAfterLast:
+                    if startsBeforeFirst:
+                        joined = (ffTime, curTime)
+                    elif startsAfterLast:
+                        joined = (curTime, ffTime)
+                    else:
+                        joined = (curTime[:segments[si-1][1]+1], ffTime, curTime[s0:])
+
+                    self.TIMES[ti] = np.concatenate(joined)
+
+                    newRes = np.diff(self.TIMES[ti])
+                    newRes = np.append(newRes, newRes[-1])
                 
-                resolutions = np.unique(newRes)
-                print(f'detected {len(resolutions)} resolutions')
-                # doesnt make sense to print this when some differences are actually just data gaps
-                print(f'resolutions: {", ".join(map(str,resolutions))}')
+                    resolutions = np.unique(newRes)
+                    print(f'detected {len(resolutions)} resolutions')
+                    #print(f'resolutions: {", ".join(map(str,resolutions))}')
 
-                self.RESOLUTIONS[ti] = newRes
-                for i,dstr in enumerate(newDataStrings):
-                    joinedData = (self.ORIGDATADICT[dstr], datas[i]) if comesAfter else (datas[i], self.ORIGDATADICT[dstr])
-                    self.ORIGDATADICT[dstr] = np.concatenate(joinedData)
-                    self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(dstr),dstr,''] }
+                    self.RESOLUTIONS[ti] = newRes
+                    for di,dstr in enumerate(newDataStrings):
+                        origData = self.ORIGDATADICT[dstr]
 
-            else:
-                print(f'ERROR: times overlap, no merge operation is defined for this yet')
-                return False
+                        if startsBeforeFirst:
+                            joinedData = (datas[di], origData)
+                        elif startsAfterLast:
+                            joinedData = (origData, datas[di])
+                        else:
+                            joinedData = (origData[:segments[si-1][1]+1], datas[di], origData[s0:])
+
+                        self.ORIGDATADICT[dstr] = np.concatenate(joinedData)
+                        self.DATADICT[dstr] = { self.IDENTITY : [self.interpolateErrors(dstr),dstr,''] }
+
+                    print(f'CONCATENATING WITH EXISTING DATA')
+                    break
+                elif startsAfter:
+                    continue
+                else:
+                    print(f'ERROR: times overlap, no merge operation is defined for this yet')
+                    return
 
         else:
 
@@ -681,6 +726,17 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getData(self, dstr):
         return self.getDataAndLabel(dstr)[0]
 
+    def getFileNameString(self): # returns list of all loaded files
+        if len(self.FIDs) > 1:
+            names = [os.path.split(FID.name)[1] for FID in self.FIDs]
+            if len(names) > 4: # abbreviate if too many files are loaded
+                del[names[3:len(names) - 1]]
+                names.insert(3,'... ')
+            name = ', '.join(names)
+        elif len(self.FIDs) > 0:
+            name = self.FIDs[0].name
+        return name
+
     def plotData(self, dataStrings, links):
         self.ui.glw.clear()
 
@@ -695,16 +751,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # add label for file name at top right
         fileNameLabel = BLabelItem()
         fileNameLabel.opts['justify'] = 'right'
-
-        if len(self.FIDs) > 1:
-            names = [os.path.split(FID.name)[1] for FID in self.FIDs]
-            if len(names) > 4:
-                del[names[3:len(names) - 1]]
-                names.insert(3,'... ')
-            name = ', '.join(names)
-        elif len(self.FIDs) > 0:
-            name = self.FIDs[0].name
-        fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{name}</span>")
+        fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.getFileNameString()}</span>")
         self.ui.glw.nextColumn()
         self.ui.glw.addItem(fileNameLabel)
         self.ui.glw.nextRow()

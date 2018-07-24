@@ -73,7 +73,7 @@ class MagPy4UI(object):
         self.switchMode.setText('Switch to MarsPy')
         self.switchMode.setToolTip('Loads various presets specific to the Insight mission')
 
-        # build toolbar
+        # build toolbar (todo switch to QMenuBar class, thats what i should have used to begin with lol
         self.toolBar = QtWidgets.QToolBar(window)
         window.addToolBar(QtCore.Qt.TopToolBarArea, self.toolBar)
 
