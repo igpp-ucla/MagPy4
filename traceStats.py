@@ -68,8 +68,6 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         self.show()
 
     def update(self):
-        i0,i1 = self.window.getTicksFromLines()
-
         plotInfo = self.window.getSelectedPlotInfo()
        
         colStrs = ['value'] if self.window.generalSelectStep <= 2 else self.funcStrs
@@ -80,6 +78,9 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         for dstrs,pens in plotInfo:
             group = []
             for i,dstr in enumerate(dstrs):
+
+                i0,i1 = self.window.calcDataIndicesFromLines(dstr)
+
                 rowStrs.append([self.window.getLabel(dstr), pens[i].color().name()])
                 row = []
                 if self.window.generalSelectStep <= 2:

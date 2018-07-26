@@ -1,5 +1,7 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
+from PyQt5.QtWidgets import QSizePolicy
+import FF_File
 from FF_Time import FFTIME, FF_EPOCH
 import numpy as np
 import datetime, time
@@ -24,12 +26,28 @@ class DataDisplayUI(object):
         self.widget.setObjectName(_fromUtf8("widget"))
         self.verticalLayout_2 = QtGui.QVBoxLayout(self.widget)
         self.verticalLayout_2.setObjectName(_fromUtf8("verticalLayout_2"))
-        self.fileLabel = QtGui.QLabel(self.widget)
-        self.fileLabel.setObjectName(_fromUtf8("fileLabel"))
-        self.verticalLayout_2.addWidget(self.fileLabel)
+
+        topHL = QtGui.QHBoxLayout()
         self.timesLabel = QtGui.QLabel(self.widget)
         self.timesLabel.setObjectName(_fromUtf8("timesLabel"))
-        self.verticalLayout_2.addWidget(self.timesLabel)
+        self.timesLabel.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        topHL.addWidget(self.timesLabel)
+        fileHL = QtGui.QGridLayout()
+        fileHL.addWidget(QtGui.QLabel('File Name:'), 0, 0, 1, 1)
+        self.fileCombo = QtGui.QComboBox(self.widget)
+        self.fileCombo.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.fileCombo.setSizeAdjustPolicy(QtGui.QComboBox.AdjustToContents)
+        fileHL.addWidget(self.fileCombo, 0, 1, 1, 1)
+        filePathLayout = QtGui.QHBoxLayout()
+        self.filePathCB = QtGui.QCheckBox()
+        filePathLayout.addWidget(QtGui.QLabel('Show full path'))
+        filePathLayout.addWidget(self.filePathCB)
+        filePathLayout.addStretch()
+        fileHL.addLayout(filePathLayout, 1, 1, 1, 1)
+        topHL.addLayout(fileHL)
+        topHL.addStretch()
+        self.verticalLayout_2.addLayout(topHL)
+
         self.verticalLayout.addWidget(self.widget)
         self.dataTableView = QtGui.QTableView(dataFrame)
         self.dataTableView.setEnabled(True)
@@ -71,9 +89,7 @@ class DataDisplayUI(object):
         self.buttonBox.setObjectName(_fromUtf8("buttonBox"))
         self.verticalLayout.addWidget(self.buttonBox)
 
-        #self.retranslateUi(dataFrame)
         dataFrame.setWindowTitle("Flat File Data")
-        self.fileLabel.setText("TextLabel")
         self.timesLabel.setText("TextLabel")
         self.checkBox.setText("Time Ticks")
         self.moveByTime.setText("Go to Time")
@@ -170,37 +186,79 @@ class FFTableModel(QtCore.QAbstractTableModel):
 
 class DataDisplay(QtGui.QFrame, DataDisplayUI):
     """ file data dialog """
-    def __init__(self, FID, time, dataByCol, dataByRec, Title=None, parent=None):
+    def __init__(self, FIDs, Title=None, parent=None):
         QtGui.QWidget.__init__(self, parent)
         self.ui = DataDisplayUI()
         self.ui.setupUi(self)
         self.title = Title
-        self.FID = FID
-        self.time = time
-        self.dataByCol = dataByCol
-        self.dataByRec = dataByRec
-        self.setActions()
+        self.FIDs = FIDs
+        self.curFID = FIDs[0]
+        self.updateFile()
+
+        self.setFileComboNames()
+        self.ui.fileCombo.currentIndexChanged.connect(self.fileComboChanged)
+        self.ui.filePathCB.stateChanged.connect(self.setFileComboNames)
+
+        self.ui.buttonBox.rejected.connect(self.close)
+        buttonBox = self.ui.buttonBox
+        saveButton = QtGui.QPushButton("Save Data")
+        saveButton.clicked.connect(self.saveData)
+        buttonBox.addButton(saveButton, QtGui.QDialogButtonBox.ApplyRole)
+        self.ui.checkBox.clicked.connect(self.toggleTimeDisplay)
+        self.ui.moveByTime.clicked.connect(self.moveByTime)
+        self.ui.moveByRow.clicked.connect(self.moveByRow)
+#       printButton = QPushButton("Print Data")
+#       printPanelButton.clicked.connect(self.printPanel)
+#       buttonBox.addButton(printButton, QDialogButtonBox.ApplyRole)
+
+
         self.update()
         self.clip = QtGui.QApplication.clipboard()
 
+    def fileComboChanged(self,i):
+        self.curFID = self.FIDs[i]
+        self.updateFile()
+        self.update()
+
+    def setFileComboNames(self):
+        self.ui.fileCombo.blockSignals(True)
+        self.ui.fileCombo.clear()
+        fullPath = self.ui.filePathCB.isChecked()
+        for FID in self.FIDs:
+            name = FID.name if fullPath else os.path.split(FID.name)[1]
+            self.ui.fileCombo.addItem(name)
+        #self.ui.fileCombo.resize(self.ui.fileCombo.sizeHint())
+        #print(self.ui.fileCombo.sizeHint())
+        self.ui.fileCombo.adjustSize()
+        self.ui.fileCombo.blockSignals(False)
+
+
+    def updateFile(self):
+        nRows = self.curFID.getRows()
+        records = self.curFID.DID.sliceArray(row=1, nRow=nRows)
+        self.time = records["time"]
+        self.dataByRec = records["data"]
+        self.dataByCol = FF_File.arrayToColumns(records["data"])
+
     def update(self):
-        parm = self.FID.FFParm
-        info = self.FID.FFInfo
-        self.ui.fileLabel.setText(parm["DATA"].info)
+        parm = self.curFID.FFParm
+        info = self.curFID.FFInfo
+        #self.ui.fileLabel.setText(parm["DATA"].info)
         self.setWindowTitle(self.title)
 
         startTime = info["FIRST_TIME"].info.replace("UTC", '')
         endTime = info["LAST_TIME"].info.replace("UTC", '')
-        epoch = " Epoch " + parm["EPOCH"].info
+        epoch = "Epoch : " + parm["EPOCH"].info
         nrows = "NROWS : " + parm["NROWS"].info.lstrip()
         ncols = "NCOLS : " + parm["NCOLS"].info.lstrip()
-        stats = f'Times: [{startTime}]>>[{endTime}] [{epoch}] [{nrows}] [{ncols}]'
+        #stats = f'Times: [{startTime}]>>[{endTime}] [{epoch}] [{nrows}] [{ncols}]'
+        stats = f'{nrows}, {ncols}, {epoch}          \n{startTime}\n{endTime}'
         self.ui.timesLabel.setText(stats)
-        epoch = self.FID.getEpoch()
+        epoch = self.curFID.getEpoch()
         # actually it's the last data (data not allfile)
-        nRow = self.FID.getRows()
-        rO = self.FID.ffsearch(self.time[0], 1, nRow)
-        rE = self.FID.ffsearch(self.time[-1], 1, nRow)
+        nRow = self.curFID.getRows()
+        rO = self.curFID.ffsearch(self.time[0], 1, nRow)
+        rE = self.curFID.ffsearch(self.time[-1], 1, nRow)
         if rE is None:
             rE = nRow
         self.ui.Row.setMinimum(rO)
@@ -210,8 +268,8 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))
         self.ui.dateTimeEdit.setMinimumDateTime(UTCQDate.UTC2QDateTime(start.UTC))
         self.ui.dateTimeEdit.setMaximumDateTime(UTCQDate.UTC2QDateTime(stop_.UTC))
-        self.headerStrings = self.FID.getColumnDescriptor("NAME")
-        units = self.FID.getColumnDescriptor("UNITS")
+        self.headerStrings = self.curFID.getColumnDescriptor("NAME")
+        units = self.curFID.getColumnDescriptor("UNITS")
         header = [f'{h} ({u})' for h,u in zip(self.headerStrings,units)]
         if self.dataByCol is not None:
             tm = FFTableModel(self.time, self.dataByCol, header, parent=None, epoch=parm["EPOCH"].value)
@@ -234,7 +292,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             return
         np.set_printoptions(formatter={'float': '{:+10.4f}'.format}, linewidth=10000)
         print(fullname)
-        epoch = self.FID.FFParm["EPOCH"].value
+        epoch = self.curFID.FFParm["EPOCH"].value
         nRows = len(self.time)
 
 		#have option for 'readable format' vs 'excel ready'
@@ -284,28 +342,14 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         dtInt = [int(item) for item in dtList]
         doy = datetime.datetime(*dtInt).timetuple().tm_yday
         UTC = dtList[0] + " " + str(doy) + DTSTRM[4:]
-        t = FFTIME(UTC, Epoch=self.FID.getEpoch()).tick
-        iRow = self.FID.ffsearch(t, 1, self.FID.getRows()) - 1
+        t = FFTIME(UTC, Epoch=self.curFID.getEpoch()).tick
+        iRow = self.curFID.ffsearch(t, 1, self.curFID.getRows()) - 1
         self.ui.dataTableView.selectRow(iRow)
 
     def moveByRow(self):
         # grab data ui.Row
         row = self.ui.Row.value() - 1
         self.ui.dataTableView.selectRow(row)
-
-    def setActions(self):
-        self.ui.buttonBox.rejected.connect(self.close)
-        buttonBox = self.ui.buttonBox
-        saveButton = QtGui.QPushButton("Save Data")
-        saveButton.clicked.connect(self.saveData)
-        buttonBox.addButton(saveButton, QtGui.QDialogButtonBox.ApplyRole)
-        self.ui.checkBox.clicked.connect(self.toggleTimeDisplay)
-        self.ui.moveByTime.clicked.connect(self.moveByTime)
-        self.ui.moveByRow.clicked.connect(self.moveByRow)
-#       printButton = QPushButton("Print Data")
-#       printPanelButton.clicked.connect(self.printPanel)
-#       buttonBox.addButton(printButton, QDialogButtonBox.ApplyRole)
-
 
     def keyPressEvent(self, e):
         if (e.modifiers() & QtCore.Qt.ControlModifier):

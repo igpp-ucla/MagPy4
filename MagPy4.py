@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import numpy as np
 import pyqtgraph as pg
 
-from FF_File import timeIndex, FF_STATUS, FF_ID, ColumnStats, arrayToColumns
+import FF_File
 from FF_Time import FFTIME, leapFile
 import pycdf
 
@@ -176,15 +176,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.edit.show()
 
     def showData(self):
-        msg = QtWidgets.QMessageBox()
-        msg.setIcon(QtWidgets.QMessageBox.Critical)
-        msg.setText("Data display window is disabled for now sorry!")
-        msg.setWindowTitle("Error")
-        msg.exec_()
-        return
+        #msg = QtWidgets.QMessageBox()
+        #msg.setIcon(QtWidgets.QMessageBox.Critical)
+        #msg.setText("Data display window is disabled for now sorry!")
+        #msg.setWindowTitle("Error")
+        #msg.exec_()
+        #return
 
         self.closeData() # this isnt actually needed it still closes somehow
-        self.dataDisplay = DataDisplay(self.FIDs[-1], self.TIMES[-1], self.dataByCol, self.dataByRec, Title='Flatfile Data')
+        self.dataDisplay = DataDisplay(self.FIDs, Title='Flatfile Data')
         self.dataDisplay.show()
 
     def openTraceStats(self, plotIndex):
@@ -286,7 +286,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.iiE = None
 
     def openFF(self, PATH):  # slot when Open pull down is selected
-        FID = FF_ID(PATH, status=FF_STATUS.READ | FF_STATUS.EXIST)
+        FID = FF_File.FF_ID(PATH, status=FF_File.FF_STATUS.READ | FF_File.FF_STATUS.EXIST)
         if not FID:
             print('BAD FLATFILE')
             return False
@@ -311,7 +311,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         records = FID.DID.sliceArray(row=1, nRow=nRows)
         ffTime = records["time"]
         self.dataByRec = records["data"]
-        self.dataByCol = arrayToColumns(records["data"])
+        self.dataByCol = FF_File.arrayToColumns(records["data"])
 
         numRecords = len(self.dataByRec)
         numColumns = len(self.dataByCol)
