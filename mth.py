@@ -1,5 +1,6 @@
 
 import numpy as np
+import pycdf
 
 class Mth:
 
@@ -82,7 +83,10 @@ class Mth:
         return Mth.__processSegmentList(segments, len(data))
 
     def getSegmentsFromErrors(data, errorFlag):
-        segments = np.where(data >= errorFlag)[0].tolist()
+        if errorFlag > 0:
+            segments = np.where(data >= errorFlag)[0].tolist()
+        else:
+            segments = np.where(data <= errorFlag)[0].tolist()
         return Mth.__processSegmentList(segments, len(data))
 
     def getSegmentsFromTimeGaps( res, maxRes):
@@ -141,3 +145,23 @@ class Mth:
             data[last - 1:len(data)] = data[last - 1]
 
         return data
+
+
+    def CDFEpochToTimeTicks(cdfEpoch):
+        """ convert date data to numpy array of Records"""
+        d2tt2 = pycdf.Library().datetime_to_tt2000
+        num = len(cdfEpoch)
+        arr = np.empty(num)
+
+        #ttmJ2000 = 43167.8160001
+        dt = 32.184   # tai - tt time?
+        div = 10 ** 9
+
+        rng = range(num)
+
+        arr = [d2tt2(cdfEpoch[i]) / div - dt for i in rng]
+
+        # a lot faster if in another process
+        #for i in rng:
+            #arr[i] = d2tt2(cdfEpoch[i]) / div - dt
+        return arr

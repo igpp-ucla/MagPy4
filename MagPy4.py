@@ -61,9 +61,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
 
         self.ui.actionPlot.triggered.connect(self.openPlotMenu)
-        self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True, True))
-        self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True))
-        self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False))
+        self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True))
+        self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False))
+        self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False,True))
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionSpectra.triggered.connect(self.runSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
@@ -230,7 +230,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #self.additionalResizing()
         pass
 
-    def openFileDialog(self, isFlatfile, clearCurrent=False):
+    def openFileDialog(self, isFlatfile, clearCurrent):
         if isFlatfile:
             fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
         else:
@@ -419,9 +419,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             # doesnt make sense to print this when some differences are actually just data gaps
             #print(f'resolutions: {", ".join(map(str,resolutions))}')
 
-
         self.FIDs.append(FID)
 
+        self.calculateTimeVariables()
+
+        return True
+
+    def calculateTimeVariables(self):
         self.minTime = None # temp reset until figure out better way to specify if want file to be loaded fresh or appended to current loading
         self.maxTime = None
         # iterate over times and find min and max???
@@ -448,8 +452,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         print(f'time resolution : {tick} Hz')
 
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
-
-        return True
 
     # currently just reads the columns and data types
     # maybe separate this out into another file
@@ -490,37 +492,65 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             else:
                 print(f'no data found for this epoch: {en}')
 
-        for key,value in epochsWithData.items():
+        # need to figure out how to cast the data to numpy array better, so slow right now??
+        # something about this is slow, i dunno. try opening separate process again
+        for key,dstrs in epochsWithData.items():
             print(f'{key} {len(cdf[key])}')
-            for v in value:
-                print(f'  {v}')
+            #for v in dstrs:
+            #    print(f'  {v}')
 
+            print(f'converting time...')
+            times = Mth.CDFEpochToTimeTicks(cdf[key])
+            #for t in times:
+            #    print(t)
+            self.TIMES.append(times)
+            resData = np.diff(times)
+            resData = np.append(resData,resData[-1])
+            self.RESOLUTIONS.append(resData)
+
+            for dstr in dstrs:
+                data = cdf[dstr]
+                zatrs = pycdf.zAttrList(data)
+                shape = np.shape(data)
+                fillVal = zatrs['FILLVAL']
+                units = zatrs['UNITS']
+                data = np.array(data)
+                #print(zatrs)
+                print(f'processing {dstr}, fillVal: {fillVal}, units: {units}')
+                if len(shape) >= 2:
+                    dim = shape[1]
+                    # specific case with 3 or 4 component vectors
+                    if len(shape) == 2 and (dim == 3 or dim == 4):
+                        fix = ['X','Y','Z','T']
+                        for i in range(dim):
+                            newDstr = f'{dstr}_{fix[i]}'
+                            self.DATASTRINGS.append(newDstr)
+                            self.TIMEINDEX[newDstr] = len(self.TIMES)-1
+                            newData = data[:,i]
+                            self.ORIGDATADICT[newDstr] = newData
+                            interpolated = Mth.interpolateErrors(newData, fillVal)
+                            self.DATADICT[newDstr] = { self.IDENTITY : [interpolated,newDstr,''] }
+                            self.UNITDICT[newDstr] = units
+                    else:
+                        print(f'skipping column: {dstr}, unhandled shape: {shape}')
+                else:
+                    self.DATASTRINGS.append(dstr)
+                    self.TIMEINDEX[dstr] = len(self.TIMES)-1
+                    self.ORIGDATADICT[dstr] = data
+                    interpolated = Mth.interpolateErrors(data, fillVal)
+                    self.DATADICT[dstr] = { self.IDENTITY : [interpolated,dstr,''] }
+                    self.UNITDICT[dstr] = units
+
+
+        self.calculateTimeVariables()
+
+        cdf.close()
 
         #attrs = pycdf.zAttrList(cdf[key])
         #if 'FILLVAL' in attrs:
             #print(attrs['FILLVAL'])
         #eArr = MagPy4Window.CDFEpochToTimeTicks(e)
         #esArr = self.CDFEpochToTimeTicks(es)
-
-
-    def CDFEpochToTimeTicks(cdfEpoch):
-        """ convert date data to numpy array of Records"""
-        d2tt2 = pycdf.Library().datetime_to_tt2000
-        num = len(cdfEpoch)
-        arr = np.empty(num)
-
-        #ttmJ2000 = 43167.8160001
-        dt = 32.184   # tai - tt time?
-        div = 10 ** 9
-
-        rng = range(num)
-
-        arr = [d2tt2(cdfEpoch[i]) / div - dt for i in rng]
-
-        # a lot faster if in another process
-        #for i in rng:
-            #arr[i] = d2tt2(cdfEpoch[i]) / div - dt
-        return arr
     
     def getMinAndMaxDateTime(self):
         minDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.minTime, Epoch=self.epoch).UTC)
@@ -654,6 +684,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         return self.getDataAndLabel(dstr)[0]
 
     def getFileNameString(self): # returns list of all loaded files
+        name = 'unknown'
         if len(self.FIDs) > 1:
             names = [os.path.split(FID.name)[1] for FID in self.FIDs]
             if len(names) > 4: # abbreviate if too many files are loaded
