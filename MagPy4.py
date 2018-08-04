@@ -2,6 +2,7 @@
 # python 3.6
 import os
 import sys
+
 # so python looks in paths for these folders too
 # maybe make this into actual modules in future
 sys.path.insert(0, 'ffPy')
@@ -15,7 +16,6 @@ import pyqtgraph as pg
 
 import FF_File
 from FF_Time import FFTIME, leapFile
-import pycdf
 
 from MagPy4UI import MagPy4UI
 from plotMenu import PlotMenu
@@ -27,12 +27,21 @@ from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataIt
 from mth import Mth
 from tests import Tests
 import bisect
-from dataBase import Database
 
 import time
 import functools
 import multiprocessing as mp
 import traceback
+
+CANREADCDFS = False
+try:
+    import pycdf
+    CANREADCDFS = True
+except Exception as e:
+    print(f'ERROR: CDF loading disabled!')
+    print(f'check README for instructions on how to install CDF C Library')
+    print(e)
+    print(' ')
 
 class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def __init__(self, app, parent=None):
@@ -46,6 +55,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.app = app
         self.ui = MagPy4UI()
         self.ui.setupUI(self)
+
+        global CANREADCDFS
+        self.ui.actionOpenCDF.setDisabled(not CANREADCDFS)
 
         self.OS = os.name
         if os.name == 'nt':
@@ -176,14 +188,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.edit.show()
 
     def showData(self):
-        #msg = QtWidgets.QMessageBox()
-        #msg.setIcon(QtWidgets.QMessageBox.Critical)
-        #msg.setText("Data display window is disabled for now sorry!")
-        #msg.setWindowTitle("Error")
-        #msg.exec_()
-        #return
+        if not self.FIDs:
+            msg = QtWidgets.QMessageBox()
+            msg.setIcon(QtWidgets.QMessageBox.Critical)
+            msg.setText("Data display not working for CDFs... yet")
+            msg.setWindowTitle("Error")
+            msg.exec_()
+            return
 
-        self.closeData() # this isnt actually needed it still closes somehow
+        self.closeData() # this isnt actually needed it still closes somehow?
         self.dataDisplay = DataDisplay(self.FIDs, Title='Flatfile Data')
         self.dataDisplay.show()
 
@@ -462,6 +475,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         cdf = pycdf.CDF(PATH)
         if not cdf:
             print('CDF LOAD FAILED')
+        self.cdfName = PATH
 
         datas = []
         epochs = []
@@ -544,6 +558,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
 
         self.calculateTimeVariables()
+        #self.calculateAbbreviatedDstrs()
 
         cdf.close()
 
@@ -552,6 +567,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #print(attrs['FILLVAL'])
         #eArr = MagPy4Window.CDFEpochToTimeTicks(e)
         #esArr = self.CDFEpochToTimeTicks(es)
+
+    # removes any common beginning substring to all DATASTRINGS
+    # not fully implemented yet, need to reference this array around a bunch now
+    def calculateAbbreviatedDstrs(self):
+        self.ABBRV_DSTRS = []
+
+        def _iter():
+            for z in zip(*self.DATASTRINGS):
+                if z.count(z[0]) == len(z):
+                    yield z[0]
+                else:
+                    return
+        common = ''.join(_iter())
+        lenc = len(common)
+        self.ABBRV_DSTRS = [dstr[lenc:] for dstr in self.DATASTRINGS]
+
+        print('\n'.join(self.ABBRV_DSTRS))
 
     
     def getMinAndMaxDateTime(self):
@@ -695,6 +727,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             name = ', '.join(names)
         elif len(self.FIDs) > 0:
             name = self.FIDs[0].name
+        elif self.cdfName:
+            name = self.cdfName
         return name
 
     def plotData(self, dataStrings, links):

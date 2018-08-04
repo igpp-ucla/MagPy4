@@ -1,6 +1,10 @@
 
 import numpy as np
-import pycdf
+
+try:
+    import pycdf
+except Exception as e:
+    pass
 
 class Mth:
 
@@ -152,7 +156,7 @@ class Mth:
 
 
     def CDFEpochToTimeTicks(cdfEpoch):
-        """ convert date data to numpy array of Records"""
+        # todo: add support for other epochs
         d2tt2 = pycdf.lib.datetime_to_tt2000
         num = len(cdfEpoch)
         arr = np.empty(num)
