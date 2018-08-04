@@ -453,6 +453,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
 
+
+
     # currently just reads the columns and data types
     # maybe separate this out into another file
     def openCDF(self,PATH):#,q):
@@ -492,15 +494,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             else:
                 print(f'no data found for this epoch: {en}')
 
-        # need to figure out how to cast the data to numpy array better, so slow right now??
-        # something about this is slow, i dunno. try opening separate process again
         for key,dstrs in epochsWithData.items():
             print(f'{key} {len(cdf[key])}')
             #for v in dstrs:
             #    print(f'  {v}')
 
             print(f'converting time...')
-            times = Mth.CDFEpochToTimeTicks(cdf[key])
+            times = Mth.CDFEpochToTimeTicks(cdf[key][...]) # these ellipses omg
+            #times = Mth.CDFEpochToTimeTicks(cdf[key])
             #for t in times:
             #    print(t)
             self.TIMES.append(times)
@@ -514,7 +515,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 shape = np.shape(data)
                 fillVal = zatrs['FILLVAL']
                 units = zatrs['UNITS']
-                data = np.array(data)
+                data = data[...]
                 #print(zatrs)
                 print(f'processing {dstr}, fillVal: {fillVal}, units: {units}')
                 if len(shape) >= 2:
@@ -532,7 +533,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                             self.DATADICT[newDstr] = { self.IDENTITY : [interpolated,newDstr,''] }
                             self.UNITDICT[newDstr] = units
                     else:
-                        print(f'skipping column: {dstr}, unhandled shape: {shape}')
+                        print(f'    skipping column: {dstr}, unhandled shape: {shape}')
                 else:
                     self.DATASTRINGS.append(dstr)
                     self.TIMEINDEX[dstr] = len(self.TIMES)-1
@@ -551,6 +552,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #print(attrs['FILLVAL'])
         #eArr = MagPy4Window.CDFEpochToTimeTicks(e)
         #esArr = self.CDFEpochToTimeTicks(es)
+
     
     def getMinAndMaxDateTime(self):
         minDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.minTime, Epoch=self.epoch).UTC)

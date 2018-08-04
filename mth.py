@@ -77,23 +77,27 @@ class Mth:
     def clamp(value, minimum, maximum):
         return max(min(value,maximum),minimum)
 
-
-    def getSegmentsFromErrorsAndGaps( data, res, errorFlag, maxRes):
-        segments = np.where(np.logical_or(data >= errorFlag, res > maxRes))[0].tolist() 
+    def getSegmentsFromErrorsAndGaps(data, res, errorFlag, maxRes):
+        if np.isnan(errorFlag):
+            return Mth.getSegmentsFromTimeGaps(res, maxRes)
+        else:
+            segments = np.where(np.logical_or(data >= errorFlag, res > maxRes))[0].tolist() 
         return Mth.__processSegmentList(segments, len(data))
 
     def getSegmentsFromErrors(data, errorFlag):
-        if errorFlag > 0:
+        if np.isnan(errorFlag):
+            segments = []
+        elif errorFlag > 0:
             segments = np.where(data >= errorFlag)[0].tolist()
         else:
             segments = np.where(data <= errorFlag)[0].tolist()
         return Mth.__processSegmentList(segments, len(data))
 
-    def getSegmentsFromTimeGaps( res, maxRes):
+    def getSegmentsFromTimeGaps(res, maxRes):
         segments = np.where(res > maxRes)[0].tolist() 
         return Mth.__processSegmentList(segments, len(res))
 
-    def __processSegmentList( segments, dataLen):
+    def __processSegmentList(segments, dataLen):
         segments.append(dataLen) # add one to end so last segment will be added (also if no errors)
         #print(f'SEGMENTS {len(segments)}')
         segList = []
@@ -149,7 +153,7 @@ class Mth:
 
     def CDFEpochToTimeTicks(cdfEpoch):
         """ convert date data to numpy array of Records"""
-        d2tt2 = pycdf.Library().datetime_to_tt2000
+        d2tt2 = pycdf.lib.datetime_to_tt2000
         num = len(cdfEpoch)
         arr = np.empty(num)
 
@@ -159,9 +163,6 @@ class Mth:
 
         rng = range(num)
 
-        arr = [d2tt2(cdfEpoch[i]) / div - dt for i in rng]
-
-        # a lot faster if in another process
-        #for i in rng:
-            #arr[i] = d2tt2(cdfEpoch[i]) / div - dt
+        for i in rng:
+            arr[i] = d2tt2(cdfEpoch[i]) / div - dt
         return arr
