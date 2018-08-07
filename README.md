@@ -2,9 +2,9 @@
 
 Generic plotting and analysis tool for flatfile and cdf data. Built for IGPP at UCLA.
 
-__REQUIRES PYTHON 3.6__, later versions may also work.
+- requires __PYTHON 3.6__ (later versions may also work)
 
-### Required packages
+## Required packages
 
 At the time of writing this (8-3-2018) all packages are using latest versions, however I will add version numbers just incase bugs occur in future versions.
 
@@ -14,13 +14,12 @@ At the time of writing this (8-3-2018) all packages are using latest versions, h
 - PyQt5 5.11.2
 - pyqtgraph 0.10.0
 
-### Installing the CDF C Library
+## Installing the CDF C Library
 [Download link](https://spdf.sci.gsfc.nasa.gov/pub/software/cdf/dist/cdf36_4/)
 
-Open the folder corresponding to your operating system
-Then download is named 'cdf36_4_0-setup-64.exe' for Windows, it is probably named similarly for other operating systems.
+Open the folder corresponding to your operating system. The download is named 'cdf36_4_0-setup-64.exe' for Windows, it is probably named similarly for other operating systems.
 
-### Using the build script
+## Using the build script
 The script is located in the build folder, [here](https://github.com/igpp-ucla/MagPy4/blob/master/build/magPyDist.py)
 #### Required packages
 - paramiko (for deployment)

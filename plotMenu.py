@@ -69,6 +69,8 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.ui = PlotMenuUI()
         self.ui.setupUI(self)
 
+        self.ABBRV_DSTRS = [self.window.ABBRV_DSTR_DICT[dstr] for dstr in self.window.DATASTRINGS]
+
         self.ui.clearButton.clicked.connect(self.clearRows)
         self.ui.addPlotButton.clicked.connect(self.addPlot)
         self.ui.removePlotButton.clicked.connect(self.removePlot)
@@ -82,6 +84,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         self.shouldResizeWindow = False # gets set when switching modes
         self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)
+
 
     def closeEvent(self, event):
         self.window.plotMenuCheckBoxMode = self.checkBoxMode
@@ -128,7 +131,11 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         else:
             for i,axis in enumerate(dstrs):
                 self.plotCount += 1
-            self.rebuildDropdowns(dstrs)
+
+            adstrs = []
+            for dstrList in dstrs:
+                adstrs.append([self.window.ABBRV_DSTR_DICT[dstr] for dstr in dstrList])
+            self.rebuildDropdowns(adstrs)
 
         if self.window.lastPlotLinks is not None:
             newLinks = []
@@ -156,6 +163,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                 for i,dd in enumerate(ddAxis):
                     txt = dd.currentText()
                     if txt != '':
+                        txt = self.window.DATASTRINGS[self.ABBRV_DSTRS.index(txt)]
                         row.append(txt)
                 dstrs.append(row)
         return dstrs
@@ -226,7 +234,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         PyQtUtils.clearLayout(self.ui.grid)
         
         for di,drops in enumerate(dropList):
-            strs = self.window.DATASTRINGS[:]
+            strs = self.ABBRV_DSTRS[:]
             for i,txt in enumerate(drops): # for each row in dropdowns, add marker next to ur current option
                 for j,dstr in enumerate(strs):
                     if txt == dstr:
@@ -338,7 +346,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
     def addLabels(self):
         self.labels = []
-        for i,dstr in enumerate(self.window.DATASTRINGS):
+        for i,dstr in enumerate(self.ABBRV_DSTRS):
             label = QtWidgets.QLabel()
             label.setText(dstr)
             label.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
@@ -352,7 +360,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             plotLabel.setText(f'Plot{self.plotCount}')
             checkBoxes = []
             self.ui.grid.addWidget(plotLabel,self.plotCount + 1,0,1,1)
-            for i,dstr in enumerate(self.window.DATASTRINGS):
+            for i,dstr in enumerate(self.ABBRV_DSTRS):
                 checkBox = QtWidgets.QCheckBox()
                 checkBoxes.append(checkBox)
                 self.ui.grid.addWidget(checkBox,self.plotCount + 1,i + 1,1,1) # first +1 because axis labels
@@ -370,7 +378,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         if self.checkBoxMode:
             self.checkBoxes = self.checkBoxes[:-1]
-            rowLen = len(self.window.DATASTRINGS) + 1 # one extra because plot labels row
+            rowLen = len(self.ABBRV_DSTRS) + 1 # one extra because plot labels row
             for i in range(rowLen):
                 child = self.ui.grid.takeAt(self.ui.grid.count() - 1) # take items off back
                 if child.widget() is not None:

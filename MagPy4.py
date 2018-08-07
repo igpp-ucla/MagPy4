@@ -283,11 +283,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # ya def should have first dropdown be file selection so other dropdowns downs dont become huge!
     def initDataStorageStructures(self):
         self.DATASTRINGS = [] # list of all the data strings (could just iterate over keys of datadict actually since python3.6+ guarantees ordering i think
+        self.ABBRV_DSTR_DICT = {} # dict of dstr to simplified abbreviated dstr that get generated for easier display
         self.ORIGDATADICT = {} # maps data strings to original data array
         self.DATADICT = {}  # stores smoothed version of data and all edit modifications (dict of dicts)
         self.UNITDICT = {} # maps data strings to unit strings
         self.TIMES = [] # list of loaded time series
-        self.RESOLUTIONS = [] # list of gaps between each time series
+        self.RESOLUTIONS = [] # list with gaps between each time series and avg resolution [list of gaps, avg]
         self.TIMEINDEX = {} # mapping of dstr to index into times (tried to use multimap thing but didnt work)
 
         # not sure if these should be in here but keeping for now
@@ -297,6 +298,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.minTime = None
         self.maxTime = None
         self.iiE = None
+        self.resolution = 100000.0
 
     def openFF(self, PATH):  # slot when Open pull down is selected
         FID = FF_File.FF_ID(PATH, status=FF_File.FF_STATUS.READ | FF_File.FF_STATUS.EXIST)
@@ -337,7 +339,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         newDataStrings = FID.getColumnDescriptor("NAME")[1:]
         units = FID.getColumnDescriptor("UNITS")[1:]
 
-        self.resolution = FID.getResolution()  # flatfile define resolution isnt always correct but whatever
+        self.resolution = min(self.resolution,FID.getResolution())  # flatfile define resolution isnt always correct but whatever
 
         # need to ensure loaded times are on same epoch, or do a conversion when plotting
         # loading files with same datastring names should either concatenate or just append a subnumber onto end
@@ -357,7 +359,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             curTime = self.TIMES[ti]
 
             res = self.getResolutions(arbStr)
-            segments = Mth.getSegmentsFromTimeGaps(res, self.resolution * 2)
+            segments = Mth.getSegmentsFromTimeGaps(res[0], res[1] * 2)
             f0 = ffTime[0]
             f1 = ffTime[-1]
             segLen = len(segments)
@@ -388,7 +390,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     print(f'detected {len(resolutions)} resolutions')
                     #print(f'resolutions: {", ".join(map(str,resolutions))}')
 
-                    self.RESOLUTIONS[ti] = newRes
+                    avgRes = np.mean(newRes)
+                    # not sure if flatfiles should use header defined or calculated average resolution, going with former for now
+                    #self.resolution = min(self.resolution, avgRes)
+                    self.RESOLUTIONS[ti] = [newRes, avgRes]
                     for di,dstr in enumerate(newDataStrings):
                         origData = self.ORIGDATADICT[dstr]
 
@@ -416,7 +421,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.TIMES.append(ffTime) # all flat file data (from same file) map to same time series
             resData = np.diff(ffTime)
             resData = np.append(resData, resData[-1]) # append last value to make same length as time series
-            self.RESOLUTIONS.append(resData)
+            avgRes = np.mean(resData)
+            self.resolution = min(self.resolution, avgRes)
+            self.RESOLUTIONS.append([resData, avgRes])
             for i, dstr in enumerate(newDataStrings):
                 self.TIMEINDEX[dstr] = len(self.TIMES) - 1 # index is of the time series we just added to end of list
                 self.ORIGDATADICT[dstr] = datas[i]
@@ -433,6 +440,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #print(f'resolutions: {", ".join(map(str,resolutions))}')
 
         self.FIDs.append(FID)
+
+        self.calculateAbbreviatedDstrs()
 
         self.calculateTimeVariables()
 
@@ -521,7 +530,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.TIMES.append(times)
             resData = np.diff(times)
             resData = np.append(resData,resData[-1])
-            self.RESOLUTIONS.append(resData)
+            avgRes = np.mean(resData)
+            self.resolution = min(self.resolution, avgRes)
+            self.RESOLUTIONS.append([resData, avgRes])
 
             for dstr in dstrs:
                 data = cdf[dstr]
@@ -558,7 +569,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
 
         self.calculateTimeVariables()
-        #self.calculateAbbreviatedDstrs()
+        self.calculateAbbreviatedDstrs()
+        #print('\n'.join(self.ABBRV_DSTRS))
 
         cdf.close()
 
@@ -569,21 +581,47 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #esArr = self.CDFEpochToTimeTicks(es)
 
     # removes any common beginning substring to all DATASTRINGS
-    # not fully implemented yet, need to reference this array around a bunch now
+    #def calculateAbbreviatedDstrs(self):
+    #    self.ABBRV_DSTRS = []
+    #    def _iter():
+    #        for z in zip(*self.DATASTRINGS):
+    #            if z.count(z[0]) == len(z):
+    #                yield z[0]
+    #            else:
+    #                return
+    #    common = ''.join(_iter())
+    #    lenc = len(common)
+    #    self.ABBRV_DSTRS = [dstr[lenc:] for dstr in self.DATASTRINGS]
+
+    # split on '_' and calculate common tokens that appear in each one. then remove and reconstruct remainders
     def calculateAbbreviatedDstrs(self):
-        self.ABBRV_DSTRS = []
+        self.ABBRV_DSTR_DICT = {}
+        
+        # common should be union of the splits
+        common = None
+        for dstr in self.DATASTRINGS:
+            splits = dstr.split('_')
+            if common:
+                common = common & set(splits)
+            else:
+                common = set(splits)
 
-        def _iter():
-            for z in zip(*self.DATASTRINGS):
-                if z.count(z[0]) == len(z):
-                    yield z[0]
-                else:
-                    return
-        common = ''.join(_iter())
-        lenc = len(common)
-        self.ABBRV_DSTRS = [dstr[lenc:] for dstr in self.DATASTRINGS]
+        #print('\n'.join([n for n in common]))
+        for dstr in self.DATASTRINGS:
+            splits = dstr.split('_')
+            if len(splits) <= 2:
+                abbrvStr = dstr
+            else:
+                abb = []
+                for s in splits:
+                    if s not in common:
+                        abb.append(s)
+                abbrvStr = '_'.join(abb)
 
-        print('\n'.join(self.ABBRV_DSTRS))
+            self.ABBRV_DSTR_DICT[dstr] = abbrvStr
+
+        #for k,v in self.ABBRV_DSTR_DICT.items():
+        #    print(f'{k} : {v}')
 
     
     def getMinAndMaxDateTime(self):
@@ -683,24 +721,28 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for pi in self.plotItems:
             pi.setXRange(self.tO, self.tE, 0.0)
 
-
-    # setup default 4 axis magdata plot or 3 axis insight plot
+    # try to find good default plot strings
     def getDefaultPlotInfo(self):
         dstrs = []
-        keywords = ['BX','BY','BZ']
-        links = [[0,1,2]]
-        if not self.insightMode:
-            keywords.append('BT')
-            links[0].append(3)
-        
-        for kw in keywords:
-            row = []
-            for dstr in self.DATASTRINGS:
-                if kw.lower() in dstr.lower():
-                    row.append(dstr)
-            dstrs.append(row)
+        links = []
+        keywords = ['BX','BY','BZ','BT']
 
-        return dstrs, links
+        for ki,kw in enumerate(keywords):
+            row = []
+            for dstr,abbrDstr in self.ABBRV_DSTR_DICT.items():
+                allIn = True
+                for c in kw:
+                    if c.lower() not in abbrDstr.lower():
+                        allIn = False
+                        break
+                if allIn:
+                    row.append(dstr)
+            if row:
+                dstrs.append(row)
+                links.append(ki)
+
+        return dstrs, [links]
+
 
     def plotDataDefault(self):
         dstrs,links = self.getDefaultPlotInfo()
@@ -835,6 +877,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             
     ## end of plot function
 
+
     def setYAxisLabels(self):
         plots = len(self.plotItems)
         for dstrs,pens,li in zip(self.lastPlotStrings,self.plotTracePens,self.labelItems):
@@ -850,6 +893,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     unit = None
 
                 l = self.getLabel(dstr)
+                if l in self.ABBRV_DSTR_DICT:
+                    l = self.ABBRV_DSTR_DICT[l]
                 alab += f"<span style='color:{pen.color().name()};'>{l}</span>\n"
 
             # add unit label if each trace on this plot shares same unit
@@ -955,7 +1000,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if not self.ui.bridgeDataGaps.isChecked():
             od = self.ORIGDATADICT[dstr]
             res = self.getResolutions(dstr)
-            segs = Mth.getSegmentsFromErrorsAndGaps(od, res, self.errorFlag, self.resolution * 2)   
+            segs = Mth.getSegmentsFromErrorsAndGaps(od, res[0], self.errorFlag, res[1] * 2)   
             for a,b in segs:
                 if self.ui.drawPoints.isChecked():
                     pi.addItem(PlotPointsItem(times[a:b], Y[a:b], pen=pen))
