@@ -351,29 +351,33 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         row = self.ui.Row.value() - 1
         self.ui.dataTableView.selectRow(row)
 
+    # this doesn't work anymore. the key value looks like its just wrong?
     def keyPressEvent(self, e):
-        if (e.modifiers() & QtCore.Qt.ControlModifier):
-            if e.key() == QtCore.Qt.Key_C: #copy
-                selected = self.ui.dataTableView.selectedIndexes()
-                if selected:
-                    # sort the indexes to get them in order and put them in string table
-                    rows = sorted(index.row() for index in selected)
-                    columns = sorted(index.column() for index in selected)
-                    rowcount = rows[-1] - rows[0] + 1
-                    colcount = columns[-1] - columns[0] + 1
+        #if (e.modifiers() & QtCore.Qt.ControlModifier):
+        #    print(f'{QtCore.Qt.Key_C} {e.key()}')
+        #    if e.key() == QtCore.Qt.Key_C: #copy
+        if e.matches(QtGui.QKeySequence.Copy):
+            selected = self.ui.dataTableView.selectedIndexes()
+            if selected:
+                # sort the indexes to get them in order and put them in string table
+                rows = sorted(index.row() for index in selected)
+                columns = sorted(index.column() for index in selected)
+                rowcount = rows[-1] - rows[0] + 1
+                colcount = columns[-1] - columns[0] + 1
 
-                    table = [[''] * colcount for _ in range(rowcount)]
-                    for index in selected:
-                        row = index.row() - rows[0]
-                        column = index.column() - columns[0]
-                        table[row][column] = index.data()
-                    # build final string to copy to clipboard
-                    s = 'Record\t' + '\t'.join(self.headerStrings[columns[0]:columns[-1]+1])
-                    for r,row in enumerate(table):
-                        s = f'{s}\n{rows[0]+r}\t'
-                        s = s + '\t'.join(row)
-                        s = s[:-1]
-                    
-                    self.clip.setText(s)
+                table = [[''] * colcount for _ in range(rowcount)]
+                for index in selected:
+                    row = index.row() - rows[0]
+                    column = index.column() - columns[0]
+                    table[row][column] = index.data()
+                # build final string to copy to clipboard
+                s = 'Record\t' + '\t'.join(self.headerStrings[columns[0]:columns[-1]+1])
+                for r,row in enumerate(table):
+                    s = f'{s}\n{rows[0]+r}\t'
+                    s = s + '\t'.join(row)
+                    s = s[:-1]
+                print(s)
+                self.clip.setText(s)
 
+        e.accept()
 

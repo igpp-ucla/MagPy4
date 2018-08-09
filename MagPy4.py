@@ -269,7 +269,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 fileName = fileName.rsplit(".", 1)[0] #remove extension
                 self.openFF(fileName)
             else:
-                self.openCDF(fileName)
+                # temp solution because this still causes other problems
+                # mainly need to add conversions for the different time formats
+                try:
+                    self.openCDF(fileName)
+                except Exception as e:
+                    print(e)
+                    print('CDF LOAD FAILURE')
 
         self.closeAllSubWindows()
         self.initVariables()
@@ -339,7 +345,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         newDataStrings = FID.getColumnDescriptor("NAME")[1:]
         units = FID.getColumnDescriptor("UNITS")[1:]
 
-        self.resolution = min(self.resolution,FID.getResolution())  # flatfile define resolution isnt always correct but whatever
+        #self.resolution = min(self.resolution,FID.getResolution())  # flatfile define resolution isnt always correct but whatever
+        FID.getResolution() # u have to still call this otherwise ffsearch wont work and stuff
 
         # need to ensure loaded times are on same epoch, or do a conversion when plotting
         # loading files with same datastring names should either concatenate or just append a subnumber onto end
@@ -390,9 +397,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     print(f'detected {len(resolutions)} resolutions')
                     #print(f'resolutions: {", ".join(map(str,resolutions))}')
 
+                    # compute dif between each value and average resolution
                     avgRes = np.mean(newRes)
-                    # not sure if flatfiles should use header defined or calculated average resolution, going with former for now
-                    #self.resolution = min(self.resolution, avgRes)
+                    self.resolution = min(self.resolution, avgRes)
                     self.RESOLUTIONS[ti] = [newRes, avgRes]
                     for di,dstr in enumerate(newDataStrings):
                         origData = self.ORIGDATADICT[dstr]
@@ -740,6 +747,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             if row:
                 dstrs.append(row)
                 links.append(ki)
+
+        if not links: # if empty then at least show some empty plots so its less confusing
+            dstrs = [[],[],[]]
+            links = [0,1,2] 
 
         return dstrs, [links]
 
