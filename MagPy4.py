@@ -130,7 +130,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         starterFile = 'testData/T8197C_PDR_585031864_585032030_pCAL' #insight test file
         if os.path.exists(starterFile + '.ffd'):
             self.openFF(starterFile)
-            self.plotDataDefault()
+            self.swapMode()
+            #self.plotDataDefault()
 
 
     # close any subwindows if main window is closed
@@ -325,8 +326,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #info = FID.FFInfo
         # errorFlag is usually 1e34 but sometimes less. still huge though
         self.errorFlag = FID.FFInfo['ERROR_FLAG'].value
-        self.errorFlag = 1e30 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
-        print(f'error flag: {self.errorFlag}') # not being used currently
+        self.errorFlag = 1e7 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
+        print(f'error flag: {self.errorFlag:.0e}') # not being used currently
         #self.errorFlag *= 0.9 # based off FFSpectra.py line 829
         
         # load flatfile
@@ -712,7 +713,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getDefaultPlotInfo(self):
         dstrs = []
         links = []
-        keywords = ['BX','BY','BZ','BT']
+        keywords = ['BX','BY','BZ']
 
         for ki,kw in enumerate(keywords):
             row = []
