@@ -84,8 +84,10 @@ class Mth:
     def getSegmentsFromErrorsAndGaps(data, res, errorFlag, maxRes):
         if np.isnan(errorFlag):
             return Mth.getSegmentsFromTimeGaps(res, maxRes)
-        else:
+        elif errorFlag > 0:
             segments = np.where(np.logical_or(data >= errorFlag, res > maxRes))[0].tolist() 
+        else:
+            segments = np.where(np.logical_or(data <= errorFlag, res > maxRes))[0].tolist() 
         return Mth.__processSegmentList(segments, len(data))
 
     def getSegmentsFromErrors(data, errorFlag):

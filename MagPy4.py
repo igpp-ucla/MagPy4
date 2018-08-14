@@ -324,9 +324,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #info = FID.FFInfo
         # errorFlag is usually 1e34 but sometimes less. still huge though
         self.errorFlag = FID.FFInfo['ERROR_FLAG'].value
-        self.errorFlag = 1e31 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
+        self.errorFlag = 1e30 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
         print(f'error flag: {self.errorFlag}') # not being used currently
-        self.errorFlag *= 0.9 # based off FFSpectra.py line 829
+        #self.errorFlag *= 0.9 # based off FFSpectra.py line 829
         
         # load flatfile
         nRows = FID.getRows()
@@ -359,9 +359,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 allMatch = False
                 break
 
-        if allMatch: # not sure if necessarily required but safest for now
+        if allMatch: # not sure if all need to necessarily match but simplest for now
 
-            # since all our strings are present just get the current time of one of them
+            # since all our strings are present just get the current time of the first one
             arbStr = newDataStrings[0]
             ti = self.TIMEINDEX[arbStr]
             curTime = self.TIMES[ti]
@@ -371,7 +371,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             f0 = ffTime[0]
             f1 = ffTime[-1]
             segLen = len(segments)
-            for si in range(segLen):
+            for si in range(segLen): # figure out where this new file fits into current data based on time (before or after)
                 s0 = segments[si][0]
                 s1 = segments[si][1]
                 t0 = curTime[s0]
@@ -423,7 +423,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     print(f'ERROR: times overlap, no merge operation is defined for this yet')
                     return
 
-        else:
+        else: # this is just standard new flatfile, cant be concatenated with current because it doesn't have matching column names
 
             self.DATASTRINGS.extend(newDataStrings)
             self.TIMES.append(ffTime) # all flat file data (from same file) map to same time series
@@ -438,14 +438,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 self.DATADICT[dstr] = { self.IDENTITY : [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag),dstr,''] }
                 self.UNITDICT[dstr] = units[i]
 
-            # generate resolution data column (to visualize when it isn't constant)
-            #newDataStrings.append('resolution')
-            #units.append('sec')
-            # need to fix plotting of resolution after this
-            #resolutions = np.unique(resData)
-            #print(f'detected {len(resolutions)} resolutions')
-            # doesnt make sense to print this when some differences are actually just data gaps
-            #print(f'resolutions: {", ".join(map(str,resolutions))}')
+        # add file id to list
 
         self.FIDs.append(FID)
 
@@ -454,6 +447,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.calculateTimeVariables()
 
         return True
+
+    # redos all the interpolated errors, for when the flag is changed
+    def reloadDataInterpolated(self):
+        for dstr in self.DATASTRINGS:
+            self.DATADICT[dstr] = { self.IDENTITY : [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag),dstr,''] }
 
     def calculateTimeVariables(self):
         self.minTime = None # temp reset until figure out better way to specify if want file to be loaded fresh or appended to current loading
@@ -580,24 +578,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         cdf.close()
 
-        #attrs = pycdf.zAttrList(cdf[key])
-        #if 'FILLVAL' in attrs:
-            #print(attrs['FILLVAL'])
-        #eArr = MagPy4Window.CDFEpochToTimeTicks(e)
-        #esArr = self.CDFEpochToTimeTicks(es)
-
-    # removes any common beginning substring to all DATASTRINGS
-    #def calculateAbbreviatedDstrs(self):
-    #    self.ABBRV_DSTRS = []
-    #    def _iter():
-    #        for z in zip(*self.DATASTRINGS):
-    #            if z.count(z[0]) == len(z):
-    #                yield z[0]
-    #            else:
-    #                return
-    #    common = ''.join(_iter())
-    #    lenc = len(common)
-    #    self.ABBRV_DSTRS = [dstr[lenc:] for dstr in self.DATASTRINGS]
 
     # split on '_' and calculate common tokens that appear in each one. then remove and reconstruct remainders
     def calculateAbbreviatedDstrs(self):
@@ -992,7 +972,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 self.plotTrace(pi, dstr, pens[i])
         self.setYAxisLabels()
         self.updateYRange()
-        #self.ui.glw.layoutChanged()
 
     def getTimes(self, dstr):
         return self.TIMES[self.TIMEINDEX[dstr]]
@@ -1040,10 +1019,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             # find min and max values out of all traces on this plot
             for dstr in dstrs:
                 scaleYToCurrent = self.ui.scaleYToCurrentTimeAction.isChecked()
-
-                # cant use io and ie anymore because those relate to slider ticks
-                # think i need to use tO and tE now and do some bisection nonsense to find range in current time series
-
                 X = self.getTimes(dstr)
                 a = self.calcDataIndexByTime(X, self.tO)
                 b = self.calcDataIndexByTime(X, self.tE)
@@ -1082,11 +1057,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     continue
                 diff = values[i][1] - values[i][0]
                 l2 = (largest - diff) / 2.0
-                #self.plotItems[i].getViewBox()._updatingRange = True
                 self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2, padding = 0.05)
-                
-                #self.plotItems[i].getViewBox()._updatingRange = False
-                #print(f'{values[i][0] - l2},{values[i][1] + l2}')
+
 
     def updateTraceStats(self):
         if self.traceStats:

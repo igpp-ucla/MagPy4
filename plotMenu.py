@@ -30,19 +30,28 @@ class PlotMenuUI(object):
         self.clearButton = QtWidgets.QPushButton('Clear')
         self.removePlotButton = QtWidgets.QPushButton('Remove Plot')
         self.addPlotButton = QtWidgets.QPushButton('Add Plot')
+        self.defaultsButton = QtWidgets.QPushButton('Defaults')
+        self.switchButton = QtWidgets.QPushButton('Switch')
         self.plotButton = QtWidgets.QPushButton('Plot')
 
+        self.errorFlagEdit = QtWidgets.QLineEdit('null')
+        self.errorFlagEdit.setFixedWidth(50)
+
+        errorFlagLayout = QtWidgets.QHBoxLayout()
+        lab = QtWidgets.QLabel('  Error Flag')
+        lab.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        errorFlagLayout.addWidget(lab)
+        errorFlagLayout.addWidget(self.errorFlagEdit)
+        
         buttonLayout = QtWidgets.QGridLayout()
         buttonLayout.addWidget(self.clearButton, 0, 0, 1, 1)
         buttonLayout.addWidget(self.removePlotButton, 0, 1, 1, 1)
         buttonLayout.addWidget(self.addPlotButton, 0, 2, 1, 1)
+        buttonLayout.addWidget(self.defaultsButton, 0, 3, 1, 1)
+        buttonLayout.addWidget(self.switchButton, 0, 4, 1, 1)
 
         buttonLayout.addWidget(self.plotButton, 1, 0, 1, 3)
-
-        self.defaultsButton = QtWidgets.QPushButton('Defaults')
-        buttonLayout.addWidget(self.defaultsButton, 0, 3, 1, 1)
-        self.switchButton = QtWidgets.QPushButton('Switch')
-        buttonLayout.addWidget(self.switchButton, 0, 4, 1, 1)
+        buttonLayout.addLayout(errorFlagLayout, 1, 3, 1, 1)
 
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         buttonLayout.addItem(spacer, 0, 10, 1, 1)
@@ -68,6 +77,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.window = window
         self.ui = PlotMenuUI()
         self.ui.setupUI(self)
+        self.ui.errorFlagEdit.setText(f'{self.window.errorFlag:.0e}')
 
         self.ABBRV_DSTRS = [self.window.ABBRV_DSTR_DICT[dstr] for dstr in self.window.DATASTRINGS]
 
@@ -187,10 +197,23 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         return links
 
     def plotData(self):
+        # update error flag
+        try:
+            flag = float(self.ui.errorFlagEdit.text())
+            if self.window.errorFlag != flag:
+                print(f'using new error flag: {flag:.0e}')
+                self.window.errorFlag = flag
+                self.window.reloadDataInterpolated()
+        except ValueError:
+            flag = self.window.errorFlag
+            print(f'cannot interpret error flag value, leaving at: {flag:.0e}')
+            self.ui.errorFlagEdit.setText(f'{flag:.0e}')
+
         dstrs = self.getPlotInfo()
         links = self.getLinkLists()
 
         self.window.plotData(dstrs, links)
+
 
     def clearRows(self):
         if self.checkBoxMode:
