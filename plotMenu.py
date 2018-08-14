@@ -197,7 +197,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         return links
 
     def plotData(self):
-        # update error flag
+        # try to update error flag
         try:
             flag = float(self.ui.errorFlagEdit.text())
             if self.window.errorFlag != flag:

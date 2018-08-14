@@ -207,3 +207,12 @@ class PyQtUtils:
             child = layout.takeAt(0)
             if child.widget() is not None:
                 child.widget().deleteLater()
+
+    def moveToFront(window):
+        if window:
+            # this will remove minimized status 
+            # and restore window with keeping maximized/normal state
+            #window.setWindowState(window.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
+            window.raise_()
+            # this will activate the window
+            window.activateWindow()

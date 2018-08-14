@@ -28,11 +28,11 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.plotItems = []
         #self.updateSpectra()
         self.window.setLinesVisible(False, 'general')
+        self.wasClosed = False
 
-    # todo only send close event if ur current spectra
     def closeEvent(self, event):
-        self.window.generalSelectStep = 0
-        self.window.setLinesVisible(False, 'general')  # prob bad if open second spectra and start selecting but then close first one
+        self.window.endGeneralSelect()
+        self.wasClosed = True # setting self.window.spectra=None caused program to crash with no errors.. couldnt figure out why so switched to this
 
     def setAspect(self):
         for pi in self.plotItems:

@@ -17,7 +17,7 @@ import pyqtgraph as pg
 import FF_File
 from FF_Time import FFTIME, leapFile
 
-from MagPy4UI import MagPy4UI
+from MagPy4UI import MagPy4UI, PyQtUtils
 from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
@@ -77,7 +77,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False))
         self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False,True))
         self.ui.actionShowData.triggered.connect(self.showData)
-        self.ui.actionSpectra.triggered.connect(self.runSpectra)
+        self.ui.actionSpectra.triggered.connect(self.openSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
@@ -92,7 +92,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotMenu = None
         self.edit = None
         self.dataDisplay = None
-        self.spectras = []
+        self.spectra = None
         self.traceStats = None
         self.FIDs = []
 
@@ -143,9 +143,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeEdit()
         self.closeData()
         self.closeTraceStats()
-        for spectra in self.spectras:
-            spectra.close()
-        self.spectras = []
+        self.closeSpectra()
 
     # init variables here that should be reset when file changes
     def initVariables(self):
@@ -156,7 +154,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.generalSelectCanHide = False
         self.editHistory = []
         
-
     def closePlotMenu(self):
         if self.plotMenu:
             self.plotMenu.close()
@@ -173,6 +170,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.traceStats:
             self.traceStats.close()
             self.traceStats = None
+    def closeSpectra(self):
+        if self.spectra:
+            self.spectra.close()
+            self.spectra = None
 
     def openPlotMenu(self):
         self.closePlotMenu()
@@ -192,7 +193,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if not self.FIDs:
             msg = QtWidgets.QMessageBox()
             msg.setIcon(QtWidgets.QMessageBox.Critical)
-            msg.setText("Data display not working for CDFs... yet")
+            msg.setText("Data display not working with CDFs yet")
             msg.setWindowTitle("Error")
             msg.exec_()
             return
@@ -206,19 +207,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.traceStats = TraceStats(self, plotIndex)
         self.traceStats.show()
 
-    def runSpectra(self):
+    def openSpectra(self):
         self.closeTraceStats()
-        spectra = Spectra(self)
-        spectra.show()
-        self.spectras.append(spectra) # so reference is held until closed
-        self.startGeneralSelect('SPECTRA', '#FF0000', spectra.ui.timeEdit, True)
+        if not self.spectra or self.spectra.wasClosed:
+            self.spectra = Spectra(self)
+            self.spectra.show()
+            self.startGeneralSelect('SPECTRA', '#FF0000', self.spectra.ui.timeEdit, True)
+        PyQtUtils.moveToFront(self.spectra)
 
     def toggleAntialiasing(self):
         pg.setConfigOption('antialias', self.ui.antialiasAction.isChecked())
         self.replotData()
-        for spectra in self.spectras:
-            if spectra is not None:
-                spectra.updateSpectra()
+        if self.spectra:
+            self.spectra.updateSpectra()
 
     # returns data with error values removed
     def getPrunedData(self, dstr, a, b):
@@ -1253,7 +1254,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 self.window.matchLinesVisible('general')
                 self.window.updateGeneralLines(1,x)
                 if self.window.edit:
-                    Edit.moveToFront(self.window.edit.minVar)
+                    PyQtUtils.moveToFront(self.window.edit.minVar)
 
             self.window.updateLineTextPos()
             

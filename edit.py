@@ -17,15 +17,6 @@ from MagPy4UI import PyQtUtils
 
 class Edit(QtWidgets.QFrame, EditUI):
 
-    def moveToFront(window):
-        if window:
-            # this will remove minimized status 
-            # and restore window with keeping maximized/normal state
-            window.setWindowState(window.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
-            # this will activate the window
-            window.activateWindow()
-
-
     def __init__(self, window, parent=None):
         super(Edit, self).__init__(parent)
         self.window = window
@@ -335,7 +326,7 @@ class ManRot(QtWidgets.QFrame, ManRotUI):
         # figure out if custom on axisrot
         self.edit.apply(Mth.getMatrix(self.ui.R), '', self.lastOpName)
         self.edit.closeManRot()
-        Edit.moveToFront(self.edit)
+        PyQtUtils.moveToFront(self.edit)
 
     def axisRotGen(self, axis):
         angle = self.ui.axisAngle.value()
@@ -461,5 +452,5 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         labelText = f'{", ".join(vstrs)}\n{eigenText}\n{ts[0]}->{ts[1]}'
         self.edit.apply(eigen, labelText, 'minvar')
         #self.edit.closeMinVar()
-        Edit.moveToFront(self.edit)
+        PyQtUtils.moveToFront(self.edit)
 
