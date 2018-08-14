@@ -126,7 +126,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotItems = []
         self.labelItems = []
         self.trackerLines = []
-        starterFile = 'testData/mms15092720'
+        #starterFile = 'testData/mms15092720'
+        starterFile = 'testData/T8197C_PDR_585031864_585032030_pCAL' #insight test file
         if os.path.exists(starterFile + '.ffd'):
             self.openFF(starterFile)
             self.plotDataDefault()
@@ -481,8 +482,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         print(f'time resolution : {tick} Hz')
 
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
-
-
 
     # currently just reads the columns and data types
     # maybe separate this out into another file

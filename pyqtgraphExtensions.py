@@ -322,8 +322,8 @@ class LinkedAxis(pg.AxisItem):
         w += self.style['tickTextOffset'][0] if self.style['showValues'] else 0
         w += max(0, self.style['tickLength'])
         if self.label.isVisible():
-            w += self.label.boundingRect().height() * 0.8  ## bounding rect is usually an overestimate
-        return w
+            w += self.label.boundingRect().height() * 0.8  # bounding rect is usually an overestimate
+        return w + 10 # 10 extra to offset if in scientific notation
 
 
 # this class is exact copy of pg.PlotCurveItem but with a changed paint function to draw points instead of lines

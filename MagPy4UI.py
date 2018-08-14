@@ -99,7 +99,7 @@ class MagPy4UI(object):
         self.toolBar.addWidget(spacer)
 
         self.toolBar.addAction(self.switchMode)
-        self.toolBar.addAction(self.runTests)
+        #self.toolBar.addAction(self.runTests)
 
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))

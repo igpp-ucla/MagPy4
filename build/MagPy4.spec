@@ -15,7 +15,7 @@ a = Analysis(['MagPy4.py'],
              pathex=[workDir, f'{workDir}\\ffPy'],
              binaries=[],
              datas=[],
-             hiddenimports=['scipy','scipy.fftpack'],
+             hiddenimports=['scipy','scipy.fftpack','PyQt5.sip'],
              hookspath=[],
              runtime_hooks=[],
              excludes=['matplotlib'], 
@@ -45,13 +45,15 @@ coll = COLLECT(exe,
 			   
 exeDir = "build/dist/MagPy4/"
 shutil.copy2("ffPy/tai-utc.dat", exeDir)
+shutil.copy2("README.md", exeDir)
 shutil.copytree("images/", f'{exeDir}images')
 
-fname = 'mms15092720'
+fnames = ['mms15092720','T8197C_PDR_585031864_585032030_pCAL']
 dpath = 'testData/'
 os.makedirs(f'{exeDir}{dpath}')
-shutil.copy(f'{dpath}{fname}.ffh', f'{exeDir}{dpath}{fname}.ffh')
-shutil.copy(f'{dpath}{fname}.ffd', f'{exeDir}{dpath}{fname}.ffd')
+for fname in fnames:
+	shutil.copy(f'{dpath}{fname}.ffh', f'{exeDir}{dpath}{fname}.ffh')
+	shutil.copy(f'{dpath}{fname}.ffd', f'{exeDir}{dpath}{fname}.ffd')
 
 exampDir = 'testData/BX_examples/'
 shutil.copytree(exampDir,f'{exeDir}{exampDir}')
