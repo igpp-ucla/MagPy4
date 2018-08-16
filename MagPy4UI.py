@@ -26,7 +26,7 @@ class MagPy4UI(object):
 
         # gives default window options in top right
         window.setWindowFlags(QtCore.Qt.Window)
-        window.resize(1280,800)
+        window.resize(1280,700)
 
         self.centralWidget = QtWidgets.QWidget(window)
         window.setCentralWidget(self.centralWidget)
