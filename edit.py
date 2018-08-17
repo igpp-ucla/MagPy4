@@ -248,10 +248,11 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.updateLabelNamesByMatrix(self.window.MATRIX, self.ui.history.item(row).text())
         self.window.replotData()
 
-    def apply(self, mat, extra, name):
+    # takes a matrix, notes for the history, and a name for the history entry
+    def apply(self, mat, notes, name):
         R = Mth.mult(self.selectedMatrix, mat)
         self.generateData(R, '*')
-        self.addHistory(R, extra, f'{name}')
+        self.addHistory(R, notes, f'{name}')
 
     # matrix needs to be in string form
     def updateLabelNamesByMatrix(self, mat, name):

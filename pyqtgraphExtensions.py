@@ -4,8 +4,10 @@ import pyqtgraph as pg
 from FF_Time import FFTIME
 
 # custom extensions to pyqtgraph for the projects needs
-
 # mostly just slightly edited versions of originals
+
+
+
 # vertical by default
 # also with built in label support (infiniteline has this but doesnt how i want)
 class LinkedInfiniteLine(pg.InfiniteLine):

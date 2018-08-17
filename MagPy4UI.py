@@ -26,7 +26,7 @@ class MagPy4UI(object):
 
         # gives default window options in top right
         window.setWindowFlags(QtCore.Qt.Window)
-        window.resize(1280,800)
+        window.resize(1280,700)
 
         self.centralWidget = QtWidgets.QWidget(window)
         window.setCentralWidget(self.centralWidget)
@@ -74,8 +74,8 @@ class MagPy4UI(object):
         self.runTests.setToolTip('Runs unit tests for code')
 
         self.switchMode = QtWidgets.QAction(window)
-        self.switchMode.setText('Switch to MarsPy')
-        self.switchMode.setToolTip('Loads various presets specific to the Insight mission')
+        #self.switchMode.setText('Switch to MarsPy')
+        #self.switchMode.setToolTip('Loads various presets specific to the Insight mission')
 
         # build toolbar (todo switch to QMenuBar class, thats what i should have used to begin with lol
         self.toolBar = QtWidgets.QToolBar(window)

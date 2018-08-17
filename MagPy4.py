@@ -130,7 +130,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         starterFile = 'testData/T8197C_PDR_585031864_585032030_pCAL' #insight test file
         if os.path.exists(starterFile + '.ffd'):
             self.openFF(starterFile)
-            self.plotDataDefault()
+            self.swapMode()
+            #self.plotDataDefault()
 
 
     # close any subwindows if main window is closed
@@ -325,8 +326,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #info = FID.FFInfo
         # errorFlag is usually 1e34 but sometimes less. still huge though
         self.errorFlag = FID.FFInfo['ERROR_FLAG'].value
-        self.errorFlag = 1e30 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
-        print(f'error flag: {self.errorFlag}') # not being used currently
+        self.errorFlag = 1e7 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
+        print(f'error flag: {self.errorFlag:.0e}') # not being used currently
         #self.errorFlag *= 0.9 # based off FFSpectra.py line 829
         
         # load flatfile
@@ -376,19 +377,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 s0 = segments[si][0]
                 s1 = segments[si][1]
                 t0 = curTime[s0]
-                t1 = curTime[s1-1]
+                t1 = curTime[s1 - 1]
 
                 startsBefore = f0 < t0 and f1 < t0  # starts entirely before this time
                 startsAfter = f0 > t0 and f0 > t1   # starts entirely after this time
                 startsBeforeFirst = startsBefore and si == 0
-                startsAfterLast = startsAfter and si == segLen-1
+                startsAfterLast = startsAfter and si == segLen - 1
                 if startsBefore or startsAfterLast:
                     if startsBeforeFirst:
                         joined = (ffTime, curTime)
                     elif startsAfterLast:
                         joined = (curTime, ffTime)
                     else:
-                        joined = (curTime[:segments[si-1][1]+1], ffTime, curTime[s0:])
+                        joined = (curTime[:segments[si - 1][1] + 1], ffTime, curTime[s0:])
 
                     self.TIMES[ti] = np.concatenate(joined)
 
@@ -411,7 +412,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                         elif startsAfterLast:
                             joinedData = (origData, datas[di])
                         else:
-                            joinedData = (origData[:segments[si-1][1]+1], datas[di], origData[s0:])
+                            joinedData = (origData[:segments[si - 1][1] + 1], datas[di], origData[s0:])
 
                         self.ORIGDATADICT[dstr] = np.concatenate(joinedData)
                         self.DATADICT[dstr] = { self.IDENTITY : [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag),dstr,''] }
@@ -556,7 +557,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                         for i in range(dim):
                             newDstr = f'{dstr}_{fix[i]}'
                             self.DATASTRINGS.append(newDstr)
-                            self.TIMEINDEX[newDstr] = len(self.TIMES)-1
+                            self.TIMEINDEX[newDstr] = len(self.TIMES) - 1
                             newData = data[:,i]
                             self.ORIGDATADICT[newDstr] = newData
                             interpolated = Mth.interpolateErrors(newData, fillVal)
@@ -566,7 +567,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                         print(f'    skipping column: {dstr}, unhandled shape: {shape}')
                 else:
                     self.DATASTRINGS.append(dstr)
-                    self.TIMEINDEX[dstr] = len(self.TIMES)-1
+                    self.TIMEINDEX[dstr] = len(self.TIMES) - 1
                     self.ORIGDATADICT[dstr] = data
                     interpolated = Mth.interpolateErrors(data, fillVal)
                     self.DATADICT[dstr] = { self.IDENTITY : [interpolated,dstr,''] }
@@ -712,8 +713,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getDefaultPlotInfo(self):
         dstrs = []
         links = []
-        keywords = ['BX','BY','BZ','BT']
-
+        keywords = ['BX','BY','BZ']
+        if not self.insightMode:
+            keywords.append('BT')
         for ki,kw in enumerate(keywords):
             row = []
             for dstr,abbrDstr in self.ABBRV_DSTR_DICT.items():
@@ -931,7 +933,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # all of this depends on screen resolution so this is a pretty bad fix for now
         bPadding = 20 # for bottom axis text
         #plotSpacing = 10 if self.OS == 'mac' else 7
-        plotSpacing = 0.01 * height   #7/689 is about 1% of screen
+        plotSpacing = 0.01 * height   #7/689 is about 1% of screen, this is so filth lol but it kinda works
 
         edgePadding = 60
         height -= bPadding + edgePadding + (plots - 1) * plotSpacing # the spaces in between plots hence the -1
@@ -1000,7 +1002,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             if self.ui.drawPoints.isChecked():
                 pi.addItem(PlotPointsItem(times, Y, pen=pen))
             else:
-                pi.addItem(PlotDataItemBDS(times, Y, pen = pen))
+                pi.addItem(PlotDataItemBDS(times, Y, pen=pen))
 
     
     # pyqtgraph has y axis linking but not wat is needed
@@ -1154,7 +1156,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         assert(perc >= 0 and perc <= 1)
         return int(perc * self.iiE)
 
-    # given the corresponding time array for data and the time, calculate index into data array
+    # given the corresponding time array for data (times) and the time (t), calculate index into data array
     def calcDataIndexByTime(self, times, t):
         assert(len(times) >= 2)
         if t <= times[0]:
@@ -1223,7 +1225,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         generalLines = []
         for i in range(2):
             generalLines.append(LinkedInfiniteLine(functools.partial(window.updateGeneralLines, i), movable=True, angle=90, pos=0, mylabel='GENERAL', labelColor='#000000'))
-        self.lines = {'general':generalLines} # incase want to have concurrent line sets
+        self.lines = {'general':generalLines} # dictionary like this incase want to have concurrent line sets later
         for key,lines in self.lines.items():
             for line in lines:
                 self.addItem(line, ignoreBounds = True)
@@ -1237,13 +1239,16 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         y = mc.y()
         #print(f'{x} {y}')
 
+        # if just clicking on the plots with no general select started then open a trace stats window
         if self.window.generalSelectStep == 0:
             self.window.openTraceStats(self.plotIndex)
             self.window.startGeneralSelect('STATS', '#009900', self.window.traceStats.ui.timeEdit, True)
 
+        # if deselected everything then go back to first step
         if self.window.generalSelectStep >= 3 and not self.window.getSelectedPlotInfo():
             self.window.generalSelectStep = 1
 
+        # add the first or second lines
         if self.window.generalSelectStep > 0 and self.window.generalSelectStep < 3:
             if self.window.generalSelectStep == 1:
                 self.window.generalSelectStep += 1
@@ -1260,23 +1265,24 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
             
         # reselect this plot if it was deselected
         elif self.window.generalSelectStep >= 3 and not self.anyLinesVisible():
-            self.SetMyLinesVisible(True)
+            self.setMyLinesVisible(True)
 
         self.window.updateTraceStats()
 
-
+    # check if either of lines are visible for this viewbox
     def anyLinesVisible(self):
         lines = self.lines['general']
         return lines[0].isVisible() or lines[1].isVisible()
 
-    def SetMyLinesVisible(self, isVisible):
+    # sets the lines of this viewbox visible
+    def setMyLinesVisible(self, isVisible):
         for line in self.lines['general']:
             line.setVisible(isVisible)
         self.window.updateLineTextPos()
 
     def onRightClick(self, ev):
         if self.window.generalSelectStep > 1 and self.window.generalSelectCanHide: # cancel selection on this plot (if able to)
-            self.SetMyLinesVisible(False)
+            self.setMyLinesVisible(False)
         else:
             pg.ViewBox.mouseClickEvent(self,ev) # default right click
 
@@ -1288,7 +1294,8 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
             if ev.double(): # double clicking will do same as right click
-                self.onRightClick(ev)
+                #self.onRightClick(ev)
+                pass # this seems to confuse people so disabling for now
             else:
                self.onLeftClick(ev)
 
