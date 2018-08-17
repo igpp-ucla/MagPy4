@@ -6,7 +6,7 @@ from FF_Time import FFTIME, FF_EPOCH
 import numpy as np
 import datetime, time
 import os
-from tqdm import tqdm
+# from tqdm import tqdm
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
