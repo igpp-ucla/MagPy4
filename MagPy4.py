@@ -289,25 +289,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # file opening operations can either append to or re init these structures based on open preference (prob have multiple buttons for this)
     # can have some warnings like 'file to be loaded has way different time than current files' or something
     # may want to additionally separate it by file as well so u could unload whole file if wanted
-        # ya def should have first dropdown be file selection so other dropdowns downs dont become huge!
     def initDataStorageStructures(self):
-        self.DATASTRINGS = [] # list of all the data strings (could just iterate over keys of datadict actually since python3.6+ guarantees ordering i think
-        self.ABBRV_DSTR_DICT = {} # dict of dstr to simplified abbreviated dstr that get generated for easier display
-        self.ORIGDATADICT = {} # maps data strings to original data array
-        self.DATADICT = {}  # stores smoothed version of data and all edit modifications (dict of dicts)
-        self.UNITDICT = {} # maps data strings to unit strings
-        self.TIMES = [] # list of loaded time series
-        self.RESOLUTIONS = [] # list with gaps between each time series and avg resolution [list of gaps, avg]
-        self.TIMEINDEX = {} # mapping of dstr to index into times (tried to use multimap thing but didnt work)
+        self.DATASTRINGS = [] # list of all the original data column string names of the loaded files (commonly referenced as 'dstr')
+        self.ABBRV_DSTR_DICT = {} # dict mapping dstrs to simplified abbreviated dstr that get generated for easier display
+        self.ORIGDATADICT = {} # dict mapping dstrs to original data array
+        self.DATADICT = {}  # dict mapping dstrs to dicts where string matrices are key and values are rotated and edited data arrays (dict of dicts)
+        self.UNITDICT = {} # dict mapping dstrs to unit strings
+        self.TIMES = [] # list of time informations (3 part lists) [time series, resolutions, average res]
+        self.TIMEINDEX = {} # dict mapping dstrs to index into times list
 
         # not sure if these should be in here but keeping for now
         self.IDENTITY = Mth.identity()
         self.MATRIX = Mth.identity() # maybe add matrix dropdown in plotmenu somewhere
 
-        self.minTime = None
-        self.maxTime = None
-        self.iiE = None
-        self.resolution = 100000.0
+        self.minTime = None # minimum time tick out of all loaded times
+        self.maxTime = None # maximum
+        self.iiE = None # maximum tick of sliders (min is always 0)
+        self.resolution = 1000000.0 # this is set to minumum resolution when files are loaded so just start off as something large
 
     def openFF(self, PATH):  # slot when Open pull down is selected
         FID = FF_File.FF_ID(PATH, status=FF_File.FF_STATUS.READ | FF_File.FF_STATUS.EXIST)
@@ -365,11 +363,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
             # since all our strings are present just get the current time of the first one
             arbStr = newDataStrings[0]
-            ti = self.TIMEINDEX[arbStr]
-            curTime = self.TIMES[ti]
 
-            res = self.getResolutions(arbStr)
-            segments = Mth.getSegmentsFromTimeGaps(res[0], res[1] * 2)
+            curTime, curRes, curAvgRes = self.getTimes(arbStr)
+            segments = Mth.getSegmentsFromTimeGaps(curRes, curAvgRes * 2)
             f0 = ffTime[0]
             f1 = ffTime[-1]
             segLen = len(segments)
@@ -391,19 +387,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     else:
                         joined = (curTime[:segments[si - 1][1] + 1], ffTime, curTime[s0:])
 
-                    self.TIMES[ti] = np.concatenate(joined)
+                    times = np.concatenate(joined)
 
-                    newRes = np.diff(self.TIMES[ti])
-                    newRes = np.append(newRes, newRes[-1])
+                    resolutions = np.diff(times)
+                    resolutions = np.append(resolutions, resolutions[-1]) # so same length as times
                 
-                    resolutions = np.unique(newRes)
-                    print(f'detected {len(resolutions)} resolutions')
-                    #print(f'resolutions: {", ".join(map(str,resolutions))}')
+                    uniqueRes = np.unique(resolutions)
+                    print(f'detected {len(uniqueRes)} resolutions')
+                    #print(f'resolutions: {", ".join(map(str,uniqueRes))}')
 
                     # compute dif between each value and average resolution
-                    avgRes = np.mean(newRes)
+                    avgRes = np.mean(resolutions)
                     self.resolution = min(self.resolution, avgRes)
-                    self.RESOLUTIONS[ti] = [newRes, avgRes]
+                    self.TIMES[self.TIMEINDEX[arbStr]] = [times, resolutions, avgRes]
+
                     for di,dstr in enumerate(newDataStrings):
                         origData = self.ORIGDATADICT[dstr]
 
@@ -428,12 +425,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         else: # this is just standard new flatfile, cant be concatenated with current because it doesn't have matching column names
 
             self.DATASTRINGS.extend(newDataStrings)
-            self.TIMES.append(ffTime) # all flat file data (from same file) map to same time series
-            resData = np.diff(ffTime)
-            resData = np.append(resData, resData[-1]) # append last value to make same length as time series
-            avgRes = np.mean(resData)
+            resolutions = np.diff(ffTime)
+            resolutions = np.append(resolutions, resolutions[-1]) # append last value to make same length as time series
+            avgRes = np.mean(resolutions)
             self.resolution = min(self.resolution, avgRes)
-            self.RESOLUTIONS.append([resData, avgRes])
+            self.TIMES.append([ffTime, resolutions, avgRes])
+
             for i, dstr in enumerate(newDataStrings):
                 self.TIMEINDEX[dstr] = len(self.TIMES) - 1 # index is of the time series we just added to end of list
                 self.ORIGDATADICT[dstr] = datas[i]
@@ -459,7 +456,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.minTime = None # temp reset until figure out better way to specify if want file to be loaded fresh or appended to current loading
         self.maxTime = None
         # iterate over times and find min and max???
-        for times in self.TIMES:
+        for times,_,_ in self.TIMES:
             assert(len(times) > 2)
             self.minTime = times[0] if not self.minTime else min(self.minTime, times[0])
             self.maxTime = times[-1] if not self.maxTime else max(self.maxTime, times[-1])
@@ -530,15 +527,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
             print(f'converting time...')
             times = Mth.CDFEpochToTimeTicks(cdf[key][...]) # these ellipses omg
-            #times = Mth.CDFEpochToTimeTicks(cdf[key])
-            #for t in times:
-            #    print(t)
-            self.TIMES.append(times)
-            resData = np.diff(times)
-            resData = np.append(resData,resData[-1])
-            avgRes = np.mean(resData)
+            resolutions = np.diff(times)
+            resolutions = np.append(resolutions,resolutions[-1])
+            avgRes = np.mean(resolutions)
             self.resolution = min(self.resolution, avgRes)
-            self.RESOLUTIONS.append([resData, avgRes])
+            self.TIMES.append([times, resolutions, avgRes])
 
             for dstr in dstrs:
                 data = cdf[dstr]
@@ -979,20 +972,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getTimes(self, dstr):
         return self.TIMES[self.TIMEINDEX[dstr]]
 
-    def getResolutions(self, dstr):
-        return self.RESOLUTIONS[self.TIMEINDEX[dstr]]
-
     # both plotData and replot use this function internally
     def plotTrace(self, pi, dstr, pen):
         Y = self.getData(dstr)
         if len(Y) <= 1: # not sure if this can happen but just incase
             print(f'Error: insufficient Y data for column "{dstr}"')
             return
-        times = self.getTimes(dstr)
+        times,resolutions,avgRes = self.getTimes(dstr)
         if not self.ui.bridgeDataGaps.isChecked():
-            od = self.ORIGDATADICT[dstr]
-            res = self.getResolutions(dstr)
-            segs = Mth.getSegmentsFromErrorsAndGaps(od, res[0], self.errorFlag, res[1] * 2)   
+            segs = Mth.getSegmentsFromErrorsAndGaps(self.ORIGDATADICT[dstr], resolutions, self.errorFlag, avgRes * 2)   
             for a,b in segs:
                 if self.ui.drawPoints.isChecked():
                     pi.addItem(PlotPointsItem(times[a:b], Y[a:b], pen=pen))
@@ -1022,7 +1010,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             # find min and max values out of all traces on this plot
             for dstr in dstrs:
                 scaleYToCurrent = self.ui.scaleYToCurrentTimeAction.isChecked()
-                X = self.getTimes(dstr)
+                X = self.getTimes(dstr)[0] # first in list is time series
                 a = self.calcDataIndexByTime(X, self.tO)
                 b = self.calcDataIndexByTime(X, self.tE)
                 if a == b: # both are out of range on same side so data shouldnt be plotted
@@ -1169,7 +1157,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     # given a data string, calculate its indices based on currently selected time range
     def calcDataIndicesFromLines(self, dstr):
-        times = self.getTimes(dstr)
+        times = self.getTimes(dstr)[0]
         t0,t1 = self.getSelectionStartEndTimes()
         i0 = self.calcDataIndexByTime(times, t0)
         i1 = self.calcDataIndexByTime(times, t1)
