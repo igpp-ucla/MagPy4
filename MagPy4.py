@@ -127,11 +127,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.labelItems = []
         self.trackerLines = []
         #starterFile = 'testData/mms15092720'
-        starterFile = 'testData/T8197C_PDR_585031864_585032030_pCAL' #insight test file
+        starterFile = 'testData/insight/T8197C_PDR_585031864_585032030_pCAL' #insight test file
         if os.path.exists(starterFile + '.ffd'):
             self.openFF(starterFile)
             self.swapMode()
-            #self.plotDataDefault()
 
 
     # close any subwindows if main window is closed
@@ -181,7 +180,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotMenu = PlotMenu(self)
 
         geo = self.geometry()
-        self.plotMenu.move(geo.x() - 8, geo.y() + 100)
+        self.plotMenu.move(geo.x() + 200, geo.y() + 100)
         self.plotMenu.show()
 
     def openEdit(self):
@@ -212,8 +211,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeTraceStats()
         if not self.spectra or self.spectra.wasClosed:
             self.spectra = Spectra(self)
-            self.spectra.show()
+            #self.spectra.show()
             self.startGeneralSelect('SPECTRA', '#FF0000', self.spectra.ui.timeEdit, True)
+        elif self.spectra: # show once hit button the second time
+            self.spectra.show()
+            self.spectra.updateSpectra()
         PyQtUtils.moveToFront(self.spectra)
 
     def toggleAntialiasing(self):
@@ -525,8 +527,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #for v in dstrs:
             #    print(f'  {v}')
 
+            startTime = time.time()
             print(f'converting time...')
-            times = Mth.CDFEpochToTimeTicks(cdf[key][...]) # these ellipses omg
+            #pool = mp.Pool()
+            #cdfEpochs = cdf[key][...]
+            #times = pool.map(Mth.CDFEpochToTimeTicks,cdfEpochs)
+            times = Mth.CDFEpochToTimeTicks(cdf[key][...])
+            print(f'converted time in {time.time() - startTime} seconds')
+
             resolutions = np.diff(times)
             resolutions = np.append(resolutions,resolutions[-1])
             avgRes = np.mean(resolutions)

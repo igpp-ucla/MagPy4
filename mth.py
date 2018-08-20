@@ -1,5 +1,6 @@
 
 import numpy as np
+import multiprocessing as mp
 
 try:
     import pycdf
@@ -156,6 +157,18 @@ class Mth:
 
         return data
 
+
+    #def cdfInternal(n):
+    #    dt = 32.184   # tai - tt time?
+    #    div = 10 ** 9
+    #    d2tt2 = pycdf.lib.datetime_to_tt2000
+    #    return d2tt2(n)/div-dt
+
+    #def CDFEpochToTimeTicks(cdfEpoch):
+    #    dt = 32.184   # tai - tt time?
+    #    div = 10 ** 9
+    #    d2tt2 = pycdf.lib.datetime_to_tt2000
+    #    return d2tt2(cdfEpoch)/div-dt
 
     def CDFEpochToTimeTicks(cdfEpoch):
         # todo: add support for other epochs

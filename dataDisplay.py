@@ -17,7 +17,7 @@ except AttributeError:
 class DataDisplayUI(object):
     def setupUi(self, dataFrame):
         dataFrame.setObjectName(_fromUtf8("dataFrame"))
-        dataFrame.resize(1150, 800)
+        dataFrame.resize(1000, 700)
         dataFrame.setFrameShape(QtGui.QFrame.StyledPanel)
         dataFrame.setFrameShadow(QtGui.QFrame.Raised)
         self.verticalLayout = QtGui.QVBoxLayout(dataFrame)
