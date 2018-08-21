@@ -270,7 +270,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.dateTimeEdit.setMaximumDateTime(UTCQDate.UTC2QDateTime(stop_.UTC))
         self.headerStrings = self.curFID.getColumnDescriptor("NAME")
         units = self.curFID.getColumnDescriptor("UNITS")
-        header = [f'{h} ({u})' for h,u in zip(self.headerStrings,units)]
+        header = [f'{h} ({u})' if u else f'{h}' for h,u in zip(self.headerStrings,units)]
         if self.dataByCol is not None:
             tm = FFTableModel(self.time, self.dataByCol, header, parent=None, epoch=parm["EPOCH"].value)
             tm.setUTC(not self.ui.checkBox.isChecked())

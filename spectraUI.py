@@ -9,19 +9,19 @@ from MagPy4UI import TimeEdit
 class SpectraUI(object):
 
     def buildSpectraView(self):
-        gview = pg.GraphicsView()
-        gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        view = pg.GraphicsView()
+        view.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         gmain = LinearGraphicsLayout() # made this based off pg.GraphicsLayout
         #apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
         gmain.setContentsMargins(11,0,11,0) # left top right bottom
-        gview.setCentralItem(gmain)
+        view.setCentralItem(gmain)
         grid = GridGraphicsLayout()
         grid.setContentsMargins(0,0,0,0)
         labelLayout = GridGraphicsLayout()
         labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
         gmain.addItem(grid)
         gmain.addItem(labelLayout)
-        return gview, grid, labelLayout
+        return view, grid, labelLayout
 
     def setupUI(self, Frame, window):
         Frame.setWindowTitle('Spectra')
@@ -33,18 +33,14 @@ class SpectraUI(object):
         layout.addWidget(self.tabs)
 
         self.gview, self.grid, self.labelLayout = self.buildSpectraView()
-
         self.tabs.addTab(self.gview, 'Spectra')
 
-        #self.cohView, self.cohGrid, self.cohLabelLayout = self.buildSpectraView()
+        self.cohView, self.cohGrid, self.cohLabelLayout = self.buildSpectraView()
+        self.tabs.addTab(self.cohView, 'Coherence')
 
-        #self.tabs.addTab(self.cohView, 'Coherence')
+        self.phaseView, self.phaseGrid, self.phaseLabelLayout = self.buildSpectraView()
+        self.tabs.addTab(self.phaseView, 'Phase')
 
-        #self.phaseView, self.phaseGrid, self.phaseLabelLayout = self.buildSpectraView()
-
-        #self.tabs.addTab(self.phaseView, 'Phase')
-
-        #layout.addWidget(self.gview)
 
         # bandwidth label and spinbox
         bottomLayout = QtWidgets.QHBoxLayout()
@@ -87,14 +83,18 @@ class SpectraUI(object):
 
         bottomLayout.addWidget(timeFrame)
 
-        #cohPair1 = QtWidgets.QComboBox()
-        #bottomLayout.addWidget(cohPair1)
-        #cohPair2 = QtWidgets.QComboBox()
-        #bottomLayout.addWidget(cohPair2)
-        #for dstrs in window.lastPlotStrings:
-        #    for dstr in dstrs:
-        #        cohPair1.addItem(dstr)
-        #        cohPair2.addItem(dstr)
+        cohPhaseFrame = QtWidgets.QGroupBox('coherence pair')
+        cohPhaseLayout = QtWidgets.QHBoxLayout(cohPhaseFrame)
+        cohPair1 = QtWidgets.QComboBox()
+        cohPhaseLayout.addWidget(cohPair1)
+        cohPair2 = QtWidgets.QComboBox()
+        cohPhaseLayout.addWidget(cohPair2)
+        for dstrs in window.lastPlotStrings:
+            for dstr in dstrs:
+                cohPair1.addItem(dstr)
+                cohPair2.addItem(dstr)
+
+        bottomLayout.addWidget(cohPhaseFrame)
 
         bottomLayout.addStretch()
 

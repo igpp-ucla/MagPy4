@@ -38,18 +38,51 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         for pi in self.plotItems:
             pi.setAspectLocked(self.ui.aspectLockedCheckBox.isChecked())
 
-    # some weird stuff is going on in here because there was many conflicts
-    # with combining linked y range between plots of each row, log scale, and
-    # fixed aspect ratio settings
+    def updateCalculations(self):
+        plotInfos = self.window.getSelectedPlotInfo()
+
+        self.freqs = {}
+        self.points = {}
+        self.ffts = {}
+        self.powers = {}
+        self.cohs = {}
+        self.phases = {}
+        self.maxN = 0
+
+        for li, (strList, penList) in enumerate(plotInfos):
+            for i,dstr in enumerate(strList):
+                i0,i1 = self.window.calcDataIndicesFromLines(dstr) #need to give something here
+                N = i1 - i0
+                #print(N)
+                self.maxN = max(self.maxN, N)
+                if N in self.freqs: # cache frequency distributions for other uses
+                    freq = self.freqs[N]
+                else:
+                    freq = self.calculateFreqList(N)
+                    self.freqs[N] = freq
+                if freq is None:
+                    print('bad frequency list in spectra!')
+                    return
+
+                # calculate spectra
+                data = self.window.getData(dstr)[i0:i1]
+                fft = fftpack.rfft(data.tolist())
+                power = self.calculatePower(fft, N)
+
+                self.points[dstr] = N
+                self.ffts[dstr] = fft
+                self.powers[dstr] = power
+
+
+    # some weird stuff is going on in here because there was many conflicts with combining linked y range between plots of each row,
+    # log scale, and fixed aspect ratio settings. its all working now pretty good though
     def updateSpectra(self):
+        self.updateCalculations()
+
         plotInfos = self.window.getSelectedPlotInfo()
 
         self.ui.grid.clear()
         self.ui.labelLayout.clear()
-
-        maxN = 0
-        freqDict = {}
-
         oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
         aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
         numberPlots = 0
@@ -69,22 +102,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     numberPlots += 1
                     powers = []
 
-                i0,i1 = self.window.calcDataIndicesFromLines(dstr) #need to give something here
-                N = i1-i0
-                #print(N)
-                maxN = max(maxN, N)
-                if N in freqDict: # cache frequency distributions that can be shared between spectras
-                    freq = freqDict[N]
-                else:
-                    freq = self.calculateFreqList(N)
-                    freqDict[N] = freq
-                if freq is None:
-                    return
-
-                # calculate spectra
-                data = self.window.getData(dstr)[i0:i1]
-                fft = fftpack.rfft(data.tolist())
-                power = self.calculatePower(fft, N)
+                freq = self.freqs[self.points[dstr]]
+                power = self.powers[dstr]
 
                 pen = penList[i]
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{dstr}</span>"
@@ -123,7 +142,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         rightLabel = BLabelItem({'justify':'left'})
 
         leftLabel.setHtml('[FILE]<br>[FREQBANDS]<br>[TIME]')
-        rightLabel.setHtml(f'{self.window.getFileNameString()}<br>{maxN}<br>{startDate} -> {endDate}')
+        rightLabel.setHtml(f'{self.window.getFileNameString()}<br>{self.maxN}<br>{startDate} -> {endDate}')
            
         self.ui.labelLayout.addItem(leftLabel)
         self.ui.labelLayout.nextColumn()
@@ -131,10 +150,14 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
         ## end of def
 
+    def updateCoherenceAndPhase(self):
+        coh,pha = calculateCoherenceAndPhase()
+        # todo plot stuff here!
+
+    # scale each plot to use same y range
+    # the viewRange function was returning incorrect results so had to do manually
     def setYRangeForRow(self, curRow):
         self.ui.grid.nextRow()
-        # scale each plot to use same y range
-        # the viewRange function was returning incorrect results so had to do manually
         minVal = np.inf
         maxVal = -np.inf
         for item in curRow:
@@ -149,15 +172,22 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         for item in curRow:
             item[0].setYRange(minVal,maxVal)
 
-
-    def calculateFreqList(self, N):
+    def getCommonVars(self, N):
         bw = self.ui.bandWidthSpinBox.value()
-        km = int((bw + 1.0) * 0.5)
+        if bw % 2 == 0: # make sure its odd 
+            bw += 1
+            self.ui.bandWidthSpinBox.setValue(bw)
+        kmo = int((bw + 1) * 0.5)
         nband = (N - 1) / 2
         half = int(bw / 2)
+        nfreq = int(nband - bw + 1)
+        return bw,kmo,nband,half,nfreq
+
+    def calculateFreqList(self, N):
+        bw,kmo,nband,half,nfreq = self.getCommonVars(N)
         nfreq = int(nband - half + 1) #try to match power length
         C = N * self.window.resolution
-        freq = np.arange(km, nfreq) / C
+        freq = np.arange(kmo, nfreq) / C
         #return np.log10(freq)
         if len(freq) < 2:
             print('Proposed spectra plot invalid!\nFrequency list has lass than 2 values')
@@ -165,12 +195,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         return freq
 
     def calculatePower(self, fft, N):
-        bw = self.ui.bandWidthSpinBox.value()
-        kmo = int((bw + 1) * 0.5)
-        nband = (N - 1) / 2
-        half = int(bw / 2)
-        nfreq = int(nband - bw + 1)
-
+        bw,kmo,nband,half,nfreq = self.getCommonVars(N)
         C = 2 * self.window.resolution / N
         fsqr = [ft * ft for ft in fft]
         power = [0] * nfreq
@@ -187,12 +212,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     # should prob put coherence on separate tab with its own ui section
     # also phase too
     def calculateCoherenceAndPhase(self, fft0, fft1, N):
-
-        bw = self.ui.bandWidthSpinBox.value()
-        kmo = int((bw + 1) * 0.5)
-        nband = (N - 1) / 2
-        half = int(bw / 2)
-        nfreq = int(nband - bw + 1)
+        bw,kmo,nband,half,nfreq = self.getCommonVars(N)
         kStart = kmo - half
         kSpan = half * 4 + 1
         

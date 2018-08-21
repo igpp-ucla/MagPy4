@@ -1178,7 +1178,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         t1 = lines[1].getXPos()
         return (t0,t1) if t0 <= t1 else (t1,t0) # need parens here!
 
-    # based on which plots have active spectra lines, return list for each plot of the datastr and pen for each trace
+    # based on which plots have active lines, return list for each plot of the datastr and pen for each trace
     def getSelectedPlotInfo(self):
         plotInfo = []
         for i,pi in enumerate(self.plotItems):
