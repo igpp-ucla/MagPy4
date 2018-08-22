@@ -59,8 +59,8 @@ class LogAxis(pg.AxisItem):
     def tickStrings(self, values, scale, spacing):
         if self.customStrings:
             return [f'{int(x)}    ' for x in values] # spaces are for eyeballing the auto sizing before rich text override below
-        return [f'{x:.1f}    ' for x in values]
-        #return pg.AxisItem.tickStrings(self,values,scale,spacing)
+        #return [f'{x:.1f}    ' for x in values]
+        return pg.AxisItem.tickStrings(self,values,scale,spacing)
 
     def tickSpacing(self, minVal, maxVal, size):
         if self.customSpacing:
@@ -69,6 +69,9 @@ class LogAxis(pg.AxisItem):
 
     # overriden from source to be able to have superscript text
     def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
+        if not self.customStrings:
+            pg.AxisItem.drawPicture(self, p, axisSpec, tickSpecs, textSpecs)
+            return
         p.setRenderHint(p.Antialiasing, False)
         p.setRenderHint(p.TextAntialiasing, True)
         

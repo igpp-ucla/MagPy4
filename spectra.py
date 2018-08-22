@@ -127,7 +127,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 # also links the y scale of each row together
                 lastPlotInList = i == len(strList) - 1
                 if lastPlotInList or oneTracePerPlot:
-                    pi.setLabels(title=titleString, left='Power', bottom='Frequency(Hz)')
+                    pi.setLabels(title=titleString, left='Power', bottom='Log Frequency(Hz)')
                     piw = pi.titleLabel._sizeHint[0][0] + 60 # gestimating padding
                     maxTitleWidth = max(maxTitleWidth,piw)
                     self.ui.grid.addItem(pi)
@@ -174,12 +174,19 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
         for d in datas:
             d[0].clear()
-            ba = LogAxis(True,True,True,orientation='bottom')
-            la = LogAxis(True,True,True,orientation='left')
+            ba = LogAxis(False,True,False,orientation='bottom')
+            la = LogAxis(False,False,False,orientation='left')
             pi = pg.PlotItem(axisItems={'bottom':ba, 'left':la})
-            pi.setLogMode(True, True)
+            #pi.enableAutoRange(y=False)
+            pi.setLogMode(True, False)
+            #mind = min(d[1])
+            #maxd = max(d[1])
+            #print(f'{mind} {maxd}')
+            #minVal = np.log10(mind)
+            #maxVal = np.log10(maxd)
+            #pi.setYRange(minVal, maxVal)
             pi.plot(freqs, d[1], pen=self.window.pens[0])
-            pi.setLabels(title=f'{d[2]}:  [{c0}] X [{c1}]', left='Power', bottom='Frequency(Hz)')
+            pi.setLabels(title=f'{d[2]}:  {c0}   vs   {c1}', left=f'{d[2]}', bottom='Log Frequency(Hz)')
             d[0].addItem(pi)
 
 
@@ -256,23 +263,24 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         pBSum = np.zeros(nfreq)
 
         for n in range(nfreq):
-            # km = kmO + n
-            # kO = int(km - half)
-            # kE = int(km + half) + 1
             KO = (kStart + n) * 2 - 1
             KE = KO + kSpan
             csSum[n] = np.sum(csA[KO:KE:2])
             qsSum[n] = np.sum(qsA[KO:KE:2])
             pASum[n] = np.sum(pAA[KO:KE:2])
             pBSum[n] = np.sum(pBA[KO:KE:2])
-        #   for k in range(kO, kE):
-        #       i = 2 * k - 1
-        #       csSum[n] = csA[i] + csSum[n]
-        #       qsSum[n] = qsA[i] + qsSum[n]
-        #       pASum[n] = pAA[i] + pASum[n]
-        #       pBSum[n] = pBA[i] + pBSum[n]
 
         coh = (csSum * csSum + qsSum * qsSum) / (pASum * pBSum)
         pha = np.arctan2(qsSum, csSum) * 57.2957
+
+        # wrap phase
+        n = pha.size
+        for i in range(1,n):
+            pha0 = pha[i-1]
+            pha1 = pha[i]
+            if pha0 > 90 and pha1 < -90:
+                pha[i] += 360
+            elif pha0 < -90 and pha1 > 90:
+                pha[i] -= 360
 
         return coh,pha
