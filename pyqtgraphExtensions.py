@@ -7,7 +7,6 @@ from FF_Time import FFTIME
 # mostly just slightly edited versions of originals
 
 
-
 # vertical by default
 # also with built in label support (infiniteline has this but doesnt how i want)
 class LinkedInfiniteLine(pg.InfiniteLine):
@@ -44,23 +43,29 @@ class LinkedInfLineLabel(pg.InfLineLabel):
 #todo show minor ticks on left side
 #hide minor tick labels always
 class LogAxis(pg.AxisItem):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, customTicks, customStrings, customSpacing, *args, **kwargs):
         pg.AxisItem.__init__(self, *args, **kwargs)
 
         self.tickFont = QtGui.QFont()
         self.tickFont.setPixelSize(14)
-        self.style['maxTextLevel'] = 1 # never have any subtick labels
-        self.style['textFillLimits'] = [(0,1.1)] # try to always draw labels
+        self.customStrings = customStrings
+        self.customSpacing = customSpacing
+        if customTicks:
+            self.style['maxTextLevel'] = 1 # never have any subtick labels
+            self.style['textFillLimits'] = [(0,1.1)] # try to always draw labels
         #self.style['tickLength'] = -10
-        #todo: override AxisItem generateDrawSpecs and custom set tick length
 
+    # todo: should just try to figure out range of values and add decimals if small enough
     def tickStrings(self, values, scale, spacing):
-        return [f'{int(x)}    ' for x in values] # spaces are for eyeballing the auto sizing before rich text override below
+        if self.customStrings:
+            return [f'{int(x)}    ' for x in values] # spaces are for eyeballing the auto sizing before rich text override below
+        return [f'{x:.1f}    ' for x in values]
+        #return pg.AxisItem.tickStrings(self,values,scale,spacing)
 
     def tickSpacing(self, minVal, maxVal, size):
-        #levels = pg.AxisItem.tickSpacing(self,minVal,maxVal,size)
-        levels = [(10.0,0),(1.0,0),(0.5,0)]
-        return levels
+        if self.customSpacing:
+            return [(10.0,0),(1.0,0),(0.5,0)]
+        return pg.AxisItem.tickSpacing(self,minVal,maxVal,size)
 
     # overriden from source to be able to have superscript text
     def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):

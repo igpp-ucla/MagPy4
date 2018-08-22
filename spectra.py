@@ -38,41 +38,52 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         for pi in self.plotItems:
             pi.setAspectLocked(self.ui.aspectLockedCheckBox.isChecked())
 
+    # return start and stop indices of selected data
+    def getIndices(self, dstr):
+        if dstr not in self.indices:
+            i0,i1 = self.window.calcDataIndicesFromLines(dstr)
+            self.indices[dstr] = (i0,i1)
+        return self.indices[dstr]
+
+    def getPoints(self, dstr):
+        i0,i1 = self.getIndices(dstr)
+        return i1-i0
+
+    def getFreqs(self, dstr):
+        N = self.getPoints(dstr)
+        if N not in self.freqs:
+            self.freqs[N] = self.calculateFreqList(N)
+        return self.freqs[N]
+
+    def getfft(self, dstr):
+        if dstr not in self.ffts:
+            i0,i1 = self.getIndices(dstr)
+            data = self.window.getData(dstr)[i0:i1]
+            fft = fftpack.rfft(data.tolist())
+            self.ffts[dstr] = fft
+        return self.ffts[dstr]
+
     def updateCalculations(self):
         plotInfos = self.window.getSelectedPlotInfo()
 
+        self.indices = {}
         self.freqs = {}
-        self.points = {}
         self.ffts = {}
         self.powers = {}
-        self.cohs = {}
-        self.phases = {}
         self.maxN = 0
 
         for li, (strList, penList) in enumerate(plotInfos):
             for i,dstr in enumerate(strList):
-                i0,i1 = self.window.calcDataIndicesFromLines(dstr) #need to give something here
-                N = i1 - i0
-                #print(N)
-                self.maxN = max(self.maxN, N)
-                if N in self.freqs: # cache frequency distributions for other uses
-                    freq = self.freqs[N]
-                else:
-                    freq = self.calculateFreqList(N)
-                    self.freqs[N] = freq
-                if freq is None:
-                    print('bad frequency list in spectra!')
-                    return
-
-                # calculate spectra
-                data = self.window.getData(dstr)[i0:i1]
-                fft = fftpack.rfft(data.tolist())
-                power = self.calculatePower(fft, N)
-
-                self.points[dstr] = N
-                self.ffts[dstr] = fft
+                fft = self.getfft(dstr)
+                power = self.calculatePower(fft, self.getPoints(dstr))
                 self.powers[dstr] = power
 
+        # calculate coherence and phase from pairs
+        c0 = self.ui.cohPair0.currentText()
+        c1 = self.ui.cohPair1.currentText()
+        coh,pha = self.calculateCoherenceAndPhase(self.getfft(c0), self.getfft(c1), self.getPoints(c0))
+        self.coh = coh
+        self.pha = pha
 
     # some weird stuff is going on in here because there was many conflicts with combining linked y range between plots of each row,
     # log scale, and fixed aspect ratio settings. its all working now pretty good though
@@ -92,7 +103,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         for listIndex, (strList,penList) in enumerate(plotInfos):
             for i,dstr in enumerate(strList):
                 if i == 0 or oneTracePerPlot:
-                    pi = pg.PlotItem(viewBox = SpectraViewBox(), axisItems={'bottom':LogAxis(orientation='bottom'), 'left':LogAxis(orientation='left')})
+                    ba = LogAxis(True,True,True,orientation='bottom')
+                    la = LogAxis(True,True,True,orientation='left')
+                    pi = pg.PlotItem(viewBox = SpectraViewBox(), axisItems={'bottom':ba, 'left':la})
                     if aspectLocked:
                         pi.setAspectLocked()
                     titleString = ''
@@ -102,13 +115,13 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     numberPlots += 1
                     powers = []
 
-                freq = self.freqs[self.points[dstr]]
+                freq = self.getFreqs(dstr)
                 power = self.powers[dstr]
+                powers.append(power)
 
                 pen = penList[i]
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{dstr}</span>"
                 pi.plot(freq, power, pen=pen)
-                powers.append(power)
 
                 # this part figures out layout of plots into rows depending on settings
                 # also links the y scale of each row together
@@ -148,11 +161,27 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.labelLayout.nextColumn()
         self.ui.labelLayout.addItem(rightLabel)
 
+        self.updateCohPha()
         ## end of def
 
-    def updateCoherenceAndPhase(self):
-        coh,pha = calculateCoherenceAndPhase()
-        # todo plot stuff here!
+    
+    def updateCohPha(self):
+        c0 = self.ui.cohPair0.currentText()
+        c1 = self.ui.cohPair1.currentText()
+        freqs = self.getFreqs(c0)
+
+        datas = [[self.ui.cohGrid, self.coh, 'Coherence'],[self.ui.phaGrid, self.pha, 'Phase']]
+
+        for d in datas:
+            d[0].clear()
+            ba = LogAxis(True,True,True,orientation='bottom')
+            la = LogAxis(True,True,True,orientation='left')
+            pi = pg.PlotItem(axisItems={'bottom':ba, 'left':la})
+            pi.setLogMode(True, True)
+            pi.plot(freqs, d[1], pen=self.window.pens[0])
+            pi.setLabels(title=f'{d[2]}:  [{c0}] X [{c1}]', left='Power', bottom='Frequency(Hz)')
+            d[0].addItem(pi)
+
 
     # scale each plot to use same y range
     # the viewRange function was returning incorrect results so had to do manually
@@ -221,12 +250,12 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         pAA = fft0[:-1] * fft0[:-1] + fft0[1:] * fft0[1:]
         pBA = fft1[:-1] * fft1[:-1] + fft1[1:] * fft1[1:]
 
-        csSum = zeros(nFreq)
-        qsSum = zeros(nFreq)
-        pASum = zeros(nFreq)
-        pBSum = zeros(nFreq)
+        csSum = np.zeros(nfreq)
+        qsSum = np.zeros(nfreq)
+        pASum = np.zeros(nfreq)
+        pBSum = np.zeros(nfreq)
 
-        for n in range(nFreq):
+        for n in range(nfreq):
             # km = kmO + n
             # kO = int(km - half)
             # kE = int(km + half) + 1
@@ -244,83 +273,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         #       pBSum[n] = pBA[i] + pBSum[n]
 
         coh = (csSum * csSum + qsSum * qsSum) / (pASum * pBSum)
-        pha = arctan2(qsSum, csSum) * 57.2957
+        pha = np.arctan2(qsSum, csSum) * 57.2957
 
         return coh,pha
-
-
-
-    #old coherence code here for reference (can delete once retranslated module is tested and stuff)
-    #def calculateCoherence(self):
-    #    # assume that there are no data gaps
-    #    # N -> number data points for all
-    #    KXKY = {0:(0,1), 1:(0,2), 2:(1,2)}  # coherence pairs
-    #    nBAvg = self.ui.bandWidthSpinBox.value()
-    #    half = int(nBAvg / 2)
-    #    N = self.npts
-    #    nband = (N -1) / 2
-    #    nFreq = int(nband - nBAvg + 1)
-    #    kmO = int((nBAvg + 1) * 0.5)
-    #    kStart = kmO - half
-    #    kSpan = half * 4 + 1
-    #    COH = [0] * 4
-    #    PHA = [0] * 4
-    #    for panel in range(3):
-    #        kx,ky = KXKY[panel]
-    #        fft0 = self.fft[kx]
-    #        fft1 = self.fft[ky]
-    #        csA = fft0[:-1]*fft1[:-1] + fft0[1:]*fft1[1:]
-    #        qsA = fft0[:-1]*fft1[1:] - fft1[:-1]*fft0[1:]
-    #        pAA = fft0[:-1]*fft0[:-1] + fft0[1:]*fft0[1:]
-    #        pBA = fft1[:-1]*fft1[:-1] + fft1[1:]*fft1[1:]
-    #        csSum = zeros(nFreq)
-    #        qsSum = zeros(nFreq)
-    #        pASum = zeros(nFreq)
-    #        pBSum = zeros(nFreq)
-    #        for n in range(nFreq):
-    #            # km = kmO + n
-    #            # kO = int(km - half)
-    #            # kE = int(km + half) + 1
-    #            KO = (kStart + n) * 2 - 1
-    #            KE = KO + kSpan
-    #            csSum[n] = SUM(csA[KO:KE:2])
-    #            qsSum[n] = SUM(qsA[KO:KE:2])
-    #            pASum[n] = SUM(pAA[KO:KE:2])
-    #            pBSum[n] = SUM(pBA[KO:KE:2])
-    #        #   for k in range(kO, kE):
-    #        #       i = 2 * k - 1
-    #        #       csSum[n] = csA[i] + csSum[n]
-    #        #       qsSum[n] = qsA[i] + qsSum[n]
-    #        #       pASum[n] = pAA[i] + pASum[n]
-    #        #       pBSum[n] = pBA[i] + pBSum[n]
-    #        coh = (csSum*csSum + qsSum * qsSum) / (pASum*pBSum)
-    #        pha = arctan2(qsSum, csSum) * 57.2957
-    #        COH[panel] = coh
-    #        # pha0 = pha[:-1]
-    #        # pha1 = pha[1:]
-    #        # cannot use array operations, history dependencies
-    #        # 2015 may 20  corrected when pha < -90
-    #        # for i in range(nFreq-1):
-    #        #   if (pha0[i] > 90 and pha1[i] < -90):
-    #        #       pha[i+1] +=360
-    #        #   else: # corrected 2015 may 20
-    #        #       if (pha0[i] < -90 and pha1[i] > 90):
-    #        #           pha[i+1] -=360
-    #        wrapPhase(pha)
-    #        #for i in range(1, nFreq):
-    #        #   pha0 = pha[i-1]
-    #        #   pha1 = pha[i]
-    #        #   if (pha0 > 90 and pha1 < -90):
-    #        #       pha[i] +=360
-    #        #   else:
-    #        #       if (pha0 < -90 and pha1 > 90):
-    #        #           pha[i] -=360
-    #        PHA[panel] = pha
-    #    cohAvg = (COH[0]+COH[1]+COH[2])/3.0
-    #    phaAvg = (PHA[0]+PHA[1]+PHA[2])/3.0
-    #    COH[3] = cohAvg
-    #    PHA[3] = phaAvg
-    #    self.coher = COH
-    #    self.phase = PHA
-    #    return
-        

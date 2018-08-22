@@ -38,8 +38,8 @@ class SpectraUI(object):
         self.cohView, self.cohGrid, self.cohLabelLayout = self.buildSpectraView()
         self.tabs.addTab(self.cohView, 'Coherence')
 
-        self.phaseView, self.phaseGrid, self.phaseLabelLayout = self.buildSpectraView()
-        self.tabs.addTab(self.phaseView, 'Phase')
+        self.phaView, self.phaGrid, self.phaLabelLayout = self.buildSpectraView()
+        self.tabs.addTab(self.phaView, 'Phase')
 
 
         # bandwidth label and spinbox
@@ -83,16 +83,19 @@ class SpectraUI(object):
 
         bottomLayout.addWidget(timeFrame)
 
-        cohPhaseFrame = QtWidgets.QGroupBox('coherence pair')
+        # setup dropdowns for coherence and phase pair selection
+        cohPhaseFrame = QtWidgets.QGroupBox('coh/pha pair')
         cohPhaseLayout = QtWidgets.QHBoxLayout(cohPhaseFrame)
-        cohPair1 = QtWidgets.QComboBox()
-        cohPhaseLayout.addWidget(cohPair1)
-        cohPair2 = QtWidgets.QComboBox()
-        cohPhaseLayout.addWidget(cohPair2)
+        self.cohPair0 = QtWidgets.QComboBox()
+        cohPhaseLayout.addWidget(self.cohPair0)
+        self.cohPair1 = QtWidgets.QComboBox()
+        cohPhaseLayout.addWidget(self.cohPair1)
         for dstrs in window.lastPlotStrings:
             for dstr in dstrs:
-                cohPair1.addItem(dstr)
-                cohPair2.addItem(dstr)
+                self.cohPair0.addItem(dstr)
+                self.cohPair1.addItem(dstr)
+        if self.cohPair1.count() >= 2:
+            self.cohPair1.setCurrentIndex(1)
 
         bottomLayout.addWidget(cohPhaseFrame)
 
