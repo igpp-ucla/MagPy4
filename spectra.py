@@ -12,6 +12,7 @@ from dataDisplay import UTCQDate
 from MagPy4UI import TimeEdit
 from spectraUI import SpectraUI, SpectraViewBox
 import functools
+import time
 
 class Spectra(QtWidgets.QFrame, SpectraUI):
     def __init__(self, window, parent=None):
@@ -29,6 +30,10 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         #self.updateSpectra()
         self.window.setLinesVisible(False, 'general')
         self.wasClosed = False
+
+    def updateDelayed(self):
+        print('updating')
+        QtCore.QTimer.singleShot(500, self.updateSpectra)
 
     def closeEvent(self, event):
         self.window.endGeneralSelect()
@@ -72,11 +77,18 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.powers = {}
         self.maxN = 0
 
+        startTime = time.time()
+
         for li, (strList, penList) in enumerate(plotInfos):
             for i,dstr in enumerate(strList):
                 fft = self.getfft(dstr)
-                power = self.calculatePower(fft, self.getPoints(dstr))
+                N = self.getPoints(dstr)
+                self.maxN = max(self.maxN,N)
+                power = self.calculatePower(fft, N)
                 self.powers[dstr] = power
+
+        print(f'powers in {time.time() - startTime}')
+        startTime = time.time()
 
         # calculate coherence and phase from pairs
         c0 = self.ui.cohPair0.currentText()
@@ -85,10 +97,18 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.coh = coh
         self.pha = pha
 
+        print(f'coh/pha in {time.time() - startTime}')
+
     # some weird stuff is going on in here because there was many conflicts with combining linked y range between plots of each row,
     # log scale, and fixed aspect ratio settings. its all working now pretty good though
     def updateSpectra(self):
+
+        startTime = time.time()
+        print('updating spectra')
+
         self.updateCalculations()
+
+        startTime = time.time()
 
         plotInfos = self.window.getSelectedPlotInfo()
 
@@ -161,7 +181,13 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.labelLayout.nextColumn()
         self.ui.labelLayout.addItem(rightLabel)
 
+        print(f'plotted spectra in {time.time() - startTime}')
+        startTime = time.time()
+
         self.updateCohPha()
+
+        print(f'plotted coh/pha in {time.time() - startTime}')
+        startTime = time.time()
         ## end of def
 
     
@@ -177,14 +203,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             ba = LogAxis(False,True,False,orientation='bottom')
             la = LogAxis(False,False,False,orientation='left')
             pi = pg.PlotItem(axisItems={'bottom':ba, 'left':la})
-            #pi.enableAutoRange(y=False)
             pi.setLogMode(True, False)
-            #mind = min(d[1])
-            #maxd = max(d[1])
-            #print(f'{mind} {maxd}')
-            #minVal = np.log10(mind)
-            #maxVal = np.log10(maxd)
-            #pi.setYRange(minVal, maxVal)
             pi.plot(freqs, d[1], pen=self.window.pens[0])
             pi.setLabels(title=f'{d[2]}:  {c0}   vs   {c1}', left=f'{d[2]}', bottom='Log Frequency(Hz)')
             d[0].addItem(pi)
@@ -251,7 +270,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         bw,kmo,nband,half,nfreq = self.getCommonVars(N)
         kStart = kmo - half
         kSpan = half * 4 + 1
-        
+
         csA = fft0[:-1] * fft1[:-1] + fft0[1:] * fft1[1:]
         qsA = fft0[:-1] * fft1[1:] - fft1[:-1] * fft0[1:]
         pAA = fft0[:-1] * fft0[:-1] + fft0[1:] * fft0[1:]
@@ -265,13 +284,14 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         for n in range(nfreq):
             KO = (kStart + n) * 2 - 1
             KE = KO + kSpan
-            csSum[n] = np.sum(csA[KO:KE:2])
-            qsSum[n] = np.sum(qsA[KO:KE:2])
-            pASum[n] = np.sum(pAA[KO:KE:2])
-            pBSum[n] = np.sum(pBA[KO:KE:2])
+
+            csSum[n] = sum(csA[KO:KE:2])
+            qsSum[n] = sum(qsA[KO:KE:2])
+            pASum[n] = sum(pAA[KO:KE:2])
+            pBSum[n] = sum(pBA[KO:KE:2])
 
         coh = (csSum * csSum + qsSum * qsSum) / (pASum * pBSum)
-        pha = np.arctan2(qsSum, csSum) * 57.2957
+        pha = np.arctan2(qsSum, csSum) * 57.2957 # no idea where this constant came from
 
         # wrap phase
         n = pha.size

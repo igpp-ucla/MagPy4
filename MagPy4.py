@@ -1317,7 +1317,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
 def myexepthook(type, value, tb):
     print(f'{type} {value}')
-    traceback.print_tb(tb,limit=3)
+    traceback.print_tb(tb,limit=5)
     os.system('pause')
 
 if __name__ == '__main__':
