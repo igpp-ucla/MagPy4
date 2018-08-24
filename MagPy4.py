@@ -482,14 +482,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
 
-    # currently just reads the columns and data types
-    # maybe separate this out into another file
     def openCDF(self,PATH):#,q):
         print(f'opening cdf: {PATH}')
         cdf = pycdf.CDF(PATH)
         if not cdf:
             print('CDF LOAD FAILED')
         self.cdfName = PATH
+
+        #cdf data gets converted into this time epoch
+        #this allows correct usage of FFTIME elsewhere in the code
+        self.epoch = 'J2000'
 
         datas = []
         epochs = []
@@ -1086,7 +1088,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         x1 = self.plotItems[0].getViewBox().lines[lineStr][1].getXPos()
         i0,i1 = self.getTicksFromTimeEdit(timeEdit)
         t0 = self.getTimeFromTick(i0)
-        t1 = self.getTimeFromTick(i1 + 1)
+        t1 = self.getTimeFromTick(i1)
         assert(t0 <= t1)
         self.updateLinesPos(lineStr, 0, t0 if x0 < x1 else t1)
         self.updateLinesPos(lineStr, 1, t1 if x0 < x1 else t0)

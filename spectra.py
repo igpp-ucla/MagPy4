@@ -32,16 +32,17 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.wasClosed = False
 
     def updateDelayed(self):
-        print('updating')
-        QtCore.QTimer.singleShot(500, self.updateSpectra)
+        self.ui.bandWidthSpinBox.setReadOnly(True)
+        QtCore.QTimer.singleShot(100, self.updateSpectra)
 
     def closeEvent(self, event):
         self.window.endGeneralSelect()
         self.wasClosed = True # setting self.window.spectra=None caused program to crash with no errors.. couldnt figure out why so switched to this
 
     def setAspect(self):
+        aspect = self.ui.aspectLockedCheckBox.isChecked()
         for pi in self.plotItems:
-            pi.setAspectLocked(self.ui.aspectLockedCheckBox.isChecked())
+            pi.setAspectLocked(aspect)
 
     # return start and stop indices of selected data
     def getIndices(self, dstr):
@@ -102,7 +103,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     # some weird stuff is going on in here because there was many conflicts with combining linked y range between plots of each row,
     # log scale, and fixed aspect ratio settings. its all working now pretty good though
     def updateSpectra(self):
-
         startTime = time.time()
         print('updating spectra')
 
@@ -140,7 +140,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 powers.append(power)
 
                 pen = penList[i]
-                titleString = f"{titleString} <span style='color:{pen.color().name()};'>{dstr}</span>"
+                abbrv = self.window.ABBRV_DSTR_DICT[dstr]
+                titleString = f"{titleString} <span style='color:{pen.color().name()};'>{abbrv}</span>"
                 pi.plot(freq, power, pen=pen)
 
                 # this part figures out layout of plots into rows depending on settings
@@ -190,23 +191,38 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         startTime = time.time()
         ## end of def
 
+        # this is done to avoid it going twice with one click (ideally should make this multithreaded eventually so gui is more responsive)
+        bw = self.ui.bandWidthSpinBox.value()
+        self.ui.bandWidthSpinBox.setMinimum(max(1,bw-2))
+        self.ui.bandWidthSpinBox.setMaximum(bw+2)
+        QtCore.QTimer.singleShot(500, self.removeLimits)
+
+    # remove limits later incase they want to type in directly
+    def removeLimits(self):
+        self.ui.bandWidthSpinBox.setMinimum(1)
+        self.ui.bandWidthSpinBox.setMaximum(99)
     
     def updateCohPha(self):
         c0 = self.ui.cohPair0.currentText()
         c1 = self.ui.cohPair1.currentText()
+        abbrv0 = self.window.ABBRV_DSTR_DICT[c0]
+        abbrv1 = self.window.ABBRV_DSTR_DICT[c1]
         freqs = self.getFreqs(c0)
 
         datas = [[self.ui.cohGrid, self.coh, 'Coherence'],[self.ui.phaGrid, self.pha, 'Phase']]
 
         for d in datas:
             d[0].clear()
-            ba = LogAxis(False,True,False,orientation='bottom')
+            ba = LogAxis(True,True,False,orientation='bottom')
             la = LogAxis(False,False,False,orientation='left')
             pi = pg.PlotItem(axisItems={'bottom':ba, 'left':la})
             pi.setLogMode(True, False)
+            #if self.ui.aspectLockedCheckBox.isChecked():
+            #    pi.setAspectLocked()
             pi.plot(freqs, d[1], pen=self.window.pens[0])
-            pi.setLabels(title=f'{d[2]}:  {c0}   vs   {c1}', left=f'{d[2]}', bottom='Log Frequency(Hz)')
+            pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}', bottom='Log Frequency(Hz)')
             d[0].addItem(pi)
+            #self.plotItems.append(pi)
 
 
     # scale each plot to use same y range

@@ -46,9 +46,9 @@ class SpectraUI(object):
         bottomLayout = QtWidgets.QHBoxLayout()
         bandWidthLabel = QtGui.QLabel("Average Bandwidth")
         self.bandWidthSpinBox = QtGui.QSpinBox()
-        self.bandWidthSpinBox.setMinimum(1)
         self.bandWidthSpinBox.setSingleStep(2)
         self.bandWidthSpinBox.setProperty("value", 3)
+        self.bandWidthSpinBox.setFixedWidth(50)
 
         self.separateTracesCheckBox = QtGui.QCheckBox()
         #self.separateTracesCheckBox.setChecked(True)
@@ -98,6 +98,10 @@ class SpectraUI(object):
             self.cohPair1.setCurrentIndex(1)
 
         bottomLayout.addWidget(cohPhaseFrame)
+
+        self.waveAnalysisButton = QtWidgets.QPushButton('Open Wave Analysis')
+        self.waveAnalysisButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        bottomLayout.addWidget(self.waveAnalysisButton)
 
         bottomLayout.addStretch()
 
