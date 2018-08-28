@@ -175,6 +175,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.spectra.close()
             self.spectra = None
 
+    #thoughts on refactor this into using a dictionary, so youd call close with string arg of window name??
+    #def closeSubWindow(key):
+    #    if key not in self.subWindows:
+    #        print('prob bad')
+    #        return
+    #    if not self.subWindows[key]:
+    #        return
+    #    self.subWindows[key].close()
+    #    self.subWindows[key] = None
+
     def openPlotMenu(self):
         self.closePlotMenu()
         self.plotMenu = PlotMenu(self)

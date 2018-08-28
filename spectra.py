@@ -11,6 +11,7 @@ from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxi
 from dataDisplay import UTCQDate
 from MagPy4UI import TimeEdit
 from spectraUI import SpectraUI, SpectraViewBox
+from waveAnalysis import WaveAnalysis
 import functools
 import time
 
@@ -25,17 +26,31 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.bandWidthSpinBox.valueChanged.connect(self.updateSpectra)
         self.ui.separateTracesCheckBox.stateChanged.connect(self.updateSpectra)
         self.ui.aspectLockedCheckBox.stateChanged.connect(self.setAspect)
+        self.ui.waveAnalysisButton.clicked.connect(self.openWaveAnalysis)
 
         self.plotItems = []
         #self.updateSpectra()
         self.window.setLinesVisible(False, 'general')
         self.wasClosed = False
 
+        self.waveAnalysis = None
+
+    def closeWaveAnalysis(self):
+        if self.waveAnalysis:
+            self.waveAnalysis.close()
+            self.waveAnalysis = None
+
+    def openWaveAnalysis(self):
+        self.closeWaveAnalysis()
+        self.waveAnalysis = WaveAnalysis(self.window)
+        self.waveAnalysis.show()
+
     def updateDelayed(self):
         self.ui.bandWidthSpinBox.setReadOnly(True)
         QtCore.QTimer.singleShot(100, self.updateSpectra)
 
     def closeEvent(self, event):
+        self.closeWaveAnalysis()
         self.window.endGeneralSelect()
         self.wasClosed = True # setting self.window.spectra=None caused program to crash with no errors.. couldnt figure out why so switched to this
 
@@ -148,7 +163,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 # also links the y scale of each row together
                 lastPlotInList = i == len(strList) - 1
                 if lastPlotInList or oneTracePerPlot:
-                    pi.setLabels(title=titleString, left='Power', bottom='Log Frequency(Hz)')
+                    pi.setLabels(title=titleString, left='Power(nT^2/Hz)', bottom='Log Frequency(Hz)')
                     piw = pi.titleLabel._sizeHint[0][0] + 60 # gestimating padding
                     maxTitleWidth = max(maxTitleWidth,piw)
                     self.ui.grid.addItem(pi)
@@ -209,7 +224,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         abbrv1 = self.window.ABBRV_DSTR_DICT[c1]
         freqs = self.getFreqs(c0)
 
-        datas = [[self.ui.cohGrid, self.coh, 'Coherence'],[self.ui.phaGrid, self.pha, 'Phase']]
+        datas = [[self.ui.cohGrid, self.coh, 'Coherence', ''],[self.ui.phaGrid, self.pha, 'Phase', ' (Degree)']]
 
         for d in datas:
             d[0].clear()
@@ -220,10 +235,14 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             #if self.ui.aspectLockedCheckBox.isChecked():
             #    pi.setAspectLocked()
             pi.plot(freqs, d[1], pen=self.window.pens[0])
-            pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}', bottom='Log Frequency(Hz)')
+            pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}', bottom='Log Frequency(Hz)')
             d[0].addItem(pi)
             #self.plotItems.append(pi)
 
+            # y axis should be in angles for phase
+            if d[2] == 'Phase':
+                angleTicks = [(x,f'{x}') for x in range(360,-361,-90)]
+                la.setTicks([angleTicks])
 
     # scale each plot to use same y range
     # the viewRange function was returning incorrect results so had to do manually
