@@ -13,6 +13,7 @@ class Mth:
     STRING_PRECISION = 10
     AXES = ['X','Y','Z']
     i = [0, 1, 2]
+    R2D = 57.29577951308232 # 1 radian is this many degrees
 
     def empty(): # return an empty 2D list in 3x3 matrix form
         return [[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]]

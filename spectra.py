@@ -14,6 +14,7 @@ from spectraUI import SpectraUI, SpectraViewBox
 from waveAnalysis import WaveAnalysis
 import functools
 import time
+from mth import Mth
 
 class Spectra(QtWidgets.QFrame, SpectraUI):
     def __init__(self, window, parent=None):
@@ -298,9 +299,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
         return power
 
-    # get pair 1 and 2 from dropdowns as kx and ky
-    # should prob put coherence on separate tab with its own ui section
-    # also phase too
     def calculateCoherenceAndPhase(self, fft0, fft1, N):
         bw,kmo,nband,half,nfreq = self.getCommonVars(N)
         kStart = kmo - half
@@ -326,7 +324,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             pBSum[n] = sum(pBA[KO:KE:2])
 
         coh = (csSum * csSum + qsSum * qsSum) / (pASum * pBSum)
-        pha = np.arctan2(qsSum, csSum) * 57.2957 # no idea where this constant came from
+        pha = np.arctan2(qsSum, csSum) * Mth.R2D
 
         # wrap phase
         n = pha.size
