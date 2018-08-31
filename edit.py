@@ -243,7 +243,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         hist = self.history[row]
         self.selectedMatrix = hist[0]
         self.ui.extraLabel.setText(hist[1])
-        Mth.setMatrix(self.ui.M, self.selectedMatrix)
+        self.ui.M.setMatrix(self.selectedMatrix)
         self.window.MATRIX = Mth.matToString(self.selectedMatrix)
         self.updateLabelNamesByMatrix(self.window.MATRIX, self.ui.history.item(row).text())
         self.window.replotData()
@@ -314,25 +314,25 @@ class ManRot(QtWidgets.QFrame, ManRotUI):
         for i,gb in enumerate(self.ui.genButtons):
             gb.clicked.connect(functools.partial(self.axisRotGen, Mth.AXES[i]))
 
-        self.ui.loadIdentity.clicked.connect(functools.partial(Mth.setMatrix, self.ui.R, Mth.IDENTITY))
-        self.ui.loadZeros.clicked.connect(functools.partial(Mth.setMatrix, self.ui.R, Mth.empty()))
+        self.ui.loadIdentity.clicked.connect(functools.partial(self.ui.R.setMatrix, Mth.IDENTITY))
+        self.ui.loadZeros.clicked.connect(functools.partial(self.ui.R.setMatrix, Mth.empty()))
         self.ui.loadCurrentEditMatrix.clicked.connect(self.loadCurrentEditMatrix)
         self.ui.applyButton.clicked.connect(self.apply)
 
         self.lastOpName = 'Custom'
 
-        Mth.setMatrix(self.ui.R, Mth.IDENTITY)
+        self.ui.R.setMatrix(Mth.IDENTITY)
         
     def apply(self):
         # figure out if custom on axisrot
-        self.edit.apply(Mth.getMatrix(self.ui.R), '', self.lastOpName)
+        self.edit.apply(self.ui.R.getMatrix(), '', self.lastOpName)
         self.edit.closeManRot()
         PyQtUtils.moveToFront(self.edit)
 
     def axisRotGen(self, axis):
         angle = self.ui.axisAngle.value()
         R = self.genAxisRotationMatrix(axis, angle)
-        Mth.setMatrix(self.ui.R, R)
+        self.ui.R.setMatrix(R)
         self.lastOpName = f'{axis}{angle}rot'
 
     # axis is x,y,z
@@ -355,9 +355,7 @@ class ManRot(QtWidgets.QFrame, ManRotUI):
         return Mth.copy(Mth.IDENTITY)
 
     def loadCurrentEditMatrix(self):
-        mat = Mth.getMatrix(self.edit.ui.M)
-        Mth.setMatrix(self.ui.R, mat)
-
+        self.ui.R.setMatrix(self.edit.ui.M.getMatrix())
 
 class MinVar(QtWidgets.QFrame, MinVarUI):
     def __init__(self, edit, window, parent=None):

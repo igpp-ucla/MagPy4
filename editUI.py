@@ -3,7 +3,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 from mth import Mth
-from MagPy4UI import TimeEdit
+from MagPy4UI import TimeEdit, MatrixWidget
 import functools
 
 class EditUI(object):
@@ -49,20 +49,8 @@ class EditUI(object):
         # history
         matFrame = QtWidgets.QGroupBox('Matrix History')
         matLayout = QtWidgets.QVBoxLayout(matFrame)
-
-        mGrid = QtWidgets.QGridLayout()
-        self.M = [] # matrix that is displayed in history
-        for y in range(3):
-            row = []
-            for x in range(3):
-                label = QtGui.QLabel('0.0')
-                #label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-                #label.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-                mGrid.addWidget(label, y, x, 1, 1)
-                row.append(label)
-            self.M.append(row)
-
-        matLayout.addLayout(mGrid)
+        self.M = MatrixWidget()
+        matLayout.addWidget(self.M)
 
         self.extraLabel = QtWidgets.QLabel('')
         self.extraLabel.setContentsMargins(0,10,0,0) # left top right bottom
@@ -102,20 +90,10 @@ class ManRotUI(object):
 
         self.layout = QtWidgets.QVBoxLayout(Frame)
 
-                # matrix A setup
-        self.R = [] # current rotation matrix
         rFrame = QtWidgets.QGroupBox('Rotation Matrix')
-        rLayout = QtWidgets.QGridLayout(rFrame)
-        for y in range(3):
-            row = []
-            for x in range(3):
-                edit = QtGui.QLineEdit()
-                edit.setInputMethodHints(QtCore.Qt.ImhFormattedNumbersOnly) #i dont even know if this does anything
-                edit.setText('0.0')
-                rLayout.addWidget(edit, y, x, 1, 1)
-                row.append(edit)
-            self.R.append(row)
-
+        rLayout = QtWidgets.QVBoxLayout(rFrame)
+        self.R = MatrixWidget(type='lines')
+        rLayout.addWidget(self.R)
         self.layout.addWidget(rFrame)
 
         extraButtons = QtWidgets.QHBoxLayout()

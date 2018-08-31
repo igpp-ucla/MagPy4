@@ -43,7 +43,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
     def openWaveAnalysis(self):
         self.closeWaveAnalysis()
-        self.waveAnalysis = WaveAnalysis(self.window)
+        self.waveAnalysis = WaveAnalysis(self, self.window)
         self.waveAnalysis.show()
 
     def updateDelayed(self):

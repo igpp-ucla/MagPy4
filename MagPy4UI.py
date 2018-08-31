@@ -6,6 +6,7 @@ import pyqtgraph as pg
 import functools
 
 from pyqtgraphExtensions import GridGraphicsLayout,LinearGraphicsLayout,BLabelItem
+from mth import Mth
 
 class MagPy4UI(object):
 
@@ -199,6 +200,54 @@ class TimeEdit():
         d0 = self.start.dateTime().toString(form)
         d1 = self.end.dateTime().toString(form)
         return d0,d1    
+
+class MatrixWidget(QtWidgets.QWidget):
+    def __init__(self, type='labels', parent=None):
+        #QtWidgets.QWidget.__init__(self, parent)
+        super(MatrixWidget, self).__init__(parent)
+        grid = QtWidgets.QGridLayout(self)
+        self.mat = [] # matrix of label or line widgets
+        grid.setContentsMargins(0,0,0,0)
+        for y in Mth.i:
+            row = []
+            for x in Mth.i:
+                if type == 'labels':
+                    w = QtGui.QLabel('0.0')
+                    w.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+                elif type == 'lines':
+                    w = QtGui.QLineEdit()
+                    w.setInputMethodHints(QtCore.Qt.ImhFormattedNumbersOnly) #i dont even know if this does anything
+                    w.setText('0.0')
+                else:
+                    assert False, 'unknown type requested in MatrixWidget!'
+                grid.addWidget(w, y, x, 1, 1)
+                row.append(w)
+            self.mat.append(row)
+
+        #self.update()
+
+    def setMatrix(self, m):
+        for i in Mth.i:
+            for j in Mth.i:
+                self.mat[i][j].setText(Mth.formatNumber(m[i][j]))
+                self.mat[i][j].repaint() # mac doesnt repaint sometimes
+
+    # returns list of numbers
+    def getMatrix(self):
+        M = Mth.empty()
+        for i in Mth.i:
+            for j in Mth.i:
+                s = self.mat[i][j].text()
+                try:
+                    f = float(s)
+                except ValueError:
+                    print(f'matrix has non-number at location {i},{j}')
+                    f = 0.0
+                M[i][j] = f
+        return M
+
+    def toString(self):
+        return Mth.matToString(self.getMatrix())
 
 # pyqt utils
 class PyQtUtils:
