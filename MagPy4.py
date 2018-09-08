@@ -98,7 +98,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False
-        self.traceStatsOnTop = False
+        self.traceStatsOnTop = True
 
         self.initDataStorageStructures()
 
@@ -1343,7 +1343,7 @@ if __name__ == '__main__':
     #app.setApplicationVersion(version)
 
     main = MagPy4Window(app)
-    main.show()
+    main.showMaximized()
 
     sys.excepthook = myexepthook
     sys.exit(app.exec_())

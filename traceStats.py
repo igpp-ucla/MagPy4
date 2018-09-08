@@ -48,8 +48,8 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         self.ui = TraceStatsUI()
         self.ui.setupUI(self, window)
         if self.ui.onTopCheckBox.isChecked():
-            self.toggleWindowHint(True)
-        self.ui.onTopCheckBox.clicked.connect(self.toggleWindowHint)
+            self.toggleWindowOnTop(True)
+        self.ui.onTopCheckBox.clicked.connect(self.toggleWindowOnTop)
 
         self.funcStrs = ['min', 'max', 'mean', 'median','std dev']
         self.funcs = [np.min, np.max, np.mean, np.median, np.std]
@@ -60,10 +60,11 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         self.window.endGeneralSelect()
         self.window.traceStatsOnTop = self.ui.onTopCheckBox.isChecked()
 
-    def toggleWindowHint(self, val):
+    def toggleWindowOnTop(self, val):
+        self.setParent(self.window if val else None)
+        dialogFlag = QtCore.Qt.Dialog
         flags = self.windowFlags()
-        toggleFlag = QtCore.Qt.WindowStaysOnTopHint
-        flags = flags | toggleFlag if val else flags & ~toggleFlag
+        flags = flags | dialogFlag if val else flags & ~dialogFlag
         self.setWindowFlags(flags)
         self.show()
 
