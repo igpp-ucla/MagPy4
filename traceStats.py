@@ -63,6 +63,8 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
     def toggleWindowOnTop(self, val):
         self.setParent(self.window if val else None)
         dialogFlag = QtCore.Qt.Dialog
+        if self.window.OS == 'posix':
+            dialogFlag = QtCore.Qt.Tool
         flags = self.windowFlags()
         flags = flags | dialogFlag if val else flags & ~dialogFlag
         self.setWindowFlags(flags)

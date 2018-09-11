@@ -8,51 +8,63 @@ import math
 from MagPy4UI import MatrixWidget
 
 class WaveAnalysisUI(object):
-        def setupUI(self, Frame, window):
-            Frame.setWindowTitle('Wave Analysis')
-            Frame.resize(1000,700)  
+    def setupUI(self, Frame, window):
+        Frame.setWindowTitle('Wave Analysis')
+        Frame.resize(1000,700)  
 
-            self.hlayout = QtWidgets.QHBoxLayout(Frame)
-            self.layout = QtWidgets.QVBoxLayout()
+        self.layout = QtWidgets.QVBoxLayout(Frame)
 
-            self.axLayout = QtWidgets.QGridLayout()
-            self.window = window
-            defaultPlots = self.window.getDefaultPlotInfo()[0]
-            axes = ['X','Y','Z','T']
-            self.axesDropdowns = []
-            for i,ax in enumerate(axes):
-                dd = QtGui.QComboBox()
-                self.axLayout.addWidget(QtWidgets.QLabel(ax),0,i,1,1)
-                for s in self.window.DATASTRINGS:
-                    if ax.lower() in s.lower():
-                        dd.addItem(s)
-                dd.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-                self.axesDropdowns.append(dd)
-                self.axLayout.addWidget(dd,1,i,1,1)
+        self.axLayout = QtWidgets.QGridLayout()
+        self.window = window
+        defaultPlots = self.window.getDefaultPlotInfo()[0]
+        axes = ['X','Y','Z','T']
+        self.axesDropdowns = []
+        for i,ax in enumerate(axes):
+            dd = QtGui.QComboBox()
+            self.axLayout.addWidget(QtWidgets.QLabel(ax),0,i,1,1)
+            for s in self.window.DATASTRINGS:
+                if ax.lower() in s.lower():
+                    dd.addItem(s)
+            dd.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+            self.axesDropdowns.append(dd)
+            self.axLayout.addWidget(dd,1,i,1,1)
 
-            spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-            self.axLayout.addItem(spacer, 0, 100, 1, 1)
+        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.axLayout.addItem(spacer, 0, 100, 1, 1)
 
-            self.layout.addLayout(self.axLayout)
+        self.layout.addLayout(self.axLayout)
             
-            rpFrame = QtWidgets.QGroupBox('Real Power')
-            rpLayout = QtWidgets.QVBoxLayout(rpFrame)
-            self.rpMatrix = MatrixWidget()
-            rpLayout.addWidget(self.rpMatrix)
-            self.layout.addWidget(rpFrame)
+        self.matLayout = QtWidgets.QGridLayout()
 
-            ipFrame = QtWidgets.QGroupBox('Imaginary Power')
-            ipLayout = QtWidgets.QVBoxLayout(ipFrame)
-            self.ipMatrix = MatrixWidget()
-            ipLayout.addWidget(self.ipMatrix)
-            self.layout.addWidget(ipFrame)
+        #self.rpMatrix = self.addMatrixBox('Real Power', self.matLayout, 0, 0, 1, 1)
+        #self.ipMatrix = self.addMatrixBox('Imaginary Power', self.matLayout, 1, 0, 1, 1)
 
+        self.rpMat, rpFrame = self.addMatrixBox('Real Power')
+        self.ipMat, ipFrame = self.addMatrixBox('Imaginary Power')
+        self.trpMat, trpFrame = self.addMatrixBox('Transformed Real Power')
+        self.tipMat, tipFrame = self.addMatrixBox('Transformed Imaginary Power')
+        self.trMat, trFrame = self.addMatrixBox('Transformed Real Matrix')
+        self.tiMat, tiFrame = self.addMatrixBox('Transformed Imaginary Matrix')
 
-            self.layout.addStretch()
+        self.matLayout.addWidget(rpFrame, 0, 0, 1, 1)
+        self.matLayout.addWidget(ipFrame, 1, 0, 1, 1)
+        self.matLayout.addWidget(trpFrame, 2, 0, 1, 1)
+        self.matLayout.addWidget(tipFrame, 2, 1, 1, 1)
+        self.matLayout.addWidget(trFrame, 3, 0, 1, 1)
+        self.matLayout.addWidget(tiFrame, 3, 1, 1, 1)
 
-            self.hlayout.addLayout(self.layout)
-            self.hlayout.addStretch()
+        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.matLayout.addItem(spacer, 0, 100, 1, 1)
 
+        self.layout.addLayout(self.matLayout)
+        self.layout.addStretch()
+
+    def addMatrixBox(self, name):
+        frame = QtWidgets.QGroupBox(name)
+        layout = QtWidgets.QVBoxLayout(frame)
+        mat = MatrixWidget()
+        layout.addWidget(mat)
+        return mat, frame
 
 class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
     def __init__(self, spectra, window, parent=None):
@@ -71,7 +83,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         #print(dstrs)
 
         ffts = [self.spectra.getfft(dstr) for dstr in dstrs]
-        print(len(ffts[0]))
+        #print(len(ffts[0]))
 
         # needs start and end frequencies sliders prob (for now can just use whole spectra)
         # need to correct this. start and end points aren't exactly great
@@ -97,8 +109,8 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         realPower = [[ps[0], cs[0], cs[1]], [cs[0], ps[1], cs[2]], [cs[1], cs[2], ps[2]]]
         imagPower = [[0.0, -qs[0], -qs[1]], [qs[0], 0.0, -qs[2]], [qs[1], qs[2], 0.0]]
 
-        self.ui.rpMatrix.setMatrix(realPower)
-        self.ui.ipMatrix.setMatrix(imagPower)
+        self.ui.rpMat.setMatrix(realPower)
+        self.ui.ipMat.setMatrix(imagPower)
 
         #powSpectra = ps[0] + ps[1] + ps[2]
         #traAmp = sqrt(powSpectra)
@@ -124,25 +136,34 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         qqq = qqqn / qqqp
         qalm = Mth.R2D * math.acos(qqq)
 
+        #means transformation matrix
+        yx = qkem[1] * avg[2] - qkem[2] * avg[1]
+        yy = qkem[2] * avg[0] - qkem[0] * avg[2]
+        yz = qkem[0] * avg[1] - qkem[1] * avg[0]
+        qyxyz = np.linalg.norm([yx, yy, yz])
+        yx = yx / qyxyz
+        yy = yy / qyxyz
+        yz = yz / qyxyz
+        xx = yy * qkem[2] - yz * qkem[1]
+        xy = yz * qkem[0] - yx * qkem[2]
+        xz = yx * qkem[1] - yy * qkem[0]
+        bmat = [[xx, yx, qkem[0]], [xy, yy, qkem[1]], [xz, yz, qkem[2]]]
+        duhh, amat = np.linalg.eigh(np.transpose(realPower), UPLO="U")
+        #self.thbk, self.thkk = getAngles(amat, avg, qkem)
 
-    def flip(a):   # flip and twist
-        b = [[a[2][2], a[2][1], a[2][0]], [a[1][2], a[1][1], a[1][0]], [a[0][2], a[0][1], a[0][0]]]
-        return b
+        # Transformed Values Spectral Matrices 
+        trp = Mth.arpat(amat, realPower)
+        trp = Mth.flip(trp)
+        tip = Mth.arpat(amat, imagPower)
+        tip = Mth.flip(tip)
+        trm = Mth.arpat(bmat, realPower)
+        tim = Mth.arpat(bmat, imagPower)
 
-    def arpat(a, b):
-        # A * B * a^T
-    #   at = numpy.transpose(a)
-    #   c = b * a * at
-        temp = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-        c = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-        for i in range(3):
-            for j in range(3):
-                temp[j][i] = 0
-                for k in range(3):
-                    temp[j][i] = b[k][i] * a[k][j] + temp[j][i]
-        for i in range(3):
-            for j in range(3):
-                c[j][i] = 0
-                for k in range(3):
-                    c[j][i] = a[k][i] * temp[j][k] + c[j][i]
-        return c
+        self.ui.trpMat.setMatrix(trp)
+        self.ui.tipMat.setMatrix(tip)
+        self.ui.trMat.setMatrix(trm)
+        self.ui.tiMat.setMatrix(tim)
+
+        # born-wolf analysis
+        #self.pp, self.ppm, self.elip, self.elipm, self.azim = bornWolf(rpp, ipp, rpmp, ipmp)
+
