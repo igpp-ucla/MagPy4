@@ -38,7 +38,7 @@ class Mth:
         n = round(num, Mth.STRING_PRECISION)
         #if n >= 10000 or n <= 0.0001: #not sure how to handle this for now
             #return f'{n:e}'
-        return f'{n}'
+        return f'{n + 0}' # the +0 gets rid of -0.0 somehow
 
     # matrix are stringified to use as keys in data table
     # DATADICT is dict with dicts for each dstr with (k, v) : (matrix str, modified data)

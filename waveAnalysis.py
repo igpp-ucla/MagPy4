@@ -6,11 +6,12 @@ import numpy as np
 from mth import Mth
 import math
 from MagPy4UI import MatrixWidget
+import functools
 
 class WaveAnalysisUI(object):
     def setupUI(self, Frame, window):
         Frame.setWindowTitle('Wave Analysis')
-        Frame.resize(1000,700)  
+        Frame.resize(700,500)  
 
         self.layout = QtWidgets.QVBoxLayout(Frame)
 
@@ -47,17 +48,67 @@ class WaveAnalysisUI(object):
         self.tiMat, tiFrame = self.addMatrixBox('Transformed Imaginary Matrix')
 
         self.matLayout.addWidget(rpFrame, 0, 0, 1, 1)
-        self.matLayout.addWidget(ipFrame, 1, 0, 1, 1)
-        self.matLayout.addWidget(trpFrame, 2, 0, 1, 1)
-        self.matLayout.addWidget(tipFrame, 2, 1, 1, 1)
-        self.matLayout.addWidget(trFrame, 3, 0, 1, 1)
-        self.matLayout.addWidget(tiFrame, 3, 1, 1, 1)
+        self.matLayout.addWidget(ipFrame, 0, 1, 1, 1)
+        self.matLayout.addWidget(trpFrame, 1, 0, 1, 1)
+        self.matLayout.addWidget(tipFrame, 1, 1, 1, 1)
+        self.matLayout.addWidget(trFrame, 2, 0, 1, 1)
+        self.matLayout.addWidget(tiFrame, 2, 1, 1, 1)
 
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.matLayout.addItem(spacer, 0, 100, 1, 1)
 
         self.layout.addLayout(self.matLayout)
+
+        freqGroupLayout = QtWidgets.QHBoxLayout()
+
+        freqFrame = QtWidgets.QGroupBox('Frequency Selection')
+        freqLayout = QtWidgets.QGridLayout(freqFrame)
+
+        #freqLayoutH = QtWidgets.QHBoxLayout(freqFrame)
+        #freqLayout = QtWidgets.QVBoxLayout()
+        #freqLayoutH.addLayout(freqLayout)
+        #freqLayoutH.addStretch()
+
+        self.minFreqLabel = QtWidgets.QLabel()
+        self.maxFreqLabel = QtWidgets.QLabel()
+        self.minFreqIndex = QtWidgets.QSpinBox()
+        self.maxFreqIndex = QtWidgets.QSpinBox()
+        self.updateButton = QtWidgets.QPushButton('Update')
+
+        freqLayout.addWidget(self.minFreqIndex, 0, 0, 1, 1)
+        freqLayout.addWidget(self.minFreqLabel, 0, 1, 1, 1)
+        freqLayout.addWidget(self.maxFreqIndex, 1, 0, 1, 1)
+        freqLayout.addWidget(self.maxFreqLabel, 1, 1, 1, 1)
+        freqLayout.addWidget(self.updateButton, 2, 0, 1, 1)
+
+        freqGroupLayout.addWidget(freqFrame)
+        freqGroupLayout.addStretch()
+
+        #minFreqLayout = QtWidgets.QHBoxLayout()
+        #minFreqLayout.addWidget(self.minFreqIndex)
+        #minFreqLayout.addWidget(self.minFreqLabel)
+
+        #maxFreqLayout = QtWidgets.QHBoxLayout()
+        #maxFreqLayout.addWidget(self.maxFreqIndex)
+        #maxFreqLayout.addWidget(self.maxFreqLabel)
+
+        #editLayout = QtWidgets.QHBoxLayout()
+        #editLayout.addWidget(self.updateButton)
+        
+        #freqLayout.addLayout(minFreqLayout)
+        #freqLayout.addLayout(maxFreqLayout)
+        #freqLayout.addLayout(editLayout)
+
+        self.layout.addLayout(freqGroupLayout)
+
         self.layout.addStretch()
+
+        botLayout = QtWidgets.QHBoxLayout()
+        logButton = QtWidgets.QPushButton('Export Log')
+        botLayout.addWidget(logButton)
+        botLayout.addStretch()
+
+        self.layout.addLayout(botLayout)
 
     def addMatrixBox(self, name):
         frame = QtWidgets.QGroupBox(name)
@@ -75,20 +126,53 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.ui = WaveAnalysisUI()
         self.ui.setupUI(self, window)
 
+        self.ui.updateButton.clicked.connect(self.updateCalculations)
+        self.ui.minFreqIndex.valueChanged.connect(functools.partial(self.updateLabel, self.ui.minFreqLabel))
+        self.ui.maxFreqIndex.valueChanged.connect(functools.partial(self.updateLabel, self.ui.maxFreqLabel))
+
+        # ya make freq sliders, half number of frequencys per number of bands selected, line gets plotted at actually frequency value (band is just index into fft array)
+        # then hook them up to lines like u do for spectra selection
+        # then let them select on the graph itself?? kinda annoying with multiple spectra plots, maybe do that later
+        # just do another bisect search thing
+
+        freqs = self.spectra.getFreqs(self.firstDstr())
+        #m = len(ffts[0]) // 2
+        m = len(freqs) // 2
+        self.ui.minFreqIndex.setMinimum(0)
+        self.ui.maxFreqIndex.setMinimum(0)
+        self.ui.minFreqIndex.setMaximum(m)
+        self.ui.maxFreqIndex.setMaximum(m)
+        self.ui.minFreqIndex.setValue(0)
+        self.ui.maxFreqIndex.setValue(m)
+
+        self.ui.minFreqIndex.valueChanged.emit(0)#otherwise wont refresh first time
+
         self.updateCalculations() # should add update button later
 
+    def updateLabel(self, label, val):
+        freqs = self.spectra.getFreqs(self.firstDstr())
+        label.setText(Mth.formatNumber(freqs[val]))
+
+    def firstDstr(self):
+        return self.ui.axesDropdowns[0].currentText()
 
     def updateCalculations(self):
         dstrs = [dd.currentText() for dd in self.ui.axesDropdowns]
-        #print(dstrs)
 
         ffts = [self.spectra.getfft(dstr) for dstr in dstrs]
-        #print(len(ffts[0]))
 
-        # needs start and end frequencies sliders prob (for now can just use whole spectra)
-        # need to correct this. start and end points aren't exactly great
-        fO = 0
-        fE = len(ffts[0]) // 2
+        fO = self.ui.minFreqIndex.value()
+        fE = self.ui.maxFreqIndex.value()
+        if fE < fO:
+            fO,fE = fE,fO
+        if abs(fO-fE) < 2:
+            fE = fO + 2
+        self.ui.minFreqIndex.setValue(fO)
+        self.ui.maxFreqIndex.setValue(fE)
+        
+        #print(f'{fO} {fE} {ffts[0][fO]} {ffts[0][fE]}')
+        #print(f'{fO} {fE} {freqs[fO]} {freqs[fE]}')
+
         k = fE - fO - 1
         counts = np.array(range(int(k))) + 1
         steps = 2 * counts - 1
