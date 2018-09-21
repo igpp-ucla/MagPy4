@@ -82,32 +82,44 @@ class WaveAnalysisUI(object):
         freqLayout.addWidget(self.updateButton, 2, 0, 1, 1)
 
         freqGroupLayout.addWidget(freqFrame)
+
+        bornWolfFrame = QtWidgets.QGroupBox('Born-Wolf Analysis')
+        bornWolfGrid = QtWidgets.QGridLayout(bornWolfFrame)
+
+        self.ppLabel = QtWidgets.QLabel()
+        self.ppmLabel = QtWidgets.QLabel()
+        self.elipLabel = QtWidgets.QLabel()
+        self.elipmLabel = QtWidgets.QLabel()
+        self.azimLabel = QtWidgets.QLabel()
+
+        bornWolfGrid.addWidget(QtWidgets.QLabel('Born-Wolf'), 0, 1, 1, 1)
+        bornWolfGrid.addWidget(QtWidgets.QLabel('Joe Means'), 0, 2, 1, 1)
+        bornWolfGrid.addWidget(QtWidgets.QLabel('% Polarization:'), 1, 0, 1, 1)
+        bornWolfGrid.addWidget(self.ppLabel, 1, 1, 1, 1)
+        bornWolfGrid.addWidget(self.ppmLabel, 1, 2, 1, 1)
+        bornWolfGrid.addWidget(QtWidgets.QLabel('Ellipticity:'), 2, 0, 1, 1)
+        bornWolfGrid.addWidget(self.elipLabel, 2, 1, 1, 1)
+        bornWolfGrid.addWidget(self.elipmLabel, 2, 2, 1, 1)
+        bornWolfGrid.addWidget(QtWidgets.QLabel('Azimuth Angle:'), 3, 0, 1, 1)
+        bornWolfGrid.addWidget(self.azimLabel, 3, 1, 1, 1)
+
+        #pp, ppm, elip, elipm, azim
+        freqGroupLayout.addWidget(bornWolfFrame)
+
+        #self.wolfText = QtGui.QTextBrowser()
+        #freqGroupLayout.addWidget(self.wolfText)
+
         freqGroupLayout.addStretch()
-
-        #minFreqLayout = QtWidgets.QHBoxLayout()
-        #minFreqLayout.addWidget(self.minFreqIndex)
-        #minFreqLayout.addWidget(self.minFreqLabel)
-
-        #maxFreqLayout = QtWidgets.QHBoxLayout()
-        #maxFreqLayout.addWidget(self.maxFreqIndex)
-        #maxFreqLayout.addWidget(self.maxFreqLabel)
-
-        #editLayout = QtWidgets.QHBoxLayout()
-        #editLayout.addWidget(self.updateButton)
-        
-        #freqLayout.addLayout(minFreqLayout)
-        #freqLayout.addLayout(maxFreqLayout)
-        #freqLayout.addLayout(editLayout)
 
         self.layout.addLayout(freqGroupLayout)
 
         self.layout.addStretch()
 
+
         botLayout = QtWidgets.QHBoxLayout()
         logButton = QtWidgets.QPushButton('Export Log')
         botLayout.addWidget(logButton)
         botLayout.addStretch()
-
         self.layout.addLayout(botLayout)
 
     def addMatrixBox(self, name):
@@ -134,6 +146,9 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         # then hook them up to lines like u do for spectra selection
         # then let them select on the graph itself?? kinda annoying with multiple spectra plots, maybe do that later
         # just do another bisect search thing
+
+        #make export to log just print everything out nicely formatted........ would be nice if u could just copy and paste what u want but ehhh
+        # kinda annoying to use those qtextbrowser things. copy and paste doesnt work how u think it would inherently
 
         freqs = self.spectra.getFreqs(self.firstDstr())
         #m = len(ffts[0]) // 2
@@ -163,6 +178,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
 
         fO = self.ui.minFreqIndex.value()
         fE = self.ui.maxFreqIndex.value()
+        # ensure first less than last and not the same value
         if fE < fO:
             fO,fE = fE,fO
         if abs(fO-fE) < 2:
@@ -248,6 +264,50 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.ui.trMat.setMatrix(trm)
         self.ui.tiMat.setMatrix(tim)
 
-        # born-wolf analysis
-        #self.pp, self.ppm, self.elip, self.elipm, self.azim = bornWolf(rpp, ipp, rpmp, ipmp)
+        pp, ppm, elip, elipm, azim = self.bornWolf(trp,tip,trm,tim)
 
+        self.ui.ppLabel.setText(Mth.formatNumber(pp))
+        self.ui.ppmLabel.setText(Mth.formatNumber(ppm))
+        self.ui.elipLabel.setText(Mth.formatNumber(elip))
+        self.ui.elipmLabel.setText(Mth.formatNumber(elipm))
+        self.ui.azimLabel.setText(Mth.formatNumber(azim))
+
+        #self.updateBornAnalysis(pp, ppm, elip, elipm, azim)
+
+    def updateBornAnalysis(self, pp, ppm, elip, elipm, azim):
+        head = "<HTML><Table width='100%'><tr><th><td>Born-Wolf</td><td>Joe Means</td></th></tr>"
+        polar = f"<tr><td>% Polarization: </td><td>{pp:+5.3f} </td><td> {ppm:5.3f}</td></tr>"
+        ellip = f"<tr><td>Ellipticity(+RH,-LH): </td><td>{elip:+5.3f} </td><td> {elipm:5.3f}</td></tr>"
+        angle = f"<tr><td>Azimuth Angle: </td><td>{azim:+5.3f} </td><td>  </td></tr>"
+        html =  f"{head}{polar}{ellip}{angle}</table></HTML>"
+        self.ui.wolfText.setText(html)
+
+    def bornWolf(self, rpp, ipp, rpmp, ipmp):
+        trj = rpp[0][0] + rpp[1][1]
+        detj = rpp[0][0] * rpp[1][1] - rpp[1][0] * rpp[1][0] - ipp[1][0] * ipp[1][0]
+        fnum = 1 - (4 * detj) / (trj * trj)
+        if fnum <= 0:
+            pp = 0
+        else:
+            pp = 100 * math.sqrt(fnum)
+        vetm = trj * trj - 4.0 * detj
+        eden = 1 if vetm < 0 else math.sqrt(vetm)
+        fnum = 2 * ipp[0][1] / eden
+        if (rpp[0][1] < -1e-10):
+            elip = -1.0*math.tan(0.5*math.asin(fnum))
+        else:
+            elip = math.tan(0.5*math.asin(fnum))
+        trj = rpmp[0][0] + rpmp[1][1]
+        detj=rpmp[0][0]*rpmp[1][1]-rpmp[0][1]*rpmp[1][0]-ipmp[1][0]*ipmp[1][0]
+        difm = rpmp[0][0] - rpmp[1][1]
+        fnum = 1 - (4 * detj) / (trj * trj)
+        ppm = 100 * math.sqrt(fnum)
+        fnum = 2.0 * ipmp[0][1] / eden
+        if fnum <= 0:
+            fnum = 0
+            pp = 0
+        elipm = math.tan(0.5 * math.asin(fnum))
+        fnum = 2.0 * rpmp[0][1]
+        angle = fnum / difm
+        azim = 0.5 * math.atan(angle) * 57.29578
+        return pp, ppm, elip, elipm, azim
