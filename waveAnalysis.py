@@ -83,7 +83,7 @@ class WaveAnalysisUI(object):
 
         freqGroupLayout.addWidget(freqFrame)
 
-        bornWolfFrame = QtWidgets.QGroupBox('Born-Wolf Analysis')
+        bornWolfFrame = QtWidgets.QGroupBox('Wave Analysis')
         bornWolfGrid = QtWidgets.QGridLayout(bornWolfFrame)
 
         self.ppLabel = QtWidgets.QLabel()
@@ -274,6 +274,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
 
         #self.updateBornAnalysis(pp, ppm, elip, elipm, azim)
 
+    # old magpy table display, slightly updated it but not using currently
     def updateBornAnalysis(self, pp, ppm, elip, elipm, azim):
         head = "<HTML><Table width='100%'><tr><th><td>Born-Wolf</td><td>Joe Means</td></th></tr>"
         polar = f"<tr><td>% Polarization: </td><td>{pp:+5.3f} </td><td> {ppm:5.3f}</td></tr>"
@@ -282,6 +283,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         html =  f"{head}{polar}{ellip}{angle}</table></HTML>"
         self.ui.wolfText.setText(html)
 
+    # this was directly imported from original magpy
     def bornWolf(self, rpp, ipp, rpmp, ipmp):
         trj = rpp[0][0] + rpp[1][1]
         detj = rpp[0][0] * rpp[1][1] - rpp[1][0] * rpp[1][0] - ipp[1][0] * ipp[1][0]
