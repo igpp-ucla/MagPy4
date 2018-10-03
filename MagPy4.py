@@ -23,6 +23,7 @@ from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
 from traceStats import TraceStats
+from helpWindow import HelpWindow
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, LinkedInfiniteLine, BLabelItem
 from mth import Mth
 from tests import Tests
@@ -79,6 +80,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionSpectra.triggered.connect(self.openSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
+        self.ui.actionHelp.triggered.connect(self.openHelp)
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
         self.insightMode = False
@@ -94,11 +96,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay = None
         self.spectra = None
         self.traceStats = None
+        self.helpWindow = None
         self.FIDs = []
 
         # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False
-        self.traceStatsOnTop = False
+        self.traceStatsOnTop = True
 
         self.initDataStorageStructures()
 
@@ -174,6 +177,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.spectra:
             self.spectra.close()
             self.spectra = None
+    def closeHelp(self):
+        if self.helpWindow:
+            self.helpWindow.close()
+            self.helpWindow = None
 
     #thoughts on refactor this into using a dictionary, so youd call close with string arg of window name??
     #def closeSubWindow(key):
@@ -227,6 +234,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.spectra.show()
             self.spectra.updateSpectra()
         PyQtUtils.moveToFront(self.spectra)
+
+    def openHelp(self):
+        self.closeHelp()
+        self.helpWindow = HelpWindow(self)
+        self.helpWindow.show()
 
     def toggleAntialiasing(self):
         pg.setConfigOption('antialias', self.ui.antialiasAction.isChecked())
@@ -782,13 +794,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def plotData(self, dataStrings, links):
         self.ui.glw.clear()
 
+        # save what the last plotted strings and links are for other modules
         self.lastPlotStrings = dataStrings
         self.lastPlotLinks = links
 
         self.plotItems = []
         self.labelItems = []
 
-        self.plotTracePens = [] # a list of pens for each trace (saved for consistency with spectra)
+        # a list of pens for each trace (saved for consistency with spectra)
+        self.plotTracePens = []
 
         # add label for file name at top right
         fileNameLabel = BLabelItem()
@@ -808,8 +822,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             self.plotItems.append(pi) #save it for ref elsewhere
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
-            startDS = 10 if self.iiE > 10000 else 1 # on start doesnt refresh the downsampling so gotta manual it
-            pi.setDownsampling(ds=startDS, auto=True, mode='peak')
+            pi.setDownsampling(ds=1, auto=True, mode='peak')
 
             # add some lines used to show where time series sliders will zoom to
             trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=self.trackerPen)
@@ -878,9 +891,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.additionalResizing()
 
         ## end of main for loop
+
         self.updateXRange()
         self.updateYRange()
-            
+
+        for pi in self.plotItems:
+            for item in pi.items:
+                item.viewRangeChanged()
+
     ## end of plot function
 
 
@@ -1343,7 +1361,7 @@ if __name__ == '__main__':
     #app.setApplicationVersion(version)
 
     main = MagPy4Window(app)
-    main.show()
+    main.showMaximized()
 
     sys.excepthook = myexepthook
     sys.exit(app.exec_())
