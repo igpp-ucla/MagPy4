@@ -4,50 +4,130 @@ from PyQt5.QtWidgets import QSizePolicy
 
 import numpy as np
 from mth import Mth
+import math
 from MagPy4UI import MatrixWidget
+import functools
 
 class WaveAnalysisUI(object):
-        def setupUI(self, Frame, window):
-            Frame.setWindowTitle('Wave Analysis')
-            Frame.resize(1000,700)  
+    def setupUI(self, Frame, window):
+        Frame.setWindowTitle('Wave Analysis')
+        Frame.resize(700,500)  
 
-            self.layout = QtWidgets.QVBoxLayout(Frame)
+        self.layout = QtWidgets.QVBoxLayout(Frame)
 
-            self.axLayout = QtWidgets.QGridLayout()
-            self.window = window
-            defaultPlots = self.window.getDefaultPlotInfo()[0]
-            axes = ['X','Y','Z','T']
-            self.axesDropdowns = []
-            for i,ax in enumerate(axes):
-                dd = QtGui.QComboBox()
-                self.axLayout.addWidget(QtWidgets.QLabel(ax),0,i,1,1)
-                for s in self.window.DATASTRINGS:
-                    if ax.lower() in s.lower():
-                        dd.addItem(s)
-                dd.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-                self.axesDropdowns.append(dd)
-                self.axLayout.addWidget(dd,1,i,1,1)
+        self.axLayout = QtWidgets.QGridLayout()
+        self.window = window
+        defaultPlots = self.window.getDefaultPlotInfo()[0]
+        axes = ['X','Y','Z','T']
+        self.axesDropdowns = []
+        for i,ax in enumerate(axes):
+            dd = QtGui.QComboBox()
+            self.axLayout.addWidget(QtWidgets.QLabel(ax),0,i,1,1)
+            for s in self.window.DATASTRINGS:
+                if ax.lower() in s.lower():
+                    dd.addItem(s)
+            dd.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+            self.axesDropdowns.append(dd)
+            self.axLayout.addWidget(dd,1,i,1,1)
 
-            spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-            self.axLayout.addItem(spacer, 0, 100, 1, 1)
+        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.axLayout.addItem(spacer, 0, 100, 1, 1)
 
-            self.layout.addLayout(self.axLayout)
+        self.layout.addLayout(self.axLayout)
             
-            rpFrame = QtWidgets.QGroupBox('Real Power')
-            rpLayout = QtWidgets.QVBoxLayout(rpFrame)
-            self.rpMatrix = MatrixWidget()
-            rpLayout.addWidget(self.rpMatrix)
-            self.layout.addWidget(rpFrame)
+        self.matLayout = QtWidgets.QGridLayout()
 
-            ipFrame = QtWidgets.QGroupBox('Imaginary Power')
-            ipLayout = QtWidgets.QVBoxLayout(ipFrame)
-            self.ipMatrix = MatrixWidget()
-            ipLayout.addWidget(self.ipMatrix)
-            self.layout.addWidget(ipFrame)
+        #self.rpMatrix = self.addMatrixBox('Real Power', self.matLayout, 0, 0, 1, 1)
+        #self.ipMatrix = self.addMatrixBox('Imaginary Power', self.matLayout, 1, 0, 1, 1)
+
+        self.rpMat, rpFrame = self.addMatrixBox('Real Power')
+        self.ipMat, ipFrame = self.addMatrixBox('Imaginary Power')
+        self.trpMat, trpFrame = self.addMatrixBox('Transformed Real Power')
+        self.tipMat, tipFrame = self.addMatrixBox('Transformed Imaginary Power')
+        self.trMat, trFrame = self.addMatrixBox('Transformed Real Matrix')
+        self.tiMat, tiFrame = self.addMatrixBox('Transformed Imaginary Matrix')
+
+        self.matLayout.addWidget(rpFrame, 0, 0, 1, 1)
+        self.matLayout.addWidget(ipFrame, 0, 1, 1, 1)
+        self.matLayout.addWidget(trpFrame, 1, 0, 1, 1)
+        self.matLayout.addWidget(tipFrame, 1, 1, 1, 1)
+        self.matLayout.addWidget(trFrame, 2, 0, 1, 1)
+        self.matLayout.addWidget(tiFrame, 2, 1, 1, 1)
+
+        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.matLayout.addItem(spacer, 0, 100, 1, 1)
+
+        self.layout.addLayout(self.matLayout)
+
+        freqGroupLayout = QtWidgets.QHBoxLayout()
+
+        freqFrame = QtWidgets.QGroupBox('Frequency Selection')
+        freqLayout = QtWidgets.QGridLayout(freqFrame)
+
+        #freqLayoutH = QtWidgets.QHBoxLayout(freqFrame)
+        #freqLayout = QtWidgets.QVBoxLayout()
+        #freqLayoutH.addLayout(freqLayout)
+        #freqLayoutH.addStretch()
+
+        self.minFreqLabel = QtWidgets.QLabel()
+        self.maxFreqLabel = QtWidgets.QLabel()
+        self.minFreqIndex = QtWidgets.QSpinBox()
+        self.maxFreqIndex = QtWidgets.QSpinBox()
+        self.updateButton = QtWidgets.QPushButton('Update')
+
+        freqLayout.addWidget(self.minFreqIndex, 0, 0, 1, 1)
+        freqLayout.addWidget(self.minFreqLabel, 0, 1, 1, 1)
+        freqLayout.addWidget(self.maxFreqIndex, 1, 0, 1, 1)
+        freqLayout.addWidget(self.maxFreqLabel, 1, 1, 1, 1)
+        freqLayout.addWidget(self.updateButton, 2, 0, 1, 1)
+
+        freqGroupLayout.addWidget(freqFrame)
+
+        bornWolfFrame = QtWidgets.QGroupBox('Wave Analysis')
+        bornWolfGrid = QtWidgets.QGridLayout(bornWolfFrame)
+
+        self.ppLabel = QtWidgets.QLabel()
+        self.ppmLabel = QtWidgets.QLabel()
+        self.elipLabel = QtWidgets.QLabel()
+        self.elipmLabel = QtWidgets.QLabel()
+        self.azimLabel = QtWidgets.QLabel()
+
+        bornWolfGrid.addWidget(QtWidgets.QLabel('Born-Wolf'), 0, 1, 1, 1)
+        bornWolfGrid.addWidget(QtWidgets.QLabel('Joe Means'), 0, 2, 1, 1)
+        bornWolfGrid.addWidget(QtWidgets.QLabel('% Polarization:'), 1, 0, 1, 1)
+        bornWolfGrid.addWidget(self.ppLabel, 1, 1, 1, 1)
+        bornWolfGrid.addWidget(self.ppmLabel, 1, 2, 1, 1)
+        bornWolfGrid.addWidget(QtWidgets.QLabel('Ellipticity:'), 2, 0, 1, 1)
+        bornWolfGrid.addWidget(self.elipLabel, 2, 1, 1, 1)
+        bornWolfGrid.addWidget(self.elipmLabel, 2, 2, 1, 1)
+        bornWolfGrid.addWidget(QtWidgets.QLabel('Azimuth Angle:'), 3, 0, 1, 1)
+        bornWolfGrid.addWidget(self.azimLabel, 3, 1, 1, 1)
+
+        #pp, ppm, elip, elipm, azim
+        freqGroupLayout.addWidget(bornWolfFrame)
+
+        #self.wolfText = QtGui.QTextBrowser()
+        #freqGroupLayout.addWidget(self.wolfText)
+
+        freqGroupLayout.addStretch()
+
+        self.layout.addLayout(freqGroupLayout)
+
+        self.layout.addStretch()
 
 
-            self.layout.addStretch()
+        botLayout = QtWidgets.QHBoxLayout()
+        logButton = QtWidgets.QPushButton('Export Log')
+        botLayout.addWidget(logButton)
+        botLayout.addStretch()
+        self.layout.addLayout(botLayout)
 
+    def addMatrixBox(self, name):
+        frame = QtWidgets.QGroupBox(name)
+        layout = QtWidgets.QVBoxLayout(frame)
+        mat = MatrixWidget()
+        layout.addWidget(mat)
+        return mat, frame
 
 class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
     def __init__(self, spectra, window, parent=None):
@@ -58,151 +138,178 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.ui = WaveAnalysisUI()
         self.ui.setupUI(self, window)
 
+        self.ui.updateButton.clicked.connect(self.updateCalculations)
+        self.ui.minFreqIndex.valueChanged.connect(functools.partial(self.updateLabel, self.ui.minFreqLabel))
+        self.ui.maxFreqIndex.valueChanged.connect(functools.partial(self.updateLabel, self.ui.maxFreqLabel))
+
+        # ya make freq sliders, half number of frequencys per number of bands selected, line gets plotted at actually frequency value (band is just index into fft array)
+        # then hook them up to lines like u do for spectra selection
+        # then let them select on the graph itself?? kinda annoying with multiple spectra plots, maybe do that later
+        # just do another bisect search thing
+
+        #make export to log just print everything out nicely formatted........ would be nice if u could just copy and paste what u want but ehhh
+        # kinda annoying to use those qtextbrowser things. copy and paste doesnt work how u think it would inherently
+
+        freqs = self.spectra.getFreqs(self.firstDstr())
+        #m = len(ffts[0]) // 2
+        m = len(freqs) // 2
+        self.ui.minFreqIndex.setMinimum(0)
+        self.ui.maxFreqIndex.setMinimum(0)
+        self.ui.minFreqIndex.setMaximum(m)
+        self.ui.maxFreqIndex.setMaximum(m)
+        self.ui.minFreqIndex.setValue(0)
+        self.ui.maxFreqIndex.setValue(m)
+
+        self.ui.minFreqIndex.valueChanged.emit(0)#otherwise wont refresh first time
+
         self.updateCalculations() # should add update button later
 
+    def updateLabel(self, label, val):
+        freqs = self.spectra.getFreqs(self.firstDstr())
+        label.setText(Mth.formatNumber(freqs[val]))
+
+    def firstDstr(self):
+        return self.ui.axesDropdowns[0].currentText()
 
     def updateCalculations(self):
-        print('updating')
-
         dstrs = [dd.currentText() for dd in self.ui.axesDropdowns]
-        #print(dstrs)
 
         ffts = [self.spectra.getfft(dstr) for dstr in dstrs]
-        print(len(ffts[0]))
 
-        # needs start and end frequencies sliders prob (for now can just use whole spectra)
-        # need to correct this. start and end points aren't exactly great
-        fO = 0
-        fE = len(ffts[0]) // 2
+        fO = self.ui.minFreqIndex.value()
+        fE = self.ui.maxFreqIndex.value()
+        # ensure first less than last and not the same value
+        if fE < fO:
+            fO,fE = fE,fO
+        if abs(fO-fE) < 2:
+            fE = fO + 2
+        self.ui.minFreqIndex.setValue(fO)
+        self.ui.maxFreqIndex.setValue(fE)
+        
+        #print(f'{fO} {fE} {ffts[0][fO]} {ffts[0][fE]}')
+        #print(f'{fO} {fE} {freqs[fO]} {freqs[fE]}')
+
         k = fE - fO - 1
         counts = np.array(range(int(k))) + 1
         steps = 2 * counts - 1
         #print(steps)
 
-        ffts = [fft[fO:fE*2] for fft in ffts]
+        ffts = [fft[fO:fE * 2] for fft in ffts]
         sqrs = [fft * fft for fft in ffts]
 
         deltaf = 2.0 / (self.spectra.maxN * self.spectra.maxN)
 
-        ps = [sum([sq[i] + sq[i+1] for i in steps]) * deltaf for sq in sqrs]
+        ps = [sum([sq[i] + sq[i + 1] for i in steps]) * deltaf for sq in sqrs]
         #x,y  x,z  y,z
         axisPairs = [(ffts[0],ffts[1]),(ffts[0],ffts[2]),(ffts[1],ffts[2])]
 
-        cs = [sum([fft0[i]*fft1[i] + fft0[i+1]*fft1[i+1] for i in steps])*deltaf for fft0,fft1 in axisPairs]
-        qs = [sum([fft0[i]*fft1[i+1] - fft0[i+1]*fft1[i] for i in steps])*deltaf for fft0,fft1 in axisPairs]
+        cs = [sum([fft0[i] * fft1[i] + fft0[i + 1] * fft1[i + 1] for i in steps]) * deltaf for fft0,fft1 in axisPairs]
+        qs = [sum([fft0[i] * fft1[i + 1] - fft0[i + 1] * fft1[i] for i in steps]) * deltaf for fft0,fft1 in axisPairs]
 
         realPower = [[ps[0], cs[0], cs[1]], [cs[0], ps[1], cs[2]], [cs[1], cs[2], ps[2]]]
         imagPower = [[0.0, -qs[0], -qs[1]], [qs[0], 0.0, -qs[2]], [qs[1], qs[2], 0.0]]
 
-        #for row in realPower:
-        #    print(row)
-        #for row in imagPower:
-        #    print(row)
+        self.ui.rpMat.setMatrix(realPower)
+        self.ui.ipMat.setMatrix(imagPower)
 
-        self.ui.rpMatrix.setMatrix(realPower)
-        self.ui.ipMatrix.setMatrix(imagPower)
+        #powSpectra = ps[0] + ps[1] + ps[2]
+        #traAmp = sqrt(powSpectra)
+        #comPow = ps[3]
+        #comAmb = sqrt[ps[3]]
+        #comRat = ps[3] / powSpectra
 
-#def calculateValues(self, K, freqList, fft, fO, fE):
-#        # 2015 oct 19
-#        # discrepancy freq[0:-1] multiplies data[1:], first data point is ignored?
-#        # 2015 oct 23 refactor this too many sections
-#        print("K", K, "FE - FO", fE - fO, "FE", fE, "FO", fO, "FREQLIST LEN", len(freqList))
-#        if fE == fO:
-#            print("waveAnalysis.calculateValues ERROR ")
-#            return
-#        k = fE - fO - 1
-#        useFreq = freqList[fO:fE - 1]
-#        counts = numpy.array(range(int(k))) + 1
-#        # fix counts
-#        steps = 2 * counts - 1
-#        # use only fO:fE values
-#        X, Y, Z, T = fft
-#        print(len(X))
-#        fftx = X[fO:fE * 2]
-#        ffty = Y[fO:fE * 2]
-#        fftz = Z[fO:fE * 2]
-#        fftt = T[fO:fE * 2]
-##       fftx,ffty,fftz,fftt = X[fO:fE],Y[fO,fE],Z[fO:fE], T[fO:fE]
-##       fftx,ffty,fftz,fftt = fft
-#        xSq, ySq, zSq, tSq = fftx * fftx, ffty * ffty, fftz * fftz, fftt * fftt
-#        # real i , imaginary i + 1
-#        deltaf = 2.0 / (self.spectra.npts * self.spectra.npts)
-#        pxx = sum([xSq[i] + xSq[i + 1] for i in steps]) * deltaf
-#        pyy = sum([ySq[i] + ySq[i + 1] for i in steps]) * deltaf
-#        pzz = sum([zSq[i] + zSq[i + 1] for i in steps]) * deltaf
-#        pbb = sum([tSq[i] + tSq[i + 1] for i in steps]) * deltaf
-#        cxy = sum([fftx[i] * ffty[i] + fftx[i + 1] * ffty[i + 1] for i in steps]) * deltaf
-#        cxz = sum([fftx[i] * fftz[i] + fftx[i + 1] * fftz[i + 1] for i in steps]) * deltaf
-#        cyz = sum([ffty[i] * fftz[i] + ffty[i + 1] * fftz[i + 1] for i in steps]) * deltaf
-#        qxy = sum([fftx[i] * ffty[i + 1] - fftx[i + 1] * ffty[i] for i in steps]) * deltaf
-#        qxz = sum([fftx[i] * fftz[i + 1] - fftx[i + 1] * fftz[i] for i in steps]) * deltaf
-#        qyz = sum([ffty[i] * fftz[i + 1] - ffty[i + 1] * fftz[i] for i in steps]) * deltaf
-#        pi = [xSq[i] + xSq[i + 1] + ySq[i] + ySq[i + 1] + zSq[i] + zSq[i + 1] for i in steps]
-#        print("pi", len(pi))
-#        freqPi = pi * useFreq
-#        self.wFreq = sum(freqPi) /sum(pi)
-#        # real and imaginary Power Matrices
-#        realPower = [[pxx, cxy, cxz], [cxy, pyy, cyz], [cxz, cyz, pzz]]
-#        imagPower = [[0.0, -qxy, -qxz], [qxy, 0.0, -qyz], [qxz, qyz, 0.0]]
-#        self.realPower = realPower
-#        self.imagPower = imagPower
-#        # Power Spectra Parameters
-#        self.powSpeTra = powSpeTra = pxx + pyy + pzz
-#        self.traAmp = sqrt(powSpeTra)
-#        self.comPow = pbb
-#        self.comAmp = sqrt(pbb)
-#        self.comRat = pbb / powSpeTra
-#        qqqd = self.avg[3]
-#        qqqp = numpy.linalg.norm(self.avg[:-1])
-#        self.fraCom = self.comAmp / qqqp if qqqd == 0 else self.comAmp / qqqd
-#        self.fraTra = self.traAmp / qqqp if qqqd == 0 else self.traAmp / qqqd
-#        # Joe Means Parameters
-#        qqq = numpy.linalg.norm([qxy, qxz, qyz])
-#        qkem = numpy.array([qyz / qqq, -qxz / qqq, qxy / qqq])  # propagation direction
-#        avg = self.avg
-#        qqqn = numpy.dot(qkem, avg[:-1])
-#        if qqqn < 0:
-#            qkem = qkem * -1
-#            qqqn = numpy.dot(qkem, avg[:-1])
-#        qqq = qqqn / qqqp
-#        qtem = 57.295878 * acos(qqq)  # field angle
-#        qqq = numpy.linalg.norm([cxy, cxz, cyz])
-#        qdlm = numpy.array([cyz / qqq, cxz / qqq, cxy / qqq])
-##       qqqn = qdlm[0] * avg[0] + qdlm[1] * avg[1] + qdlm[2] * avg[2]  # use dot
-#        qqqn = numpy.dot(qdlm, avg[:-1])
-#        qqq = qqqn / qqqp
-#        qalm = 57.29578 * acos(qqq)
-#        self.qkem = qkem
-#        self.qtem = qtem
-#        self.qdlm = qdlm
-#        self.qalm = qalm
+        avg = [np.mean(self.window.getData(dstr)) for dstr in dstrs]
 
-#        # means transformation matrix
-#        yx = qkem[1] * avg[2] - qkem[2] * avg[1]
-#        yy = qkem[2] * avg[0] - qkem[0] * avg[2]
-#        yz = qkem[0] * avg[1] - qkem[1] * avg[0]
-#        qyxyz = numpy.linalg.norm([yx, yy, yz])
-#        yx = yx / qyxyz
-#        yy = yy / qyxyz
-#        yz = yz / qyxyz
-#        xx = yy * qkem[2] - yz * qkem[1]
-#        xy = yz * qkem[0] - yx * qkem[2]
-#        xz = yx * qkem[1] - yy * qkem[0]
-#        bmat = [[xx, yx, qkem[0]], [xy, yy, qkem[1]], [xz, yz, qkem[2]]]
-#        rmat = numpy.transpose(realPower)
-#        duhh, amat = numpy.linalg.eigh(rmat, UPLO="U")
-#        self.thbk, self.thkk = getAngles(amat, avg, qkem)
-#        # Transformed Values Spectral Matrices  (make routine (amat, {realPower, imagPower} out {r,i}pp
-#        rpp = arpat(amat, realPower)
-#        rpp = flip(rpp)
-#        ipp = arpat(amat, imagPower)
-#        ipp = flip(ipp)
-#        rpmp = arpat(bmat, realPower)
-#        ipmp = arpat(bmat, imagPower)
-#        self.rpp = rpp
-#        self.ipp = ipp
-#        self.rpmp = rpmp
-#        self.ipmp = ipmp
-#        # born-wolf analysis
-#        self.pp, self.ppm, self.elip, self.elipm, self.azim = bornWolf(rpp, ipp, rpmp, ipmp)
-#        return
+        qqq = np.linalg.norm(qs)
+        qqqd = avg[3]
+        qqqp = np.linalg.norm(avg[:-1])
+        qkem = np.array([qs[2] / qqq, -qs[1] / qqq, qs[0] / qqq]) # propogation direction
+        qqqn = np.dot(qkem, avg[:-1])
+        if qqqn < 0:
+            qkem = qkem * -1
+            qqqn = np.dot(qkem, avg[:-1])
+        qqq = qqqn / qqqp
+        qtem = Mth.R2D * math.acos(qqq) # field angle
+        qqq = np.linalg.norm(cs)
+        qdlm = np.array(cs[::-1] / qqq)
+        qqqn = np.dot(qdlm, avg[:-1])
+        qqq = qqqn / qqqp
+        qalm = Mth.R2D * math.acos(qqq)
+
+        #means transformation matrix
+        yx = qkem[1] * avg[2] - qkem[2] * avg[1]
+        yy = qkem[2] * avg[0] - qkem[0] * avg[2]
+        yz = qkem[0] * avg[1] - qkem[1] * avg[0]
+        qyxyz = np.linalg.norm([yx, yy, yz])
+        yx = yx / qyxyz
+        yy = yy / qyxyz
+        yz = yz / qyxyz
+        xx = yy * qkem[2] - yz * qkem[1]
+        xy = yz * qkem[0] - yx * qkem[2]
+        xz = yx * qkem[1] - yy * qkem[0]
+        bmat = [[xx, yx, qkem[0]], [xy, yy, qkem[1]], [xz, yz, qkem[2]]]
+        duhh, amat = np.linalg.eigh(np.transpose(realPower), UPLO="U")
+        #self.thbk, self.thkk = getAngles(amat, avg, qkem)
+
+        # Transformed Values Spectral Matrices 
+        trp = Mth.arpat(amat, realPower)
+        trp = Mth.flip(trp)
+        tip = Mth.arpat(amat, imagPower)
+        tip = Mth.flip(tip)
+        trm = Mth.arpat(bmat, realPower)
+        tim = Mth.arpat(bmat, imagPower)
+
+        self.ui.trpMat.setMatrix(trp)
+        self.ui.tipMat.setMatrix(tip)
+        self.ui.trMat.setMatrix(trm)
+        self.ui.tiMat.setMatrix(tim)
+
+        pp, ppm, elip, elipm, azim = self.bornWolf(trp,tip,trm,tim)
+
+        self.ui.ppLabel.setText(Mth.formatNumber(pp))
+        self.ui.ppmLabel.setText(Mth.formatNumber(ppm))
+        self.ui.elipLabel.setText(Mth.formatNumber(elip))
+        self.ui.elipmLabel.setText(Mth.formatNumber(elipm))
+        self.ui.azimLabel.setText(Mth.formatNumber(azim))
+
+        #self.updateBornAnalysis(pp, ppm, elip, elipm, azim)
+
+    # old magpy table display, slightly updated it but not using currently
+    def updateBornAnalysis(self, pp, ppm, elip, elipm, azim):
+        head = "<HTML><Table width='100%'><tr><th><td>Born-Wolf</td><td>Joe Means</td></th></tr>"
+        polar = f"<tr><td>% Polarization: </td><td>{pp:+5.3f} </td><td> {ppm:5.3f}</td></tr>"
+        ellip = f"<tr><td>Ellipticity(+RH,-LH): </td><td>{elip:+5.3f} </td><td> {elipm:5.3f}</td></tr>"
+        angle = f"<tr><td>Azimuth Angle: </td><td>{azim:+5.3f} </td><td>  </td></tr>"
+        html =  f"{head}{polar}{ellip}{angle}</table></HTML>"
+        self.ui.wolfText.setText(html)
+
+    # this was directly imported from original magpy
+    def bornWolf(self, rpp, ipp, rpmp, ipmp):
+        trj = rpp[0][0] + rpp[1][1]
+        detj = rpp[0][0] * rpp[1][1] - rpp[1][0] * rpp[1][0] - ipp[1][0] * ipp[1][0]
+        fnum = 1 - (4 * detj) / (trj * trj)
+        if fnum <= 0:
+            pp = 0
+        else:
+            pp = 100 * math.sqrt(fnum)
+        vetm = trj * trj - 4.0 * detj
+        eden = 1 if vetm < 0 else math.sqrt(vetm)
+        fnum = 2 * ipp[0][1] / eden
+        if (rpp[0][1] < -1e-10):
+            elip = -1.0*math.tan(0.5*math.asin(fnum))
+        else:
+            elip = math.tan(0.5*math.asin(fnum))
+        trj = rpmp[0][0] + rpmp[1][1]
+        detj=rpmp[0][0]*rpmp[1][1]-rpmp[0][1]*rpmp[1][0]-ipmp[1][0]*ipmp[1][0]
+        difm = rpmp[0][0] - rpmp[1][1]
+        fnum = 1 - (4 * detj) / (trj * trj)
+        ppm = 100 * math.sqrt(fnum)
+        fnum = 2.0 * ipmp[0][1] / eden
+        if fnum <= 0:
+            fnum = 0
+            pp = 0
+        elipm = math.tan(0.5 * math.asin(fnum))
+        fnum = 2.0 * rpmp[0][1]
+        angle = fnum / difm
+        azim = 0.5 * math.atan(angle) * 57.29578
+        return pp, ppm, elip, elipm, azim

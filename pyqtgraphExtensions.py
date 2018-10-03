@@ -211,7 +211,7 @@ class LinearGraphicsLayout(pg.GraphicsWidget):
     def setSpacing(self, *args):
         self.layout.setSpacing(*args)
     
-# same as pdi but with better down sampling (bds) #abbreviations my boy lol
+# same as pdi but with better down sampling (bds)
 class PlotDataItemBDS(pg.PlotDataItem):
     def __init__(self, *args, **kwargs):
         pg.PlotDataItem.__init__(self, *args, **kwargs)
@@ -293,6 +293,7 @@ class PlotDataItemBDS(pg.PlotDataItem):
                 x0 = (range.left()-x[0]) / dx
                 x1 = (range.right()-x[0]) / dx
                 width = self.getViewBox().width()
+                # problem here is width is zero when first plotted
                 if width != 0.0:
                     ds = int(max(1, int((x1-x0) / (width*self.opts['autoDownsampleFactor']))))
         return ds

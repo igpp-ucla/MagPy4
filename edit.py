@@ -404,10 +404,14 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
             vstr = v.currentText()
             vstrs.append(vstr)
             data = self.window.getData(vstr)[iO:iE]
+            print(vstr)
             xyz.append(data)
             avg.append(self.average(data))
 
         items = len(xyz[0])
+
+        print(len(xyz))
+        print(len(xyz[0]))
 
         covar = Mth.empty()
         CoVar = Mth.empty()
@@ -435,10 +439,10 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         e20 = eigen[0][1] * eigen[1][2] - eigen[0][2] * eigen[1][1]
         if e20 * eigen[2][0] < 0:
             eigen[2] = np.negative(eigen[2])
-        if (eigen[0][2] < 0.):
+        if eigen[0][2] < 0.:
             eigen[0] = np.negative(eigen[0])
             eigen[1] = np.negative(eigen[1])
-        if (eigen[2][0] < 0.):
+        if eigen[2][0] < 0.:
             eigen[1] = np.negative(eigen[1])
             eigen[2] = np.negative(eigen[2])
         

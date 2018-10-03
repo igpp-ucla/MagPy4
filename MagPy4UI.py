@@ -70,6 +70,10 @@ class MagPy4UI(object):
         self.bridgeDataGaps = QtWidgets.QAction('Bridge Data Gaps', checkable=True, checked=False)
         self.drawPoints = QtWidgets.QAction('Draw Points (unoptimized)', checkable=True, checked=False)
 
+        self.actionHelp = QtWidgets.QAction(window)
+        self.actionHelp.setText('Help')
+        self.actionHelp.setToolTip('Opens help window with information about the program modules')
+
         self.runTests = QtWidgets.QAction(window)
         self.runTests.setText('Run Tests')
         self.runTests.setToolTip('Runs unit tests for code')
@@ -93,6 +97,8 @@ class MagPy4UI(object):
 
         options = self.buildPopup('Options', [self.scaleYToCurrentTimeAction, self.antialiasAction, self.bridgeDataGaps, self.drawPoints])
         self.toolBar.addWidget(options) 
+
+        self.toolBar.addAction(self.actionHelp)
 
         #empty widget (cant use spacer in toolbar?) does same thing tho so this action goes far right
         spacer = QtWidgets.QWidget()
@@ -230,7 +236,7 @@ class MatrixWidget(QtWidgets.QWidget):
         for i in Mth.i:
             for j in Mth.i:
                 self.mat[i][j].setText(Mth.formatNumber(m[i][j]))
-                self.mat[i][j].repaint() # mac doesnt repaint sometimes
+                self.mat[i][j].repaint() # seems to fix max repaint problems
 
     # returns list of numbers
     def getMatrix(self):

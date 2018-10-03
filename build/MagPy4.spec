@@ -48,9 +48,10 @@ shutil.copy2("ffPy/tai-utc.dat", exeDir)
 shutil.copy2("README.md", exeDir)
 shutil.copytree("images/", f'{exeDir}images')
 
-fnames = ['mms15092720','T8197C_PDR_585031864_585032030_pCAL']
+fnames = ['mms15092720','insight/T8197C_PDR_585031864_585032030_pCAL', 'insight/T8228C_PDR_587688905_587753976_test_pCAL']
 dpath = 'testData/'
 os.makedirs(f'{exeDir}{dpath}')
+os.makedirs(f'{exeDir}{dpath}/insight')
 for fname in fnames:
 	shutil.copy(f'{dpath}{fname}.ffh', f'{exeDir}{dpath}{fname}.ffh')
 	shutil.copy(f'{dpath}{fname}.ffd', f'{exeDir}{dpath}{fname}.ffd')

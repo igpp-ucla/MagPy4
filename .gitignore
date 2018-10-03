@@ -29,3 +29,5 @@ credentials.txt
 testData/L2*
 
 test.py
+.vscode/launch.json
+.vscode/settings.json

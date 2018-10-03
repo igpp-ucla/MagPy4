@@ -38,7 +38,7 @@ class Mth:
         n = round(num, Mth.STRING_PRECISION)
         #if n >= 10000 or n <= 0.0001: #not sure how to handle this for now
             #return f'{n:e}'
-        return f'{n}'
+        return f'{n + 0}' # the +0 gets rid of -0.0 somehow
 
     # matrix are stringified to use as keys in data table
     # DATADICT is dict with dicts for each dstr with (k, v) : (matrix str, modified data)
@@ -186,3 +186,28 @@ class Mth:
         for i in rng:
             arr[i] = d2tt2(cdfEpoch[i]) / div - dt
         return arr
+
+
+
+    # importing from waveAnalysis.py in magpy
+
+    def flip(a):   # flip and twist
+        return [[a[2][2], a[2][1], a[2][0]], [a[1][2], a[1][1], a[1][0]], [a[0][2], a[0][1], a[0][0]]]
+
+    def arpat(a, b):
+        # A * B * a^T
+    #   at = numpy.transpose(a)
+    #   c = b * a * at
+        temp = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        c = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        for i in range(3):
+            for j in range(3):
+                temp[j][i] = 0
+                for k in range(3):
+                    temp[j][i] = b[k][i] * a[k][j] + temp[j][i]
+        for i in range(3):
+            for j in range(3):
+                c[j][i] = 0
+                for k in range(3):
+                    c[j][i] = a[k][i] * temp[j][k] + c[j][i]
+        return c
