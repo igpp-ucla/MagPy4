@@ -383,9 +383,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 allMatch = False
                 break
 
-        if allMatch: # not sure if all need to necessarily match but simplest for now
+        if allMatch: # not sure if all dstrs need to necessarily match but simplest for now
 
-            # since all our strings are present just get the current time of the first one
+            # since all our dstrs are present just get the current time of the first one
             arbStr = newDataStrings[0]
 
             curTime, curRes, curAvgRes = self.getTimes(arbStr)
@@ -442,7 +442,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     break
                 elif startsAfter:
                     continue
-                else:
+                else: # if flatfiles have overlapping time series then dont merge
                     print(f'ERROR: times overlap, no merge operation is defined for this yet')
                     return
 
@@ -607,6 +607,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
 
     # split on '_' and calculate common tokens that appear in each one. then remove and reconstruct remainders
+    # these abbreviations are used mainly for the cdf strings since those are longer so plots and stuff wont have super long strings in them
     def calculateAbbreviatedDstrs(self):
         self.ABBRV_DSTR_DICT = {}
         
@@ -901,7 +902,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     ## end of plot function
 
-
+    # sets y axis label strings for each plot
     def setYAxisLabels(self):
         plots = len(self.plotItems)
         for dstrs,pens,li in zip(self.lastPlotStrings,self.plotTracePens,self.labelItems):
@@ -934,7 +935,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             li.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{alab}</span>")
 
     # trying to correctly estimate size of rows. last one needs to be a bit larger since bottom axis
-    # this is super hacked but it seems to work okay
+    # this is super hacked but it actually works okay. end goal is for bottom plot to be same height as the rest
     def additionalResizing(self):
         # may want to redo with viewGeometry of plots in mind, might be more consistent than fontsize stuff on mac for example
         #for pi in self.plotItems:

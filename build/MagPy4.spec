@@ -12,7 +12,7 @@ os.chdir('..') # move one dir up out of build folder
 workDir = os.getcwd()
 
 a = Analysis(['MagPy4.py'],
-             pathex=[workDir, f'{workDir}\\ffPy'],
+             pathex=[workDir, f'{workDir}\\ffPy', f'{workDir}\\cdfPy'],
              binaries=[],
              datas=[],
              hiddenimports=['scipy','scipy.fftpack','PyQt5.sip'],
