@@ -65,6 +65,10 @@ class MagPy4UI(object):
         self.actionEdit.setText('Edit')
         self.actionEdit.setToolTip('Opens edit window that allows you to rotate the data with matrices')
 
+        self.actionFilter = QtWidgets.QAction(window)
+        self.actionFilter.setText('Filter')
+        self.actionFilter.setToolTip('Opens a dialog box that allows you to filter the data')
+
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('Scale y range to current time selection',checkable=True,checked=True)
         self.antialiasAction = QtWidgets.QAction('Smooth lines (antialiasing)',checkable=True,checked=True)
         self.bridgeDataGaps = QtWidgets.QAction('Bridge Data Gaps', checkable=True, checked=False)
@@ -94,6 +98,7 @@ class MagPy4UI(object):
 
         self.toolBar.addAction(self.actionSpectra)
         self.toolBar.addAction(self.actionEdit)
+        self.toolBar.addAction(self.actionFilter)
 
         options = self.buildPopup('Options', [self.scaleYToCurrentTimeAction, self.antialiasAction, self.bridgeDataGaps, self.drawPoints])
         self.toolBar.addWidget(options) 
