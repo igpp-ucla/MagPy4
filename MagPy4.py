@@ -314,15 +314,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # can have some warnings like 'file to be loaded has way different time than current files' or something
     # may want to additionally separate it by file as well so u could unload whole file if wanted
     def initDataStorageStructures(self):
-        self.DATASTRINGS = [] # list of all the original data column string names of the loaded files (commonly referenced as 'dstr')
+        self.DATASTRINGS = [] # list of all the original data column string names of the loaded files (commonly referenced as 'dstrs')
         self.ABBRV_DSTR_DICT = {} # dict mapping dstrs to simplified abbreviated dstr that get generated for easier display
         self.ORIGDATADICT = {} # dict mapping dstrs to original data array
-        self.DATADICT = {}  # dict mapping dstrs to dicts where string matrices are key and values are rotated and edited data arrays (dict of dicts)
+        self.DATADICT = {}  # dict mapping dstrs to dicts where string are keys (usually stringified matrix) and values are rotated/edited data arrays (dict of dicts)
         self.UNITDICT = {} # dict mapping dstrs to unit strings
         self.TIMES = [] # list of time informations (3 part lists) [time series, resolutions, average res]
         self.TIMEINDEX = {} # dict mapping dstrs to index into times list
 
-        # not sure if these should be in here but keeping for now
         self.IDENTITY = Mth.identity()
         self.MATRIX = Mth.identity() # maybe add matrix dropdown in plotmenu somewhere
 

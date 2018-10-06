@@ -176,19 +176,13 @@ def deploy(version):
             os.remove(_indexFile)
             return
 
-    # add .exe to .zip
-    zipName = _entryName + version
-    zipFile = f'{zipName}.zip'
-    from zipfile import ZipFile
-    with ZipFile(zipFile, 'w') as myzip:
-        myzip.write(f'Output/{fileName}', fileName)
+    entryName = _entryName + version
 
     # find and add new entry into html
     startPhrase = '<!--MMSDLStart-->'
     for i, line in enumerate(data):
         if startPhrase in line:
-            htmlStr = ('<tr><td><a href="' + _buildPath+zipFile+'" download>'+zipName+'</a></td>'
-                '<td>'+now.strftime('%m/%d/%Y')+'</td></tr>\n')
+            htmlStr = f'<tr><td><a href="{_buildPath}{fileName}" download>{entryName}</a></td><td>{now.strftime("%m/%d/%Y")}</td></tr>\n'
             data.insert(i+1, htmlStr)
             break
 
@@ -199,13 +193,13 @@ def deploy(version):
     #upload changed html
     sftp.put(_indexFile, _remotePath+_indexFile)
     #upload zip to builds folder
-    sftp.put(zipFile, _remotePath+_buildPath+zipFile)
+    sftp.put(f'Output/{fileName}', _remotePath+_buildPath+fileName)
     
     # cleanup
     sftp.close()
     ssh.close()
     os.remove(_indexFile)
-    os.remove(zipFile)
+    #os.remove(fileName)
 
     print(f'Deployed version {version} to website successfully')
 
