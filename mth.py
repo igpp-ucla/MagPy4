@@ -54,7 +54,7 @@ class Mth:
                     [{Mth.formatNumber(m[2][1])}]
                     [{Mth.formatNumber(m[2][2])}]''')
 
-    def identity():
+    def identityString():
         return Mth.matToString(Mth.IDENTITY)
 
 

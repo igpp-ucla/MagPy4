@@ -11,6 +11,7 @@ import functools
 import time
 
 from editUI import EditUI, ManRotUI, MinVarUI
+from FilterDialog import FilterDialog
 
 from mth import Mth
 from MagPy4UI import PyQtUtils
@@ -74,6 +75,8 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.minVarButton.clicked.connect(self.openMinVar)
         self.manRot = None
         self.ui.manRotButton.clicked.connect(self.openManRot)
+        self.filter = None
+        self.ui.filterButton.clicked.connect(self.openFilter)
 
 
     def closeEvent(self, event):
@@ -89,8 +92,13 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.closeManRot()
         self.closeMinVar()
 
-    def openManRot(self):
+    def closeSubWindows(self):
         self.closeManRot()
+        self.closeMinVar()
+        self.closeFilter()
+
+    def openManRot(self):
+        self.closeSubWindows()
         self.manRot = ManRot(self, self.window)
         self.manRot.show()
     def closeManRot(self):
@@ -99,13 +107,22 @@ class Edit(QtWidgets.QFrame, EditUI):
             self.manRot = None
 
     def openMinVar(self):
-        self.closeMinVar()
+        self.closeSubWindows()
         self.minVar = MinVar(self, self.window)
         self.minVar.show()
     def closeMinVar(self):
         if self.minVar:
             self.minVar.close()
             self.minVar = None
+
+    def openFilter(self):
+        self.closeSubWindows()
+        self.filter = FilterDialog(self, self.window)
+        self.filter.show()
+    def closeFilter(self):
+        if self.filter:
+            self.filter.close()
+            self.filter = None
 
 
     def setVectorDropdownsBlocked(self, blocked):
@@ -256,7 +273,7 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     # matrix needs to be in string form
     def updateLabelNamesByMatrix(self, mat, name):
-        isIdentity = mat == Mth.identity()
+        isIdentity = mat == Mth.identityString()
         for dstr in self.window.DATASTRINGS:
             datas = self.window.DATADICT[dstr]
             if mat in datas:
@@ -269,8 +286,9 @@ class Edit(QtWidgets.QFrame, EditUI):
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R
     def generateData(self, R, nmod=None):
+        print('generating')
         r = Mth.matToString(R)
-        i = Mth.identity()
+        i = Mth.identityString()
         
         # for each full vector dropdown row 
         for di, dd in enumerate(self.axisDropdowns):

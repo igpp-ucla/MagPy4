@@ -46,6 +46,9 @@
     <Compile Include="ffPy\FF_INFO.py" />
     <Compile Include="ffPy\FF_Static.py" />
     <Compile Include="ffPy\FF_Time.py" />
+    <Compile Include="filter.py" />
+    <Compile Include="FilterDialog.py" />
+    <Compile Include="FilterDialogUI.py" />
     <Compile Include="helpWindow.py">
       <SubType>Code</SubType>
     </Compile>

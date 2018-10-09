@@ -43,7 +43,12 @@ class EditUI(object):
         self.minVarButton.setToolTip('Build a rotation matrix by selecting a minimum variance window')
         builderLayout.addWidget(self.minVarButton)
 
+        self.filterButton = QtGui.QPushButton('Filter')
+        self.filterButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.filterButton.setToolTip('Apply various filters to smooth data')
+
         leftLayout.addWidget(builderFrame)
+        leftLayout.addWidget(self.filterButton)
         leftLayout.addStretch()
         
         # history

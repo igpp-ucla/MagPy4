@@ -49,7 +49,7 @@ from PyQt5 import QtWidgets
 
 class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
 
-    def __init__(self, parent=None):
+    def __init__(self, edit, parent=None):
         super(FilterDialog, self).__init__()
 
         self.ui = Ui_FilterDialog()
@@ -57,8 +57,9 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
 
         # Parent is the program's main window. The variable 'window' is used for the
         # main window elsewhere in this program, but here I think it would be too
-        # easily confused with the filter window.
+        # easily confused with the filter window. (fair point - jfc3)
         self.parent = parent
+        self.edit = edit
 
         # Remove the question mark (context help button) from the dialog box's title bar.
         self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
@@ -261,7 +262,10 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         """Called when the user clicks the OK button
         """
         self.calculate()
-        self.parent.replotData()
+
+        self.edit.addHistory(self.edit.selectedMatrix, 'test notes for filter in history', f'filter')
+
+        #self.parent.replotData()
 
     def onRejected(self):
         """Called when the user clicks the Cancel button

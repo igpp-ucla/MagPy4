@@ -22,7 +22,6 @@ from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
-from FilterDialog import FilterDialog
 from traceStats import TraceStats
 from helpWindow import HelpWindow
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, LinkedInfiniteLine, BLabelItem
@@ -81,7 +80,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionSpectra.triggered.connect(self.openSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
-        self.ui.actionFilter.triggered.connect(self.openFilterDialog)
         self.ui.actionHelp.triggered.connect(self.openHelp)
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
@@ -95,7 +93,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.plotMenu = None
         self.edit = None
-        self.filterDialog = None
         self.dataDisplay = None
         self.spectra = None
         self.traceStats = None
@@ -147,7 +144,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def closeAllSubWindows(self):
         self.closePlotMenu()
         self.closeEdit()
-        self.closeFilterDialog()
         self.closeData()
         self.closeTraceStats()
         self.closeSpectra()
@@ -170,11 +166,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.edit:
             self.edit.close()
             self.edit = None
-
-    def closeFilterDialog(self):
-        if self.filterDialog:
-            self.filterDialog.close()
-            self.filterDialog = None
 
     def closeData(self):
         if self.dataDisplay:
@@ -220,12 +211,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.edit = Edit(self)
         self.edit.show()
         
-    def openFilterDialog(self):
-        self.closeTraceStats()
-        # self.closeFilterDialog()
-        self.filterDialog = FilterDialog(parent=self)
-        # Calling exec_() instead of show() so it's a modal dialog box.
-        self.filterDialog.exec_()
 
     def showData(self):
         if not self.FIDs:
@@ -343,8 +328,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.TIMES = [] # list of time informations (3 part lists) [time series, resolutions, average res]
         self.TIMEINDEX = {} # dict mapping dstrs to index into times list
 
-        self.IDENTITY = Mth.identity()
-        self.MATRIX = Mth.identity() # maybe add matrix dropdown in plotmenu somewhere
+        self.IDENTITY = Mth.identityString()
+        self.MATRIX = Mth.identityString() # maybe add matrix dropdown in plotmenu somewhere
 
         self.minTime = None # minimum time tick out of all loaded times
         self.maxTime = None # maximum
@@ -1025,11 +1010,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for i in range(len(self.plotItems)):
             pi = self.plotItems[i]
             plotStrs = self.lastPlotStrings[i]
-            print(f'plotStrs      = {plotStrs}')
+            #print(f'plotStrs      = {plotStrs}')
             pens = self.plotTracePens[i]
             pi.clearPlots()
             for i,dstr in enumerate(plotStrs):
-                print(f'i,dstr        = {i},{dstr}')
+                #print(f'i,dstr        = {i},{dstr}')
                 self.plotTrace(pi, dstr, pens[i])
         self.setYAxisLabels()
         self.updateYRange()
@@ -1040,7 +1025,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # both plotData and replot use this function internally
     def plotTrace(self, pi, dstr, pen):
         Y = self.getData(dstr)
-        print(f'Y             = {Y}')
+        #print(f'Y             = {Y}')
         if len(Y) <= 1: # not sure if this can happen but just incase
             print(f'Error: insufficient Y data for column "{dstr}"')
             return
