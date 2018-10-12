@@ -54,13 +54,11 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.checkVectorRows()
         self.updateVectorSelections()
 
-        self.currentMatrix = [] # selected matrix from history
-        self.history = [] # list tuples of matrices and string for extra data (ie eigenvalues)
-        self.filterCount = 0 # used for keeping track of filters
+        self.history = [] # list lists of edit number, matrix, and string for extra data (ie eigenvalues)
         if self.window.editHistory:
-            for mat,name in self.window.editHistory:
-                if mat:
-                    self.addHistory(mat[0], mat[1], name)
+            for h,name in self.window.editHistory:
+                if h:
+                    self.addHistory(h[1], h[2], name, h[0])
                 else:
                     self.ui.history.setCurrentRow(name)
         else:
@@ -213,11 +211,12 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.setVectorDropdownsBlocked(False)
 
     # adds an entry to history matrix list and a list item at end of history ui
-    def addHistory(self, mat, extra, name):
-        self.history.append((Mth.copy(mat),extra))
-
-        if 'filter' in extra:
-            self.filterCount += 1
+    def addHistory(self, mat, notes, name, editNumber=None):
+        if editNumber is not None: #manual define because 0
+            self.history.append([editNumber, Mth.copy(mat), notes])
+        else:
+            self.history.append([self.window.totalEdits, Mth.copy(mat), notes])
+            self.window.totalEdits += 1
 
         # get names of items
         uihist = self.ui.history
@@ -247,54 +246,37 @@ class Edit(QtWidgets.QFrame, EditUI):
         if curRow == 0:
             print('cannot remove original data')
             return
-        if 'filter' in self.history[curRow][1]:
-            self.filterCount -= 1
+
+        for dstr,datas in self.window.DATADICT.items():
+            for i,edit in enumerate(datas):
+                if edit[0] ==  self.history[curRow][0]: # if edit stamp is same as current history then delete
+                    del datas[i]
+                    break
+
         del self.history[curRow]
-        #self.ui.history.blockSignals(True)
         self.ui.history.setCurrentRow(curRow - 1) # change before take item otherwise onHistory gets called with wrong row
         self.ui.history.takeItem(curRow)
-        # todo: check to see if memory consumption gets out of hand because not deleting data out of main window dictionaries ever
 
     def onHistoryChanged(self, row):
-        #print(f'CHANGED {row}')
-        hist = self.history[row]
-        self.currentMatrix = hist[0]
-        self.ui.extraLabel.setText(hist[1])
-        self.ui.M.setMatrix(self.currentMatrix)
-        if 'filter' in hist[1]:
-            self.window.CUR_EDIT = hist[1]
-            self.updateLabelNames(self.window.CUR_EDIT, '*')
-        else:
-            self.window.CUR_EDIT = Mth.matToString(self.currentMatrix)
-            self.updateLabelNames(self.window.CUR_EDIT, self.ui.history.item(row).text())
+        self.curSelection = self.history[row]
+        self.window.currentEditNumber = self.curSelection[0]
+        self.ui.M.setMatrix(self.curSelection[1])
+        self.ui.extraLabel.setText(self.curSelection[2])
         self.window.replotData()
+
+        #print(self.curSelection)
+        #for dstr,datas in self.window.DATADICT.items():
+        #    print(f'{dstr}, {len(datas)}')
 
     # takes a matrix, notes for the history, and a name for the history entry
     def apply(self, mat, notes, name):
-        R = Mth.mult(self.currentMatrix, mat)
-        self.generateData(R)
+        R = Mth.mult(self.curSelection[1], mat)
+        self.generateData(R, name)
         self.addHistory(R, notes, f'{name}')
-
-    # matrix needs to be in string form
-    def updateLabelNames(self, mat, name):
-        isIdentity = mat == Mth.identityString()
-        for dstr in self.window.DATASTRINGS:
-            datas = self.window.DATADICT[dstr]
-            if mat in datas:
-                datas[mat][1] = dstr if isIdentity else self.getEditedName(dstr, datas[mat][2], name)
-                #datas[mat][1] = self.getEditedName(dstr, datas[mat][2], name)
-
-    # generates a name based off name of edit rotation and what position in axis vector dstr data was
-    def getEditedName(self, dstr, axis, nmod):
-        return f'{dstr}*' if nmod=='*' else f'{axis}{nmod}' #{dstr[:2]} somewhere could add first 2-3 characters of dstr, usually pretty descriptive
 
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R
-    def generateData(self, R):
-        r = Mth.matToString(R)
-        i = Mth.identityString()
-        # PROBLEMO, still cant rotate a filtered data set, need to redo this even more probably, stop trying to cache stuff and just simplify it
-        
+    def generateData(self, R, name):
         # for each full vector dropdown row 
         for di, dd in enumerate(self.axisDropdowns):
             xstr = dd[0].currentText()
@@ -304,22 +286,17 @@ class Edit(QtWidgets.QFrame, EditUI):
             if not xstr or not ystr or not zstr: # skip rows with empty selections
                 continue
 
-            # if datadict contains no entries for datastring with this matrix then generate
-            if (r not in self.window.DATADICT[xstr] or
-                r not in self.window.DATADICT[ystr] or
-                r not in self.window.DATADICT[zstr]):
+            # get original data
+            X = self.window.DATADICT[xstr][0][1]
+            Y = self.window.DATADICT[ystr][0][1]
+            Z = self.window.DATADICT[zstr][0][1]
 
-                # get original data
-                X = self.window.DATADICT[xstr][i][0]
-                Y = self.window.DATADICT[ystr][i][0]
-                Z = self.window.DATADICT[zstr][i][0]
+            A = np.column_stack((X,Y,Z))
+            M = np.matmul(A,R)
 
-                A = np.column_stack((X,Y,Z))
-                M = np.matmul(A,R)
-
-                self.window.DATADICT[xstr][r] = [M[:,0], xstr, f'X{di+1}']
-                self.window.DATADICT[ystr][r] = [M[:,1], ystr, f'Y{di+1}']
-                self.window.DATADICT[zstr][r] = [M[:,2], zstr, f'Z{di+1}']
+            self.window.DATADICT[xstr].append([self.window.totalEdits, M[:,0], f'X{di+1}_{name}'])
+            self.window.DATADICT[ystr].append([self.window.totalEdits, M[:,1], f'Y{di+1}_{name}'])
+            self.window.DATADICT[zstr].append([self.window.totalEdits, M[:,2], f'Z{di+1}_{name}'])
 
 
 class ManRot(QtWidgets.QFrame, ManRotUI):
@@ -433,8 +410,8 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
 
         items = len(xyz[0])
 
-        print(len(xyz))
-        print(len(xyz[0]))
+        #print(len(xyz))
+        #print(len(xyz[0]))
 
         covar = Mth.empty()
         CoVar = Mth.empty()

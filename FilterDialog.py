@@ -108,9 +108,6 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         self.w = None
         self.gw = None
 
-        # ?
-        self.new = False
-
         self.chebyshevParameters()
         self.setWidgets()
 
@@ -262,8 +259,7 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         """
         self.calculate()
 
-        n = f'filter{self.edit.filterCount}'
-        self.edit.addHistory(self.edit.currentMatrix, n, n)
+        self.edit.addHistory(self.edit.curSelection[1], f'todo: add filter type info here', f'Filter')
 
 
     def onRejected(self):
@@ -429,48 +425,25 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         if self.filterType == 'Low Pass':
             self.gw = self.adjustLowPass()
 
-        self.new = True
-        #print(f'self.gw, len = {self.gw} {len(self.gw)}')
         if self.numPoints != self.oldNumPoints:
             pass
-        #    self.data = self.dataArray(self.numPoints)
 
-        # should just filter anything that is plotted. later could make a dstr selection window perhaps
+        # just filter anything that is plotted for now
+        # later could make a separate dstr selection window (using the axis ones doesn't make sense as filters operate on data independently)
         for plotStrs in self.parent.lastPlotStrings:
             for dstr in plotStrs:
                 print(f'filtering {dstr}')
-                data = self.parent.getData(dstr)
-                #print(len(data))
-                data = self.filterRawData(data)
-                #print(len(data))
-                self.parent.DATADICT[dstr][f'filter{self.edit.filterCount}'] = [data, dstr, f'{dstr}*F']
-
+                data = self.filterRawData(self.parent.getData(dstr))
+                self.parent.DATADICT[dstr].append([self.parent.totalEdits, data, f'{dstr}_fltr'])
 
     def filterRawData(self, data):
-        """
-        """
         hnf = self.halfNumPoints
-        g = self.gw
         G = [0] * self.numPoints
-        G[0:hnf] = [g[hnf - i - 1] for i in range(hnf)]
-        G[hnf:] = [g[i - hnf + 1] for i in range(hnf - 1)]
-
-        #print(f'inside before data      = {data}')
-        data = self.applyFilter(G, data)
-        #print(f'inside after data       = {data}')
-        # T = self.applyFilter(G, self.bt)
-
-        # Originally:
-        # self.times = self.times[hnf:-hnf]
-        # but I got errors due to the time array being a different size than the data array, +1 fixed it.
-        #self.times = self.times[hnf:-hnf+1]
-        # self.bx = X
-        # self.bt = T
-        return data
+        G[0:hnf] = [self.gw[hnf - i - 1] for i in range(hnf)]
+        G[hnf:] = [self.gw[i - hnf + 1] for i in range(hnf - 1)]
+        return self.applyFilter(G, data)
 
     def applyFilter(self, G, vin):
-        """
-        """
         num = len(vin) - self.numPoints
         J = len(G)
         vout = np.empty(num)
