@@ -13,6 +13,7 @@ class Ui_FilterDialog(object):
         FilterDialog.setObjectName("FilterDialog")
         FilterDialog.resize(470, 442)
         FilterDialog.setModal(True)
+        filterInfo = QtGui.QLabel('Note: the filter module operates only on the currently plotted data (including edit modifications)', FilterDialog)
         self.buttonBox = QtWidgets.QDialogButtonBox(FilterDialog)
         self.buttonBox.setGeometry(QtCore.QRect(120, 400, 341, 32))
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)

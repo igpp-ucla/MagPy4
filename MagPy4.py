@@ -130,7 +130,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.labelItems = []
         self.trackerLines = []
         #starterFile = 'testData/mms15092720'
-        starterFile = 'testData/insight/T8197C_PDR_585031864_585032030_pCAL' #insight test file
+        starterFile = 'testData/insight/IFGlr_pCAL_20180816T045752_20180817T090012' #insight test file
         if os.path.exists(starterFile + '.ffd'):
             self.openFF(starterFile)
             self.swapMode()
@@ -329,7 +329,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.TIMEINDEX = {} # dict mapping dstrs to index into times list
 
         self.IDENTITY = Mth.identityString()
-        self.MATRIX = Mth.identityString() # maybe add matrix dropdown in plotmenu somewhere
+        self.CUR_EDIT = Mth.identityString() # current edit that data is being shown from, its a string btw
 
         self.minTime = None # minimum time tick out of all loaded times
         self.maxTime = None # maximum
@@ -757,6 +757,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                         break
                 if allIn:
                     row.append(dstr)
+                    if self.insightMode:
+                        break # only find one of each keyword
             if row:
                 dstrs.append(row)
                 links.append(ki)
@@ -774,11 +776,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotData(dstrs, links)
 
     def getDataAndLabel(self, dstr):
-        #print(f'dstr                = {dstr}')
-        #print(f'self.DATADICT[dstr] = {self.DATADICT[dstr]}')
-        #print(f'self.MATRIX         = {self.MATRIX}')
-        #print(f'self.IDENTITY       = {self.IDENTITY}')
-        return self.DATADICT[dstr][self.MATRIX if self.MATRIX in self.DATADICT[dstr] else self.IDENTITY]
+        return self.DATADICT[dstr][self.CUR_EDIT if self.CUR_EDIT in self.DATADICT[dstr] else self.IDENTITY]
 
     # returns the current dstr label (based on edit transformations)
     def getLabel(self, dstr):
@@ -1030,7 +1028,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             print(f'Error: insufficient Y data for column "{dstr}"')
             return
         times,resolutions,avgRes = self.getTimes(dstr)
-        if not self.ui.bridgeDataGaps.isChecked():
+        # check if arrays arent same length then assume the difference is from a filter operation
+        isFilter = False
+        if len(Y) < len(times):
+            isFilter = True
+            diff = len(times) - len(Y) + 1
+            times = times[diff//2:-diff//2+1]
+
+        if not self.ui.bridgeDataGaps.isChecked() and not isFilter:
             segs = Mth.getSegmentsFromErrorsAndGaps(self.ORIGDATADICT[dstr], resolutions, self.errorFlag, avgRes * 2)   
             for a,b in segs:
                 if self.ui.drawPoints.isChecked():

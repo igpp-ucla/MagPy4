@@ -54,8 +54,9 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.checkVectorRows()
         self.updateVectorSelections()
 
-        self.selectedMatrix = [] # selected matrix from history
+        self.currentMatrix = [] # selected matrix from history
         self.history = [] # list tuples of matrices and string for extra data (ie eigenvalues)
+        self.filterCount = 0 # used for keeping track of filters
         if self.window.editHistory:
             for mat,name in self.window.editHistory:
                 if mat:
@@ -67,9 +68,6 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
         self.onHistoryChanged(self.ui.history.currentRow())
-
-        self.lastGeneratorAbbreviated = 'C'
-        self.lastGeneratorName = 'Custom'
 
         self.minVar = None
         self.ui.minVarButton.clicked.connect(self.openMinVar)
@@ -214,13 +212,12 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         self.setVectorDropdownsBlocked(False)
 
-    #def setRotationMatrix(self, m, name):
-    #    Mth.setMatrix(self.ui.R, m)
-    #    self.lastGeneratorName = name
-
     # adds an entry to history matrix list and a list item at end of history ui
     def addHistory(self, mat, extra, name):
         self.history.append((Mth.copy(mat),extra))
+
+        if 'filter' in extra:
+            self.filterCount += 1
 
         # get names of items
         uihist = self.ui.history
@@ -228,6 +225,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         for i in range(uihist.count()):
             taken.add(uihist.item(i).text())
 
+        # ensure no duplicate names are added to history
         newName = name
         fails = 1
         while newName in taken:
@@ -249,6 +247,8 @@ class Edit(QtWidgets.QFrame, EditUI):
         if curRow == 0:
             print('cannot remove original data')
             return
+        if 'filter' in self.history[curRow][1]:
+            self.filterCount -= 1
         del self.history[curRow]
         #self.ui.history.blockSignals(True)
         self.ui.history.setCurrentRow(curRow - 1) # change before take item otherwise onHistory gets called with wrong row
@@ -258,37 +258,42 @@ class Edit(QtWidgets.QFrame, EditUI):
     def onHistoryChanged(self, row):
         #print(f'CHANGED {row}')
         hist = self.history[row]
-        self.selectedMatrix = hist[0]
+        self.currentMatrix = hist[0]
         self.ui.extraLabel.setText(hist[1])
-        self.ui.M.setMatrix(self.selectedMatrix)
-        self.window.MATRIX = Mth.matToString(self.selectedMatrix)
-        self.updateLabelNamesByMatrix(self.window.MATRIX, self.ui.history.item(row).text())
+        self.ui.M.setMatrix(self.currentMatrix)
+        if 'filter' in hist[1]:
+            self.window.CUR_EDIT = hist[1]
+            self.updateLabelNames(self.window.CUR_EDIT, '*')
+        else:
+            self.window.CUR_EDIT = Mth.matToString(self.currentMatrix)
+            self.updateLabelNames(self.window.CUR_EDIT, self.ui.history.item(row).text())
         self.window.replotData()
 
     # takes a matrix, notes for the history, and a name for the history entry
     def apply(self, mat, notes, name):
-        R = Mth.mult(self.selectedMatrix, mat)
-        self.generateData(R, '*')
+        R = Mth.mult(self.currentMatrix, mat)
+        self.generateData(R)
         self.addHistory(R, notes, f'{name}')
 
     # matrix needs to be in string form
-    def updateLabelNamesByMatrix(self, mat, name):
+    def updateLabelNames(self, mat, name):
         isIdentity = mat == Mth.identityString()
         for dstr in self.window.DATASTRINGS:
             datas = self.window.DATADICT[dstr]
             if mat in datas:
                 datas[mat][1] = dstr if isIdentity else self.getEditedName(dstr, datas[mat][2], name)
+                #datas[mat][1] = self.getEditedName(dstr, datas[mat][2], name)
 
     # generates a name based off name of edit rotation and what position in axis vector dstr data was
     def getEditedName(self, dstr, axis, nmod):
-        return f'{dstr}*' if nmod=='*' else f'{axis}{nmod}' #{dstr[:2]} somewhere could add first 2 characters of dstr, usually pretty descriptive
+        return f'{dstr}*' if nmod=='*' else f'{axis}{nmod}' #{dstr[:2]} somewhere could add first 2-3 characters of dstr, usually pretty descriptive
 
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R
-    def generateData(self, R, nmod=None):
-        print('generating')
+    def generateData(self, R):
         r = Mth.matToString(R)
         i = Mth.identityString()
+        # PROBLEMO, still cant rotate a filtered data set, need to redo this even more probably, stop trying to cache stuff and just simplify it
         
         # for each full vector dropdown row 
         for di, dd in enumerate(self.axisDropdowns):

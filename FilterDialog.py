@@ -42,7 +42,6 @@ from filter import kaiserWindow
 from filter import chebyshevWindow
 from FilterDialogUI import Ui_FilterDialog
 from mth import Mth
-from numpy import empty
 from PyQt5 import QtCore
 from PyQt5 import QtGui
 from PyQt5 import QtWidgets
@@ -263,9 +262,9 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         """
         self.calculate()
 
-        self.edit.addHistory(self.edit.selectedMatrix, 'test notes for filter in history', f'filter')
+        n = f'filter{self.edit.filterCount}'
+        self.edit.addHistory(self.edit.currentMatrix, n, n)
 
-        #self.parent.replotData()
 
     def onRejected(self):
         """Called when the user clicks the Cancel button
@@ -436,67 +435,16 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
             pass
         #    self.data = self.dataArray(self.numPoints)
 
-        # Find the keys to the data we have to filter.
-        dataKeys = []
-        for kw in ['BX','BY','BZ']:
-            f = []
-            for dstr in self.parent.DATASTRINGS:
-                if kw.lower() in dstr.lower():
-                    f.append(dstr)
-            dataKeys.append(f)
-
-        print(f'dataKeys = {dataKeys}')
-
-        # For each data key
-        for axis,keys in enumerate(dataKeys):
-            print(f'axis,keys  = {axis},{keys}')
-            for key in keys:
-
-                # Get the times.
-                print(f'before self.parent.TIMEINDEX = {self.parent.TIMEINDEX}')
-                timeIndex = self.parent.TIMEINDEX[key]
-                print(f'before self.parent.TIMES     = {self.parent.TIMES}')
-                self.times = self.parent.TIMES[timeIndex][0]
-                print(f'before self.parent.TIMES[0]  = {self.parent.TIMES[0]}')
-                print(f'before self.times, len       = {self.times}, {len(self.times)}')
-       
-                # Get the data.
-                data = self.parent.getData(key)
-
-                print(f'key               = {key}')
-                print(f'timeIndex         = {timeIndex}')
-
-                print(f'before times      = {self.times}')
-                print(f'before time[0]    = {self.times[0]}')
-                print(f'before time[1]    = {self.times[1]}')
-                print(f'before time[2]    = {self.times[2]}')
-                print(f'before data       = {data}')
-
+        # should just filter anything that is plotted. later could make a dstr selection window perhaps
+        for plotStrs in self.parent.lastPlotStrings:
+            for dstr in plotStrs:
+                print(f'filtering {dstr}')
+                data = self.parent.getData(dstr)
+                #print(len(data))
                 data = self.filterRawData(data)
+                #print(len(data))
+                self.parent.DATADICT[dstr][f'filter{self.edit.filterCount}'] = [data, dstr, f'{dstr}*F']
 
-                print(f'after times       = {self.times}')
-                print(f'after times[0]    = {self.times[0]}')
-                print(f'after times[1]    = {self.times[1]}')
-                print(f'after times[2]    = {self.times[2]}')
-                print(f'after data        = {data}')
-
-                # Save the data.
-                self.parent.TIMES[timeIndex][0] = self.times
-                self.parent.DATADICT[key]['FILTER'] = [data, key, f'FILTER']
-
-                # Get the times.
-                print(f'after self.parent.TIMEINDEX = {self.parent.TIMEINDEX}')
-                timeIndex = self.parent.TIMEINDEX[key]
-                print(f'after self.parent.TIMES     = {self.parent.TIMES}')
-                self.times = self.parent.TIMES[timeIndex][0]
-                print(f'after self.parent.TIMES[0]  = {self.parent.TIMES[0]}')
-                print(f'after self.times, len       = {self.times}, {len(self.times)}')
-
-                #self.bx = self.parent.getData(key)
-                #print(f'DATADICT[Bx_GSE]     = {self.parent.DATADICT["Bx_GSE"]}')
-
-        # Temporary, just to see if I can get the plot to change.
-        self.parent.MATRIX = 'FILTER'
 
     def filterRawData(self, data):
         """
@@ -507,15 +455,15 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         G[0:hnf] = [g[hnf - i - 1] for i in range(hnf)]
         G[hnf:] = [g[i - hnf + 1] for i in range(hnf - 1)]
 
-        print(f'inside before data      = {data}')
+        #print(f'inside before data      = {data}')
         data = self.applyFilter(G, data)
-        print(f'inside after data       = {data}')
+        #print(f'inside after data       = {data}')
         # T = self.applyFilter(G, self.bt)
 
         # Originally:
         # self.times = self.times[hnf:-hnf]
         # but I got errors due to the time array being a different size than the data array, +1 fixed it.
-        self.times = self.times[hnf:-hnf+1]
+        #self.times = self.times[hnf:-hnf+1]
         # self.bx = X
         # self.bt = T
         return data
@@ -523,9 +471,9 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
     def applyFilter(self, G, vin):
         """
         """
-        np = len(vin) - self.numPoints
+        num = len(vin) - self.numPoints
         J = len(G)
-        vout = empty(np)
-        for i in range(np):
+        vout = np.empty(num)
+        for i in range(num):
             vout[i] = sum(G * vin[i:i+J])
         return vout
