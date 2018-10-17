@@ -214,9 +214,9 @@ class MatrixWidget(QtWidgets.QWidget):
         grid = QtWidgets.QGridLayout(self)
         self.mat = [] # matrix of label or line widgets
         grid.setContentsMargins(0,0,0,0)
-        for y in Mth.i:
+        for y in range(3):
             row = []
-            for x in Mth.i:
+            for x in range(3):
                 if type == 'labels':
                     w = QtGui.QLabel('0.0')
                     w.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
@@ -233,16 +233,16 @@ class MatrixWidget(QtWidgets.QWidget):
         #self.update()
 
     def setMatrix(self, m):
-        for i in Mth.i:
-            for j in Mth.i:
+        for i in range(3):
+            for j in range(3):
                 self.mat[i][j].setText(Mth.formatNumber(m[i][j]))
                 self.mat[i][j].repaint() # seems to fix max repaint problems
 
     # returns list of numbers
     def getMatrix(self):
         M = Mth.empty()
-        for i in Mth.i:
-            for j in Mth.i:
+        for i in range(3):
+            for j in range(3):
                 s = self.mat[i][j].text()
                 try:
                     f = float(s)

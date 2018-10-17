@@ -393,7 +393,7 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
     def calcMinVar(self):
         # todo: test if need version of data where data gaps are removed and not smoothed, like makes array shorter
         # so you could select a length of data and it returns an array of only the valid values
-        # otherwise minvar calcs prob get messed up when smoothed data probably affects the average
+        # otherwise minvar calcs may get messed up if smoothed data affects the average
 
         iO,iE = self.window.getTicksFromLines()
 
@@ -410,19 +410,16 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
 
         items = len(xyz[0])
 
-        #print(len(xyz))
-        #print(len(xyz[0]))
-
         covar = Mth.empty()
         CoVar = Mth.empty()
         eigen = Mth.empty()
 
-        for i in Mth.i:
-            for j in Mth.i[i:]:
+        for i in range(3):
+            for j in range(3)[i:]:
                 for k in range(items):
                     covar[i][j] = covar[i][j] + xyz[i][k] * xyz[j][k]
-        for i in Mth.i:
-            for j in Mth.i[i:]:
+        for i in range(3):
+            for j in range(3)[i:]:
                 CoVar[i][j] = (covar[i][j] / items) - avg[i] * avg[j]
         # fill out lower triangle
         CoVar[1][0] = CoVar[0][1]
@@ -432,8 +429,8 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         A = np.array(CoVar)
         w, v = np.linalg.eigh(A, UPLO="U")
 
-        for i in Mth.i:
-            for j in Mth.i:
+        for i in range(3):
+            for j in range(3):
                 eigen[2 - i][j] = v[j][i]
         # force to be right handed
         e20 = eigen[0][1] * eigen[1][2] - eigen[0][2] * eigen[1][1]

@@ -12,7 +12,6 @@ class Mth:
     IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     STRING_PRECISION = 10
     AXES = ['X','Y','Z']
-    i = [0, 1, 2]
     R2D = 57.29577951308232 # 1 radian is this many degrees
 
     def empty(): # return an empty 2D list in 3x3 matrix form
@@ -27,9 +26,9 @@ class Mth:
     # manual matrix mult with matrix list format
     def mult(a, b):
         N = Mth.empty()
-        for r in Mth.i:
-            for c in Mth.i:
-                for i in Mth.i:
+        for r in range(3):
+            for c in range(3):
+                for i in range(3):
                     N[r][c] += a[r][i] * b[i][c]
         return N
 
@@ -60,8 +59,8 @@ class Mth:
 
     # mat is 2D list of label/lineEdits, m is 2D list of floats
     def setMatrix(mat, m):
-        for i in Mth.i:
-            for j in Mth.i:
+        for i in range(3):
+            for j in range(3):
                 mat[i][j].setText(Mth.formatNumber(m[i][j]))
                 mat[i][j].repaint() # mac doesnt repaint sometimes
 
@@ -69,8 +68,8 @@ class Mth:
     # mat is 2D list of label/lineEdits
     def getMatrix(mat):
         M = Mth.empty()
-        for i in Mth.i:
-            for j in Mth.i:
+        for i in range(3):
+            for j in range(3):
                 s = mat[i][j].text()
                 try:
                     f = float(s)
