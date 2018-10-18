@@ -455,7 +455,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.DATASTRINGS.extend(newDataStrings)
             resolutions = np.diff(ffTime)
             resolutions = np.append(resolutions, resolutions[-1]) # append last value to make same length as time series
+            uniqueRes = np.unique(resolutions)
+            #print(uniqueRes)
+            print(f'detected {len(uniqueRes)} resolutions')
             avgRes = np.mean(resolutions)
+
             self.resolution = min(self.resolution, avgRes)
             self.TIMES.append([ffTime, resolutions, avgRes])
 
@@ -1183,21 +1187,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             vb = pi.getViewBox()
             vb.lines[lineStr][1].setVisible(vb.lines[lineStr][0].isVisible())
 
-    # get slider ticks from lines
-    def getTicksFromLines(self):
-        t0,t1 = self.getSelectionStartEndTimes()
-        i0 = self.calcTickIndexByTime(t0)
-        i1 = self.calcTickIndexByTime(t1)
-        assert(i0 <= i1)
-        return i0,i1
 
     # get slider ticks from time edit
     def getTicksFromTimeEdit(self, timeEdit):
         i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick)
         i1 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.end.dateTime()), Epoch=self.epoch)._tick)
-        return (i0,i1) if i0 < i1 else (i1,i0) #need parenthesis here, otherwise it will eval like 3 piece tuple with if in the middle lol
+        return (i0,i1) if i0 < i1 else (i1,i0) #need parenthesis here, otherwise it will eval like 3 piece tuple with if in the middle lol yikes
 
-    # tick index now refers to slider indices
+    # tick index refers to slider indices
+    # THIS IS NOT ACCURATE when the time resolution is varying (which is usual)
+    # keeping this one for now for because not sure how to get function below this one to work when loading multiple files yet
     def calcTickIndexByTime(self, t):
         perc = (t - self.minTime) / (self.maxTime - self.minTime)
         perc = Mth.clamp(perc, 0, 1)
@@ -1215,12 +1214,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         assert(b)
         return b
 
-    # given a data string, calculate its indices based on currently selected time range
+    # given a data string, calculate its indices based on time range currently selected with lines
     def calcDataIndicesFromLines(self, dstr):
         times = self.getTimes(dstr)[0]
         t0,t1 = self.getSelectionStartEndTimes()
         i0 = self.calcDataIndexByTime(times, t0)
         i1 = self.calcDataIndexByTime(times, t1)
+        if i1 > len(times)-1:
+            i1 = len(times)-1
         assert(i0 <= i1)
         return i0,i1
 

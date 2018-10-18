@@ -395,16 +395,23 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         # so you could select a length of data and it returns an array of only the valid values
         # otherwise minvar calcs may get messed up if smoothed data affects the average
 
-        iO,iE = self.window.getTicksFromLines()
-
         xyz = []
         avg = []
         vstrs = []
+
         for v in self.ui.vector:
             vstr = v.currentText()
             vstrs.append(vstr)
+            iO,iE = self.window.calcDataIndicesFromLines(vstr)
             data = self.window.getData(vstr)[iO:iE]
-            print(vstr)
+            
+            # for double checking start and stop times
+            #print(vstr)
+            #print(FFTIME(self.window.getTimes(vstr)[0][iO], Epoch=self.window.epoch).UTC)
+            #print(FFTIME(self.window.getTimes(vstr)[0][iE], Epoch=self.window.epoch).UTC)
+            #for i in range(3):
+            #    print(f'{data[i]}')
+
             xyz.append(data)
             avg.append(self.average(data))
 
@@ -428,6 +435,7 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
 
         A = np.array(CoVar)
         w, v = np.linalg.eigh(A, UPLO="U")
+        #print(f'{w}\n {v}')
 
         for i in range(3):
             for j in range(3):
