@@ -40,6 +40,31 @@ def genXList(nf, DX=0, START=0):
     X = [x + DX for x in range(START, n + START, 1)]
     return X
 
+# Chebyshev parameters
+
+def chebyshevParameters(nfx, dpx, dfx):
+    """
+    """
+    nf = nfx
+    dp = dpx
+    df = dfx
+    if nf == 0:
+        c1 = acosh((1 + dp) / dp)
+        c0 = cos(pi * dp)
+        x = 1.0 + c1 / acosh(1 / c0)
+        nfx = x + 1
+    else:
+        xn = nf - 1
+        if df == 0:
+            c1 = acos((1.0 + dp) / dp)
+            c2 = cosh(c1 / xn)
+            dfx = acos(1 / c2) / pi
+        else:
+            c0 = cos(pi * df)
+            c1 = xn * acosh(1.0 / c0)
+            dpx = 1 / (cosh(c1) - 1.0)
+    return nfx, dpx, dfx
+
 # Filter list (g) generators
 
 def lowpassResponse(nf, fc, dt):
@@ -126,29 +151,6 @@ def kaiserWindow(nf, beta):
         window[-1] = 0
     return window
 
-def chebyshevParameters(nfx, dpx, dfx):
-    """
-    """
-    nf = nfx
-    dp = dpx
-    df = dfx
-    if nf == 0:
-        c1 = acosh((1 + dp) / dp)
-        c0 = cos(pi * dp)
-        x = 1.0 + c1 / acosh(1 / c0)
-        nfx = x + 1
-    else:
-        xn = nf - 1
-        if df == 0:
-            c1 = acos((1.0 + dp) / dp)
-            c2 = cosh(c1 / xn)
-            dfx = acos(1 / c2) / pi
-        else:
-            c0 = cos(pi * df)
-            c1 = xn * acosh(1.0 / c0)
-            dpx = 1 / (cosh(c1) - 1.0)
-    return nfx, dpx, dfx
-
 def chebyshevWindow(nf, dp, df):
     """
     """
@@ -182,8 +184,6 @@ def chebyshevWindow(nf, dp, df):
     window = [w / w0 for w in W]
     return window
 
-# ?
-
 def GByB(G, B, hnf):
     """G list, B{x,y,z,t} component list
     """
@@ -197,7 +197,7 @@ def GByB(G, B, hnf):
     return BFiltered
 
 def coshOrcos(c2, x):
-    """
+    """ cosh() or cos()
     """
     X = cosh(c2 * acosh(x)) if abs(x) - 1 > 0 else cos(c2 * acos(x))
     return X

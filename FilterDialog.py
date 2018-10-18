@@ -15,7 +15,7 @@
 # 5.2-1 to 5.2-19, IEEE Press, New York, 1979.
 #
 # The subroutine was converted from banal FORTRAN code to C code
-# by Gordon MaClean (IGPP).
+# by Gordon MacLean (IGPP).
 #
 # FORTRAN code header:
 #
@@ -209,6 +209,7 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         elif value == 'Band Stop':
             self.setLowCutoffFreqEnabled(True)
             self.setHighCutoffFreqEnabled(True)
+        self.filterType = value
 
     def onFilterWidthComboBoxChanged(self, value):
         """Called when the user changes the filter width
@@ -219,6 +220,7 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         elif value == 'Time':
             self.setNumPointsEnabled(False)
             self.settimespanEnabled(True)
+        self.filterWidth = value
 
     def onWindowTypeComboBoxChanged(self, value):
         """Called when the user changes the window type
@@ -253,14 +255,15 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
             self.setStopBandAttenuationEnabled(False)
             self.setRippleEnabled(True)
             self.setTransitionWidthEnabled(True)
+        self.windowType = value
 
     def onAccepted(self):
         """Called when the user clicks the OK button
         """
         self.calculate()
-
-        self.edit.addHistory(self.edit.curSelection[1], f'todo: add filter type info here', f'Filter')
-
+        notes = f'Filter with {self.filterType} and {self.windowType} options'
+        name = f'{self.filterType}/{self.windowType} Filter'
+        self.edit.addHistory(self.edit.curSelection[1], notes, name)
 
     def onRejected(self):
         """Called when the user clicks the Cancel button
@@ -400,6 +403,8 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         g[0:half] = [value / b for value in G[0:half]]
         g[half:-1] = G[half:-1]
         return g
+
+    # Filter calculations
 
     def calculate(self):
         """Filters the data.
