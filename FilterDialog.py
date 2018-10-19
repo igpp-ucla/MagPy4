@@ -94,8 +94,8 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         self.noff = 0
         self.nyquistFreq = 0.0
 
-        # For now, use 60 as the resolution. Later change this to the data resolution.
-        self.resolution = 60.0
+        # Set the data sampling resolution.
+        self.resolution = self.parent.resolution
         self.setResolution(self.resolution)
         # self.setWidgets()
 
@@ -271,7 +271,7 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         self.close()
 
     def setResolution(self, resolution):
-        """Set the data resolution.
+        """Set the data sampling resolution.
         """
         self.resolution = resolution
         if self.resolution < 0:
@@ -437,7 +437,6 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         # later could make a separate dstr selection window (using the axis ones doesn't make sense as filters operate on data independently)
         for plotStrs in self.parent.lastPlotStrings:
             for dstr in plotStrs:
-                print(f'filtering {dstr}')
                 data = self.filterRawData(self.parent.getData(dstr))
                 self.parent.DATADICT[dstr].append([self.parent.totalEdits, data, f'{dstr}_fltr'])
 
