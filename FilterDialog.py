@@ -439,7 +439,7 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
             for dstr in plotStrs:
                 print(f'filtering {dstr}')
                 data = self.filterRawData(self.parent.getData(dstr))
-                self.parent.DATADICT[dstr].append([self.parent.totalEdits, data, f'{dstr}_fltr'])
+                self.parent.DATADICT[dstr].append([len(self.parent.editNames), data])
 
     def filterRawData(self, data):
         hnf = self.halfNumPoints

@@ -215,8 +215,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         if editNumber is not None: #manual define because 0
             self.history.append([editNumber, Mth.copy(mat), notes])
         else:
-            self.history.append([self.window.totalEdits, Mth.copy(mat), notes])
-            self.window.totalEdits += 1
+            self.history.append([len(self.window.editNames), Mth.copy(mat), notes])
 
         # get names of items
         uihist = self.ui.history
@@ -232,6 +231,9 @@ class Edit(QtWidgets.QFrame, EditUI):
             fails+=1
         name = newName
 
+        if editNumber is None:
+            self.window.editNames.append(name)
+
         item = QtWidgets.QListWidgetItem(f'{name}')
         flags = item.flags()
         flags |= QtCore.Qt.ItemIsEditable
@@ -239,6 +241,9 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         uihist.addItem(item)   
         uihist.setCurrentRow(uihist.count() - 1)
+
+        for n in self.window.editNames:
+            print(n)
 
     # removes selected history
     def removeHistory(self):
@@ -253,17 +258,21 @@ class Edit(QtWidgets.QFrame, EditUI):
                     del datas[i]
                     break
 
-        del self.history[curRow]
         self.ui.history.setCurrentRow(curRow - 1) # change before take item otherwise onHistory gets called with wrong row
         self.ui.history.takeItem(curRow)
+        del self.history[curRow]
 
     def onHistoryChanged(self, row):
         self.curSelection = self.history[row]
         self.window.currentEditNumber = self.curSelection[0]
         self.ui.M.setMatrix(self.curSelection[1])
         self.ui.extraLabel.setText(self.curSelection[2])
-        self.window.replotData()
 
+        # go thru and make sure all strings in history are up to date
+        for i in range(self.ui.history.count()):
+            self.window.editNames[self.history[i][0]] = self.ui.history.item(i).text()
+
+        self.window.replotData()
         #print(self.curSelection)
         #for dstr,datas in self.window.DATADICT.items():
         #    print(f'{dstr}, {len(datas)}')
@@ -294,9 +303,10 @@ class Edit(QtWidgets.QFrame, EditUI):
             A = np.column_stack((X,Y,Z))
             M = np.matmul(A,R)
 
-            self.window.DATADICT[xstr].append([self.window.totalEdits, M[:,0], f'X{di+1}_{name}'])
-            self.window.DATADICT[ystr].append([self.window.totalEdits, M[:,1], f'Y{di+1}_{name}'])
-            self.window.DATADICT[zstr].append([self.window.totalEdits, M[:,2], f'Z{di+1}_{name}'])
+            editNumber = len(self.window.editNames)
+            self.window.DATADICT[xstr].append([editNumber, M[:,0]])
+            self.window.DATADICT[ystr].append([editNumber, M[:,1]])
+            self.window.DATADICT[zstr].append([editNumber, M[:,2]])
 
 
 class ManRot(QtWidgets.QFrame, ManRotUI):

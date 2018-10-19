@@ -168,6 +168,11 @@ class MinVarUI(object):
         self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14))
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
 
+        # default it to the current time selection
+        cmin,cmax = window.getCurrentDateTime()
+        self.timeEdit.setStartNoCallback(cmin)
+        self.timeEdit.setEndNoCallback(cmax)        
+
         self.layout.addWidget(self.timeEdit.start)
         self.layout.addWidget(self.timeEdit.end)
 

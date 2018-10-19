@@ -156,7 +156,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.generalSelectStep = 0
         self.generalSelectCanHide = False
         self.currentEditNumber = 0 # current edit number selected
-        self.totalEdits = 0 #each time a new edit is made this number is increased
+        self.editNames = [] # list of edit names, index into list is edit number
         self.editHistory = []
         
     def closePlotMenu(self):
@@ -325,7 +325,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.DATASTRINGS = [] # list of all the original data column string names of the loaded files (commonly referenced as 'dstrs')
         self.ABBRV_DSTR_DICT = {} # dict mapping dstrs to simplified abbreviated dstr that get generated for easier display
         self.ORIGDATADICT = {} # dict mapping dstrs to original data array
-        self.DATADICT = {}  # dict mapping dstrs to lists of data where each element is a tuple of edit number and data array [0=editnumber, 1=data, 2=label]
+        self.DATADICT = {}  # dict mapping dstrs to lists of data where each element is a list of edit number and data array [0=editnumber, 1=data]
         self.UNITDICT = {} # dict mapping dstrs to unit strings
         self.TIMES = [] # list of time informations (3 part lists) [time series, resolutions, average res]
         self.TIMEINDEX = {} # dict mapping dstrs to index into times list
@@ -440,7 +440,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                             joinedData = (origData[:segments[si - 1][1] + 1], datas[di], origData[s0:])
 
                         self.ORIGDATADICT[dstr] = np.concatenate(joinedData)
-                        self.DATADICT[dstr] = [[0, Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag), dstr]]
+                        self.DATADICT[dstr] = [[0, Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]]
 
                     print(f'CONCATENATING WITH EXISTING DATA')
                     break
@@ -466,7 +466,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             for i, dstr in enumerate(newDataStrings):
                 self.TIMEINDEX[dstr] = len(self.TIMES) - 1 # index is of the time series we just added to end of list
                 self.ORIGDATADICT[dstr] = datas[i]
-                self.DATADICT[dstr] = [[0, Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag), dstr]]
+                self.DATADICT[dstr] = [[0, Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]]
                 self.UNITDICT[dstr] = units[i]
 
         # add file id to list
@@ -482,10 +482,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # redos all the interpolated errors, for when the flag is changed
     def reloadDataInterpolated(self):
         for dstr in self.DATASTRINGS:
-            self.DATADICT[dstr] = [[0, Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag), dstr]]
+            self.DATADICT[dstr] = [[0, Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]]
 
     def calculateTimeVariables(self):
-        self.minTime = None # temp reset until figure out better way to specify if want file to be loaded fresh or appended to current loading
+        self.minTime = None # temp reset until figure out better way to specify if they want file to be loaded fresh or appended to current loading
         self.maxTime = None
         # iterate over times and find min and max???
         for times,_,_ in self.TIMES:
@@ -496,23 +496,25 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # prob dont edit these two on subsequent file loads..?
         self.iO = 0
         self.iE = int((self.maxTime - self.minTime) / self.resolution)
-        #assert(self.iE == len(fftime)-1)
-        #self.iiE = self.iE if not self.iiE else max(self.iE, self.iiE)
-        self.iiE = self.iE
-        print(f'iiE: {self.iiE}')
+        
+        tick = 1.0 / self.resolution
+        print(f'tick resolution : {self.resolution}')
+        print(f'time resolution : {tick} Hz')
+
         self.tO = self.minTime # currently selected time range
         self.tE = self.maxTime
 
-        tick = 1.0 / self.resolution
-        #print(f'resolution: {self.resolution}')
         print(f'tO: {self.tO}')
         print(f'tE: {self.tE}')
-        print(f'tick resolution : {self.resolution}')
-        print(f'time resolution : {tick} Hz')
+
+        self.iiE = self.iE
+        print(f'slider ticks: {self.iiE}')
 
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
 
     def openCDF(self,PATH):#,q):
+        """ opens a cdf file """
+
         print(f'opening cdf: {PATH}')
         cdf = pycdf.CDF(PATH)
         if not cdf:
@@ -594,7 +596,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                             newData = data[:,i]
                             self.ORIGDATADICT[newDstr] = newData
                             interpolated = Mth.interpolateErrors(newData, fillVal)
-                            self.DATADICT[newDstr] = [[0, interpolated,newDstr]]
+                            self.DATADICT[newDstr] = [[0, interpolated]]
                             self.UNITDICT[newDstr] = units
                     else:
                         print(f'    skipping column: {dstr}, unhandled shape: {shape}')
@@ -603,7 +605,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     self.TIMEINDEX[dstr] = len(self.TIMES) - 1
                     self.ORIGDATADICT[dstr] = data
                     interpolated = Mth.interpolateErrors(data, fillVal)
-                    self.DATADICT[dstr] = [[0, interpolated,dstr]]
+                    self.DATADICT[dstr] = [[0, interpolated]]
                     self.UNITDICT[dstr] = units
 
 
@@ -650,6 +652,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         minDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.minTime, Epoch=self.epoch).UTC)
         maxDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.maxTime, Epoch=self.epoch).UTC)
         return minDateTime,maxDateTime
+
+    def getCurrentDateTime(self):
+        return self.ui.timeEdit.start.dateTime(), self.ui.timeEdit.end.dateTime()
 
     def onStartSliderChanged(self, val):
         self.iO = val
@@ -784,7 +789,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for i in range(len(edits)-1,-1,-1):
             e = edits[i]
             if e[0] <= self.currentEditNumber:
-                return (e[1],e[2])
+                return (e[1], dstr if e[0] == 0 else f'{dstr}_{self.editNames[e[0]][:8]}')
 
     def getData(self, dstr):
         return self.getDataAndLabelByEditNumber(dstr)[0]
@@ -1006,7 +1011,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             la.setWidth(maxWidth)
         #print(maxWidth)
         
-
     # just redraws the traces and ensures y range is correct
     # dont need to rebuild everything
     # maybe make this part of main plot function?
@@ -1200,7 +1204,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def calcTickIndexByTime(self, t):
         perc = (t - self.minTime) / (self.maxTime - self.minTime)
         perc = Mth.clamp(perc, 0, 1)
-        assert(perc >= 0 and perc <= 1)
+        assert perc >= 0 and perc <= 1
         return int(perc * self.iiE)
 
     # given the corresponding time array for data (times) and the time (t), calculate index into data array
