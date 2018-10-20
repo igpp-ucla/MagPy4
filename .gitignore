@@ -23,7 +23,6 @@ build/build/*
 build/dist/*
 build/Output/*
 
-*.iss
 credentials.txt
 
 testData/L2*

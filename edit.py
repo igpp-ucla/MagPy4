@@ -242,8 +242,6 @@ class Edit(QtWidgets.QFrame, EditUI):
         uihist.addItem(item)   
         uihist.setCurrentRow(uihist.count() - 1)
 
-        for n in self.window.editNames:
-            print(n)
 
     # removes selected history
     def removeHistory(self):

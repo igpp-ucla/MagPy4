@@ -13,7 +13,6 @@ import paramiko
 
 server = 'aten.igpp.ucla.edu'
 
-_entryName = 'MagPy4_Windows_v'
 _indexFile = 'index.html'
 _remotePath = '/webdocs/docs/magpy/'
 _buildPath = 'builds/windows/'
@@ -128,6 +127,7 @@ def build(version):
 
     print(f'Built version {version} successfully')
 
+	
 def deploy(version):
     # find the .exe in Output folder
     version = getVersionString(version)
@@ -165,18 +165,16 @@ def deploy(version):
     now = datetime.datetime.now()
 
     #double check no such entry exists yet
-    searchPhrase = _entryName + version
+    entryName = fileName[:-4]
     found = False
     for line in data:
-        if searchPhrase in line:
+        if entryName in line:
             print('Failed: version {version} already deployed on website!')
             # cleanup
             sftp.close()
             ssh.close()
             os.remove(_indexFile)
             return
-
-    entryName = _entryName + version
 
     # find and add new entry into html
     startPhrase = '<!--MMSDLStart-->'
@@ -219,14 +217,8 @@ def remove(version):
         data = file.readlines()
 
     # delete all lines with specific search phrase
-    searchPhrase = _entryName + version
+    searchPhrase = version
 
-    #found = False
-    #for line in data:
-    #    if searchPhrase not in line:
-    #        newData.append(line)
-    #    else:
-    #        found = True;
     newData = [line for line in data if searchPhrase not in line]
     if data == newData: # if no differences then can return early
         print(f'No entries with version {version} found')

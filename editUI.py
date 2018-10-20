@@ -69,7 +69,7 @@ class EditUI(object):
         histLayout = QtWidgets.QHBoxLayout(histFrame)
         leftButtons = QtWidgets.QVBoxLayout()
 
-        self.removeRow = QtWidgets.QPushButton('Remove Matrix')
+        self.removeRow = QtWidgets.QPushButton('Remove')
         self.removeRow.setToolTip('Removes currently selected matrix from history')
         leftButtons.addWidget(self.removeRow)
         leftButtons.addStretch()

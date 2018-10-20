@@ -695,8 +695,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     # this gets called when the start date time edit is changed directly
     def onStartEditChanged(self, val):
-        utc = UTCQDate.QDateTime2UTC(val)
-        self.iO = self.calcTickIndexByTime(FFTIME(utc, Epoch=self.epoch)._tick)
+        tick = FFTIME(UTCQDate.QDateTime2UTC(val), Epoch=self.epoch)._tick
+        self.iO = self.calcTickIndexByTime(tick)
         self.setSliderNoCallback(self.ui.startSlider, self.iO)
         for line in self.trackerLines:
             line.hide()
@@ -704,8 +704,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     # this gets called when the end date time edit is changed directly
     def onEndEditChanged(self, val):
-        utc = UTCQDate.QDateTime2UTC(val)
-        self.iE = self.calcTickIndexByTime(FFTIME(utc, Epoch=self.epoch)._tick)
+        tick = FFTIME(UTCQDate.QDateTime2UTC(val), Epoch=self.epoch)._tick
+        self.iE = self.calcTickIndexByTime(tick)
         self.setSliderNoCallback(self.ui.endSlider, self.iE)
         for line in self.trackerLines:
             line.hide()
@@ -1200,7 +1200,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     # tick index refers to slider indices
     # THIS IS NOT ACCURATE when the time resolution is varying (which is usual)
-    # keeping this one for now for because not sure how to get function below this one to work when loading multiple files yet
+    # keeping this one for now because not sure how to get function below this one to work when loading multiple files yet
     def calcTickIndexByTime(self, t):
         perc = (t - self.minTime) / (self.maxTime - self.minTime)
         perc = Mth.clamp(perc, 0, 1)
@@ -1217,6 +1217,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         b = bisect.bisect_left(times, t) # can bin search because times are sorted
         assert(b)
         return b
+
+    # could make combo of above two functions
+    # tries to use second function when it can (find correct times file) otherwise uses first
+    # somehow needs to figure out which times the tick values are within or something
 
     # given a data string, calculate its indices based on time range currently selected with lines
     def calcDataIndicesFromLines(self, dstr):

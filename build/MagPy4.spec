@@ -28,33 +28,31 @@ pyz = PYZ(a.pure, a.zipped_data,
 exe = EXE(pyz,
           a.scripts,
           exclude_binaries=True,
-          name='MagPy4',
+          name='MarsPy',
           debug=False,
           strip=False,
           upx=True,
           console=True,
 		  version='build/version.rc',
-		  icon='images/magPy_blue.ico')
+		  icon='images/mars.ico')
 coll = COLLECT(exe,
                a.binaries,
                a.zipfiles,
                a.datas,
                strip=False,
                upx=True,
-               name='MagPy4')
+               name='MarsPy')
 			   
-exeDir = "build/dist/MagPy4/"
+exeDir = "build/dist/MarsPy/"
+
 shutil.copy2("ffPy/tai-utc.dat", exeDir)
 shutil.copy2("README.md", exeDir)
 shutil.copytree("images/", f'{exeDir}images')
 
-fnames = ['mms15092720','insight/T8197C_PDR_585031864_585032030_pCAL', 'insight/T8228C_PDR_587688905_587753976_test_pCAL']
-dpath = 'testData/'
-os.makedirs(f'{exeDir}{dpath}')
-os.makedirs(f'{exeDir}{dpath}/insight')
-for fname in fnames:
-	shutil.copy(f'{dpath}{fname}.ffh', f'{exeDir}{dpath}{fname}.ffh')
-	shutil.copy(f'{dpath}{fname}.ffd', f'{exeDir}{dpath}{fname}.ffd')
+os.makedirs(f'{exeDir}testData/')
+	
+shutil.copy2('testData/mms15092720.ffh',f'{exeDir}testData/mms15092720.ffh')
+shutil.copy2('testData/mms15092720.ffd',f'{exeDir}testData/mms15092720.ffd')
 
-exampDir = 'testData/BX_examples/'
-shutil.copytree(exampDir,f'{exeDir}{exampDir}')
+shutil.copytree('testData/BX_examples/',f'{exeDir}testData/BX_examples/')
+shutil.copytree('testData/insight/', f'{exeDir}testData/insight/')
