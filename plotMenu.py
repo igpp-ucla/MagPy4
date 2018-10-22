@@ -53,6 +53,9 @@ class PlotMenuUI(object):
         buttonLayout.addWidget(self.plotButton, 1, 0, 1, 3)
         buttonLayout.addLayout(errorFlagLayout, 1, 3, 1, 1)
 
+        self.editCombo = QtWidgets.QComboBox()
+        buttonLayout.addWidget(self.editCombo, 1, 4, 1, 1)
+
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         buttonLayout.addItem(spacer, 0, 10, 1, 1)
 
@@ -91,6 +94,10 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.checkBoxMode = self.window.plotMenuCheckBoxMode
         self.ui.switchButton.setText('Switch to Dropdowns' if self.checkBoxMode else 'Switch to CheckBoxes')
         self.fcheckBoxes = []
+
+        # add the edit name options to dropdown
+        for editName in self.window.editNames:
+            self.ui.editCombo.addItem(editName)
 
         self.shouldResizeWindow = False # gets set when switching modes
         self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)

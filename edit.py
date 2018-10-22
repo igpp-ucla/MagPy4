@@ -271,6 +271,13 @@ class Edit(QtWidgets.QFrame, EditUI):
             self.window.editNames[self.history[i][0]] = self.ui.history.item(i).text()
 
         self.window.replotData()
+
+        for k,v in self.window.DATADICT.items():
+            print(f'{k}')
+            for l in v:
+                print(f'{l[0]}')
+
+
         #print(self.curSelection)
         #for dstr,datas in self.window.DATADICT.items():
         #    print(f'{dstr}, {len(datas)}')

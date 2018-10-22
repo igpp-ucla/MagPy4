@@ -1,3 +1,7 @@
+"""
+Main module for the program
+handles data, plotting and main window management
+"""
 
 # python 3.6
 import os
@@ -148,8 +152,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeTraceStats()
         self.closeSpectra()
 
-    # init variables here that should be reset when file changes
     def initVariables(self):
+        """init variables here that should be reset when file changes"""
         self.lastPlotStrings = None
         self.lastPlotLinks = None
         # 0: not selecting, 1 : no lines, 2 : one line, 3+ : two lines
@@ -213,8 +217,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.edit = Edit(self)
         self.edit.show()
         
-
     def showData(self):
+        # show error message for when loading cdfs because not ported yet
         if not self.FIDs:
             msg = QtWidgets.QMessageBox()
             msg.setIcon(QtWidgets.QMessageBox.Critical)
@@ -254,12 +258,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.spectra:
             self.spectra.updateSpectra()
 
-    # returns data with error values removed
     def getPrunedData(self, dstr, a, b):
+        """returns data with error values removed and nothing put in their place (so size reduces)"""
         data = self.getData(dstr)[a:b]
         return data[data < self.errorFlag]
 
     def swapMode(self): #todo: add option to just compile to one version or other with a bool swap as well
+        """swaps default settings between marspy and magpy"""
         txt = self.ui.switchMode.text()
         self.insightMode = not self.insightMode
         txt = 'Switch to MMS' if self.insightMode else 'Switch to MarsPy'
@@ -317,11 +322,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.plotDataDefault()
 
-    # initializes all data structures used for storing loaded data
-    # file opening operations can either append to or re init these structures based on open preference (prob have multiple buttons for this)
-    # can have some warnings like 'file to be loaded has way different time than current files' or something
-    # may want to additionally separate it by file as well so u could unload whole file if wanted
     def initDataStorageStructures(self):
+        """
+        initializes all data structures used for storing loaded data
+        file opening operations can either append to or re init these structures based on open preference
+        """
+
         self.DATASTRINGS = [] # list of all the original data column string names of the loaded files (commonly referenced as 'dstrs')
         self.ABBRV_DSTR_DICT = {} # dict mapping dstrs to simplified abbreviated dstr that get generated for easier display
         self.ORIGDATADICT = {} # dict mapping dstrs to original data array
@@ -513,7 +519,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
 
     def openCDF(self,PATH):#,q):
-        """ opens a cdf file """
+        """ opens a cdf file and loads the data into program structures """
 
         print(f'opening cdf: {PATH}')
         cdf = pycdf.CDF(PATH)
@@ -556,16 +562,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             else:
                 print(f'no data found for this epoch: {en}')
 
+        # iterate through each column and try to convert and add to storage structures
         for key,dstrs in epochsWithData.items():
             print(f'{key} {len(cdf[key])}')
-            #for v in dstrs:
-            #    print(f'  {v}')
 
             startTime = time.time()
             print(f'converting time...')
-            #pool = mp.Pool()
-            #cdfEpochs = cdf[key][...]
-            #times = pool.map(Mth.CDFEpochToTimeTicks,cdfEpochs)
             times = Mth.CDFEpochToTimeTicks(cdf[key][...])
             print(f'converted time in {time.time() - startTime} seconds')
 
@@ -616,9 +618,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         cdf.close()
 
 
-    # split on '_' and calculate common tokens that appear in each one. then remove and reconstruct remainders
-    # these abbreviations are used mainly for the cdf strings since those are longer so plots and stuff wont have super long strings in them
     def calculateAbbreviatedDstrs(self):
+        """
+        split on '_' and calculate common tokens that appear in each one. then remove and reconstruct remainders
+        these abbreviations are used mainly for the cdf strings since those are longer so plots and things wont have super long strings in them
+        """
         self.ABBRV_DSTR_DICT = {}
         
         # common should be union of the splits
@@ -657,6 +661,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         return self.ui.timeEdit.start.dateTime(), self.ui.timeEdit.end.dateTime()
 
     def onStartSliderChanged(self, val):
+        """callback for when the top (start) slider is moved"""
         self.iO = val
 
         # move tracker lines to show where new range will be
@@ -673,6 +678,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.setTimes()
 
     def onEndSliderChanged(self, val):
+        """callback for when the bottom (end) slider is moved"""
         self.iE = val
 
         # move tracker lines to show where new range will be
@@ -693,8 +699,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         slider.setValue(i)
         slider.blockSignals(False)
 
-    # this gets called when the start date time edit is changed directly
     def onStartEditChanged(self, val):
+        """this gets called when the start date time edit is changed directly"""
         tick = FFTIME(UTCQDate.QDateTime2UTC(val), Epoch=self.epoch)._tick
         self.iO = self.calcTickIndexByTime(tick)
         self.setSliderNoCallback(self.ui.startSlider, self.iO)
@@ -702,8 +708,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             line.hide()
         self.setTimes()
 
-    # this gets called when the end date time edit is changed directly
     def onEndEditChanged(self, val):
+        """this gets called when the end date time edit is changed directly"""
         tick = FFTIME(UTCQDate.QDateTime2UTC(val), Epoch=self.epoch)._tick
         self.iE = self.calcTickIndexByTime(tick)
         self.setSliderNoCallback(self.ui.endSlider, self.iE)
@@ -712,6 +718,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.setTimes()
 
     def setTimes(self):
+        """function that updates both the x and y range of the plots based on current time variables"""
+
         # if giving exact same time index then slightly offset
         if self.iO == self.iE:
             if self.iE < self.iiE:
@@ -920,8 +928,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     ## end of plot function
 
-    # sets y axis label strings for each plot
     def setYAxisLabels(self):
+        """sets y axis label strings for each plot"""
         plots = len(self.plotItems)
         for dstrs,pens,li in zip(self.lastPlotStrings,self.plotTracePens,self.labelItems):
             traceCount = len(dstrs)
@@ -952,9 +960,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             fontSize = min(16, max(fontSize,4))
             li.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{alab}</span>")
 
-    # trying to correctly estimate size of rows. last one needs to be a bit larger since bottom axis
-    # this is super hacked but it actually works okay. end goal is for bottom plot to be same height as the rest
+
     def additionalResizing(self):
+        """
+        this function tries to correctly estimate size of rows. the problem is last one needs to be a bit larger since bottom axis
+        this is super hacked but it actually works okay. end goal is for bottom plot to be same height as the rest
+        """
+
         # may want to redo with viewGeometry of plots in mind, might be more consistent than fontsize stuff on mac for example
         #for pi in self.plotItems:
         #    print(pi.viewGeometry())
@@ -1011,10 +1023,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             la.setWidth(maxWidth)
         #print(maxWidth)
         
-    # just redraws the traces and ensures y range is correct
-    # dont need to rebuild everything
-    # maybe make this part of main plot function?
     def replotData(self):
+        """simply redraws the traces and ensures y range is correct without rebuilding everything"""
+
         for i in range(len(self.plotItems)):
             pi = self.plotItems[i]
             plotStrs = self.lastPlotStrings[i]
@@ -1061,10 +1072,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 pi.addItem(PlotDataItemBDS(times, Y, pen=pen))
 
     
-    # pyqtgraph has y axis linking but not wat is needed
-    # this function scales them to have equal sized ranges but not the same actual range
-    # also this replicates pyqtgraph setAutoVisible to have scaling for currently selected time vs the whole file
     def updateYRange(self):
+        """
+        this function scales Y axis to have equally scaled ranges but not the same actual range
+        pyqtgraph has built in y axis linking but doesn't work exactly how we want
+        also this replicates pyqtgraph setAutoVisible to have scaling for currently selected time vs the whole file
+        """
         if self.lastPlotStrings is None or len(self.lastPlotStrings) == 0:
             return
         values = [] # (min,max)
@@ -1222,8 +1235,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # tries to use second function when it can (find correct times file) otherwise uses first
     # somehow needs to figure out which times the tick values are within or something
 
-    # given a data string, calculate its indices based on time range currently selected with lines
     def calcDataIndicesFromLines(self, dstr):
+        """given a data string, calculate its indices based on time range currently selected with lines"""
+
         times = self.getTimes(dstr)[0]
         t0,t1 = self.getSelectionStartEndTimes()
         i0 = self.calcDataIndexByTime(times, t0)
@@ -1239,8 +1253,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         t1 = lines[1].getXPos()
         return (t0,t1) if t0 <= t1 else (t1,t0) # need parens here!
 
-    # based on which plots have active lines, return list for each plot of the datastr and pen for each trace
     def getSelectedPlotInfo(self):
+        """based on which plots have active lines, return list for each plot of the datastr and pen for each trace"""
+
         plotInfo = []
         for i,pi in enumerate(self.plotItems):
             if pi.getViewBox().lines['general'][0].isVisible():
