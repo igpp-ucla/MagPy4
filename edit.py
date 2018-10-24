@@ -65,6 +65,7 @@ class Edit(QtWidgets.QFrame, EditUI):
             self.addHistory(Mth.IDENTITY, 'original data', 'Identity')
 
         self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
+
         self.onHistoryChanged(self.ui.history.currentRow())
 
         self.minVar = None
@@ -256,6 +257,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.history.setCurrentRow(curRow - 1) # change before take item otherwise onHistory gets called with wrong row
         self.ui.history.takeItem(curRow)
         del self.history[curRow]
+
 
     def onHistoryChanged(self, row):
         self.curSelection = self.history[row]

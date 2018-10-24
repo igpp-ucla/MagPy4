@@ -1250,10 +1250,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # could make combo of above two functions
     # tries to use second function when it can (find correct times file) otherwise uses first
     # somehow needs to figure out which times the tick values are within or something
-    def calcDataIndicesFromLines(self, dstr):
+    def calcDataIndicesFromLines(self, dstr, editNumber):
         """given a data string, calculate its indices based on time range currently selected with lines"""
 
-        times = self.getTimes(dstr,0)[0]
+        times = self.getTimes(dstr,editNumber)[0]
         t0,t1 = self.getSelectionStartEndTimes()
         i0 = self.calcDataIndexByTime(times, t0)
         i1 = self.calcDataIndexByTime(times, t1)

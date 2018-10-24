@@ -61,14 +61,14 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             pi.setAspectLocked(aspect)
 
     # return start and stop indices of selected data
-    def getIndices(self, dstr):
+    def getIndices(self, dstr, en):
         if dstr not in self.indices:
-            i0,i1 = self.window.calcDataIndicesFromLines(dstr)
+            i0,i1 = self.window.calcDataIndicesFromLines(dstr, en)
             self.indices[dstr] = (i0,i1)
         return self.indices[dstr]
 
-    def getPoints(self, dstr):
-        i0,i1 = self.getIndices(dstr)
+    def getPoints(self, dstr, en):
+        i0,i1 = self.getIndices(dstr, en)
         return i1-i0
 
     def getFreqs(self, dstr):
@@ -88,6 +88,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     def updateCalculations(self):
         plotInfos = self.window.getSelectedPlotInfo()
 
+        print(plotInfos)
+
         self.indices = {}
         self.freqs = {}
         self.ffts = {}
@@ -97,7 +99,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         startTime = time.time()
 
         for li, (strList, penList) in enumerate(plotInfos):
-            for i,dstr in enumerate(strList):
+            for i,(dstr,en) in enumerate(strList):
                 fft = self.getfft(dstr)
                 N = self.getPoints(dstr)
                 self.maxN = max(self.maxN,N)
