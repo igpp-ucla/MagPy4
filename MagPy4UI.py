@@ -74,6 +74,10 @@ class MagPy4UI(object):
         self.actionHelp.setText('Help')
         self.actionHelp.setToolTip('Opens help window with information about the program modules')
 
+        self.actionAbout = QtWidgets.QAction(window)
+        self.actionAbout.setText('About')
+        self.actionAbout.setToolTip('Displays the program\'s version number and copyright notice')
+
         self.runTests = QtWidgets.QAction(window)
         self.runTests.setText('Run Tests')
         self.runTests.setToolTip('Runs unit tests for code')
@@ -99,6 +103,7 @@ class MagPy4UI(object):
         self.toolBar.addWidget(options) 
 
         self.toolBar.addAction(self.actionHelp)
+        self.toolBar.addAction(self.actionAbout)
 
         #empty widget (cant use spacer in toolbar?) does same thing tho so this action goes far right
         spacer = QtWidgets.QWidget()
