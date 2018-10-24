@@ -109,7 +109,6 @@ class SpectraUI(object):
         self.updateButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
         bottomLayout.addWidget(self.updateButton)
 
-
         layout.addLayout(bottomLayout)
         
 

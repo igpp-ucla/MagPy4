@@ -54,11 +54,11 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.checkVectorRows()
         self.updateVectorSelections()
 
-        self.history = [] # list lists of edit number, matrix, and string for extra data (ie eigenvalues)
+        self.history = [] # lists of edit matrix, and string for extra data (ie eigenvalues)
         if self.window.editHistory:
             for h,name in self.window.editHistory:
                 if h:
-                    self.addHistory(h[1], h[2], name, h[0])
+                    self.addHistory(h[0], h[1], name)
                 else:
                     self.ui.history.setCurrentRow(name)
         else:
@@ -211,11 +211,14 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.setVectorDropdownsBlocked(False)
 
     # adds an entry to history matrix list and a list item at end of history ui
-    def addHistory(self, mat, notes, name, editNumber=None):
-        if editNumber is not None: #manual define because 0
-            self.history.append([editNumber, Mth.copy(mat), notes])
-        else:
-            self.history.append([len(self.window.editNames), Mth.copy(mat), notes])
+    def addHistory(self, mat, notes, name):
+        self.history.append([Mth.copy(mat), notes])
+
+        # pad the rest of datadict to have same length
+        length = len(self.history)
+        for k,v in self.window.DATADICT.items():
+            while len(v) < length:
+                v.append([])
 
         # get names of items
         uihist = self.ui.history
@@ -230,9 +233,6 @@ class Edit(QtWidgets.QFrame, EditUI):
             newName = f'{name}({fails})'
             fails+=1
         name = newName
-
-        if editNumber is None:
-            self.window.editNames.append(name)
 
         item = QtWidgets.QListWidgetItem(f'{name}')
         flags = item.flags()
@@ -251,10 +251,7 @@ class Edit(QtWidgets.QFrame, EditUI):
             return
 
         for dstr,datas in self.window.DATADICT.items():
-            for i,edit in enumerate(datas):
-                if edit[0] ==  self.history[curRow][0]: # if edit stamp is same as current history then delete
-                    del datas[i]
-                    break
+            del datas[curRow]
 
         self.ui.history.setCurrentRow(curRow - 1) # change before take item otherwise onHistory gets called with wrong row
         self.ui.history.takeItem(curRow)
@@ -262,30 +259,23 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     def onHistoryChanged(self, row):
         self.curSelection = self.history[row]
-        self.window.currentEditNumber = self.curSelection[0]
-        self.ui.M.setMatrix(self.curSelection[1])
-        self.ui.extraLabel.setText(self.curSelection[2])
+        self.window.currentEdit = row
+        self.ui.M.setMatrix(self.curSelection[0])
+        self.ui.extraLabel.setText(self.curSelection[1])
 
-        # go thru and make sure all strings in history are up to date
-        for i in range(self.ui.history.count()):
-            self.window.editNames[self.history[i][0]] = self.ui.history.item(i).text()
+        # rebuild edit name list
+        self.window.editNames = [self.ui.history.item(i).text() for i in range(self.ui.history.count())]
 
         self.window.replotData()
 
-        for k,v in self.window.DATADICT.items():
-            print(f'{k}')
-            for l in v:
-                print(f'{l[0]}')
-
-
-        #print(self.curSelection)
-        #for dstr,datas in self.window.DATADICT.items():
-        #    print(f'{dstr}, {len(datas)}')
+        #print('-------------------------')
+        #for k,v in self.window.DATADICT.items():
+        #    print(f'{k} {[len(l) for l in v]}')
 
     # takes a matrix, notes for the history, and a name for the history entry
     def apply(self, mat, notes, name):
-        R = Mth.mult(self.curSelection[1], mat)
-        self.generateData(R, name)
+        R = Mth.mult(self.curSelection[0], mat) #shows total matrix from beginning
+        self.generateData(mat, name)
         self.addHistory(R, notes, f'{name}')
 
     # given current axis vector selections
@@ -300,18 +290,17 @@ class Edit(QtWidgets.QFrame, EditUI):
             if not xstr or not ystr or not zstr: # skip rows with empty selections
                 continue
 
-            # get original data
-            X = self.window.DATADICT[xstr][0][1]
-            Y = self.window.DATADICT[ystr][0][1]
-            Z = self.window.DATADICT[zstr][0][1]
+            # multiply currently selected data by new matrix
+            X = self.window.getData(xstr)
+            Y = self.window.getData(ystr)
+            Z = self.window.getData(zstr)
 
             A = np.column_stack((X,Y,Z))
             M = np.matmul(A,R)
 
-            editNumber = len(self.window.editNames)
-            self.window.DATADICT[xstr].append([editNumber, M[:,0]])
-            self.window.DATADICT[ystr].append([editNumber, M[:,1]])
-            self.window.DATADICT[zstr].append([editNumber, M[:,2]])
+            self.window.DATADICT[xstr].append(M[:,0])
+            self.window.DATADICT[ystr].append(M[:,1])
+            self.window.DATADICT[zstr].append(M[:,2])
 
 
 class ManRot(QtWidgets.QFrame, ManRotUI):

@@ -159,7 +159,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # 0: not selecting, 1 : no lines, 2 : one line, 3+ : two lines
         self.generalSelectStep = 0
         self.generalSelectCanHide = False
-        self.currentEditNumber = 0 # current edit number selected
+        self.currentEdit = 0 # current edit number selected
         self.editNames = [] # list of edit names, index into list is edit number
         self.editHistory = []
         
@@ -331,7 +331,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.DATASTRINGS = [] # list of all the original data column string names of the loaded files (commonly referenced as 'dstrs')
         self.ABBRV_DSTR_DICT = {} # dict mapping dstrs to simplified abbreviated dstr that get generated for easier display
         self.ORIGDATADICT = {} # dict mapping dstrs to original data array
-        self.DATADICT = {}  # dict mapping dstrs to lists of data where each element is a list of edit number and data array [0=editnumber, 1=data]
+        self.DATADICT = {}  # dict mapping dstrs to lists of data where each element is a list of edited data (the first being unedited)
         self.UNITDICT = {} # dict mapping dstrs to unit strings
         self.TIMES = [] # list of time informations (3 part lists) [time series, resolutions, average res]
         self.TIMEINDEX = {} # dict mapping dstrs to index into times list
@@ -398,7 +398,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             # since all our dstrs are present just get the current time of the first one
             arbStr = newDataStrings[0]
 
-            curTime, curRes, curAvgRes = self.getTimes(arbStr)
+            curTime, curRes, curAvgRes = self.getTimes(arbStr,0)
             segments = Mth.getSegmentsFromTimeGaps(curRes, curAvgRes * 2)
             f0 = ffTime[0]
             f1 = ffTime[-1]
@@ -446,7 +446,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                             joinedData = (origData[:segments[si - 1][1] + 1], datas[di], origData[s0:])
 
                         self.ORIGDATADICT[dstr] = np.concatenate(joinedData)
-                        self.DATADICT[dstr] = [[0, Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]]
+                        self.DATADICT[dstr] = [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]
 
                     print(f'CONCATENATING WITH EXISTING DATA')
                     break
@@ -472,7 +472,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             for i, dstr in enumerate(newDataStrings):
                 self.TIMEINDEX[dstr] = len(self.TIMES) - 1 # index is of the time series we just added to end of list
                 self.ORIGDATADICT[dstr] = datas[i]
-                self.DATADICT[dstr] = [[0, Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]]
+                self.DATADICT[dstr] = [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]
                 self.UNITDICT[dstr] = units[i]
 
         # add file id to list
@@ -488,7 +488,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # redos all the interpolated errors, for when the flag is changed
     def reloadDataInterpolated(self):
         for dstr in self.DATASTRINGS:
-            self.DATADICT[dstr] = [[0, Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]]
+            self.DATADICT[dstr] = [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]
 
     def calculateTimeVariables(self):
         self.minTime = None # temp reset until figure out better way to specify if they want file to be loaded fresh or appended to current loading
@@ -597,8 +597,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                             self.TIMEINDEX[newDstr] = len(self.TIMES) - 1
                             newData = data[:,i]
                             self.ORIGDATADICT[newDstr] = newData
-                            interpolated = Mth.interpolateErrors(newData, fillVal)
-                            self.DATADICT[newDstr] = [[0, interpolated]]
+                            self.DATADICT[newDstr] = [Mth.interpolateErrors(newData, fillVal)]
                             self.UNITDICT[newDstr] = units
                     else:
                         print(f'    skipping column: {dstr}, unhandled shape: {shape}')
@@ -606,8 +605,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     self.DATASTRINGS.append(dstr)
                     self.TIMEINDEX[dstr] = len(self.TIMES) - 1
                     self.ORIGDATADICT[dstr] = data
-                    interpolated = Mth.interpolateErrors(data, fillVal)
-                    self.DATADICT[dstr] = [[0, interpolated]]
+                    self.DATADICT[dstr] = [Mth.interpolateErrors(data, fillVal)]
                     self.UNITDICT[dstr] = units
 
 
@@ -772,7 +770,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                         allIn = False
                         break
                 if allIn:
-                    row.append(dstr)
+                    row.append((dstr,0))
                     if self.insightMode:
                         break # only find one of each keyword
             if row:
@@ -791,18 +789,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 
         self.plotData(dstrs, links)
 
-    def getDataAndLabelByEditNumber(self, dstr):
+    def getData(self, dstr, editNumber=None):
         edits = self.DATADICT[dstr]
-        # working backwards get most recent edit
-        for i in range(len(edits)-1,-1,-1):
-            e = edits[i]
-            if e[0] <= self.currentEditNumber:
-                return (e[1], dstr if e[0] == 0 else f'{dstr}_{self.editNames[e[0]][:8]}')
+        i = self.currentEdit if editNumber is None else editNumber
+        while len(edits[i]) == 0: # if empty list go back one
+            i -= 1
+        return edits[i]
 
-    def getData(self, dstr):
-        return self.getDataAndLabelByEditNumber(dstr)[0]
-    def getLabel(self, dstr):
-        return self.getDataAndLabelByEditNumber(dstr)[1]
+    def getLabel(self, dstr, editNumber=None):
+        edits = self.DATADICT[dstr]
+        i = self.currentEdit if editNumber is None else editNumber
+        while len(edits[i]) == 0: # if empty list go back one
+            i -= 1
+        return dstr if i == 0 else f'{dstr}_{self.editNames[i][:8]}'
 
     def getFileNameString(self): # returns list of all loaded files
         name = 'unknown'
@@ -883,7 +882,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
             tracePens = []
             # add traces on this plot for each dstr
-            for i,dstr in enumerate(dstrs):
+            for i,(dstr,editNum) in enumerate(dstrs):
                 u = self.UNITDICT[dstr]
 
                 # figure out which pen to use
@@ -897,7 +896,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 #save pens so spectra can stay synced with main plot
                 tracePens.append(pen)
 
-                self.plotTrace(pi, dstr, pen)
+                self.plotTrace(pi, dstr, editNum, pen)
 
             self.plotTracePens.append(tracePens)
 
@@ -935,7 +934,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             traceCount = len(dstrs)
             alab = ''
             unit = ''
-            for dstr,pen in zip(dstrs,pens):
+            for (dstr,editNum),pen in zip(dstrs,pens):
                 u = self.UNITDICT[dstr]
                 # figure out if each axis trace shares same unit
                 if unit == '':
@@ -943,7 +942,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 elif unit != None and unit != u:
                     unit = None
 
-                l = self.getLabel(dstr)
+                l = self.getLabel(dstr, editNum)
                 if l in self.ABBRV_DSTR_DICT:
                     l = self.ABBRV_DSTR_DICT[l]
                 alab += f"<span style='color:{pen.color().name()};'>{l}</span>\n"
@@ -1032,17 +1031,17 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #print(f'plotStrs      = {plotStrs}')
             pens = self.plotTracePens[i]
             pi.clearPlots()
-            for i,dstr in enumerate(plotStrs):
+            for i,(dstr,editNum) in enumerate(plotStrs):
                 #print(f'i,dstr        = {i},{dstr}')
-                self.plotTrace(pi, dstr, pens[i])
+                self.plotTrace(pi, dstr, editNum, pens[i])
         self.setYAxisLabels()
         self.updateYRange()
 
-    def getTimes(self, dstr):
+    def getTimes(self, dstr, editNumber):
         times,resolutions,avgRes = self.TIMES[self.TIMEINDEX[dstr]]
 
         # check if arrays arent same length then assume the difference is from a filter operation
-        Y = self.getData(dstr)
+        Y = self.getData(dstr, editNumber)
         if len(Y) < len(times):
             diff = len(times) - len(Y) + 1
             times = times[diff // 2:-diff // 2 + 1]
@@ -1052,12 +1051,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         return times,resolutions,avgRes
 
     # both plotData and replot use this function internally
-    def plotTrace(self, pi, dstr, pen):
-        Y = self.getData(dstr)
+    def plotTrace(self, pi, dstr, editNumber, pen):
+        Y = self.getData(dstr, editNumber)
         if len(Y) <= 1: # not sure if this can happen but just incase
             print(f'Error: insufficient Y data for column "{dstr}"')
             return
-        times,resolutions,avgRes = self.getTimes(dstr)
+        times,resolutions,avgRes = self.getTimes(dstr, editNumber)
         if not self.ui.bridgeDataGaps.isChecked():
             segs = Mth.getSegmentsFromErrorsAndGaps(self.ORIGDATADICT[dstr], resolutions, self.errorFlag, avgRes * 2)   
             for a,b in segs:
@@ -1089,9 +1088,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             minVal = np.inf
             maxVal = -np.inf
             # find min and max values out of all traces on this plot
-            for dstr in dstrs:
+            for (dstr,editNum) in dstrs:
                 scaleYToCurrent = self.ui.scaleYToCurrentTimeAction.isChecked()
-                X = self.getTimes(dstr)[0] # first in list is time series
+                X = self.getTimes(dstr,editNum)[0] # first in list is time series
                 a = self.calcDataIndexByTime(X, self.tO)
                 b = self.calcDataIndexByTime(X, self.tE)
                 if a == b: # both are out of range on same side so data shouldnt be plotted
@@ -1102,7 +1101,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 if a > b: # so sliders work either way
                     a,b = b,a
 
-                Y = self.getData(dstr)[a:b]
+                Y = self.getData(dstr,editNum)[a:b]
 
                 minVal = min(minVal, Y.min())
                 maxVal = max(maxVal, Y.max())
@@ -1234,11 +1233,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # could make combo of above two functions
     # tries to use second function when it can (find correct times file) otherwise uses first
     # somehow needs to figure out which times the tick values are within or something
-
     def calcDataIndicesFromLines(self, dstr):
         """given a data string, calculate its indices based on time range currently selected with lines"""
 
-        times = self.getTimes(dstr)[0]
+        times = self.getTimes(dstr,0)[0]
         t0,t1 = self.getSelectionStartEndTimes()
         i0 = self.calcDataIndexByTime(times, t0)
         i1 = self.calcDataIndexByTime(times, t1)

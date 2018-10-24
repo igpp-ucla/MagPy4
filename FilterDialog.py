@@ -263,7 +263,7 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         self.calculate()
         notes = f'Filter with {self.filterType} and {self.windowType} options'
         name = f'{self.filterType}/{self.windowType} Filter'
-        self.edit.addHistory(self.edit.curSelection[1], notes, name)
+        self.edit.addHistory(self.edit.curSelection[0], notes, name)
 
     def onRejected(self):
         """Called when the user clicks the Cancel button
@@ -436,9 +436,9 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         # just filter anything that is plotted for now
         # later could make a separate dstr selection window (using the axis ones doesn't make sense as filters operate on data independently)
         for plotStrs in self.parent.lastPlotStrings:
-            for dstr in plotStrs:
-                data = self.filterRawData(self.parent.getData(dstr))
-                self.parent.DATADICT[dstr].append([len(self.parent.editNames), data])
+            for dstr,en in plotStrs:
+                data = self.filterRawData(self.parent.getData(dstr, en))
+                self.parent.DATADICT[dstr].append(data)
 
     def filterRawData(self, data):
         hnf = self.halfNumPoints
