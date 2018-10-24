@@ -12,6 +12,11 @@ import sys
 sys.path.insert(0, 'ffPy')
 sys.path.insert(0, 'cdfPy')
 
+# Version number and copyright notice displayed in the About box
+NAME = f'MagPy4'
+VERSION = f'Version 0.0.1 (October 24, 2018)'
+COPYRIGHT = f'Copyright © 2018 The Regents of the University of California'
+
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
@@ -28,6 +33,7 @@ from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
 from traceStats import TraceStats
 from helpWindow import HelpWindow
+from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, LinkedInfiniteLine, BLabelItem
 from mth import Mth
 from tests import Tests
@@ -85,6 +91,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionSpectra.triggered.connect(self.openSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.actionHelp.triggered.connect(self.openHelp)
+        self.ui.actionAbout.triggered.connect(self.openAbout)
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
         self.insightMode = False
@@ -101,6 +108,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.spectra = None
         self.traceStats = None
         self.helpWindow = None
+        self.aboutDialog = None
         self.FIDs = []
 
         # these are saves for options for program lifetime
@@ -193,6 +201,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.helpWindow.close()
             self.helpWindow = None
 
+    def closeAbout(self):
+        if self.aboutDialog:
+            self.aboutDialog.close()
+            self.aboutDialog = None
+
     #thoughts on refactor this into using a dictionary, so youd call close with string arg of window name??
     #def closeSubWindow(key):
     #    if key not in self.subWindows:
@@ -251,6 +264,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeHelp()
         self.helpWindow = HelpWindow(self)
         self.helpWindow.show()
+
+    def openAbout(self):
+        self.aboutDialog = AboutDialog(NAME, VERSION, COPYRIGHT, self)
+        self.aboutDialog.show()
 
     def toggleAntialiasing(self):
         pg.setConfigOption('antialias', self.ui.antialiasAction.isChecked())
