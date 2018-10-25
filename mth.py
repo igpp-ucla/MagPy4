@@ -94,9 +94,9 @@ class Mth:
     def getSegmentsFromErrors(data, errorFlag):
         if np.isnan(errorFlag):
             segments = []
-        elif errorFlag > 0:
+        elif errorFlag > 0: # handle positive type error flags
             segments = np.where(data >= errorFlag)[0].tolist()
-        else:
+        else: # handle negative
             segments = np.where(data <= errorFlag)[0].tolist()
         return Mth.__processSegmentList(segments, len(data))
 
@@ -106,7 +106,6 @@ class Mth:
 
     def __processSegmentList(segments, dataLen):
         segments.append(dataLen) # add one to end so last segment will be added (also if no errors)
-        #print(f'SEGMENTS {len(segments)}')
         segList = []
         st = 0 #start index
         for seg in segments: # collect start and end range of each segment
@@ -119,15 +118,25 @@ class Mth:
         # returns empty list if data is pure errors
         return segList    
 
-    # this smooths over data gaps, required for spectra analysis?
-    # errors before first and after last or just extended from those points
-    # errors between are lerped between nearest points
-    # todo: try modifying using np.interp (prob faster)
-    # PROBLEM: many files have gaps in the time but no error values to read in between
-    # so this function cant register them as actual gaps in that case still!! 
-    # so this function only detects errors really
-    # could make separate function to detect actual gaps in time so we have option not to draw lines between huge gaps
     def interpolateErrors(origData, errorFlag):
+        """
+        This smooths over data gaps, required for spectra analysis
+        errors before first and after last are extended from those points
+        errors between are lerped from nearest points
+
+        Args:
+            origData (list): unmodified list of data from a certain column
+            errorFlag (int): flags past this value will be ignored
+
+        Returns:
+            list: smoothed version of origData with errors removed
+
+        todo: try modifying using np.interp (prob faster)
+        PROBLEM: many files have gaps in the time but no error values to read in between
+        so this function cant register them as actual gaps in that case still!! 
+        so this function only detects errors really
+        could make separate function to detect actual gaps in time so we have option not to draw lines between huge gaps
+        """
         segs = Mth.getSegmentsFromErrors(origData, errorFlag)
         data = np.copy(origData)
         if len(segs) == 0: # data is pure errors
@@ -139,8 +148,7 @@ class Mth:
         if first != 0: 
             data[:first] = data[first]
 
-        # interate over the gaps in the segment list
-        # this could prob be sped up somehow
+        # interate over the gaps in the segment list (could use some optimization)
         for si in range(len(segs) - 1):
             gO = segs[si][1] # start of gap
             gE = segs[si + 1][0] # end of gap

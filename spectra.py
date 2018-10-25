@@ -61,26 +61,26 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             pi.setAspectLocked(aspect)
 
     # return start and stop indices of selected data
-    def getIndices(self, dstr):
+    def getIndices(self, dstr, en):
         if dstr not in self.indices:
-            i0,i1 = self.window.calcDataIndicesFromLines(dstr)
+            i0,i1 = self.window.calcDataIndicesFromLines(dstr, en)
             self.indices[dstr] = (i0,i1)
         return self.indices[dstr]
 
-    def getPoints(self, dstr):
-        i0,i1 = self.getIndices(dstr)
+    def getPoints(self, dstr, en):
+        i0,i1 = self.getIndices(dstr, en)
         return i1-i0
 
-    def getFreqs(self, dstr):
-        N = self.getPoints(dstr)
+    def getFreqs(self, dstr, en):
+        N = self.getPoints(dstr, en)
         if N not in self.freqs:
             self.freqs[N] = self.calculateFreqList(N)
         return self.freqs[N]
 
-    def getfft(self, dstr):
+    def getfft(self, dstr, en):
         if dstr not in self.ffts:
-            i0,i1 = self.getIndices(dstr)
-            data = self.window.getData(dstr)[i0:i1]
+            i0,i1 = self.getIndices(dstr, en)
+            data = self.window.getData(dstr, en)[i0:i1]
             fft = fftpack.rfft(data.tolist())
             self.ffts[dstr] = fft
         return self.ffts[dstr]
@@ -97,9 +97,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         startTime = time.time()
 
         for li, (strList, penList) in enumerate(plotInfos):
-            for i,dstr in enumerate(strList):
-                fft = self.getfft(dstr)
-                N = self.getPoints(dstr)
+            for i,(dstr,en) in enumerate(strList):
+                fft = self.getfft(dstr,en)
+                N = self.getPoints(dstr,en)
                 self.maxN = max(self.maxN,N)
                 power = self.calculatePower(fft, N)
                 self.powers[dstr] = power
@@ -110,7 +110,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         # calculate coherence and phase from pairs
         c0 = self.ui.cohPair0.currentText()
         c1 = self.ui.cohPair1.currentText()
-        coh,pha = self.calculateCoherenceAndPhase(self.getfft(c0), self.getfft(c1), self.getPoints(c0))
+        coh,pha = self.calculateCoherenceAndPhase(self.getfft(c0,0), self.getfft(c1,0), self.getPoints(c0,0))
         self.coh = coh
         self.pha = pha
 
@@ -137,7 +137,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.plotItems = []
         maxTitleWidth = 0
         for listIndex, (strList,penList) in enumerate(plotInfos):
-            for i,dstr in enumerate(strList):
+            for i,(dstr,en) in enumerate(strList):
                 if i == 0 or oneTracePerPlot:
                     ba = LogAxis(True,True,True,orientation='bottom')
                     la = LogAxis(True,True,True,orientation='left')
@@ -151,7 +151,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     numberPlots += 1
                     powers = []
 
-                freq = self.getFreqs(dstr)
+                freq = self.getFreqs(dstr,en)
                 power = self.powers[dstr]
                 powers.append(power)
 
@@ -223,7 +223,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         c1 = self.ui.cohPair1.currentText()
         abbrv0 = self.window.ABBRV_DSTR_DICT[c0]
         abbrv1 = self.window.ABBRV_DSTR_DICT[c1]
-        freqs = self.getFreqs(c0)
+        freqs = self.getFreqs(c0,0)
 
         datas = [[self.ui.cohGrid, self.coh, 'Coherence', ''],[self.ui.phaGrid, self.pha, 'Phase', ' (Degree)']]
 

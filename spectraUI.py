@@ -91,7 +91,7 @@ class SpectraUI(object):
         self.cohPair1 = QtWidgets.QComboBox()
         cohPhaseLayout.addWidget(self.cohPair1)
         for dstrs in window.lastPlotStrings:
-            for dstr in dstrs:
+            for dstr,en in dstrs:
                 self.cohPair0.addItem(dstr)
                 self.cohPair1.addItem(dstr)
         if self.cohPair1.count() >= 2:
@@ -108,7 +108,6 @@ class SpectraUI(object):
         self.updateButton = QtWidgets.QPushButton('Update')
         self.updateButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
         bottomLayout.addWidget(self.updateButton)
-
 
         layout.addLayout(bottomLayout)
         

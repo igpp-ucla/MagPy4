@@ -80,16 +80,16 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         prec = 6
         for dstrs,pens in plotInfo:
             group = []
-            for i,dstr in enumerate(dstrs):
+            for i,(dstr,en) in enumerate(dstrs):
 
-                i0,i1 = self.window.calcDataIndicesFromLines(dstr)
+                i0,i1 = self.window.calcDataIndicesFromLines(dstr,en)
 
-                rowStrs.append([self.window.getLabel(dstr), pens[i].color().name()])
+                rowStrs.append([self.window.getLabel(dstr,en), pens[i].color().name()])
                 row = []
                 if self.window.generalSelectStep <= 2:
                     row.append(f'{self.window.getData(dstr)[i0]:.{prec}f}')
                 else:
-                    pruned = self.window.getPrunedData(dstr,i0,i1)
+                    pruned = self.window.getPrunedData(dstr,en,i0,i1)
                     for func in self.funcs:
                         if len(pruned) > 0:
                             row.append(f'{func(pruned):.{prec}f}')

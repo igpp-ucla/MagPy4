@@ -172,13 +172,15 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         return self.ui.axesDropdowns[0].currentText()
 
     def updateCalculations(self):
+        """ update all wave analysis values and corresponding UI elements """
+
         dstrs = [dd.currentText() for dd in self.ui.axesDropdowns]
 
         ffts = [self.spectra.getfft(dstr) for dstr in dstrs]
 
         fO = self.ui.minFreqIndex.value()
         fE = self.ui.maxFreqIndex.value()
-        # ensure first less than last and not the same value
+        # ensure first frequency index is less than last and not the same value
         if fE < fO:
             fO,fE = fE,fO
         if abs(fO-fE) < 2:
@@ -252,12 +254,12 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         #self.thbk, self.thkk = getAngles(amat, avg, qkem)
 
         # Transformed Values Spectral Matrices 
-        trp = Mth.arpat(amat, realPower)
+        trp = Mth.arpat(amat, realPower) # transformed real power
         trp = Mth.flip(trp)
-        tip = Mth.arpat(amat, imagPower)
+        tip = Mth.arpat(amat, imagPower) # transformed imaginary power
         tip = Mth.flip(tip)
-        trm = Mth.arpat(bmat, realPower)
-        tim = Mth.arpat(bmat, imagPower)
+        trm = Mth.arpat(bmat, realPower) # transformed real matrix
+        tim = Mth.arpat(bmat, imagPower) # transformed imaginary matrix
 
         self.ui.trpMat.setMatrix(trp)
         self.ui.tipMat.setMatrix(tip)
@@ -274,6 +276,41 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
 
         #self.updateBornAnalysis(pp, ppm, elip, elipm, azim)
 
+    # this was directly imported from original magpy
+    def bornWolf(self, trp, tip, trm, tim):
+        """
+		Given transformed versions of real and imaginary powers and matrices
+		calculate polarization and ellipticity (both with joe means versions), and azimuth angle
+		"""
+        trj = trp[0][0] + trp[1][1]
+        detj = trp[0][0] * trp[1][1] - trp[1][0] * trp[1][0] - tip[1][0] * tip[1][0]
+        fnum = 1 - (4 * detj) / (trj * trj)
+        if fnum <= 0:
+            pp = 0
+        else:
+            pp = 100 * math.sqrt(fnum)
+        vetm = trj * trj - 4.0 * detj
+        eden = 1 if vetm < 0 else math.sqrt(vetm)
+        fnum = 2 * tip[0][1] / eden
+        if (trp[0][1] < -1e-10):
+            elip = -1.0*math.tan(0.5*math.asin(fnum))
+        else:
+            elip = math.tan(0.5*math.asin(fnum))
+        trj = trm[0][0] + trm[1][1]
+        detj=trm[0][0]*trm[1][1]-trm[0][1]*trm[1][0]-tim[1][0]*tim[1][0]
+        difm = trm[0][0] - trm[1][1]
+        fnum = 1 - (4 * detj) / (trj * trj)
+        ppm = 100 * math.sqrt(fnum)
+        fnum = 2.0 * tim[0][1] / eden
+        if fnum <= 0:
+            fnum = 0
+            pp = 0
+        elipm = math.tan(0.5 * math.asin(fnum))
+        fnum = 2.0 * trm[0][1]
+        angle = fnum / difm
+        azim = 0.5 * math.atan(angle) * Mth.R2D
+        return pp, ppm, elip, elipm, azim
+
     # old magpy table display, slightly updated it but not using currently
     def updateBornAnalysis(self, pp, ppm, elip, elipm, azim):
         head = "<HTML><Table width='100%'><tr><th><td>Born-Wolf</td><td>Joe Means</td></th></tr>"
@@ -283,33 +320,3 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         html =  f"{head}{polar}{ellip}{angle}</table></HTML>"
         self.ui.wolfText.setText(html)
 
-    # this was directly imported from original magpy
-    def bornWolf(self, rpp, ipp, rpmp, ipmp):
-        trj = rpp[0][0] + rpp[1][1]
-        detj = rpp[0][0] * rpp[1][1] - rpp[1][0] * rpp[1][0] - ipp[1][0] * ipp[1][0]
-        fnum = 1 - (4 * detj) / (trj * trj)
-        if fnum <= 0:
-            pp = 0
-        else:
-            pp = 100 * math.sqrt(fnum)
-        vetm = trj * trj - 4.0 * detj
-        eden = 1 if vetm < 0 else math.sqrt(vetm)
-        fnum = 2 * ipp[0][1] / eden
-        if (rpp[0][1] < -1e-10):
-            elip = -1.0*math.tan(0.5*math.asin(fnum))
-        else:
-            elip = math.tan(0.5*math.asin(fnum))
-        trj = rpmp[0][0] + rpmp[1][1]
-        detj=rpmp[0][0]*rpmp[1][1]-rpmp[0][1]*rpmp[1][0]-ipmp[1][0]*ipmp[1][0]
-        difm = rpmp[0][0] - rpmp[1][1]
-        fnum = 1 - (4 * detj) / (trj * trj)
-        ppm = 100 * math.sqrt(fnum)
-        fnum = 2.0 * ipmp[0][1] / eden
-        if fnum <= 0:
-            fnum = 0
-            pp = 0
-        elipm = math.tan(0.5 * math.asin(fnum))
-        fnum = 2.0 * rpmp[0][1]
-        angle = fnum / difm
-        azim = 0.5 * math.atan(angle) * 57.29578
-        return pp, ppm, elip, elipm, azim

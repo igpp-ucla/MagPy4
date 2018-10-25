@@ -53,6 +53,9 @@ class PlotMenuUI(object):
         buttonLayout.addWidget(self.plotButton, 1, 0, 1, 3)
         buttonLayout.addLayout(errorFlagLayout, 1, 3, 1, 1)
 
+        self.editCombo = QtWidgets.QComboBox()
+        buttonLayout.addWidget(self.editCombo, 1, 4, 1, 1)
+
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         buttonLayout.addItem(spacer, 0, 10, 1, 1)
 
@@ -92,6 +95,11 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.ui.switchButton.setText('Switch to Dropdowns' if self.checkBoxMode else 'Switch to CheckBoxes')
         self.fcheckBoxes = []
 
+        # add the edit name options to dropdown
+        for editName in self.window.editNames:
+            self.ui.editCombo.addItem(editName)
+        self.ui.editCombo.currentTextChanged.connect(self.rebuildDropdowns)
+
         self.shouldResizeWindow = False # gets set when switching modes
         self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)
 
@@ -116,7 +124,6 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)
         self.shouldResizeWindow = True
         
-
     def reloadDefaults(self):
         dstrs, links = self.window.getDefaultPlotInfo()
         self.initPlotMenu(dstrs, links)
@@ -124,27 +131,28 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
     def initPlotMenu(self, dstrs, links):
         self.plotCount = 0
         self.checkBoxes = []
-        self.dropdowns = []
+        self.dropdowns = [] # list of lists for each row and each element in row is (combobox, editNum)
+        self.dropdownLocked = [] # list of sets for each plot of locked options
         PyQtUtils.clearLayout(self.ui.grid)
 
-        if self.window.lastPlotStrings is None:
-            print('no starting plot matrix!')
+        if dstrs is None:
+            print('empty plot matrix!')
             return
 
         if self.checkBoxMode:
             self.addLabels()
-            for i,axis in enumerate(dstrs):
+            for i,dstrList in enumerate(dstrs):
                 self.addPlot()
-                for dstr in axis:
+                for dstr,editNum in dstrList:
                     di = self.window.DATASTRINGS.index(dstr)
                     self.checkBoxes[i][di].setChecked(True)
         else:
-            for i,axis in enumerate(dstrs):
+            for i,dstrList in enumerate(dstrs):
                 self.plotCount += 1
 
             adstrs = []
             for dstrList in dstrs:
-                adstrs.append([self.window.ABBRV_DSTR_DICT[dstr] for dstr in dstrList])
+                adstrs.append([(dstr,editNum) for dstr,editNum in dstrList])
             self.rebuildDropdowns(adstrs)
 
         if self.window.lastPlotLinks is not None:
@@ -157,7 +165,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                 for j in axis:
                     self.fcheckBoxes[i][j].setChecked(True)
 
-    # returns list of list of strings (one list for each plot, one string for each trace)
+    # returns list of list of strings (one list for each plot, (dstr, editNumber) for each trace)
     def getPlotInfo(self):
         dstrs = []
         if self.checkBoxMode:
@@ -165,16 +173,24 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                 row = []
                 for i,cb in enumerate(cbAxis):
                     if cb.isChecked():
-                        row.append(self.window.DATASTRINGS[i])
+                        # no easy way for current checkbox setup to work with edit number selection, so just use current
+                        row.append((self.window.DATASTRINGS[i],self.window.currentEdit))
                 dstrs.append(row)
         else:
-            for ddAxis in self.dropdowns:
+            dditems = list(self.window.DATADICT.items())
+
+            for ddRow in self.dropdowns:
                 row = []
-                for i,dd in enumerate(ddAxis):
-                    txt = dd.currentText()
-                    if txt != '':
-                        txt = self.window.DATASTRINGS[self.ABBRV_DSTRS.index(txt)]
-                        row.append(txt)
+                for dd,en in ddRow: # for each dropdown in row
+                    i = dd.currentIndex()-1
+                    if i == -1: # dont include emptys
+                        continue
+                    for k,v in self.window.DATADICT.items(): # figure out which datastring is selected
+                        if len(v[en]) > 0:
+                            if i == 0:
+                                row.append((k,en))
+                                break
+                            i -= 1
                 dstrs.append(row)
         return dstrs
 
@@ -196,72 +212,58 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             links.append((i,)) # append as tuple so can check for this later
         return links
 
-    def plotData(self):
-        # try to update error flag
-        try:
-            flag = float(self.ui.errorFlagEdit.text())
-            if self.window.errorFlag != flag:
-                print(f'using new error flag: {flag:.0e}')
-                self.window.errorFlag = flag
-                self.window.reloadDataInterpolated()
-        except ValueError:
-            flag = self.window.errorFlag
-            print(f'cannot interpret error flag value, leaving at: {flag:.0e}')
-            self.ui.errorFlagEdit.setText(f'{flag:.0e}')
-
-        dstrs = self.getPlotInfo()
-        links = self.getLinkLists()
-
-        self.window.plotData(dstrs, links)
-
-
-    def clearRows(self):
-        if self.checkBoxMode:
-            for row in self.checkBoxes:
-                for cb in row:
-                    cb.setChecked(False)
-        else:
-            override = []
-            for row in self.dropdowns:
-                override.append([])
-            self.rebuildDropdowns(override)
-
-    # rebuild all of them whenever one changes because its too complicated to figure out
+    # rebuild all of the dropdowns whenever one changes because its too complicated to figure out
     # removing things correctly from qgridlayouts lol
+    # empty dropdowns will have options based on current edit selection
+    # filled dropdowns choices will be remembered and unavailable in subsequent dropdowns of same edit
     def rebuildDropdowns(self, overrideList = None):
+        # first part of this function saves all the current strings selected
         dropList = []
-        if isinstance(overrideList, list): # incase its a single str from change callbacks
+        currentEN = max(self.ui.editCombo.currentIndex(),0)
+        if isinstance(overrideList, list): # need this check because could be a single string from change callbacks
             for dstrs in overrideList:
                 row = []
                 for dstr in dstrs:
                     row.append(dstr)
-                row.append('')
+                row.append(('',currentEN))
                 dropList.append(row)
         else: # check what dropdowns are currently and rebuild (incase too many emptys or need to redo possible strs)
-            for i,ddList in enumerate(self.dropdowns):
+            for ddRow,lockedSet in zip(self.dropdowns,self.dropdownLocked):
                 row = []
-                for dd in ddList:
-                    txt = dd.currentText()
-                    if txt != '':
-                        row.append(txt)
-                row.append('')
+                for dd,en in ddRow:
+                    idx = dd.currentIndex() - 1
+                    if idx >= 0: # not empty selected then figure out what is original dstr
+                        i = 0
+                        for k,v in self.window.DATADICT.items():
+                            if len(v[en]) == 0:
+                                continue
+
+                            #if (k,en) in lockedSet:
+                            #    idx += 1
+
+                            if i == idx:
+                                row.append((k,en))
+                                break
+                            i += 1
+
+                # always add empty to end of row
+                row.append(('',currentEN))
                 dropList.append(row)
 
+            # ensure same number of rows as number of plots
             while len(dropList) < self.plotCount:
-                dropList.append([''])
+                dropList.append([('',currentEN)])
             if len(dropList) > self.plotCount:
                 dropList = dropList[:(self.plotCount - len(dropList))]
 
+        print(dropList)
+
         self.checkBoxes = []
         self.dropdowns = []
+        self.dropdownLocked = []
         PyQtUtils.clearLayout(self.ui.grid)
-        
-        for di,drops in enumerate(dropList):
-            strs = self.ABBRV_DSTRS[:]
-            for i,txt in enumerate(drops): # for each row in dropdowns, add marker next to ur current option
-                for j,dstr in enumerate(strs):
-                    if txt == dstr:
-                        strs[j] = [txt,i]
+
+        for di,dropRow in enumerate(dropList):
             # add spacer in first row to take up right space
             if di == 0:
                 spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
@@ -270,22 +272,26 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             plotLabel = QtWidgets.QLabel()
             plotLabel.setText(f'Plot{di+1}')
             self.ui.grid.addWidget(plotLabel,di,0,1,1)
+            lockedSet = set() # keeps track of options already chosen as tuple of (dstr,en)
             row = []
-            for i,txt in enumerate(drops):
+            for i,(dstr,en) in enumerate(dropRow):
                 dd = QtWidgets.QComboBox()
                 dd.addItem('')
-                for s in strs:
-                    if isinstance(s, list):
-                        if s[1] == i: # if this is tagged as ur selected then add it
-                            dd.addItem(s[0])
-                            dd.setCurrentIndex(dd.count()-1)
-                    else:
+
+                for k,v in self.window.DATADICT.items():
+                    if len(v[en]) > 0:# and (k,en) not in lockedSet:
+                        s = self.window.getLabel(k,en)
                         dd.addItem(s)
+                        if k == dstr:
+                            dd.setCurrentIndex(dd.count()-1)
+                            lockedSet.add((k,en))
+
                 dd.currentTextChanged.connect(self.rebuildDropdowns)
                 self.ui.grid.addWidget(dd,di,i+1,1,1)
-                row.append(dd)
+                row.append((dd,en))
 
             self.dropdowns.append(row)
+            self.dropdownLocked.append(lockedSet)
 
 
     # callback for each checkbox on changed
@@ -352,6 +358,35 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                 row.append(checkBox)
                 fgrid.addWidget(checkBox,r + 1,i + 1,1,1)      
             self.fcheckBoxes.append(row)
+
+    def plotData(self):
+        # try to update error flag
+        try:
+            flag = float(self.ui.errorFlagEdit.text())
+            if self.window.errorFlag != flag:
+                print(f'using new error flag: {flag:.0e}')
+                self.window.errorFlag = flag
+                self.window.reloadDataInterpolated()
+        except ValueError:
+            flag = self.window.errorFlag
+            print(f'cannot interpret error flag value, leaving at: {flag:.0e}')
+            self.ui.errorFlagEdit.setText(f'{flag:.0e}')
+
+        dstrs = self.getPlotInfo()
+        links = self.getLinkLists()
+
+        self.window.plotData(dstrs, links)
+
+    def clearRows(self):
+        if self.checkBoxMode:
+            for row in self.checkBoxes:
+                for cb in row:
+                    cb.setChecked(False)
+        else:
+            override = []
+            for row in self.dropdowns:
+                override.append([])
+            self.rebuildDropdowns(override)
 
     # returns bool matrix from checkbox matrix
     def checksToBools(self, cbMatrix, skipEmpty=False):
