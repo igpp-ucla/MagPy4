@@ -151,17 +151,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.openFF(starterFile)
             self.swapMode()
 
-#        tb = self.ui.toolBar
-#        print(f'toolBar = {tb}')
-
-#        items = ['Data', 'Plot', 'Spectra', 'Edit', 'Options']
-
-#        for toolbar in self.findChildren(QtWidgets.QToolBar):
-#            print('toolbar: %s' % toolbar.objectName())
-#            for action in toolbar.actions():
-#                if not action.isSeparator():
-#                    print(f'  action: {action}')
-
     def enableToolsAndOptionsMenus(self, bool):
         """Enable or disable the Tools and Options menus.
         """
