@@ -262,7 +262,10 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         """
         self.calculate()
         notes = f'Filter with {self.filterType} and {self.windowType} options'
-        name = f'{self.filterType}/{self.windowType} Filter'
+        #name = f'{self.filterType}/{self.windowType} Filter'
+        # try to generate a more abbreviated version of name
+        filts = self.filterType.split(' ')
+        name = f'{filts[0][0]}{filts[1][0]}{self.windowType[0]}F'
         self.edit.addHistory(self.edit.curSelection[0], notes, name)
 
     def onRejected(self):

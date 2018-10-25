@@ -275,9 +275,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.spectra:
             self.spectra.updateSpectra()
 
-    def getPrunedData(self, dstr, a, b):
+    def getPrunedData(self, dstr, en, a, b):
         """returns data with error values removed and nothing put in their place (so size reduces)"""
-        data = self.getData(dstr)[a:b]
+        data = self.getData(dstr, en)[a:b]
         return data[data < self.errorFlag]
 
     def swapMode(self): #todo: add option to just compile to one version or other with a bool swap as well
@@ -818,7 +818,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         i = self.currentEdit if editNumber is None else editNumber
         while len(edits[i]) == 0: # if empty list go back one
             i -= 1
-        return dstr if i == 0 else f'{dstr}_{self.editNames[i][:8]}'
+        return dstr if i == 0 else f'{dstr} {self.editNames[i][:8]}'
 
     def getFileNameString(self): # returns list of all loaded files
         name = 'unknown'

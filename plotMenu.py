@@ -141,13 +141,13 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         if self.checkBoxMode:
             self.addLabels()
-            for i,axis in enumerate(dstrs):
+            for i,dstrList in enumerate(dstrs):
                 self.addPlot()
-                for dstr in axis:
+                for dstr,editNum in dstrList:
                     di = self.window.DATASTRINGS.index(dstr)
                     self.checkBoxes[i][di].setChecked(True)
         else:
-            for i,axis in enumerate(dstrs):
+            for i,dstrList in enumerate(dstrs):
                 self.plotCount += 1
 
             adstrs = []
@@ -256,9 +256,6 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             if len(dropList) > self.plotCount:
                 dropList = dropList[:(self.plotCount - len(dropList))]
 
-        #notes here since this is temp
-        #spectra is broken, trace stats broken. anything that interacts with getData needs to be fixed also getTimes i think..
-        #on line 285 and 241 in this file are attempts to not be able to select same dstr in same plot, also the dropdownlocked stuff around the file
         print(dropList)
 
         self.checkBoxes = []

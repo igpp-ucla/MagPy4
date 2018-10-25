@@ -258,7 +258,6 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.history.takeItem(curRow)
         del self.history[curRow]
 
-
     def onHistoryChanged(self, row):
         self.curSelection = self.history[row]
         self.window.currentEdit = row
