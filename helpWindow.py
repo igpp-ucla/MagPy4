@@ -6,7 +6,7 @@ import numpy as np
 
 class HelpWindowUI(object):
     def setupUI(self, Frame, window):
-        Frame.setWindowTitle('Help Window')
+        Frame.setWindowTitle('MagPy4 Help')
         Frame.resize(700,500)  
 
         self.layout = QtWidgets.QVBoxLayout(Frame)
@@ -30,8 +30,6 @@ These two matrixes give much information about wave properties. These properties
 </body></HTML>''')
 
         self.layout.addWidget(self.text)
-
-
         
 class HelpWindow(QtWidgets.QFrame, HelpWindowUI):
     def __init__(self, window, parent=None):

@@ -79,11 +79,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.timeEdit.start.dateTimeChanged.connect(self.onStartEditChanged)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
 
-        self.ui.actionPlot.triggered.connect(self.openPlotMenu)
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True))
         self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False))
         self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False,True))
+        self.ui.actionExit.triggered.connect(self.close)
         self.ui.actionShowData.triggered.connect(self.showData)
+        self.ui.actionPlot.triggered.connect(self.openPlotMenu)
         self.ui.actionSpectra.triggered.connect(self.openSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.actionHelp.triggered.connect(self.openHelp)
@@ -98,10 +99,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.bridgeDataGaps.triggered.connect(self.replotData)
         self.ui.drawPoints.triggered.connect(self.replotData)
 
-        self.plotMenu = None
-        self.edit = None
+        # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
+        self.enableToolsAndOptionsMenus(False)
+
         self.dataDisplay = None
+        self.plotMenu = None
         self.spectra = None
+        self.edit = None
         self.traceStats = None
         self.helpWindow = None
         self.aboutDialog = None
@@ -143,6 +147,22 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.openFF(starterFile)
             self.swapMode()
 
+#        tb = self.ui.toolBar
+#        print(f'toolBar = {tb}')
+
+#        items = ['Data', 'Plot', 'Spectra', 'Edit', 'Options']
+
+#        for toolbar in self.findChildren(QtWidgets.QToolBar):
+#            print('toolbar: %s' % toolbar.objectName())
+#            for action in toolbar.actions():
+#                if not action.isSeparator():
+#                    print(f'  action: {action}')
+
+    def enableToolsAndOptionsMenus(self, bool):
+        """Enable or disable the Tools and Options menus.
+        """
+        self.ui.toolsMenu.setEnabled(bool)
+        self.ui.optionsMenu.setEnabled(bool)
 
     # close any subwindows if main window is closed
     # this should also get called if flatfile changes
@@ -356,10 +376,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         FID = FF_File.FF_ID(PATH, status=FF_File.FF_STATUS.READ | FF_File.FF_STATUS.EXIST)
         if not FID:
             print('BAD FLATFILE')
+            self.enableToolsAndOptionsMenus(False)
             return False
         err = FID.open()
         if err < 0:
             print('UNABLE TO OPEN')
+            self.enableToolsAndOptionsMenus(False)
             return False
 
         print(f'\nOPEN {FID.name}')
@@ -491,8 +513,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.FIDs.append(FID)
 
         self.calculateAbbreviatedDstrs()
-
         self.calculateTimeVariables()
+
+        self.enableToolsAndOptionsMenus(True)
 
         return True
 
@@ -625,13 +648,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     self.DATADICT[dstr] = [[0, interpolated]]
                     self.UNITDICT[dstr] = units
 
-
         self.calculateTimeVariables()
         self.calculateAbbreviatedDstrs()
         #print('\n'.join(self.ABBRV_DSTRS))
 
-        cdf.close()
+        self.enableToolsAndOptionsMenus(True)
 
+        cdf.close()
 
     # split on '_' and calculate common tokens that appear in each one. then remove and reconstruct remainders
     # these abbreviations are used mainly for the cdf strings since those are longer so plots and stuff wont have super long strings in them

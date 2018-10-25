@@ -10,19 +10,6 @@ from mth import Mth
 
 class MagPy4UI(object):
 
-    def buildPopup(self, name, actions):
-        # add options popup menu for toggled things
-        popup = QtWidgets.QToolButton()
-        menu = QtWidgets.QMenu()
-        menu.setToolTipsVisible(True)
-        for action in actions:
-            menu.addAction(action)
-
-        popup.setMenu(menu)
-        popup.setText(f'{name} ') # extra space for little arrow icon
-        popup.setPopupMode(QtWidgets.QToolButton.InstantPopup)
-        return popup 
-
     def setupUI(self, window):
 
         # gives default window options in top right
@@ -32,50 +19,56 @@ class MagPy4UI(object):
         self.centralWidget = QtWidgets.QWidget(window)
         window.setCentralWidget(self.centralWidget)
 
-        # define actions
+        # Define actions.
+
         self.actionOpenFF = QtWidgets.QAction(window)
-        self.actionOpenFF.setPriority(QtWidgets.QAction.HighPriority)
-        self.actionOpenFF.setText('Open FF')
-        self.actionOpenFF.setShortcut('O')
+        #self.actionOpenFF.setPriority(QtWidgets.QAction.HighPriority)
+        self.actionOpenFF.setText('&Open FF...')
+        self.actionOpenFF.setShortcut('Ctrl+O')
         self.actionOpenFF.setToolTip('Opens a flatfile (requires valid .ffd and .ffh files)')
 
         self.actionAddFF = QtWidgets.QAction(window)
-        self.actionAddFF.setPriority(QtWidgets.QAction.HighPriority)
-        self.actionAddFF.setText('Add FF')
+        #self.actionAddFF.setPriority(QtWidgets.QAction.HighPriority)
+        self.actionAddFF.setText('&Add FF...')
         self.actionAddFF.setToolTip('Adds a flatfile to current (requires valid .ffd and .ffh files)')
 
         self.actionOpenCDF = QtWidgets.QAction(window)
-        self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
-        self.actionOpenCDF.setText('Open CDF')
+        #self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
+        self.actionOpenCDF.setText('Open &CDF...')
         self.actionOpenCDF.setToolTip('Opens a .cdf file (experimental)')
 
+        self.actionExit = QtWidgets.QAction(window)
+        self.actionExit.setText('E&xit')
+        self.actionExit.setToolTip('Closes the program\'s window and quits the program')
+
         self.actionShowData = QtWidgets.QAction(window)
-        self.actionShowData.setText('Data')
+        self.actionShowData.setText('&Data...')
         self.actionShowData.setToolTip('Shows the loaded data in a table view')
 
         self.actionPlot = QtWidgets.QAction(window)
-        self.actionPlot.setText('Plot')
+        self.actionPlot.setText('&Plot...')
         self.actionPlot.setToolTip('Opens plot menu')
 
         self.actionSpectra = QtWidgets.QAction(window)
-        self.actionSpectra.setText('Spectra')
+        self.actionSpectra.setText('&Spectra...')
         self.actionSpectra.setToolTip('Opens spectral analysis window')
 
         self.actionEdit = QtWidgets.QAction(window)
-        self.actionEdit.setText('Edit')
+        self.actionEdit.setText('&Edit...')
         self.actionEdit.setToolTip('Opens edit window that allows you to rotate the data with matrices')
 
-        self.scaleYToCurrentTimeAction = QtWidgets.QAction('Scale y range to current time selection',checkable=True,checked=True)
-        self.antialiasAction = QtWidgets.QAction('Smooth lines (antialiasing)',checkable=True,checked=True)
-        self.bridgeDataGaps = QtWidgets.QAction('Bridge Data Gaps', checkable=True, checked=False)
-        self.drawPoints = QtWidgets.QAction('Draw Points (unoptimized)', checkable=True, checked=False)
+        self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
+        self.antialiasAction = QtWidgets.QAction('Smooth &Lines (Antialiasing)',checkable=True,checked=True)
+        self.bridgeDataGaps = QtWidgets.QAction('&Bridge Data Gaps', checkable=True, checked=False)
+        self.drawPoints = QtWidgets.QAction('&Draw Points (Unoptimized)', checkable=True, checked=False)
 
         self.actionHelp = QtWidgets.QAction(window)
-        self.actionHelp.setText('Help')
+        self.actionHelp.setText('MagPy4 &Help')
+        self.actionHelp.setShortcut('F1')
         self.actionHelp.setToolTip('Opens help window with information about the program modules')
 
         self.actionAbout = QtWidgets.QAction(window)
-        self.actionAbout.setText('About')
+        self.actionAbout.setText('&About MagPy4')
         self.actionAbout.setToolTip('Displays the program\'s version number and copyright notice')
 
         self.runTests = QtWidgets.QAction(window)
@@ -86,31 +79,40 @@ class MagPy4UI(object):
         #self.switchMode.setText('Switch to MarsPy')
         #self.switchMode.setToolTip('Loads various presets specific to the Insight mission')
 
-        # build toolbar (todo switch to QMenuBar class, thats what i should have used to begin with lol
-        self.toolBar = QtWidgets.QToolBar(window)
-        window.addToolBar(QtCore.Qt.TopToolBarArea, self.toolBar)
+        # Build the menu bar.
 
-        file = self.buildPopup('File', [self.actionOpenFF, self.actionAddFF, self.actionOpenCDF])
-        self.toolBar.addWidget(file)
+        self.menuBar = window.menuBar()
 
-        self.toolBar.addAction(self.actionShowData)
-        self.toolBar.addAction(self.actionPlot)
+        self.fileMenu = self.menuBar.addMenu('&File')
+        self.fileMenu.addAction(self.actionOpenFF)
+        self.fileMenu.addAction(self.actionAddFF)
+        self.fileMenu.addAction(self.actionOpenCDF)
+        self.fileMenu.addSeparator()
+        self.fileMenu.addAction(self.actionExit)
 
-        self.toolBar.addAction(self.actionSpectra)
-        self.toolBar.addAction(self.actionEdit)
+        self.toolsMenu = self.menuBar.addMenu('&Tools')
+        self.toolsMenu.addAction(self.actionShowData)
+        self.toolsMenu.addAction(self.actionPlot)
+        self.toolsMenu.addAction(self.actionSpectra)
+        self.toolsMenu.addAction(self.actionEdit)
 
-        options = self.buildPopup('Options', [self.scaleYToCurrentTimeAction, self.antialiasAction, self.bridgeDataGaps, self.drawPoints])
-        self.toolBar.addWidget(options) 
+        self.optionsMenu = self.menuBar.addMenu('&Options')
+        self.optionsMenu.addAction(self.scaleYToCurrentTimeAction)
+        self.optionsMenu.addAction(self.antialiasAction)
+        self.optionsMenu.addAction(self.bridgeDataGaps)
+        self.optionsMenu.addAction(self.drawPoints)
 
-        self.toolBar.addAction(self.actionHelp)
-        self.toolBar.addAction(self.actionAbout)
+        self.helpMenu = self.menuBar.addMenu('&Help')
+        self.helpMenu.addAction(self.actionHelp)
+        self.helpMenu.addSeparator()
+        self.helpMenu.addAction(self.actionAbout)
 
         #empty widget (cant use spacer in toolbar?) does same thing tho so this action goes far right
-        spacer = QtWidgets.QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.toolBar.addWidget(spacer)
+        #spacer = QtWidgets.QWidget()
+        #spacer.setSizePolicy(QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        #self.toolBar.addWidget(spacer)
 
-        self.toolBar.addAction(self.switchMode)
+        #self.toolBar.addAction(self.switchMode)
         #self.toolBar.addAction(self.runTests)
 
         self.gview = pg.GraphicsView()
@@ -162,8 +164,6 @@ class MagPy4UI(object):
 
         self.startSlider.blockSignals(False)
         self.endSlider.blockSignals(False)
-
-
 
 class TimeEdit():
     def __init__(self, font):
