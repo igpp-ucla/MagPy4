@@ -33,17 +33,17 @@ class EditUI(object):
 
         builderLayout = QtWidgets.QVBoxLayout(builderFrame)
 
-        self.manRotButton = QtGui.QPushButton('Custom Rotation')
-        self.manRotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.manRotButton.setToolTip('Enter a custom matrix, or build one with simple builders')
-        builderLayout.addWidget(self.manRotButton)
+        self.customRotButton = QtGui.QPushButton('Custom Rotation...')
+        self.customRotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.customRotButton.setToolTip('Enter a custom matrix, or build one with simple builders')
+        builderLayout.addWidget(self.customRotButton)
 
-        self.minVarButton = QtGui.QPushButton('Minimum Variance')
+        self.minVarButton = QtGui.QPushButton('Minimum Variance...')
         self.minVarButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.minVarButton.setToolTip('Build a rotation matrix by selecting a minimum variance window')
         builderLayout.addWidget(self.minVarButton)
 
-        self.filterButton = QtGui.QPushButton('Filter')
+        self.filterButton = QtGui.QPushButton('Filter...')
         self.filterButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.filterButton.setToolTip('Apply various filters to smooth data')
 
@@ -80,17 +80,15 @@ class EditUI(object):
 
         rightLayout.addWidget(histFrame)
 
-
     def makeHorizontalLine(self):
         horizontal = QtWidgets.QFrame()
         horizontal.setFrameShape(QtWidgets.QFrame.HLine)
         horizontal.setFrameShadow(QtWidgets.QFrame.Sunken)
         return horizontal
-        
 
-class ManRotUI(object):
+class CustomRotUI(object):
     def setupUI(self, Frame, window):
-        Frame.setWindowTitle('Manual Rotation')
+        Frame.setWindowTitle('Custom Rotation')
         Frame.resize(300,300)
 
         self.layout = QtWidgets.QVBoxLayout(Frame)
@@ -116,7 +114,7 @@ class ManRotUI(object):
 
         axFrame = QtWidgets.QGroupBox('By Axis Angle')
         axLayout = QtWidgets.QHBoxLayout(axFrame)
-        angleLabel = QtGui.QLabel('Angle')
+        angleLabel = QtGui.QLabel('Angle:')
         angleLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.axisAngle = QtGui.QDoubleSpinBox()
         self.axisAngle.setWrapping(True)
@@ -127,11 +125,12 @@ class ManRotUI(object):
         axLayout.addWidget(self.axisAngle)
         self.genButtons = []
         for ax in Mth.AXES:
-            gb = QtGui.QPushButton(f'{ax}')
+            gb = QtGui.QRadioButton(f'{ax}')
             gb.setMinimumWidth(5)
             gb.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum))
             axLayout.addWidget(gb)
             self.genButtons.append(gb)
+        self.genButtons[0].setChecked(True)
 
         self.layout.addWidget(axFrame)
 
@@ -141,7 +140,7 @@ class ManRotUI(object):
         self.applyButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
         self.layout.addWidget(self.applyButton)
 
-
+        self.layout.setAlignment(self.applyButton, QtCore.Qt.AlignRight)
 
 class MinVarUI(object):
     def setupUI(self, Frame, window):
@@ -184,4 +183,3 @@ class MinVarUI(object):
         self.applyButton = QtWidgets.QPushButton('Apply')
         self.applyButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
         self.layout.addWidget(self.applyButton)
-

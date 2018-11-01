@@ -10,7 +10,7 @@ from math import sin, cos, acos, fabs, pi
 import functools
 import time
 
-from editUI import EditUI, ManRotUI, MinVarUI
+from editUI import EditUI, CustomRotUI, MinVarUI
 from FilterDialog import FilterDialog
 
 from mth import Mth
@@ -70,11 +70,10 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         self.minVar = None
         self.ui.minVarButton.clicked.connect(self.openMinVar)
-        self.manRot = None
-        self.ui.manRotButton.clicked.connect(self.openManRot)
+        self.customRot = None
+        self.ui.customRotButton.clicked.connect(self.openCustomRot)
         self.filter = None
         self.ui.filterButton.clicked.connect(self.openFilter)
-
 
     def closeEvent(self, event):
         # save edit history
@@ -86,22 +85,23 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         self.window.editHistory = hist
 
-        self.closeManRot()
+        self.closeCustomRot()
         self.closeMinVar()
 
     def closeSubWindows(self):
-        self.closeManRot()
+        self.closeCustomRot()
         self.closeMinVar()
         self.closeFilter()
 
-    def openManRot(self):
+    def openCustomRot(self):
         self.closeSubWindows()
-        self.manRot = ManRot(self, self.window)
-        self.manRot.show()
-    def closeManRot(self):
-        if self.manRot:
-            self.manRot.close()
-            self.manRot = None
+        self.customRot = CustomRot(self, self.window)
+        self.customRot.show()
+
+    def closeCustomRot(self):
+        if self.customRot:
+            self.customRot.close()
+            self.customRot = None
 
     def openMinVar(self):
         self.closeSubWindows()
@@ -120,7 +120,6 @@ class Edit(QtWidgets.QFrame, EditUI):
         if self.filter:
             self.filter.close()
             self.filter = None
-
 
     def setVectorDropdownsBlocked(self, blocked):
         for row in self.axisDropdowns:
@@ -243,7 +242,6 @@ class Edit(QtWidgets.QFrame, EditUI):
         uihist.addItem(item)   
         uihist.setCurrentRow(uihist.count() - 1)
 
-
     # removes selected history
     def removeHistory(self):
         curRow = self.ui.history.currentRow()
@@ -303,25 +301,31 @@ class Edit(QtWidgets.QFrame, EditUI):
             self.window.DATADICT[ystr].append(M[:,1])
             self.window.DATADICT[zstr].append(M[:,2])
 
-
-class ManRot(QtWidgets.QFrame, ManRotUI):
+class CustomRot(QtWidgets.QFrame, CustomRotUI):
     def __init__(self, edit, window, parent=None):
-        super(ManRot, self).__init__(parent)#, QtCore.Qt.WindowStaysOnTopHint)
+        super(CustomRot, self).__init__(parent)#, QtCore.Qt.WindowStaysOnTopHint)
         self.edit = edit
         self.window = window
 
-        self.ui = ManRotUI()
+        self.ui = CustomRotUI()
         self.ui.setupUI(self, window)
 
         self.FLAG = 1.e-10
         self.D2R = pi / 180.0 # degree to rad conversion constant
 
-        for i,gb in enumerate(self.ui.genButtons):
-            gb.clicked.connect(functools.partial(self.axisRotGen, Mth.AXES[i]))
-
         self.ui.loadIdentity.clicked.connect(functools.partial(self.ui.R.setMatrix, Mth.IDENTITY))
         self.ui.loadZeros.clicked.connect(functools.partial(self.ui.R.setMatrix, Mth.empty()))
         self.ui.loadCurrentEditMatrix.clicked.connect(self.loadCurrentEditMatrix)
+
+        self.ui.axisAngle.valueChanged.connect(self.axisAngleChanged)
+
+        self.axisChecked = None
+
+        for i,gb in enumerate(self.ui.genButtons):
+            gb.clicked.connect(functools.partial(self.axisRotGen, Mth.AXES[i]))
+            if gb.isChecked():
+                self.axisChecked = gb.text()
+
         self.ui.applyButton.clicked.connect(self.apply)
 
         self.lastOpName = 'Custom'
@@ -331,14 +335,18 @@ class ManRot(QtWidgets.QFrame, ManRotUI):
     def apply(self):
         # figure out if custom on axisrot
         self.edit.apply(self.ui.R.getMatrix(), '', self.lastOpName)
-        self.edit.closeManRot()
+        self.edit.closeCustomRot()
         PyQtUtils.moveToFront(self.edit)
 
     def axisRotGen(self, axis):
+        self.axisChecked = axis
         angle = self.ui.axisAngle.value()
         R = self.genAxisRotationMatrix(axis, angle)
         self.ui.R.setMatrix(R)
         self.lastOpName = f'{axis}{angle}rot'
+
+    def axisAngleChanged(self):
+        self.axisRotGen(self.axisChecked)
 
     # axis is x,y,z
     def genAxisRotationMatrix(self, axis, angle):
@@ -455,7 +463,6 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         if eigen[2][0] < 0.:
             eigen[1] = np.negative(eigen[1])
             eigen[2] = np.negative(eigen[2])
-        
 
         ev = [w[2], w[1], w[0]]
         prec = 6
@@ -466,4 +473,3 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         self.edit.apply(eigen, labelText, 'minvar')
         #self.edit.closeMinVar()
         PyQtUtils.moveToFront(self.edit)
-
