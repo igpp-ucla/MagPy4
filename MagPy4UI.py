@@ -23,19 +23,19 @@ class MagPy4UI(object):
 
         self.actionOpenFF = QtWidgets.QAction(window)
         #self.actionOpenFF.setPriority(QtWidgets.QAction.HighPriority)
-        self.actionOpenFF.setText('&Open FF...')
+        self.actionOpenFF.setText('&Open Flat File...')
         self.actionOpenFF.setShortcut('Ctrl+O')
-        self.actionOpenFF.setToolTip('Opens a flatfile (requires valid .ffd and .ffh files)')
+        self.actionOpenFF.setToolTip('Opens a flat file')
 
         self.actionAddFF = QtWidgets.QAction(window)
         #self.actionAddFF.setPriority(QtWidgets.QAction.HighPriority)
-        self.actionAddFF.setText('&Add FF...')
-        self.actionAddFF.setToolTip('Adds a flatfile to current (requires valid .ffd and .ffh files)')
+        self.actionAddFF.setText('&Add Flat File...')
+        self.actionAddFF.setToolTip('Adds a flat file')
 
         self.actionOpenCDF = QtWidgets.QAction(window)
         #self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
-        self.actionOpenCDF.setText('Open &CDF...')
-        self.actionOpenCDF.setToolTip('Opens a .cdf file (experimental)')
+        self.actionOpenCDF.setText('Open &CDF File...')
+        self.actionOpenCDF.setToolTip('Opens a CDF file (experimental)')
 
         self.actionExit = QtWidgets.QAction(window)
         self.actionExit.setText('E&xit')
@@ -86,6 +86,7 @@ class MagPy4UI(object):
         self.fileMenu = self.menuBar.addMenu('&File')
         self.fileMenu.addAction(self.actionOpenFF)
         self.fileMenu.addAction(self.actionAddFF)
+        self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.actionOpenCDF)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.actionExit)
