@@ -265,7 +265,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         # rebuild edit name list
         self.window.editNames = [self.ui.history.item(i).text() for i in range(self.ui.history.count())]
 
-        self.window.replotData()
+        self.window.replotData(row) # provide row (which is the edit number) so plotter can try to swap things to that automatically
 
         #print('-------------------------')
         #for k,v in self.window.DATADICT.items():

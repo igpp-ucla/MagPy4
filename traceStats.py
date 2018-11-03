@@ -81,7 +81,6 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         for dstrs,pens in plotInfo:
             group = []
             for i,(dstr,en) in enumerate(dstrs):
-
                 i0,i1 = self.window.calcDataIndicesFromLines(dstr,en)
 
                 rowStrs.append([self.window.getLabel(dstr,en), pens[i].color().name()])
@@ -111,7 +110,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
                 rowData = rowStrs[rowIndex]
                 rowHeader = QtWidgets.QTableWidgetItem(rowData[0])
                 rowHeader.setForeground(QtGui.QColor(rowData[1]))
-                if g %2 == 1:
+                if g % 2 == 1:
                     rowHeader.setBackground(altBackground)
                 self.ui.table.setVerticalHeaderItem(rowIndex,rowHeader)
 
@@ -136,6 +135,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         #else:
         #    self.ui.table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
+    # this is for copy and paste functionality
     # todo: work on formatting here, oftentimes one tab is too short when strings are long
     # could just calculate purely with spaces
     def keyPressEvent(self, e):

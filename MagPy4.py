@@ -1051,18 +1051,46 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             la.setWidth(maxWidth)
         #print(maxWidth)
         
-    def replotData(self):
-        """simply redraws the traces and ensures y range is correct without rebuilding everything"""
-
+    def replotData(self, desiredEdit):
+        """simply redraws the traces and ensures y range is correct without rebuilding everything
+           if desiredEdit is defined it will try to plot strings at that edit if they have data there
+        """
         for i in range(len(self.plotItems)):
             pi = self.plotItems[i]
             plotStrs = self.lastPlotStrings[i]
-            #print(f'plotStrs      = {plotStrs}')
             pens = self.plotTracePens[i]
             pi.clearPlots()
-            for i,(dstr,editNum) in enumerate(plotStrs):
-                #print(f'i,dstr        = {i},{dstr}')
-                self.plotTrace(pi, dstr, editNum, pens[i])
+
+            # keep track of the frequency of strings in each plot (regardless of edit number)
+            if desiredEdit is not None:
+                seenCount = {} # how many times this string has been seen
+                for dstr,en in plotStrs:
+                    if dstr in seenCount:
+                        seenCount[dstr]+=1
+                    else:
+                        seenCount[dstr] = 1
+
+            j = 0
+            while j < len(plotStrs):
+                dstr,editNum = plotStrs[j]
+
+                edits = self.DATADICT[dstr]
+
+                # if u have multiple edits of same data string on this plot then ignore the desiredEdit option
+                if desiredEdit is not None and seenCount[dstr] == 1:
+                    # if string has data with this edit
+                    if len(edits[desiredEdit]) > 0:
+                        editNum = desiredEdit
+                elif editNum >= len(edits): # if bad edit number then delete (happens usually when u delete an edit that is currently plotted)
+                    del plotStrs[j]
+                    continue
+
+                plotStrs[j] = dstr,editNum #save incase changes were made (so this reflects elsewhere)
+
+                self.plotTrace(pi, dstr, editNum, pens[j])
+
+                j+=1
+
         self.setYAxisLabels()
         self.updateYRange()
 

@@ -256,7 +256,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             if len(dropList) > self.plotCount:
                 dropList = dropList[:(self.plotCount - len(dropList))]
 
-        print(dropList)
+        #print(dropList)
 
         self.checkBoxes = []
         self.dropdowns = []
