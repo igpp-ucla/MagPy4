@@ -39,8 +39,7 @@ class DataDisplayUI(object):
         self.fileCombo.setSizeAdjustPolicy(QtGui.QComboBox.AdjustToContents)
         fileHL.addWidget(self.fileCombo, 0, 1, 1, 1)
         filePathLayout = QtGui.QHBoxLayout()
-        self.filePathCB = QtGui.QCheckBox()
-        filePathLayout.addWidget(QtGui.QLabel('Show full path'))
+        self.filePathCB = QtGui.QCheckBox('Show Full &Path')
         filePathLayout.addWidget(self.filePathCB)
         filePathLayout.addStretch()
         fileHL.addLayout(filePathLayout, 1, 1, 1, 1)
@@ -91,9 +90,9 @@ class DataDisplayUI(object):
 
         dataFrame.setWindowTitle("Flat File Data")
         self.timesLabel.setText("TextLabel")
-        self.checkBox.setText("Time Ticks")
-        self.moveByTime.setText("Go to Time")
-        self.moveByRow.setText("Go to Row")
+        self.checkBox.setText("Sho&w Ticks")
+        self.moveByTime.setText("Go to &Time")
+        self.moveByRow.setText("Go to &Row")
 
         QtCore.QMetaObject.connectSlotsByName(dataFrame)
 
@@ -201,7 +200,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 
         self.ui.buttonBox.rejected.connect(self.close)
         buttonBox = self.ui.buttonBox
-        saveButton = QtGui.QPushButton("Save Data")
+        saveButton = QtGui.QPushButton("&Save Data")
         saveButton.clicked.connect(self.saveData)
         buttonBox.addButton(saveButton, QtGui.QDialogButtonBox.ApplyRole)
         self.ui.checkBox.clicked.connect(self.toggleTimeDisplay)
