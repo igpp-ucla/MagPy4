@@ -8,79 +8,94 @@
 <body>
     <h1>MagPy4 Help</h1>
     <h2>Overview</h2>
-    <p>The MagPy4 program is designed to simplify the analysis of magnetic field data. It allows you
-        to examine the three components of the vector magnetic field and the total magnetic field as a function of
-        time. Once an interesting segment of data has been identified, the program enables you to apply any one
-        of a series of standard analysis tools to the data. Characteristics of the data can be used to choose more
-        natural coordinate systems in which to display the data. The data may be filtered, Fourier analyzed, etc.</p>
+    <p>MagPy4 simplifies the analysis of magnetic field data. Using the program, you can examine the three components
+        of the vector magnetic field and the total magnetic field as a function of time. When you have identified an
+        interesting segment of data, you can apply any one of a series of standard analysis tools to that data. You can
+        use the characteristics of the data to choose more natural coordinate systems in which to display the data. You
+        can filter the data, perform Fourier analysis of the data, and so on.</p>
+    <h2>Menu Commands</h2>
     <h3>File</h3>
-    <p>The File menu is used to open and add flat files and CDF files.</p>
-    <h3>Data</h3>
-    <p>The Data window allows you to view all the data information contained in the flat files you choose. It also
-        allows you to choose a specific time or a specific row and to view the corresponding magnetic field data.</p>
-    <h3>Plot</h3>
-    <p>The plot window allows you to add or remove plots. You can choose which components of the magnetic field data
-        to plot. It also allows you to clear all plots. All plots are shown in the main plotting window.</p>
-    <h3>Spectra</h3>
-    <p>The Spectra window gives you the power spectrum of the magnetic field signals, the coherence and
-        the phase difference between any two components of the magnetic field in the time interval you choose.
-        Moreover, the window allows you to do wave analysis.</p>
+    <p>The File menu allows you to open and add flat files, and to open CDF files.</p>
+    <h3>Tools &gt; Data</h3>
+    <p>The Data window allows you to view all the information about the data contained in the files you opened. It also
+        allows you to choose a specific time or a specific data row and to view the corresponding magnetic field data.</p>
+    <h3>Tools &gt; Plot</h3>
+    <p>The Plot window allows you to add plots to the program's main window or to remove plots that are already
+        displayed there. You can also clear all plots from the window. You can choose which components of the magnetic
+        field data to plot.</p>
+    <h3>Tools &gt; Spectra</h3>
+    <p>After selecting a time interval in the program's main window, the Spectra window displays the power spectrum of
+        the magnetic field signals, the coherence and the phase difference between any two components of the magnetic
+        field. The Spectra windows also allows you to perform wave analysis.</p>
     <h4>Power spectrum</h4>
-    <p>A digital signal containing n points sampled every &Delta;t is n&Delta;t seconds long. The lowest frequency that
-        can be accurately determined in this finite length time series is (n&Delta;t)-1 and the highest is
-        (2&Delta;t)-1 because two data points are required to define a wave. This maximum frequency is called the
+    <p>A digital signal containing <i>n</i> points sampled every <i>&Delta;t</i> is <i>n&Delta;t</i> seconds long. The
+        lowest frequency that can be accurately determined in this finite length time series is <i>n&Delta;t-1</i> and
+        the highest is <i>2&Delta;t-1</i> because two data points are required to define a wave. This maximum frequency
+        is called the
         Nyquist frequency. Fast Fourier transform routines can transform a time series of fluctuations of one component
-        of magnetic field signals into a series of cosine and sine amplitudes,</p>
-    <p>C<sub>0</sub>, C<sub>1</sub>, &hellip;, C<sub>n/2-1</sub></p>
-    <p>S<sub>1</sub>, S<sub>2</sub>, &hellip;, S<sub>n/2</sub></p>
-    <p>If there are three orthogonal measurements of wave amplitudes in direction x, y, z, we can form the cospectral
-        matrix of variances and cross variances at each frequency i: MISSING TEXT HERE</p>
+        of magnetic field signals into a series of cosine and sine amplitudes:</p>
+    <p><i>C<sub>0</sub></i>, <i>C<sub>1</sub></i>, &hellip;, <i>C<sub>n/2-1</sub></i></p>
+    <p><i>S<sub>1</sub></i>, <i>S<sub>2</sub></i>, &hellip;, <i>S<sub>n/2</sub></i></p>
+    <p>If there are three orthogonal measurements of wave amplitudes in direction x, y, and z, we can form the
+        cospectral matrix of variances and cross variances at each frequency <i>i</i>: <span class='attention'>MISSING
+            TEXT HERE</span></p>
     <p>This matrix is the cospectral density of the signal.</p>
     <p>If averaging the sum of the diagonal terms over frequency, the plot would show the power spectral
-        density of the signal versus frequency which is called the power frequency.</p>
+        density of the signal versus frequency, which is called the power frequency.</p>
     <h4>Wave Analysis</h4>
     <p>The cospectrum matrix is the real part of the spectrum matrix. The imaginary part of the spectrum matrix, which
-        is called quaspectrum matrix, can be calculated at each frequency i by MISSING TEXT HERE</p>
+        is called the quaspectrum matrix, can be calculated at each frequency i by MISSING TEXT HERE</p>
     <p>These two matrixes give much information about wave properties. These properties were exploited by Born
         and Wolf (1970) to analyze optical signals and by Rankin and Kurtz (1970) to analyze micropulsations. Means
-        (1972) showed that the direction of propagation can be directly obtained from the matrix Q<sub>i</sub>.</p>
+        (1972) showed that the direction of propagation can be directly obtained from the matrix <i>Q<sub>i</sub></i>.</p>
     <h4>Coherence</h4>
-    <p>The coherence between signals 1 and signals 2 is defined by. Where C<sub>ij</sub> is the ij-component of the
-        cospectrum and Q<sub>ij</sub> is the ij-component of the quaspectrum.</p>
+    <p>The coherence between signals 1 and signals 2 is defined by <span class='attention'>MISSING TEXT HERE</span>,
+        where <i>C<sub>ij</sub></i> is
+        the ij-component of the cospectrum and <i>Q<sub>ij</sub></i> is the ij-component of the quaspectrum.</p>
     <h4>Phase</h4>
     <p>Phase is the difference, expressed in degrees or radians, between two waves having the same frequency and
-        referenced to the same point in time. The 1,2 phase is defined as MISSING TEXT HERE</p>
-    <h3>Edit</h3>
-    <p>The Edit window allows you to do matrix rotation and filtering. You can either input a custom rotation or click
-        the minimum variance button to calculate the minimum variance matrix, and then transform the magnetic field
-        vector to the new coordinate.</p>
-    <h4>Minimum variance</h4>
+        referenced to the same point in time. The 1,2 phase is defined as <span class='attention'>MISSING TEXT HERE</span></p>
+    <h3>Tools &gt; Edit</h3>
+    <p>The Edit window allows you to perform matrix rotation and filtering. You can either click the Custom Rotation
+        button to specify a custom rotation or click the Minimum Variance button to calculate the minimum variance
+        matrix, and then transform the magnetic field vector to the new coordinate. You can also click the Filter
+        button to filter the data.</p>
+    <h4>Minimum Variance</h4>
     <p>By solving an eigenvalue problem, it is possible to calculate the rotation matrix that rotates a vector time
         series into a coordinate system in which the direction of the coordinate axes are those of the maximum
-        variance, the minimum variance and an intermediate variance. The eigenvectors are the rows of the
+        variance, the minimum variance, and an intermediate variance. The eigenvectors are the rows of the
         transformation matrix and the eigenvalues are the variances along each direction. These directions are called
-        the principal axes. The system is also called minimum variance coordinate system. It can often be used at the
-        magnetopause, but not at shocks. Usually the direction in which the magnetic field has a minimum variance is
-        the direction normal to the magnetopause. Assume the data set you choose is [B<sub>1</sub>, B<sub>2</sub>,
-        &hellip;, B<sub>N</sub>] and construct a variance matrix M. Nine terms of M is m<sub>ij</sub> (i and j
-        represent the x, y, z components). Assume the eigenvalues of M is &lambda;<sub>&mu;</sub> (&mu;=1,2,3) and the
-        eigenvectors that form the transformation matrix is V<sub>&mu;</sub>, MV<sub>&mu;</sub> = &lambda;<sub>&mu;</sub>
-        V<sub>&mu;</sub>.</p>
+        the principal axes. The system is also called the minimum variance coordinate system. It can often be used at
+        the magnetopause, but not at shocks. Usually, the direction in which the magnetic field has a minimum variance
+        is the direction normal to the magnetopause.</p>
+    <p>Assume the data set you choose is [<i>B<sub>1</sub></i>, <i>B<sub>2</sub></i>,
+        &hellip;, <i>B<sub>N</sub></i>] and construct a variance matrix <i>M</i>. Nine terms of <i>M</i> are <i>m<sub>ij</sub></i>
+        (i and j represent the x, y, and z components). Assume the eigenvalues of <i>M</i> are <i>&lambda;<sub>&mu;</sub></i>
+        (<i>&mu;</i>=1,2,3) and the eigenvectors that form the transformation matrix are <i>V<sub>&mu;</sub></i>,
+        <i>MV<sub>&mu;</sub></i> = <i>&lambda;<sub>&mu;</sub></i>
+        <i>V<sub>&mu;</sub></i>.</p>
     <h3>Options</h3>
-    <p>The option menu allows you to change the style of the plot you want. You can choose to plot smooth lines of
-        antialiasing lines. Or you can even only draw points. It also allows you to rescale the y-range to current time
-        interval selection.</p>
+    <p>The Options menu allows you to change the style of the plot. You can choose to scale the y-range of the data
+        to the current time selection, to draw smooth, antialiased lines, to bridge the gaps between data, and to
+        draw only data points rathern than lines between those points.</p>
+    <h2>Main Plot Window</h2>
     <h3>Time Interval Selection Bar</h3>
-    <p>The time interval selection bar allows you to change the time interval displayed in the window. The top bar
-        controls the start time of the time interval and the bottom bar controls the stop time of the time interval.</p>
+    <p>The time interval selection bar allows you to change the time interval of the data plotted in the program's
+        main window. The top bar controls the start time and the bottom bar controls the stop time.</p>
     <h3>Trace Stats</h3>
-    <p>The trace stats menu will pop up when you click the start and stop time you are interested in on the main
-        plotting window. It shows you the minimum value, maximum value, mean value, median value and standard deviation
-        of the magnetic field data in the time interval you choose.</p>
-    <p>Suppose [x<sub>1</sub>, x<sub>2</sub>, &hellip;, x<sub>N</sub>] is the data set of one component of the vector
-        magnetic field or the total magnetic field in the time interval you choose. Minimum is the smallest value of
-        this data set and maximum is the largest value of this data set. The median is the value separating the higher
-        half from the lower half of the data set. Suppose the mean value is &mu; and the standard deviation is &sigma;.</p>
+    <p>The Trace Stats window appears when you click the start and stop time you are interested in on the main
+        plotting window. It shows you the minimum value, maximum value, mean value, median value, and standard
+        deviation of the magnetic field data in the time interval you choose.</p>
+    <p>Suppose [<i>x<sub>1</sub></i>, <i>x<sub>2</sub></i>, &hellip;, <i>x<sub>N</sub></i>] is the data set of one
+        component of the vector magnetic field or the total magnetic field in the time interval you choose. Minimum
+        is the smallest value of this data set and maximum is the largest value. The median is the value separating
+        the higher
+        half from the lower half of the data set. Suppose the mean value is <i>&mu;</i> and the standard deviation
+        is <i>&sigma;.</i></p>
+    <p><span class='attention'>MISSING TEXT HERE</span>. The above explanation sounds like it's not finished.</p>
+    <h3>Context (Right-Click) Menu</h3>
+    <p><span class='attention'>MISSING TEXT HERE</span>.</p>
+    <p>Lots of explanation needed here. There are menus and submenus and lots of options.</p>
 </body>
 
 </html>

@@ -102,3 +102,11 @@ img
 {
 	border: 0;
 }
+
+/* Spans */
+
+span.attention
+{
+	color: #FF0000;
+	font-weight: bold;
+}
