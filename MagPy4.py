@@ -1151,19 +1151,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             maxVal = -np.inf
             # find min and max values out of all traces on this plot
             for (dstr,editNum) in dstrs:
-                scaleYToCurrent = self.ui.scaleYToCurrentTimeAction.isChecked()
-                X = self.getTimes(dstr,editNum)[0] # first in list is time series
-                a = self.calcDataIndexByTime(X, self.tO)
-                b = self.calcDataIndexByTime(X, self.tE)
-                if a == b: # both are out of range on same side so data shouldnt be plotted
-                    #print(f'"{dstr}" out of range, not plotting') # can get rid of this warning later but want to see it in action first
-                    outOfRangeCount += 1
-                    continue
+                Y = self.getData(dstr,editNum)
+                if self.ui.scaleYToCurrentTimeAction.isChecked():
+                    X = self.getTimes(dstr,editNum)[0] # first in list is time series
+                    a = self.calcDataIndexByTime(X, self.tO)
+                    b = self.calcDataIndexByTime(X, self.tE)
+                    if a == b: # both are out of range on same side so data shouldnt be plotted
+                        #print(f'"{dstr}" out of range, not plotting') # can get rid of this warning later but want to see it in action first
+                        outOfRangeCount += 1
+                        continue
 
-                if a > b: # so sliders work either way
-                    a,b = b,a
+                    if a > b: # so sliders work either way
+                        a,b = b,a
 
-                Y = self.getData(dstr,editNum)[a:b]
+                    Y = Y[a:b] # get correct slice
 
                 minVal = min(minVal, Y.min())
                 maxVal = max(maxVal, Y.max())
