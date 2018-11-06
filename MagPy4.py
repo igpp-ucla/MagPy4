@@ -100,8 +100,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # options menu dropdown
         self.ui.scaleYToCurrentTimeAction.triggered.connect(self.updateYRange)
         self.ui.antialiasAction.triggered.connect(self.toggleAntialiasing)
-        self.ui.bridgeDataGaps.triggered.connect(self.replotData)
-        self.ui.drawPoints.triggered.connect(self.replotData)
+        self.ui.bridgeDataGaps.triggered.connect(self.replotDataCallback)
+        self.ui.drawPoints.triggered.connect(self.replotDataCallback)
 
         # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
         self.enableToolsAndOptionsMenus(False)
@@ -1050,11 +1050,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             la = pi.getAxis('left')
             la.setWidth(maxWidth)
         #print(maxWidth)
+
+    def replotDataCallback(self):
+        # done this way to ignore the additional information ui callbacks will provide
+        self.replotData()
         
-    def replotData(self, desiredEdit):
+    def replotData(self, desiredEdit=None):
         """simply redraws the traces and ensures y range is correct without rebuilding everything
            if desiredEdit is defined it will try to plot strings at that edit if they have data there
         """
+
         for i in range(len(self.plotItems)):
             pi = self.plotItems[i]
             plotStrs = self.lastPlotStrings[i]
