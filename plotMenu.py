@@ -51,14 +51,14 @@ class PlotMenuUI(object):
         buttonLayout.addWidget(self.switchButton, 0, 4, 1, 1)
 
         buttonLayout.addWidget(self.plotButton, 1, 0, 1, 3)
-        buttonLayout.addLayout(errorFlagLayout, 1, 3, 1, 1)
+
+        buttonLayout.addLayout(errorFlagLayout, 1, 4, 1, 1)
 
         self.editCombo = QtWidgets.QComboBox()
-        buttonLayout.addWidget(self.editCombo, 1, 4, 1, 1)
+        buttonLayout.addWidget(self.editCombo, 1, 3, 1, 1)
 
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         buttonLayout.addItem(spacer, 0, 10, 1, 1)
-
         self.layout.addLayout(buttonLayout)
 
         self.gridFrame = QtWidgets.QGroupBox('Plot Matrix')
@@ -132,7 +132,6 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.plotCount = 0
         self.checkBoxes = []
         self.dropdowns = [] # list of lists for each row and each element in row is (combobox, editNum)
-        self.dropdownLocked = [] # list of sets for each plot of locked options
         PyQtUtils.clearLayout(self.ui.grid)
 
         if dstrs is None:
@@ -216,6 +215,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
     # removing things correctly from qgridlayouts lol
     # empty dropdowns will have options based on current edit selection
     # filled dropdowns choices will be remembered and unavailable in subsequent dropdowns of same edit
+        # this part is done in somewhat convoluted way rather than just comparing strings to cover the case where multiple edits have same name
     def rebuildDropdowns(self, overrideList = None):
         # first part of this function saves all the current strings selected
         dropList = []
@@ -228,23 +228,16 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                 row.append(('',currentEN))
                 dropList.append(row)
         else: # check what dropdowns are currently and rebuild (incase too many emptys or need to redo possible strs)
-            for ddRow,lockedSet in zip(self.dropdowns,self.dropdownLocked):
+            for ddRow in self.dropdowns:
                 row = []
                 for dd,en in ddRow:
-                    idx = dd.currentIndex() - 1
-                    if idx >= 0: # not empty selected then figure out what is original dstr
-                        i = 0
-                        for k,v in self.window.DATADICT.items():
-                            if len(v[en]) == 0:
-                                continue
-
-                            #if (k,en) in lockedSet:
-                            #    idx += 1
-
-                            if i == idx:
-                                row.append((k,en))
-                                break
-                            i += 1
+                    # get current text and and find matching name
+                    curStr = dd.currentText()
+                    for k,v in self.window.DATADICT.items():
+                        editStr = self.window.getLabel(k,en)
+                        if curStr == editStr:
+                            row.append((k,en))
+                            break
 
                 # always add empty to end of row
                 row.append(('',currentEN))
@@ -256,13 +249,11 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             if len(dropList) > self.plotCount:
                 dropList = dropList[:(self.plotCount - len(dropList))]
 
-        #print(dropList)
-
         self.checkBoxes = []
         self.dropdowns = []
-        self.dropdownLocked = []
         PyQtUtils.clearLayout(self.ui.grid)
 
+        # for each dropdown row in all the dropdowns
         for di,dropRow in enumerate(dropList):
             # add spacer in first row to take up right space
             if di == 0:
@@ -272,26 +263,28 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             plotLabel = QtWidgets.QLabel()
             plotLabel.setText(f'Plot{di+1}')
             self.ui.grid.addWidget(plotLabel,di,0,1,1)
-            lockedSet = set() # keeps track of options already chosen as tuple of (dstr,en)
             row = []
+
+            # for each dropdown in row
             for i,(dstr,en) in enumerate(dropRow):
                 dd = QtWidgets.QComboBox()
                 dd.addItem('')
 
+                # lock other selected options on this row from being available in your list
+                lockedSet = set(dropRow)
+                lockedSet.remove((dstr,en)) # except the one this dropdown had selected
                 for k,v in self.window.DATADICT.items():
-                    if len(v[en]) > 0:# and (k,en) not in lockedSet:
+                    if len(v[en]) > 0 and (k,en) not in lockedSet: # if dstr has data for this edit and not locked
                         s = self.window.getLabel(k,en)
                         dd.addItem(s)
-                        if k == dstr:
+                        if k == dstr: # select the one you had selected
                             dd.setCurrentIndex(dd.count()-1)
-                            lockedSet.add((k,en))
 
                 dd.currentTextChanged.connect(self.rebuildDropdowns)
                 self.ui.grid.addWidget(dd,di,i+1,1,1)
                 row.append((dd,en))
 
             self.dropdowns.append(row)
-            self.dropdownLocked.append(lockedSet)
 
 
     # callback for each checkbox on changed

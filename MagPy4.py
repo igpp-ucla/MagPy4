@@ -89,7 +89,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionExit.triggered.connect(self.close)
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionPlot.triggered.connect(self.openPlotMenu)
-        self.ui.actionSpectra.triggered.connect(self.openSpectra)
+        self.ui.actionSpectra.triggered.connect(self.startSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.actionHelp.triggered.connect(self.openHelp)
         self.ui.actionAbout.triggered.connect(self.openAbout)
@@ -258,16 +258,17 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.traceStats = TraceStats(self, plotIndex)
         self.traceStats.show()
 
-    def openSpectra(self):
+    def startSpectra(self):
         self.closeTraceStats()
         if not self.spectra or self.spectra.wasClosed:
             self.spectra = Spectra(self)
-            #self.spectra.show()
             self.startGeneralSelect('SPECTRA', '#FF0000', self.spectra.ui.timeEdit, True)
-        elif self.spectra: # show once hit button the second time
+
+    def showSpectra(self):
+        if self.spectra:
             self.spectra.show()
             self.spectra.updateSpectra()
-        PyQtUtils.moveToFront(self.spectra)
+            PyQtUtils.moveToFront(self.spectra)
 
     def openHelp(self):
         self.closeHelp()
@@ -1393,6 +1394,8 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 self.window.updateGeneralLines(1,x)
                 if self.window.edit:
                     PyQtUtils.moveToFront(self.window.edit.minVar)
+    
+                QtCore.QTimer.singleShot(100, self.window.showSpectra) #calls it with delay so ui has chance to draw lines first
 
             self.window.updateLineTextPos()
             

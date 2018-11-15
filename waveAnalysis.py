@@ -150,7 +150,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         #make export to log just print everything out nicely formatted........ would be nice if u could just copy and paste what u want but ehhh
         # kinda annoying to use those qtextbrowser things. copy and paste doesnt work how u think it would inherently
 
-        freqs = self.spectra.getFreqs(self.firstDstr())
+        freqs = self.getDefaultFreqs()
         #m = len(ffts[0]) // 2
         m = len(freqs) // 2
         self.ui.minFreqIndex.setMinimum(0)
@@ -165,18 +165,18 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.updateCalculations() # should add update button later
 
     def updateLabel(self, label, val):
-        freqs = self.spectra.getFreqs(self.firstDstr())
+        freqs = self.getDefaultFreqs()
         label.setText(Mth.formatNumber(freqs[val]))
 
-    def firstDstr(self):
-        return self.ui.axesDropdowns[0].currentText()
+    def getDefaultFreqs(self):
+        return self.spectra.getFreqs(self.ui.axesDropdowns[0].currentText(), 0)
 
     def updateCalculations(self):
         """ update all wave analysis values and corresponding UI elements """
 
         dstrs = [dd.currentText() for dd in self.ui.axesDropdowns]
 
-        ffts = [self.spectra.getfft(dstr) for dstr in dstrs]
+        ffts = [self.spectra.getfft(dstr,0) for dstr in dstrs]
 
         fO = self.ui.minFreqIndex.value()
         fE = self.ui.maxFreqIndex.value()

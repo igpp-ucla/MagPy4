@@ -156,8 +156,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 powers.append(power)
 
                 pen = penList[i]
-                abbrv = self.window.ABBRV_DSTR_DICT[dstr]
-                titleString = f"{titleString} <span style='color:{pen.color().name()};'>{abbrv}</span>"
+                #abbrv = self.window.ABBRV_DSTR_DICT[dstr]
+                pstr = self.window.getLabel(dstr,en)
+                titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
                 pi.plot(freq, power, pen=pen)
 
                 # this part figures out layout of plots into rows depending on settings

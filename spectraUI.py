@@ -50,6 +50,7 @@ class SpectraUI(object):
         self.bandWidthSpinBox.setProperty("value", 3)
         self.bandWidthSpinBox.setFixedWidth(50)
 
+        # this will separate multiple traces on the same plot
         self.separateTracesCheckBox = QtGui.QCheckBox()
         #self.separateTracesCheckBox.setChecked(True)
         separateTraces = QtGui.QLabel("Separate Traces")

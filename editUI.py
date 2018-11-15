@@ -109,6 +109,12 @@ class CustomRotUI(object):
         extraButtons.addWidget(self.loadIdentity)
         extraButtons.addWidget(self.loadZeros)
         extraButtons.addWidget(self.loadCurrentEditMatrix)
+
+        # since no more generate button should reset when other buttons are pressed
+        self.loadIdentity.clicked.connect(self.clearAxisAngle)
+        self.loadZeros.clicked.connect(self.clearAxisAngle)
+        self.loadCurrentEditMatrix.clicked.connect(self.clearAxisAngle)
+
         extraButtons.addStretch()
         self.layout.addLayout(extraButtons)
 
@@ -141,6 +147,9 @@ class CustomRotUI(object):
         self.layout.addWidget(self.applyButton)
 
         self.layout.setAlignment(self.applyButton, QtCore.Qt.AlignRight)
+
+    def clearAxisAngle(self):
+        self.axisAngle.setValue(0.0)
 
 class MinVarUI(object):
     def setupUI(self, Frame, window):
