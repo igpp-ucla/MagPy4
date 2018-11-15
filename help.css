@@ -49,31 +49,33 @@ h4
 
 p
 {
-	margin: 0 0 0.65em 0;
+	margin: 0.65em 0 0.65em 0;
 }
 
 /* Lists */
 
 ol
 {
-	margin-bottom: 0.65em;
+	margin-top: 0.6em;
+	margin-bottom: 0.6em;
 }
 
 ol li
 {
-	margin-bottom: 0.35em;
+	margin-bottom: 0.3em;
 }
 
 ul
 {
-	margin-bottom: 0.65em;
+	margin-top: 0.6em;
+	margin-bottom: 0.6em;
 	list-style-type: disc;
 	list-style-position: inside;
 }
 
 ul li
 {
-	margin-bottom: 0.35em;
+	margin-bottom: 0.3em;
 }
 
 /* Anchors */
@@ -100,6 +102,7 @@ a.image
 
 img
 {
+	margin: 10px 0 10px 0;
 	border: 0;
 }
 
@@ -109,4 +112,21 @@ span.attention
 {
 	color: #FF0000;
 	font-weight: bold;
+}
+
+/* Text alignment */
+
+.left
+{
+	text-align: left;
+}
+
+.center
+{
+	text-align: center;
+}
+
+.right
+{
+	text-align: right;
 }

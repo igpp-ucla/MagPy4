@@ -2,7 +2,7 @@
 
 <head>
     <title>MagPy4 Help</title>
-    <link rel="stylesheet" type="text/css" href="help.css" />
+    <link rel='stylesheet' type='text/css' href='help.css' />
 </head>
 
 <body>
@@ -25,36 +25,40 @@
         field data to plot.</p>
     <h3>Tools &gt; Spectra</h3>
     <p>After selecting a time interval in the program's main window, the Spectra window displays the power spectrum of
-        the magnetic field signals, the coherence and the phase difference between any two components of the magnetic
+        the magnetic field signals, the coherence, and the phase difference between any two components of the magnetic
         field. The Spectra windows also allows you to perform wave analysis.</p>
     <h4>Power spectrum</h4>
-    <p>A digital signal containing <i>n</i> points sampled every <i>&Delta;t</i> is <i>n&Delta;t</i> seconds long. The
-        lowest frequency that can be accurately determined in this finite length time series is <i>n&Delta;t-1</i> and
-        the highest is <i>2&Delta;t-1</i> because two data points are required to define a wave. This maximum frequency
-        is called the
-        Nyquist frequency. Fast Fourier transform routines can transform a time series of fluctuations of one component
-        of magnetic field signals into a series of cosine and sine amplitudes:</p>
-    <p><i>C<sub>0</sub></i>, <i>C<sub>1</sub></i>, &hellip;, <i>C<sub>n/2-1</sub></i></p>
-    <p><i>S<sub>1</sub></i>, <i>S<sub>2</sub></i>, &hellip;, <i>S<sub>n/2</sub></i></p>
+    <p>A digital signal containing <i>n</i> points sampled every <i>&Delta;t</i> seconds is <i>n&Delta;t</i> seconds
+        long. The lowest frequency that can be accurately determined in this finite length time series is (<i>n&Delta;t)<sup>-1</sup></i>
+        and the highest is (<i>2&Delta;t)<sup>-1</sup></i> because two data points are required to define a wave. This
+        maximum frequency is called the Nyquist frequency. Fast Fourier transform routines can transform a time series
+        of fluctuations of one component of magnetic field signals into a series of cosine and sine amplitudes
+        <i>C<sub>0</sub></i>, <i>C<sub>1</sub></i>, &hellip;, <i>C<sub>n/2-1</sub></i> and
+        <i>S<sub>1</sub></i>, <i>S<sub>2</sub></i>, &hellip;, <i>S<sub>n/2</sub></i>.</p>
     <p>If there are three orthogonal measurements of wave amplitudes in direction x, y, and z, we can form the
-        cospectral matrix of variances and cross variances at each frequency <i>i</i>: <span class='attention'>MISSING
-            TEXT HERE</span></p>
+        cospectral matrix of variances and cross variances at each frequency <i>i</i>:</p>
+    <p class='center'><img src='figure1.png' alt='Figure 1' height='73' width='364'></p>
     <p>This matrix is the cospectral density of the signal.</p>
-    <p>If averaging the sum of the diagonal terms over frequency, the plot would show the power spectral
-        density of the signal versus frequency, which is called the power frequency.</p>
+    <p>If you were to plot the sum of the diagonal terms (the trace) versus frequency, perhaps averaging over frequency
+        to provide statistical accuracy or stability of the estimates, the plot would show the power spectral density
+        of the signal versus frequency. This is called the power spectrum.</p>
     <h4>Wave Analysis</h4>
     <p>The cospectrum matrix is the real part of the spectrum matrix. The imaginary part of the spectrum matrix, which
-        is called the quaspectrum matrix, can be calculated at each frequency i by MISSING TEXT HERE</p>
+        is called the quaspectrum matrix, can be calculated at each frequency i by:</p>
+    <p class='center'><img src='figure2.png' alt='Figure 2' height='64' width='361'></p>
     <p>These two matrixes give much information about wave properties. These properties were exploited by Born
         and Wolf (1970) to analyze optical signals and by Rankin and Kurtz (1970) to analyze micropulsations. Means
         (1972) showed that the direction of propagation can be directly obtained from the matrix <i>Q<sub>i</sub></i>.</p>
     <h4>Coherence</h4>
-    <p>The coherence between signals 1 and signals 2 is defined by <span class='attention'>MISSING TEXT HERE</span>,
-        where <i>C<sub>ij</sub></i> is
-        the ij-component of the cospectrum and <i>Q<sub>ij</sub></i> is the ij-component of the quaspectrum.</p>
+    <p>The coherence between signals 1 and signals 2 at each frequency <i>i</i> is defined by:</p>
+    <p class='center'><img src='figure3.png' alt='Figure 3' height='52' width='190'></p>
+    <p>where <i>C<sub>i,mn</sub></i> is the mn-component of the cospectrum at each frequency <i>i</i> and <i>Q<sub>i,mn</sub></i>
+        is the mn-component of the quaspectrum at each frequency <i>i</i>.</p>
     <h4>Phase</h4>
     <p>Phase is the difference, expressed in degrees or radians, between two waves having the same frequency and
-        referenced to the same point in time. The 1,2 phase is defined as <span class='attention'>MISSING TEXT HERE</span></p>
+        referenced to the same point in time. The phase difference between signal 1 and signal 2 at each frequency <i>i</i>
+        can be defined by:</p>
+    <p class='center'><img src='figure4.png' alt='Figure 4' height='30' width='179'></p>
     <h3>Tools &gt; Edit</h3>
     <p>The Edit window allows you to perform matrix rotation and filtering. You can either click the Custom Rotation
         button to specify a custom rotation or click the Minimum Variance button to calculate the minimum variance
@@ -68,12 +72,14 @@
         the principal axes. The system is also called the minimum variance coordinate system. It can often be used at
         the magnetopause, but not at shocks. Usually, the direction in which the magnetic field has a minimum variance
         is the direction normal to the magnetopause.</p>
-    <p>Assume the data set you choose is [<i>B<sub>1</sub></i>, <i>B<sub>2</sub></i>,
-        &hellip;, <i>B<sub>N</sub></i>] and construct a variance matrix <i>M</i>. Nine terms of <i>M</i> are <i>m<sub>ij</sub></i>
+    <p>Assume the data set you choose is [<b><i>B<sub>1</sub></i></b>, <b><i>B<sub>2</sub></i></b>,
+        &hellip;, <b><i>B<sub>N</sub></i></b>] and construct a variance matrix <b><i>M</i></b>. Nine terms of <b><i>M</i></b>
+        are <i>m<sub>ij</sub></i>
         (i and j represent the x, y, and z components). Assume the eigenvalues of <i>M</i> are <i>&lambda;<sub>&mu;</sub></i>
-        (<i>&mu;</i>=1,2,3) and the eigenvectors that form the transformation matrix are <i>V<sub>&mu;</sub></i>,
-        <i>MV<sub>&mu;</sub></i> = <i>&lambda;<sub>&mu;</sub></i>
-        <i>V<sub>&mu;</sub></i>.</p>
+        (<i>&mu;</i>=1,2,3) and the eigenvectors that form the transformation matrix are <b><i>V<sub>&mu;</sub></i></b>.</p>
+    <p class='center'><img src='figure5.png' alt='Figure 5' height='57' width='119'></p>
+    <p class='center'><img src='figure6.png' alt='Figure 6' height='24' width='171'></p>
+    <p class='center'><b><i>M</i></b><b><i>V<sub>&mu;</sub></i></b> = <i>&lambda;<sub>&mu;</sub></i><b><i>V<sub>&mu;</sub></i></b>.</p>
     <h3>Options</h3>
     <p>The Options menu allows you to change the style of the plot. You can choose to scale the y-range of the data
         to the current time selection, to draw smooth, antialiased lines, to bridge the gaps between data, and to
@@ -89,10 +95,10 @@
     <p>Suppose [<i>x<sub>1</sub></i>, <i>x<sub>2</sub></i>, &hellip;, <i>x<sub>N</sub></i>] is the data set of one
         component of the vector magnetic field or the total magnetic field in the time interval you choose. Minimum
         is the smallest value of this data set and maximum is the largest value. The median is the value separating
-        the higher
-        half from the lower half of the data set. Suppose the mean value is <i>&mu;</i> and the standard deviation
-        is <i>&sigma;.</i></p>
-    <p><span class='attention'>MISSING TEXT HERE</span>. The above explanation sounds like it's not finished.</p>
+        the higher half from the lower half of the data set. Suppose the mean value is <i>&mu;</i> and the standard
+        deviation is <i>&sigma;</i>, then:</p>
+    <p class='center'><img src='figure7.png' alt='Figure 7' height='57' width='78'></p>
+    <p class='center'><img src='figure8.png' alt='Figure 8' height='75' width='130'></p>
     <h3>Context (Right-Click) Menu</h3>
     <p><span class='attention'>MISSING TEXT HERE</span>.</p>
     <p>Lots of explanation needed here. There are menus and submenus and lots of options.</p>
