@@ -40,7 +40,9 @@ def genXList(nf, DX=0, START=0):
     X = [x + DX for x in range(START, n + START, 1)]
     return X
 
-# Chebyshev parameters
+# Routine to generate Chebyshev window parameters when one of the three
+# parameters nf (number of points, filter length), dp (filter ripple),
+# or df (normalized transition width of filter) is unspecified.
 
 def chebyshevParameters(nfx, dpx, dfx):
     """
@@ -48,21 +50,27 @@ def chebyshevParameters(nfx, dpx, dfx):
     nf = nfx
     dp = dpx
     df = dfx
+    if df < 1.0 and df > 0.4:
+        df = 0.4
     if nf == 0:
-        c1 = acosh((1 + dp) / dp)
-        c0 = cos(pi * dp)
-        x = 1.0 + c1 / acosh(1 / c0)
+        # dp and df are specified; determine nf
+        c0 = cos(pi * df)
+        c1 = acosh((1.0 + dp) / dp)
+        x = 1.0 + c1 / acosh(1.0 / c0)
+        # Increment by 1 to give nf, which meets or exceeds specs on dp and df.
         nfx = x + 1
-    else:
+    elif df == 0.0:
+        # nf and dp are specified; determine df
         xn = nf - 1
-        if df == 0:
-            c1 = acos((1.0 + dp) / dp)
-            c2 = cosh(c1 / xn)
-            dfx = acos(1 / c2) / pi
-        else:
-            c0 = cos(pi * df)
-            c1 = xn * acosh(1.0 / c0)
-            dpx = 1 / (cosh(c1) - 1.0)
+        c1 = acosh((1.0 + dp) / dp)
+        c2 = cosh(c1 / xn)
+        dfx = acos(1.0 / c2) / pi
+    else:
+        # nf and df are specified; determine dp
+        xn = nf - 1
+        c0 = cos(pi * df)
+        c1 = xn * acosh(1.0 / c0)
+        dpx = 1.0 / (cosh(c1) - 1.0)
     return nfx, dpx, dfx
 
 # Filter list (g) generators
