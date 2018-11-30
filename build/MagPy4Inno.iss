@@ -3,7 +3,7 @@
 
 #define MyAppName "MarsPy"
 #define MyAppExeName "MarsPy.exe"
-#define MyAppVersion "1.0.0.0"
+#define MyAppVersion "1.0.0.1"
 #define MyAppPublisher "UCLA Institute of Geophysics and Planetary Physics"
 #define MyAppURL "www-ssc.igpp.ucla.edu"
 
@@ -35,8 +35,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "C:\Users\jcollins\Dropbox\workspace\python\MagPy4\build\dist\{#MyAppName}\{#MyAppName}.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\jcollins\Dropbox\workspace\python\MagPy4\build\dist\{#MyAppName}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "C:\Users\schimpf\Documents\MagPy4\build\dist\{#MyAppName}\{#MyAppName}.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\schimpf\Documents\MagPy4\build\dist\{#MyAppName}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
