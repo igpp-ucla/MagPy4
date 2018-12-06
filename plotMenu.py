@@ -185,7 +185,8 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                     if i == -1: # dont include emptys
                         continue
                     for k,v in self.window.DATADICT.items(): # figure out which datastring is selected
-                        if (k == dd.currentText() and len(v[en])> 0):
+                        editStr = self.window.getLabel(k,en)
+                        if (editStr == dd.currentText() and len(v[en])> 0):
                             row.append((k,en))
                             break
                 dstrs.append(row)
