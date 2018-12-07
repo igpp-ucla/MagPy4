@@ -144,6 +144,16 @@ class MagPy4UI(object):
 
         layout.addLayout(sliderLayout)
 
+        # Create buttons for moving plot windows L or R by a fixed amt
+        # TODO: Change button size, location, etc.
+        shftWinLayout = QtWidgets.QGridLayout()
+        self.mvRgtBtn = QtWidgets.QPushButton('&Shift Right', window)
+        self.mvLftBtn = QtWidgets.QPushButton('&Shift Left', window)
+        btnRw, btnCol = 0, 0
+        shftWinLayout.addWidget(self.mvRgtBtn, btnRw, btnCol+1, 1, 1)
+        shftWinLayout.addWidget(self.mvLftBtn, btnRw, btnCol, 1, 1)
+        layout.addLayout(shftWinLayout)
+
          # update slider tick amount and timers and labels and stuff based on new file
     def setupSliders(self, tick, max, minmax):
         #dont want to trigger callbacks from first plot

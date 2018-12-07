@@ -80,6 +80,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.startSlider.sliderReleased.connect(self.setTimes)
         self.ui.endSlider.sliderReleased.connect(self.setTimes)
 
+        # Shift window button connections
+        self.ui.mvRgtBtn.clicked.connect(self.shiftWinRgt)
+        self.ui.mvLftBtn.clicked.connect(self.shiftWinLft)
+
         self.ui.timeEdit.start.dateTimeChanged.connect(self.onStartEditChanged)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
 
@@ -150,6 +154,42 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if os.path.exists(starterFile + '.ffd'):
             self.openFF(starterFile)
             self.swapMode()
+
+    def shiftWindow(self, direction):
+        winWidth = self.tE - self.tO # Amt of time currently displayed
+        # TODO: Method for user to set shift amount, set to fixed value for now
+        shiftAmt = winWidth/2
+
+        if direction == 'L':
+            shiftAmt = shiftAmt * (-1) # Shift amt is negative if moving left
+        newTO = self.tO + shiftAmt
+        newTE = self.tE + shiftAmt
+
+        # When adding/subtracting shift amount goes past min/max times,
+        # shift window to that edge while maintaining the amt of time displayed
+        if newTO < self.minTime:
+            newTO = self.minTime
+            newTE = newTO + winWidth
+        elif newTE > self.maxTime:
+            newTE = self.maxTime
+            newTO = newTE - winWidth
+
+        # Update time editors/indicators to match
+        oDt = UTCQDate.UTC2QDateTime(FFTIME(newTO, Epoch=self.epoch).UTC)
+        eDt = UTCQDate.UTC2QDateTime(FFTIME(newTE, Epoch=self.epoch).UTC)
+        self.ui.timeEdit.setStartNoCallback(oDt)
+        self.ui.timeEdit.setEndNoCallback(eDt)
+
+        # Update sliders to match current times
+        # Updates plots as well (otherwise updt tO,tE and use updateXRange())
+        self.onStartEditChanged(oDt)
+        self.onEndEditChanged(eDt)
+
+    def shiftWinRgt(self):
+        self.shiftWindow('R')
+
+    def shiftWinLft(self):
+        self.shiftWindow('L')
 
     def enableToolsAndOptionsMenus(self, bool):
         """Enable or disable the Tools and Options menus.
