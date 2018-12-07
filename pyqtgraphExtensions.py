@@ -1,6 +1,7 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
+import pyqtgraph.exporters
 from FF_Time import FFTIME
 
 # custom extensions to pyqtgraph for the projects needs
@@ -671,4 +672,53 @@ class PlotPointsItem(pg.GraphicsObject):
         self._boundsCache = [None, None]
         #del self.xData, self.yData, self.xDisp, self.yDisp, self.path
 
-            
+# Same as export() from pyqtgraph's ImageExporter class
+# But fixed bug where width/height params are not set as integers
+def cstmImageExport(self, fileName=None, toBytes=False, copy=False):
+    if fileName is None and not toBytes and not copy:
+        filter = ["*."+bytes(f).decode('utf-8') for f in QtGui.QImageWriter.supportedImageFormats()]
+        preferred = ['*.png', '*.tif', '*.jpg']
+        for p in preferred[::-1]:
+            if p in filter:
+                filter.remove(p)
+                filter.insert(0, p)
+        self.fileSaveDialog(filter=filter)
+        return
+        
+    targetRect = QtCore.QRect(0, 0, self.params['width'], self.params['height'])
+    sourceRect = self.getSourceRect()
+    
+    w, h = self.params['width'], self.params['height']
+    if w == 0 or h == 0:
+        raise Exception("Cannot export image with size=0 (requested export size is %dx%d)" % (w,h))
+    bg = np.empty((int(self.params['width']), int(self.params['height']), 4), dtype=np.ubyte)
+    color = self.params['background']
+    bg[:,:,0] = color.blue()
+    bg[:,:,1] = color.green()
+    bg[:,:,2] = color.red()
+    bg[:,:,3] = color.alpha()
+    self.png = fn.makeQImage(bg, alpha=True)
+    
+    ## set resolution of image:
+    origTargetRect = self.getTargetRect()
+    resolutionScale = targetRect.width() / origTargetRect.width()
+
+    painter = QtGui.QPainter(self.png)
+
+    try:
+        self.setExportMode(True, {'antialias': self.params['antialias'], 'background': self.params['background'], 'painter': painter, 'resolutionScale': resolutionScale})
+        painter.setRenderHint(QtGui.QPainter.Antialiasing, self.params['antialias'])
+        self.getScene().render(painter, QtCore.QRectF(targetRect), QtCore.QRectF(sourceRect))
+    finally:
+        self.setExportMode(False)
+    painter.end()
+    
+    if copy:
+        QtGui.QApplication.clipboard().setImage(self.png)
+    elif toBytes:
+        return self.png
+    else:
+        self.png.save(fileName)
+
+# Override pyqtgraph's actual image export function
+pg.exporters.ImageExporter.export = cstmImageExport
