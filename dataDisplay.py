@@ -62,6 +62,7 @@ class DataDisplayUI(object):
         self.dataTableView.setObjectName(_fromUtf8("dataTableView"))
         self.dataTableView.horizontalHeader().setHighlightSections(False)
         self.dataTableView.verticalHeader().setHighlightSections(False)
+        self.dataTableView.setShowGrid(True)
         self.verticalLayout.addWidget(self.dataTableView)
         self.widget_2 = QtGui.QWidget(dataFrame)
         self.widget_2.setObjectName(_fromUtf8("widget_2"))
@@ -88,7 +89,7 @@ class DataDisplayUI(object):
         self.buttonBox.setObjectName(_fromUtf8("buttonBox"))
         self.verticalLayout.addWidget(self.buttonBox)
 
-        dataFrame.setWindowTitle("Flat File Data")
+        dataFrame.setWindowTitle("Flatfile Data")
         self.timesLabel.setText("TextLabel")
         self.checkBox.setText("Sho&w Ticks")
         self.moveByTime.setText("Go to &Time")
@@ -122,7 +123,6 @@ class UTCQDate():
         DOY = "%03d" % doy
         dateTime = qdt.toString(UTCQDate.FORMAT)
         return dateTime[:5] + DOY + dateTime[4:]
-       
 
 class FFTableModel(QtCore.QAbstractTableModel):
     def __init__(self, time_in, datain, headerdata, parent=None, epoch=None, *args):
@@ -174,7 +174,8 @@ class FFTableModel(QtCore.QAbstractTableModel):
             if orientation == QtCore.Qt.Horizontal: # column labels
                 return self.headerdata[section]
             else: # row labels
-                return section
+                # We add 1 so that row numbers start with 1 rather than 0
+                return section + 1
         return None
 
     def tableDetailHeader(self, col, orientation, role): # i think this is unused
@@ -210,7 +211,6 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 #       printPanelButton.clicked.connect(self.printPanel)
 #       buttonBox.addButton(printButton, QDialogButtonBox.ApplyRole)
 
-
         self.update()
         self.clip = QtGui.QApplication.clipboard()
 
@@ -231,7 +231,6 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.fileCombo.adjustSize()
         self.ui.fileCombo.blockSignals(False)
 
-
     def updateFile(self):
         nRows = self.curFID.getRows()
         records = self.curFID.DID.sliceArray(row=1, nRow=nRows)
@@ -245,11 +244,11 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         #self.ui.fileLabel.setText(parm["DATA"].info)
         self.setWindowTitle(self.title)
 
-        startTime = info["FIRST_TIME"].info.replace("UTC", '')
-        endTime = info["LAST_TIME"].info.replace("UTC", '')
-        epoch = "Epoch : " + parm["EPOCH"].info
-        nrows = "NROWS : " + parm["NROWS"].info.lstrip()
-        ncols = "NCOLS : " + parm["NCOLS"].info.lstrip()
+        nrows = 'Rows: ' + parm['NROWS'].info.lstrip()
+        ncols = 'Columns: ' + parm['NCOLS'].info.lstrip()
+        epoch = 'Epoch: ' + parm['EPOCH'].info
+        startTime = info['FIRST_TIME'].info.replace('UTC', '')
+        endTime = info['LAST_TIME'].info.replace('UTC', '')
         #stats = f'Times: [{startTime}]>>[{endTime}] [{epoch}] [{nrows}] [{ncols}]'
         stats = f'{nrows}, {ncols}, {epoch}          \n{startTime}\n{endTime}'
         self.ui.timesLabel.setText(stats)
@@ -267,11 +266,11 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))
         self.ui.dateTimeEdit.setMinimumDateTime(UTCQDate.UTC2QDateTime(start.UTC))
         self.ui.dateTimeEdit.setMaximumDateTime(UTCQDate.UTC2QDateTime(stop_.UTC))
-        self.headerStrings = self.curFID.getColumnDescriptor("NAME")
-        units = self.curFID.getColumnDescriptor("UNITS")
+        self.headerStrings = self.curFID.getColumnDescriptor('NAME')
+        units = self.curFID.getColumnDescriptor('UNITS')
         header = [f'{h} ({u})' if u else f'{h}' for h,u in zip(self.headerStrings,units)]
         if self.dataByCol is not None:
-            tm = FFTableModel(self.time, self.dataByCol, header, parent=None, epoch=parm["EPOCH"].value)
+            tm = FFTableModel(self.time, self.dataByCol, header, parent=None, epoch=parm['EPOCH'].value)
             tm.setUTC(not self.ui.checkBox.isChecked())
             self.ui.dataTableView.setModel(tm)
             self.ui.dataTableView.resizeColumnToContents(0) # make time column resize to fit
@@ -325,15 +324,13 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         print(f'Save complete')
         # should auto open the file here afterwards?
 
-
-
     def toggleTimeDisplay(self):
         self.update()
 
     def moveByTime(self):
         # grab data ui.dateTimeEdit
-        formMM = "yyyy MM dd hh mm ss zzz"
-        formMMM = "yyyy MMM dd hh:mm:ss.zzz"
+        formMM = 'yyyy MM dd hh mm ss zzz'
+        formMMM = 'yyyy MMM dd hh:mm:ss.zzz'
         DT = self.ui.dateTimeEdit.dateTime()
         DTSTR = DT.toString(formMM)
         DTSTRM = DT.toString(formMMM)
@@ -379,4 +376,3 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
                 self.clip.setText(s)
 
         e.accept()
-
