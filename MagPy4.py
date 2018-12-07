@@ -88,7 +88,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False,True))
         self.ui.actionExit.triggered.connect(self.close)
         self.ui.actionShowData.triggered.connect(self.showData)
-        self.ui.actionPlot.triggered.connect(self.openPlotMenu)
+        self.ui.actionPlotMenu.triggered.connect(self.openPlotMenu)
         self.ui.actionSpectra.triggered.connect(self.startSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.actionHelp.triggered.connect(self.openHelp)

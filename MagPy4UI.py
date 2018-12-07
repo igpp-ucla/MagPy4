@@ -45,9 +45,9 @@ class MagPy4UI(object):
         self.actionShowData.setText('&Data...')
         self.actionShowData.setToolTip('Shows the loaded data in a table view')
 
-        self.actionPlot = QtWidgets.QAction(window)
-        self.actionPlot.setText('&Plot...')
-        self.actionPlot.setToolTip('Opens plot menu')
+        self.actionPlotMenu = QtWidgets.QAction(window)
+        self.actionPlotMenu.setText('&Plot Menu...')
+        self.actionPlotMenu.setToolTip('Opens the plot menu')
 
         self.actionSpectra = QtWidgets.QAction(window)
         self.actionSpectra.setText('&Spectra...')
@@ -93,7 +93,7 @@ class MagPy4UI(object):
 
         self.toolsMenu = self.menuBar.addMenu('&Tools')
         self.toolsMenu.addAction(self.actionShowData)
-        self.toolsMenu.addAction(self.actionPlot)
+        self.toolsMenu.addAction(self.actionPlotMenu)
         self.toolsMenu.addAction(self.actionSpectra)
         self.toolsMenu.addAction(self.actionEdit)
 

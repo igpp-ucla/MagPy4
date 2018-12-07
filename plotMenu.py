@@ -38,7 +38,7 @@ class PlotMenuUI(object):
         self.errorFlagEdit.setFixedWidth(50)
 
         errorFlagLayout = QtWidgets.QHBoxLayout()
-        lab = QtWidgets.QLabel('  Error Flag')
+        lab = QtWidgets.QLabel('    Error Flag:')
         lab.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         errorFlagLayout.addWidget(lab)
         errorFlagLayout.addWidget(self.errorFlagEdit)
@@ -61,7 +61,7 @@ class PlotMenuUI(object):
         buttonLayout.addItem(spacer, 0, 10, 1, 1)
         self.layout.addLayout(buttonLayout)
 
-        self.gridFrame = QtWidgets.QGroupBox('Plot Matrix')
+        self.gridFrame = QtWidgets.QGroupBox('Data Selection')
         self.grid = QtWidgets.QGridLayout(self.gridFrame)
         self.layout.addWidget(self.gridFrame)
 
@@ -92,7 +92,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.ui.switchButton.clicked.connect(self.switchModes)
 
         self.checkBoxMode = self.window.plotMenuCheckBoxMode
-        self.ui.switchButton.setText('Switch to Dropdowns' if self.checkBoxMode else 'Switch to CheckBoxes')
+        self.ui.switchButton.setText('Switch to Dropdown Lists' if self.checkBoxMode else 'Switch to Check Boxes')
         self.fcheckBoxes = []
 
         # add the edit name options to dropdown
@@ -114,12 +114,12 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
     def switchModes(self):
         # todo: save mode in magpy
-        if self.ui.switchButton.text() == 'Switch to CheckBoxes':
+        if self.ui.switchButton.text() == 'Switch to Check Boxes':
             self.checkBoxMode = True
-            self.ui.switchButton.setText('Switch to Dropdowns')
+            self.ui.switchButton.setText('Switch to Dropdown Lists')
         else:
             self.checkBoxMode = False
-            self.ui.switchButton.setText('Switch to CheckBoxes')
+            self.ui.switchButton.setText('Switch to Check Boxes')
 
         self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)
         self.shouldResizeWindow = True
@@ -260,7 +260,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                 self.ui.grid.addItem(spacer,0,100,1,1) # just so its always the last column
             # add plot label for row
             plotLabel = QtWidgets.QLabel()
-            plotLabel.setText(f'Plot{di+1}')
+            plotLabel.setText(f'Plot {di+1}:')
             self.ui.grid.addWidget(plotLabel,di,0,1,1)
             row = []
 
@@ -328,7 +328,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         # add top plot labels
         for i in range(self.plotCount):
             pLabel = QtWidgets.QLabel()
-            pLabel.setText(f'Plot{i+1}')
+            pLabel.setText(f'Plot {i+1}:')
             pLabel.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
             fgrid.addWidget(pLabel,0,i + 1,1,1)
         # add spacer
@@ -338,7 +338,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         # add checkBoxes
         for r in range(self.targRows):
             linkGroupLabel = QtWidgets.QLabel()
-            linkGroupLabel.setText(f'Group{r+1}')
+            linkGroupLabel.setText(f'Group {r+1}:')
             fgrid.addWidget(linkGroupLabel,r + 1,0,1,1)
             row = []
             for i in range(self.plotCount):
@@ -407,7 +407,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         if self.checkBoxMode:
             plotLabel = QtWidgets.QLabel()
-            plotLabel.setText(f'Plot{self.plotCount}')
+            plotLabel.setText(f'Plot {self.plotCount}:')
             checkBoxes = []
             self.ui.grid.addWidget(plotLabel,self.plotCount + 1,0,1,1)
             for i,dstr in enumerate(self.ABBRV_DSTRS):
