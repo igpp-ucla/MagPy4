@@ -156,7 +156,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.swapMode()
 
     def shiftWindow(self, direction):
-        winWidth = self.tE - self.tO # Amt of time currently displayed
+        winWidth = abs(self.tE - self.tO) # Amt of time currently displayed
         # TODO: Method for user to set shift amount, set to fixed value for now
         shiftAmt = winWidth/2
 
@@ -166,13 +166,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         newTE = self.tE + shiftAmt
 
         # When adding/subtracting shift amount goes past min/max times,
-        # shift window to that edge while maintaining the amt of time displayed
-        if newTO < self.minTime:
-            newTO = self.minTime
-            newTE = newTO + winWidth
-        elif newTE > self.maxTime:
-            newTE = self.maxTime
-            newTO = newTE - winWidth
+        # shift window to that edge while maintaining the amt of time displayed  
+        if self.tO > self.tE:
+            # If 'start' time > 'end' time, switch them for comparison
+            newTE, newTO = self.chkBoundaries(newTE, newTO, winWidth)
+        else:
+            newTO, newTE = self.chkBoundaries(newTO, newTE, winWidth)
 
         # Update time editors/indicators to match
         oDt = UTCQDate.UTC2QDateTime(FFTIME(newTO, Epoch=self.epoch).UTC)
@@ -190,6 +189,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def shiftWinLft(self):
         self.shiftWindow('L')
+
+    def chkBoundaries(self, origin, end, winWidth):      
+        if (origin < self.minTime):
+            origin = self.minTime
+            end = origin + winWidth
+        elif end > self.maxTime:
+            end = self.maxTime
+            origin = end - winWidth
+        return (origin, end)
 
     def enableToolsAndOptionsMenus(self, bool):
         """Enable or disable the Tools and Options menus.
