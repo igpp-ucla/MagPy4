@@ -158,7 +158,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def shiftWindow(self, direction):
         winWidth = abs(self.tE - self.tO) # Amt of time currently displayed
         # TODO: Method for user to set shift amount, set to fixed value for now
-        shiftAmt = winWidth/2
+        shiftAmt = winWidth/3
 
         if direction == 'L':
             shiftAmt = shiftAmt * (-1) # Shift amt is negative if moving left
