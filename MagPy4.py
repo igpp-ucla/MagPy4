@@ -254,7 +254,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay.show()
 
     def openTraceStats(self, plotIndex):
-        self.closeTraceStats()
+        self.closeSpectra()
         self.traceStats = TraceStats(self, plotIndex)
         self.traceStats.show()
 
