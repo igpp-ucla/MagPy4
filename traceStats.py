@@ -38,6 +38,16 @@ class TraceStatsUI(object):
 
         self.layout.addWidget(timeFrame)
 
+        # Setup button in trace stats window to crop main window to selected range
+        selectedRngFrame = QtWidgets.QGroupBox()
+        selectedRngLayout = QtWidgets.QHBoxLayout(selectedRngFrame)
+        self.dispRangeBtn = QtGui.QPushButton('Display Selected Range')
+        self.dispRangeBtn.setSizePolicy(QSizePolicy(QSizePolicy.Minimum,
+            QSizePolicy.Minimum))
+        selectedRngLayout.addWidget(self.dispRangeBtn)
+        selectedRngLayout.addStretch(1)
+
+        self.layout.addWidget(selectedRngFrame)
 
 class TraceStats(QtWidgets.QFrame, TraceStatsUI):
     def __init__(self, window, plotIndex, parent=None):
@@ -50,6 +60,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         if self.ui.onTopCheckBox.isChecked():
             self.toggleWindowOnTop(True)
         self.ui.onTopCheckBox.clicked.connect(self.toggleWindowOnTop)
+        self.ui.dispRangeBtn.clicked.connect(self.updtDispRange)
 
         self.funcStrs = ['min', 'max', 'mean', 'median','std dev']
         self.funcs = [np.min, np.max, np.mean, np.median, np.std]
@@ -134,6 +145,13 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         #    size = QtCore.QSize(size.width(),maxHeight)
         #else:
         #    self.ui.table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+
+    def updtDispRange(self):
+        # Uses trace stat's timeEdit values to update main's vals/sliders
+        newStartVal = self.ui.timeEdit.start.dateTime()
+        newEndVal = self.ui.timeEdit.end.dateTime()
+        self.window.ui.timeEdit.start.setDateTime(newStartVal)
+        self.window.ui.timeEdit.end.setDateTime(newEndVal)
 
     # this is for copy and paste functionality
     # todo: work on formatting here, oftentimes one tab is too short when strings are long
