@@ -165,7 +165,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 # also links the y scale of each row together
                 lastPlotInList = i == len(strList) - 1
                 if lastPlotInList or oneTracePerPlot:
-                    pi.setLabels(title=titleString, left='Power(nT^2/Hz)', bottom='Log Frequency(Hz)')
+                    pi.setLabels(title=titleString, left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)', bottom='Log Frequency (Hz)')
                     piw = pi.titleLabel._sizeHint[0][0] + 60 # gestimating padding
                     maxTitleWidth = max(maxTitleWidth,piw)
                     self.ui.grid.addItem(pi)
@@ -192,8 +192,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         leftLabel = BLabelItem({'justify':'left'})
         rightLabel = BLabelItem({'justify':'left'})
 
-        leftLabel.setHtml('[FILE]<br>[FREQBANDS]<br>[TIME]')
-        rightLabel.setHtml(f'{self.window.getFileNameString()}<br>{self.maxN}<br>{startDate} -> {endDate}')
+        leftLabel.setHtml('File:<br>Frequency Bands:<br>Time:')
+        rightLabel.setHtml(f'{self.window.getFileNameString()}<br>{self.maxN}<br>{startDate} to {endDate}')
            
         self.ui.labelLayout.addItem(leftLabel)
         self.ui.labelLayout.nextColumn()
@@ -226,7 +226,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         abbrv1 = self.window.ABBRV_DSTR_DICT[c1]
         freqs = self.getFreqs(c0,0)
 
-        datas = [[self.ui.cohGrid, self.coh, 'Coherence', ''],[self.ui.phaGrid, self.pha, 'Phase', ' (Degree)']]
+        datas = [[self.ui.cohGrid, self.coh, 'Coherence', ''],[self.ui.phaGrid, self.pha, 'Phase', ' (&deg;)']]
 
         for d in datas:
             d[0].clear()
@@ -237,7 +237,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             #if self.ui.aspectLockedCheckBox.isChecked():
             #    pi.setAspectLocked()
             pi.plot(freqs, d[1], pen=self.window.pens[0])
-            pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}', bottom='Log Frequency(Hz)')
+            pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}', bottom='Log Frequency (Hz)')
             d[0].addItem(pi)
             #self.plotItems.append(pi)
 

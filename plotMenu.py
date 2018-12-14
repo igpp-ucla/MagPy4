@@ -328,7 +328,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         # add top plot labels
         for i in range(self.plotCount):
             pLabel = QtWidgets.QLabel()
-            pLabel.setText(f'Plot {i+1}:')
+            pLabel.setText(f'Plot {i+1}')
             pLabel.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
             fgrid.addWidget(pLabel,0,i + 1,1,1)
         # add spacer

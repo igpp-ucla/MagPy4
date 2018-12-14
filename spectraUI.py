@@ -41,34 +41,32 @@ class SpectraUI(object):
         self.phaView, self.phaGrid, self.phaLabelLayout = self.buildSpectraView()
         self.tabs.addTab(self.phaView, 'Phase')
 
-
         # bandwidth label and spinbox
         bottomLayout = QtWidgets.QHBoxLayout()
-        bandWidthLabel = QtGui.QLabel("Average Bandwidth")
+        bandWidthLabel = QtGui.QLabel("Average Bandwidth:")
         self.bandWidthSpinBox = QtGui.QSpinBox()
         self.bandWidthSpinBox.setSingleStep(2)
         self.bandWidthSpinBox.setProperty("value", 3)
         self.bandWidthSpinBox.setFixedWidth(50)
 
         # this will separate multiple traces on the same plot
-        self.separateTracesCheckBox = QtGui.QCheckBox()
-        #self.separateTracesCheckBox.setChecked(True)
-        separateTraces = QtGui.QLabel("Separate Traces")
-
-        self.aspectLockedCheckBox = QtGui.QCheckBox()
+        self.separateTracesCheckBox = QtGui.QCheckBox('Separate Traces')
+        self.separateTracesCheckBox.setChecked(False)
+        ###separateTraces = QtGui.QLabel("Separate Traces")
+      
+        self.aspectLockedCheckBox = QtGui.QCheckBox('Lock Aspect Ratio')
         self.aspectLockedCheckBox.setChecked(True)
-        aspectLockedLabel = QtGui.QLabel("Lock Aspect Ratio")
-
+        ###aspectLockedLabel = QtGui.QLabel("Lock Aspect Ratio")
 
         optFrame = QtWidgets.QGroupBox()
 
         optLayout = QtWidgets.QGridLayout(optFrame)
         optLayout.addWidget(bandWidthLabel, 0, 0, 1, 1)
-        optLayout.addWidget(separateTraces, 1, 0, 1, 1)
-        optLayout.addWidget(aspectLockedLabel, 2, 0, 1, 1)
         optLayout.addWidget(self.bandWidthSpinBox, 0, 1, 1, 1)
-        optLayout.addWidget(self.separateTracesCheckBox, 1, 1, 1, 1)
-        optLayout.addWidget(self.aspectLockedCheckBox, 2, 1, 1, 1)
+        optLayout.addWidget(self.separateTracesCheckBox, 1, 0, 1, 2)
+        ###optLayout.addWidget(separateTraces, 1, 0, 1, 2)
+        optLayout.addWidget(self.aspectLockedCheckBox, 2, 0, 1, 2)
+        ###optLayout.addWidget(aspectLockedLabel, 2, 0, 1, 2)
 
         bottomLayout.addWidget(optFrame)
 
@@ -85,7 +83,7 @@ class SpectraUI(object):
         bottomLayout.addWidget(timeFrame)
 
         # setup dropdowns for coherence and phase pair selection
-        cohPhaseFrame = QtWidgets.QGroupBox('coh/pha pair')
+        cohPhaseFrame = QtWidgets.QGroupBox('Coherence/Phase Pair')
         cohPhaseLayout = QtWidgets.QHBoxLayout(cohPhaseFrame)
         self.cohPair0 = QtWidgets.QComboBox()
         cohPhaseLayout.addWidget(self.cohPair0)
