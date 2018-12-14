@@ -168,8 +168,13 @@ class MagPy4UI(object):
         self.shftPrcntBox.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
         self.shftPrcntBox.setFont(QtGui.QFont('monospace', 12))
 
+        # Status bar setup
+        self.statusBar = QtWidgets.QStatusBar(window)
+        self.statusBar.setSizeGripEnabled(False)
+        self.statusBar.setFont(QtGui.QFont('monospace', 11))
+
         # Shift layout setup
-        shftWinLayout.addStretch(4)
+        shftWinLayout.addWidget(self.statusBar)
         shftWinLayout.addWidget(self.mvLftBtn)
         shftWinLayout.addWidget(self.mvRgtBtn)
         shftWinLayout.addWidget(self.shftPrcntBox)

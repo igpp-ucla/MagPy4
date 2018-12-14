@@ -260,6 +260,7 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
     def onAccepted(self):
         """Called when the user clicks the OK button
         """
+        self.parent.showStatusMsg('Applying filter...')
         self.calculate()
         notes = f'Filter with {self.filterType} and {self.windowType} options'
         #name = f'{self.filterType}/{self.windowType} Filter'
@@ -267,6 +268,7 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         filts = self.filterType.split(' ')
         name = f'{filts[0][0]}{filts[1][0]}{self.windowType[0]}F'
         self.edit.addHistory(self.edit.curSelection[0], notes, name)
+        self.parent.clearStatusMsg()
 
     def onRejected(self):
         """Called when the user clicks the Cancel button
