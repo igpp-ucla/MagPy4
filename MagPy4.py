@@ -80,6 +80,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.startSlider.sliderReleased.connect(self.setTimes)
         self.ui.endSlider.sliderReleased.connect(self.setTimes)
 
+        # Shift window connections
+        self.ui.mvRgtBtn.clicked.connect(self.shiftWinRgt)
+        self.ui.mvLftBtn.clicked.connect(self.shiftWinLft)
+        self.ui.mvLftShrtct.activated.connect(self.shiftWinLft)
+        self.ui.mvRgtShrtct.activated.connect(self.shiftWinRgt)
+        self.ui.shftPrcntBox.valueChanged.connect(self.updtShftPrcnt)
+
         self.ui.timeEdit.start.dateTimeChanged.connect(self.onStartEditChanged)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
 
@@ -124,6 +131,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # this is where options for plot lifetime are saved
         self.initVariables()
 
+        # Shift percentage setup
+        self.shftPrcnt = self.ui.shftPrcntBox.value()/100 # Initialize default val
+
         self.magpyIcon = QtGui.QIcon()
         self.marsIcon = QtGui.QIcon()
         if self.OS == 'mac':
@@ -150,6 +160,53 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if os.path.exists(starterFile + '.ffd'):
             self.openFF(starterFile)
             self.swapMode()
+
+    def shiftWindow(self, direction):
+        winWidth = abs(self.iE - self.iO) # Number of ticks currently displayed
+        shiftAmt = int(winWidth*self.shftPrcnt)
+
+        if direction == 'L': # Shift amt is negative if moving left
+            shiftAmt = shiftAmt * (-1) 
+        newTO = self.iO + shiftAmt
+        newTE = self.iE + shiftAmt
+
+        # Case where adding shift amnt gives ticks beyond min and max ticks
+        if self.tO > self.tE:
+            # If 'start' time > 'end' time, switch vals for comparison
+            newTE, newTO = self.chkBoundaries(newTE, newTO, winWidth)
+        else:
+            newTO, newTE = self.chkBoundaries(newTO, newTE, winWidth)
+
+        # Update slider values and self.iO, self.iE
+        self.setSliderNoCallback(self.ui.startSlider, newTO)
+        self.setSliderNoCallback(self.ui.endSlider, newTE)
+
+        # Update timeEdit values
+        self.onStartSliderChanged(newTO)
+        self.onEndSliderChanged(newTE)
+
+        # Update plots
+        self.setTimes()
+
+    def shiftWinRgt(self):
+        self.shiftWindow('R')
+
+    def shiftWinLft(self):
+        self.shiftWindow('L')
+
+    def chkBoundaries(self, origin, end, winWidth):
+        # When adding/subtracting shift amount goes past min and max ticks,
+        # shift window to that edge while maintaining the num of ticks displayed
+        if (origin < 0):
+            origin = 0
+            end = origin + winWidth
+        elif end > self.iiE:
+            end = self.iiE
+            origin = end - winWidth
+        return (origin, end)
+
+    def updtShftPrcnt(self):
+        self.shftPrcnt = self.ui.shftPrcntBox.value()/100
 
     def enableToolsAndOptionsMenus(self, bool):
         """Enable or disable the Tools and Options menus.

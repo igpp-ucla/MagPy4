@@ -144,6 +144,37 @@ class MagPy4UI(object):
 
         layout.addLayout(sliderLayout)
 
+        # Create buttons for moving plot windows L or R by a fixed amt
+        # TODO: Change button size, location, etc.
+        shftWinLayout = QtWidgets.QHBoxLayout()
+        self.mvLftBtn = QtWidgets.QPushButton(' < ', window)
+        self.mvRgtBtn = QtWidgets.QPushButton(' > ', window)
+        self.mvLftBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.mvRgtBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.mvLftBtn.setFont(QtGui.QFont('monospace', 12))
+        self.mvRgtBtn.setFont(QtGui.QFont('monospace', 12))
+
+        # Setup shortcuts to shift win w/ L/R keys
+        self.mvLftShrtct = QtWidgets.QShortcut('Left', window)
+        self.mvRgtShrtct = QtWidgets.QShortcut('Right', window)
+
+        # Shift percentage box setup
+        self.shftPrcntBox = QtWidgets.QSpinBox()
+        self.shftPrcntBox.setButtonSymbols(QtWidgets.QAbstractSpinBox.PlusMinus)        
+        self.shftPrcntBox.setRange(5, 100)
+        self.shftPrcntBox.setSingleStep(10)
+        self.shftPrcntBox.setValue(25) # Default is 1/4th of time range
+        self.shftPrcntBox.setSuffix('%')
+        self.shftPrcntBox.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+        self.shftPrcntBox.setFont(QtGui.QFont('monospace', 12))
+
+        # Shift layout setup
+        shftWinLayout.addStretch(4)
+        shftWinLayout.addWidget(self.mvLftBtn)
+        shftWinLayout.addWidget(self.mvRgtBtn)
+        shftWinLayout.addWidget(self.shftPrcntBox)
+        layout.addLayout(shftWinLayout)
+
          # update slider tick amount and timers and labels and stuff based on new file
     def setupSliders(self, tick, max, minmax):
         #dont want to trigger callbacks from first plot
