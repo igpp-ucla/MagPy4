@@ -14,7 +14,7 @@ class MagPy4UI(object):
 
         # gives default window options in top right
         window.setWindowFlags(QtCore.Qt.Window)
-        window.resize(1280,700)
+        window.resize(1280, 700)
 
         self.centralWidget = QtWidgets.QWidget(window)
         window.setCentralWidget(self.centralWidget)
@@ -22,58 +22,59 @@ class MagPy4UI(object):
         # Define actions.
 
         self.actionOpenFF = QtWidgets.QAction(window)
-        #self.actionOpenFF.setPriority(QtWidgets.QAction.HighPriority)
         self.actionOpenFF.setText('&Open Flat File...')
         self.actionOpenFF.setShortcut('Ctrl+O')
-        self.actionOpenFF.setToolTip('Opens a flat file')
+        self.actionOpenFF.setStatusTip('Opens a flat file')
 
         self.actionAddFF = QtWidgets.QAction(window)
-        #self.actionAddFF.setPriority(QtWidgets.QAction.HighPriority)
         self.actionAddFF.setText('&Add Flat File...')
-        self.actionAddFF.setToolTip('Adds a flat file')
+        self.actionAddFF.setStatusTip('Adds a flat file')
 
         self.actionOpenCDF = QtWidgets.QAction(window)
-        #self.actionOpenCDF.setPriority(QtWidgets.QAction.HighPriority)
         self.actionOpenCDF.setText('Open &CDF File...')
-        self.actionOpenCDF.setToolTip('Opens a CDF file (experimental)')
+        self.actionOpenCDF.setStatusTip('Opens a CDF file (currently experimental)')
 
         self.actionExit = QtWidgets.QAction(window)
         self.actionExit.setText('E&xit')
-        self.actionExit.setToolTip('Closes the program\'s window and quits the program')
+        self.actionExit.setStatusTip('Closes the program\'s window and quits the program')
 
         self.actionShowData = QtWidgets.QAction(window)
         self.actionShowData.setText('&Data...')
-        self.actionShowData.setToolTip('Shows the loaded data in a table view')
+        self.actionShowData.setStatusTip('Shows the loaded data in a table view')
 
         self.actionPlotMenu = QtWidgets.QAction(window)
         self.actionPlotMenu.setText('&Plot Menu...')
-        self.actionPlotMenu.setToolTip('Opens the plot menu')
+        self.actionPlotMenu.setStatusTip('Opens the plot menu')
 
         self.actionSpectra = QtWidgets.QAction(window)
         self.actionSpectra.setText('&Spectra...')
-        self.actionSpectra.setToolTip('Opens spectral analysis window')
+        self.actionSpectra.setStatusTip('Opens spectral analysis window')
 
         self.actionEdit = QtWidgets.QAction(window)
         self.actionEdit.setText('&Edit...')
-        self.actionEdit.setToolTip('Opens edit window that allows you to rotate the data with matrices')
+        self.actionEdit.setStatusTip('Opens edit window that allows you to rotate the data with matrices')
 
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
+        self.scaleYToCurrentTimeAction.setStatusTip('')
         self.antialiasAction = QtWidgets.QAction('Smooth &Lines (Antialiasing)',checkable=True,checked=True)
+        self.antialiasAction.setStatusTip('')
         self.bridgeDataGaps = QtWidgets.QAction('&Bridge Data Gaps', checkable=True, checked=False)
+        self.bridgeDataGaps.setStatusTip('')
         self.drawPoints = QtWidgets.QAction('&Draw Points (Unoptimized)', checkable=True, checked=False)
+        self.drawPoints.setStatusTip('')
 
         self.actionHelp = QtWidgets.QAction(window)
         self.actionHelp.setText('MagPy4 &Help')
         self.actionHelp.setShortcut('F1')
-        self.actionHelp.setToolTip('Opens help window with information about the program modules')
+        self.actionHelp.setStatusTip('Opens help window with information about the program modules')
 
         self.actionAbout = QtWidgets.QAction(window)
         self.actionAbout.setText('&About MagPy4')
-        self.actionAbout.setToolTip('Displays the program\'s version number and copyright notice')
+        self.actionAbout.setStatusTip('Displays the program\'s version number and copyright notice')
 
         self.runTests = QtWidgets.QAction(window)
         self.runTests.setText('Run Tests')
-        self.runTests.setToolTip('Runs unit tests for code')
+        self.runTests.setStatusTip('Runs unit tests for code')
 
         self.switchMode = QtWidgets.QAction(window)
         #self.switchMode.setText('Switch to MarsPy')
@@ -135,24 +136,17 @@ class MagPy4UI(object):
         self.endSlider = QtWidgets.QSlider()
         self.endSlider.setOrientation(QtCore.Qt.Horizontal)
 
-        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 14))
-
-        sliderLayout.addWidget(self.timeEdit.start, 0, 0, 1, 1)
-        sliderLayout.addWidget(self.startSlider, 0, 1, 1, 1)
-        sliderLayout.addWidget(self.timeEdit.end, 1, 0, 1, 1)
-        sliderLayout.addWidget(self.endSlider, 1, 1, 1, 1)
-
-        layout.addLayout(sliderLayout)
+        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 11))
 
         # Create buttons for moving plot windows L or R by a fixed amt
         # TODO: Change button size, location, etc.
-        shftWinLayout = QtWidgets.QHBoxLayout()
-        self.mvLftBtn = QtWidgets.QPushButton(' < ', window)
-        self.mvRgtBtn = QtWidgets.QPushButton(' > ', window)
-        self.mvLftBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.mvRgtBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.mvLftBtn.setFont(QtGui.QFont('monospace', 12))
-        self.mvRgtBtn.setFont(QtGui.QFont('monospace', 12))
+        #shftWinLayout = QtWidgets.QHBoxLayout()
+        self.mvLftBtn = QtWidgets.QPushButton('<', window)
+        self.mvRgtBtn = QtWidgets.QPushButton('>', window)
+        self.mvLftBtn.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
+        self.mvRgtBtn.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
+        self.mvLftBtn.setFont(QtGui.QFont('monospace', 11))
+        self.mvRgtBtn.setFont(QtGui.QFont('monospace', 11))
 
         # Setup shortcuts to shift win w/ L/R keys
         self.mvLftShrtct = QtWidgets.QShortcut('Left', window)
@@ -165,20 +159,31 @@ class MagPy4UI(object):
         self.shftPrcntBox.setSingleStep(10)
         self.shftPrcntBox.setValue(25) # Default is 1/4th of time range
         self.shftPrcntBox.setSuffix('%')
-        self.shftPrcntBox.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-        self.shftPrcntBox.setFont(QtGui.QFont('monospace', 12))
+        self.shftPrcntBox.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
+        self.shftPrcntBox.setFont(QtGui.QFont('monospace', 11))
 
         # Status bar setup
-        self.statusBar = QtWidgets.QStatusBar(window)
-        self.statusBar.setSizeGripEnabled(False)
-        self.statusBar.setFont(QtGui.QFont('monospace', 11))
+        self.statusBar = window.statusBar()
+        #self.statusBar = QtWidgets.QStatusBar(window)
+        #self.statusBar.setSizeGripEnabled(False)
+        #self.statusBar.setFont(QtGui.QFont('monospace', 11))
 
         # Shift layout setup
-        shftWinLayout.addWidget(self.statusBar)
-        shftWinLayout.addWidget(self.mvLftBtn)
-        shftWinLayout.addWidget(self.mvRgtBtn)
-        shftWinLayout.addWidget(self.shftPrcntBox)
-        layout.addLayout(shftWinLayout)
+        #shftWinLayout.addWidget(self.statusBar)
+        #shftWinLayout.addWidget(self.mvLftBtn)
+        #shftWinLayout.addWidget(self.mvRgtBtn)
+        #shftWinLayout.addWidget(self.shftPrcntBox)
+        #layout.addLayout(shftWinLayout)
+
+        sliderLayout.addWidget(self.timeEdit.start, 0, 0, 1, 1)
+        sliderLayout.addWidget(self.startSlider, 0, 1, 1, 1)
+        sliderLayout.addWidget(self.mvLftBtn, 0, 2, 2, 1)
+        sliderLayout.addWidget(self.mvRgtBtn, 0, 3, 2, 1)
+        sliderLayout.addWidget(self.shftPrcntBox, 0, 4, 2, 1)
+        sliderLayout.addWidget(self.timeEdit.end, 1, 0, 1, 1)
+        sliderLayout.addWidget(self.endSlider, 1, 1, 1, 1)
+
+        layout.addLayout(sliderLayout)
 
          # update slider tick amount and timers and labels and stuff based on new file
     def setupSliders(self, tick, max, minmax):
