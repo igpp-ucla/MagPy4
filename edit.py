@@ -107,6 +107,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.closeSubWindows()
         self.minVar = MinVar(self, self.window)
         self.minVar.show()
+
     def closeMinVar(self):
         if self.minVar:
             self.minVar.close()
@@ -116,6 +117,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.closeSubWindows()
         self.filter = FilterDialog(self, self.window)
         self.filter.show()
+
     def closeFilter(self):
         if self.filter:
             self.filter.close()
@@ -415,7 +417,7 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         for v in self.ui.vector:
             vstr = v.currentText()
             vstrs.append(vstr)
-            iO,iE = self.window.calcDataIndicesFromLines(vstr)
+            iO,iE = self.window.calcDataIndicesFromLines(vstr, self.window.currentEdit)
             data = self.window.getData(vstr)[iO:iE]
             
             # for double checking start and stop times
