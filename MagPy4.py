@@ -208,6 +208,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def updtShftPrcnt(self):
         self.shftPrcnt = self.ui.shftPrcntBox.value()/100
 
+    # Use these two functions to set a temporary status msg and clear it
+    def showStatusMsg(self, msg):
+        status = 'STATUS: ' + msg
+        self.ui.statusBar.showMessage(status)
+
+    def clearStatusMsg(self):
+        self.ui.statusBar.clearMessage()
+
     def enableToolsAndOptionsMenus(self, bool):
         """Enable or disable the Tools and Options menus.
         """
@@ -319,10 +327,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeTraceStats()
         if not self.spectra or self.spectra.wasClosed:
             self.spectra = Spectra(self)
+            self.showStatusMsg('Selecting spectra range...')
             self.startGeneralSelect('SPECTRA', '#FF0000', self.spectra.ui.timeEdit, True)
 
     def showSpectra(self):
         if self.spectra:
+            self.clearStatusMsg()
             self.spectra.show()
             self.spectra.updateSpectra()
             PyQtUtils.moveToFront(self.spectra)
