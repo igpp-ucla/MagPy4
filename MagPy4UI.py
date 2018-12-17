@@ -140,11 +140,12 @@ class MagPy4UI(object):
 
         # Create buttons for moving plot windows L or R by a fixed amt
         # TODO: Change button size, location, etc.
-        #shftWinLayout = QtWidgets.QHBoxLayout()
         self.mvLftBtn = QtWidgets.QPushButton('<', window)
         self.mvRgtBtn = QtWidgets.QPushButton('>', window)
         self.mvLftBtn.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
         self.mvRgtBtn.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
+        self.mvLftBtn.setFixedWidth(50)
+        self.mvRgtBtn.setFixedWidth(50)
         self.mvLftBtn.setFont(QtGui.QFont('monospace', 11))
         self.mvRgtBtn.setFont(QtGui.QFont('monospace', 11))
 
@@ -164,16 +165,6 @@ class MagPy4UI(object):
 
         # Status bar setup
         self.statusBar = window.statusBar()
-        #self.statusBar = QtWidgets.QStatusBar(window)
-        #self.statusBar.setSizeGripEnabled(False)
-        #self.statusBar.setFont(QtGui.QFont('monospace', 11))
-
-        # Shift layout setup
-        #shftWinLayout.addWidget(self.statusBar)
-        #shftWinLayout.addWidget(self.mvLftBtn)
-        #shftWinLayout.addWidget(self.mvRgtBtn)
-        #shftWinLayout.addWidget(self.shftPrcntBox)
-        #layout.addLayout(shftWinLayout)
 
         sliderLayout.addWidget(self.timeEdit.start, 0, 0, 1, 1)
         sliderLayout.addWidget(self.startSlider, 0, 1, 1, 1)
