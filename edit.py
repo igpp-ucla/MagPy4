@@ -274,14 +274,14 @@ class Edit(QtWidgets.QFrame, EditUI):
         #    print(f'{k} {[len(l) for l in v]}')
 
     # takes a matrix, notes for the history, and a name for the history entry
-    def apply(self, mat, notes, name):
+    def apply(self, mat, notes, name, multType='R'):
         R = Mth.mult(self.curSelection[0], mat) #shows total matrix from beginning
-        self.generateData(mat, name)
+        self.generateData(mat, name, multType)
         self.addHistory(R, notes, f'{name}')
 
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R
-    def generateData(self, R, name):
+    def generateData(self, R, name, multType='R'):
         # for each full vector dropdown row 
         for di, dd in enumerate(self.axisDropdowns):
             xstr = dd[0].currentText()
@@ -296,8 +296,16 @@ class Edit(QtWidgets.QFrame, EditUI):
             Y = self.window.getData(ystr)
             Z = self.window.getData(zstr)
 
-            A = np.column_stack((X,Y,Z))
-            M = np.matmul(A,R)
+            # If a right matrix transformation, treat data vecs as columns
+            if (multType == 'R'):
+                A = np.column_stack((X,Y,Z))
+                M = np.matmul(A,R)
+            else:
+            # If a left matrix transformation, treat data vecs as rows and transpose
+            # result for compatability with next few lines of code
+                A = np.array([X,Y,Z])
+                Mtran = np.matmul(R,A)
+                M = np.transpose(Mtran)
 
             self.window.DATADICT[xstr].append(M[:,0])
             self.window.DATADICT[ystr].append(M[:,1])
@@ -419,14 +427,6 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
             vstrs.append(vstr)
             iO,iE = self.window.calcDataIndicesFromLines(vstr, self.window.currentEdit)
             data = self.window.getData(vstr)[iO:iE]
-            
-            # for double checking start and stop times
-            #print(vstr)
-            #print(FFTIME(self.window.getTimes(vstr)[0][iO], Epoch=self.window.epoch).UTC)
-            #print(FFTIME(self.window.getTimes(vstr)[0][iE], Epoch=self.window.epoch).UTC)
-            #for i in range(3):
-            #    print(f'{data[i]}')
-
             xyz.append(data)
             avg.append(self.average(data))
 
@@ -472,6 +472,6 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         self.ui.eigenValsLabel.setText(eigenText)
         ts = self.ui.timeEdit.toString()
         labelText = f'{", ".join(vstrs)}\n{eigenText}\n{ts[0]}->{ts[1]}'
-        self.edit.apply(eigen, labelText, 'minvar')
+        self.edit.apply(eigen, labelText, 'MinVar', 'L')
         #self.edit.closeMinVar()
         PyQtUtils.moveToFront(self.edit)
