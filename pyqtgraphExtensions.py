@@ -3,6 +3,8 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
 import pyqtgraph.exporters
 from FF_Time import FFTIME
+from datetime import datetime, timedelta
+from math import ceil
 
 # custom extensions to pyqtgraph for the projects needs
 # mostly just slightly edited versions of originals
@@ -102,26 +104,132 @@ class LogAxis(pg.AxisItem):
 # subclass based off example here:
 # https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
 class DateAxis(pg.AxisItem):
-    def toUTC(x, window): # converts seconds since epoch to UTC string
-        # get current selected range, if greater than hour then show hour marks
-        rng = window.getSelectedTimeRange()
-        times = str(FFTIME(x, Epoch=window.epoch).UTC)
-        
+    def __init__(self, orientation, pen=None, linkView=None, parent=None,
+                maxTickLength=-5, showValues=True):
+        pg.AxisItem.__init__(self, orientation, pen, linkView, parent,
+                            maxTickLength,showValues)
+        # Dictionary holding default increment values for ticks
+        self.modeToDelta = {}
+        self.modeToDelta['DOM:HR'] = timedelta(hours=6)
+        self.modeToDelta['HR:MIN:SEC'] = timedelta(minutes=30)
+        self.modeToDelta['MIN:SEC'] = timedelta(minutes=5)
+        self.modeToDelta['MIN:SEC.MS'] = timedelta(milliseconds=750)
+        # String used by strftime/strptime to parse UTC strings
+        self.fmtStr = '%Y %j %b %d %H:%M:%S.%f'
+
+    # Format a timestamp according to format underneath axis
+    def fmtTimeStmp(self, window, times):
         splits = times.split(' ')
         t = splits[4]
-
+        rng = self.window.getSelectedTimeRange()
         if rng > 60 * 60 * 24: # if over a day show monthday:hh
             month = splits[2]
             day = splits[3]
-            return f'{month}{day}:{t.split(":")[0]}'
-        elif rng > 30*60: # if over half hour show hh:mm:ss
+            return f'{month}-{day}:{t.split(":")[0]}'
+        elif rng > 75 * 60: # if over 1.25 hrs show hh:mm:ss
             return t.rsplit('.',1)[0]
-        elif rng > 5: # if over 5 seconds show mm:ss
+        elif rng > 10 * 60: # if over 10 seconds show mm:ss
             return t.split(':',1)[1].split('.')[0]
-        return t.split(':',1)[1] # else show mm:ss.mmm
+        else:
+            return t.split(':',1)[1] # else show mm:ss.mmm
 
-    def tickStrings(self, values, scale, spacing):
-        return [DateAxis.toUTC(x,self.window) for x in values]
+    # Helper functions for convert between datetime obj, timestamp, and tick val
+    def tmstmpToDateTime(self, timeStr):
+        return datetime.strptime(timeStr, self.fmtStr)
+    def dateTimeToTmstmp(self, dt):
+        return dt.strftime(self.fmtStr)[:-3] # Remove extra 3 millisecond digits
+    def tickStrToVal(self, tickStr):
+        return (FFTIME(tickStr, Epoch=self.window.epoch)).tick
+
+    # Used to zero out insignificant values in a datetime object (wrt time label res)
+    def zeroLowerVals(self, dt, delta):
+        if delta >= timedelta(days=1):
+            dt = dt.replace(day=0)
+        if delta >= timedelta(hours=1):
+           dt = dt.replace(hour = 0)
+        if delta >= timedelta(minutes=1):
+            dt = dt.replace(minute = 0)
+        if delta >= timedelta(seconds=1):
+            dt = dt.replace(second = 0)
+        if delta >= timedelta(microseconds=1):
+            dt = dt.replace(microsecond = 0)
+        return dt
+
+    # Edge cases: First tick at rounded up time, last tick at rounded down time
+    def firstTickDt(self, minDt, td):
+        # Increment with timedelta until reach first tick that will be visible
+        startDt = self.zeroLowerVals(minDt, td)
+        while startDt < minDt:
+            startDt = startDt + td
+        return startDt
+    def lastTickDt(self, maxDt, td):
+        # Increment with timedelta until reach tick just past edge
+        endDt = self.zeroLowerVals(maxDt, td)
+        while endDt <= maxDt:
+            endDt = endDt + td
+        return endDt - td
+
+    # From the list of all potential ticks in a range, uniformly skip over
+    # certain ones so there aren't too many on a plot
+    def limitTicks(self, tickList):
+        tickMax = 6 # Maximum number of ticks to show on a plot
+        listLen = len(tickList)
+        if listLen > tickMax:
+            # Only keep entries w/ indices that are multiples of skipNum
+            skipNum = ceil(listLen / tickMax)
+            newList = []
+            for i in range(0, listLen, skipNum):
+                newList.append(tickList[i])
+            return newList
+        else:
+            return tickList
+
+    def getTickTimes(self, strtDt, endDt, td, window):
+        # Generate all possible tick times in between start and end times
+        tickTimes = [strtDt]
+        currDt = strtDt + td
+        while currDt < endDt:
+            tickTimes.append(currDt)
+            currDt = currDt + td
+        tickTimes.append(endDt)
+
+        # Reduce the number of ticks if there are too many
+        tickTimes = self.limitTicks(tickTimes)
+
+        # Creates lists mapping datetime objs to UTC strings and FFTime ticks/values
+        tickStrs = list(map(self.dateTimeToTmstmp, tickTimes))
+        tickVals = list(map(self.tickStrToVal, tickStrs))
+
+        # Create a list of time value/string tuples to use in setTicks function
+        tickPairs = []
+        numTicks = len(tickStrs)
+        for i in range(0, numTicks):
+            # Format strings according to label format
+            tickStrs[i] = self.fmtTimeStmp(window, tickStrs[i])
+            tickPairs.append((tickVals[i], tickStrs[i]))
+        return [tickPairs,[]] # Second list is for 'minor ticks'
+
+    def updateTicks(self, window, mode):
+        # In case sliders swapped, just get min/max times
+        minTime = min(window.tO, window.tE)
+        maxTime = max(window.tO, window.tE)
+
+        # Convert start/end times to strings
+        minTimeStr = str(FFTIME(minTime, Epoch=window.epoch).UTC)
+        maxTimeStr = str(FFTIME(maxTime, Epoch=window.epoch).UTC)
+
+        # Convert start/end times to datetime objects
+        minDt = self.tmstmpToDateTime(minTimeStr)
+        maxDt = self.tmstmpToDateTime(maxTimeStr)
+
+        # Identify first and last times that should appear in range
+        td = self.modeToDelta[mode]
+        strtDt = self.firstTickDt(minDt, td)
+        endDt = self.lastTickDt(maxDt, td)
+
+        # Get all tick labels/values in-between and update on plot
+        tickPairs = self.getTickTimes(strtDt, endDt, td, window)
+        self.setTicks(tickPairs)
 
 class GridGraphicsLayout(pg.GraphicsLayout):
     def __init__(self, window=None, *args, **kwargs):

@@ -841,15 +841,27 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         if rng > 60 * 60 * 24:
             self.ui.timeLabel.setText('DOM:HR')
-        elif rng > 30 * 60: # if over half hour show hh:mm:ss
+        elif rng > 75 * 60: # if over 1.25 hr show hh:mm:ss
             self.ui.timeLabel.setText('HR:MIN:SEC')
-        elif rng > 5: # if over 5 seconds show mm:ss
+        elif rng > 10 * 60: # if over 10 seconds show mm:ss
             self.ui.timeLabel.setText('MIN:SEC')
         else:
             self.ui.timeLabel.setText('MIN:SEC.MS')
 
         for pi in self.plotItems:
             pi.setXRange(self.tO, self.tE, 0.0)
+
+        # Update ticks/labels on bottom axis, clear top axis
+        lastPlotIndex = len(self.plotItems) - 1
+        lastPlot = self.plotItems[lastPlotIndex]
+        tickAxis = lastPlot.getAxis('bottom')
+        tickAxis.updateTicks(self, self.ui.timeLabel.text)
+        lastPlot.getAxis('top').setTicks([[],[]])
+
+        # Update the other plot's tick marks to match (w/o labels)
+        for i in range(0, lastPlotIndex):
+            self.plotItems[i].getAxis('bottom').setTicks(tickAxis._tickLevels)
+            self.plotItems[i].getAxis('top').setTicks([[],[]])
 
     # try to find good default plot strings
     def getDefaultPlotInfo(self):
