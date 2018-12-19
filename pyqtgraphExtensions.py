@@ -110,15 +110,13 @@ class DateAxis(pg.AxisItem):
         splits = times.split(' ')
         t = splits[4]
 
-        if rng > 60 * 60 * 24: # if over a day show monthday:hh
-            month = splits[2]
-            day = splits[3]
-            return f'{month}{day}:{t.split(":")[0]}'
-        elif rng > 30*60: # if over half hour show hh:mm:ss
+        if rng > 60 * 60 * 24: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
+            return f'{splits[2]} {splits[3]} {t.split(":")[0]}:{t.split(":")[1]}:{t.split(":",1)[0]}'
+        elif rng > 30 * 60: # if over half hour show hh:mm:ss
             return t.rsplit('.',1)[0]
         elif rng > 5: # if over 5 seconds show mm:ss
             return t.split(':',1)[1].split('.')[0]
-        return t.split(':',1)[1] # else show mm:ss.mmm
+        return t.split(':',1)[1] # else show mm:ss.sss
 
     def tickStrings(self, values, scale, spacing):
         return [DateAxis.toUTC(x,self.window) for x in values]
