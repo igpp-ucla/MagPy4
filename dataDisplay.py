@@ -281,7 +281,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
         path = os.path.expanduser(".")
         QQ.setDirectory(path)
-        fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='Text files (*.txt)')
+        fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='Comma-separated value file (*.csv)')
         if fullname is None:
             print('Save failed')
             return
@@ -289,37 +289,26 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             print('Save cancelled')
             return
         np.set_printoptions(formatter={'float': '{:+10.4f}'.format}, linewidth=10000)
-        print(fullname)
         epoch = self.curFID.FFParm["EPOCH"].value
         nRows = len(self.time)
 
-		#have option for 'readable format' vs 'excel ready'
-        #print('reshaping data for printing...')
-
+        # Shape data
         shape = np.shape(self.dataByRec)
         dataShaped = np.zeros((shape[0], shape[1]+1))
         dataShaped[:,1:] = self.dataByRec
         dataShaped[:,0] = self.time
+
+        # Create header to write at top of file
+        header = ''
+        numCols = len(self.headerStrings)
+        for i in range(0, numCols-1):
+            header = header + self.headerStrings[i] + ','
+        header += self.headerStrings[numCols-1] # No delimiter after last col name
+
+        # Write data to file
         print(f'Writing {nRows} records to {fullname[0]}...')
-        np.savetxt(fullname[0], dataShaped, fmt = '%+10.4f')
-
-        #file = open(fullname[0], "+w")
-        
-        #fileStr = ''
-        #utcs = [UTCQDate.removeDOY(FFTIME(t, Epoch=epoch).UTC) for t in self.time]
-        #fileStrs = [f'{utcs[i]} {str(self.dataByCol[:,1])[1:-2]}' for i in range(nRows)]
-
-        #utc = FFTIME(self.time, Epoch=epoch).UTC
-        #for i in tqdm(range(nRows),ascii=True):
-            #UTC = FFTIME(self.time[i], Epoch=epoch).UTC
-            #UTC = UTCQDate.removeDOY(UTC)
-
-            #file.write(f'{UTC} {str(self.dataByCol[:,i])[1:-2]}\n')
-            #fileStrs.append(f'{utcs} {str(self.dataByCol[:,i])[1:-2]}')
-
-        #file.write('\n'.join(fileStrs))
-        #file.write(fileStr)
-        #file.close()
+        np.savetxt(fullname[0], dataShaped, fmt = '%.4f', header=header, 
+            delimiter=',', comments='')
 
         print(f'Save complete')
         # should auto open the file here afterwards?
