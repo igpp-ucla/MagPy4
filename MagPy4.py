@@ -379,9 +379,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def openFileDialog(self, isFlatfile, clearCurrent):
         if isFlatfile:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='Flat Files (*.ffd)')[0]
         else:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Cdf", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF (*.cdf)')[0]
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
 
         fileNames = list(fileNames)
         for fileName in fileNames:
