@@ -379,9 +379,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def openFileDialog(self, isFlatfile, clearCurrent):
         if isFlatfile:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flatfile", options = QtWidgets.QFileDialog.ReadOnly, filter='Flatfiles (*.ffd)')[0]
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='Flat Files (*.ffd)')[0]
         else:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Cdf", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF (*.cdf)')[0]
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
 
         fileNames = list(fileNames)
         for fileName in fileNames:
@@ -618,7 +618,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def openCDF(self,PATH):#,q):
         """ opens a cdf file and loads the data into program structures """
 
-        print(f'opening cdf: {PATH}')
+        print(f'Opening CDF file: {PATH}')
         cdf = pycdf.CDF(PATH)
         if not cdf:
             print('CDF LOAD FAILED')
@@ -839,6 +839,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         rng = self.getSelectedTimeRange()
         self.ui.timeLabel.setText('yellow')
 
+<<<<<<< HEAD
         if rng > 60 * 60 * 24:
             self.ui.timeLabel.setText('DOM:HR')
         elif rng > 75 * 60: # if over 1.25 hr show hh:mm:ss
@@ -847,6 +848,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.ui.timeLabel.setText('MIN:SEC')
         else:
             self.ui.timeLabel.setText('MIN:SEC.MS')
+=======
+        if rng > 60 * 60 * 24: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
+            self.ui.timeLabel.setText('hh:mm:ss')
+        elif rng > 30 * 60: # if over half hour show hh:mm:ss
+            self.ui.timeLabel.setText('hh:mm:ss')
+        elif rng > 5: # if over 5 seconds show mm:ss
+            self.ui.timeLabel.setText('mm:ss')
+        else: # else show mm:ss.sss
+            self.ui.timeLabel.setText('mm:ss.sss')
+>>>>>>> e0447b6d6167a3d0587bbbe38cf06b67ddf72075
 
         for pi in self.plotItems:
             pi.setXRange(self.tO, self.tE, 0.0)
@@ -1187,7 +1198,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if len(Y) < len(times):
             diff = len(times) - len(Y) + 1
             times = times[diff // 2:-diff // 2 + 1]
-            # resolutions shouldnt change because they are used with original data only
+            # resolutions shouldn't change because they are used with original data only
             assert len(Y) == len(times), 'filter time correction failed...'
 
         return times,resolutions,avgRes
