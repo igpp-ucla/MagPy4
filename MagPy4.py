@@ -134,6 +134,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # Shift percentage setup
         self.shftPrcnt = self.ui.shftPrcntBox.value()/100 # Initialize default val
 
+        # Cutoff values for time-label properties
+        self.dayCutoff = 60 * 60 * 24
+        self.hrCutoff = 60 * 60
+        self.minCutoff = 10 * 60
+
         self.magpyIcon = QtGui.QIcon()
         self.marsIcon = QtGui.QIcon()
         if self.OS == 'mac':
@@ -835,38 +840,39 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getSelectedTimeRange(self):
         return abs(self.tE - self.tO)
 
+    def getTimeLabelMode(self):
+        rng = self.getSelectedTimeRange()
+        if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
+            return 'DAY'
+        elif rng > self.hrCutoff: # if over half hour show hh:mm:ss
+            return 'HR'
+        elif rng > self.minCutoff: # if over 5 seconds show mm:ss
+            return 'MIN'
+        else: # else show mm:ss.sss
+            return 'MS'
+
     def updateXRange(self):
         rng = self.getSelectedTimeRange()
         self.ui.timeLabel.setText('yellow')
 
-<<<<<<< HEAD
-        if rng > 60 * 60 * 24:
-            self.ui.timeLabel.setText('DOM:HR')
-        elif rng > 75 * 60: # if over 1.25 hr show hh:mm:ss
-            self.ui.timeLabel.setText('HR:MIN:SEC')
-        elif rng > 10 * 60: # if over 10 seconds show mm:ss
-            self.ui.timeLabel.setText('MIN:SEC')
-        else:
-            self.ui.timeLabel.setText('MIN:SEC.MS')
-=======
-        if rng > 60 * 60 * 24: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
+        if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
             self.ui.timeLabel.setText('hh:mm:ss')
-        elif rng > 30 * 60: # if over half hour show hh:mm:ss
+        elif rng > self.hrCutoff: # if over half hour show hh:mm:ss
             self.ui.timeLabel.setText('hh:mm:ss')
-        elif rng > 5: # if over 5 seconds show mm:ss
+        elif rng > self.minCutoff: # if over 5 seconds show mm:ss
             self.ui.timeLabel.setText('mm:ss')
         else: # else show mm:ss.sss
             self.ui.timeLabel.setText('mm:ss.sss')
->>>>>>> e0447b6d6167a3d0587bbbe38cf06b67ddf72075
 
         for pi in self.plotItems:
             pi.setXRange(self.tO, self.tE, 0.0)
 
         # Update ticks/labels on bottom axis, clear top axis
+        labelMode = self.getTimeLabelMode()
         lastPlotIndex = len(self.plotItems) - 1
         lastPlot = self.plotItems[lastPlotIndex]
         tickAxis = lastPlot.getAxis('bottom')
-        tickAxis.updateTicks(self, self.ui.timeLabel.text)
+        tickAxis.updateTicks(self, labelMode)
         lastPlot.getAxis('top').setTicks([[],[]])
 
         # Update the other plot's tick marks to match (w/o labels)

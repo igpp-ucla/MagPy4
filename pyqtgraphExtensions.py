@@ -110,10 +110,10 @@ class DateAxis(pg.AxisItem):
                             maxTickLength,showValues)
         # Dictionary holding default increment values for ticks
         self.modeToDelta = {}
-        self.modeToDelta['DOM:HR'] = timedelta(hours=6)
-        self.modeToDelta['HR:MIN:SEC'] = timedelta(minutes=30)
-        self.modeToDelta['MIN:SEC'] = timedelta(minutes=5)
-        self.modeToDelta['MIN:SEC.MS'] = timedelta(milliseconds=750)
+        self.modeToDelta['DAY'] = timedelta(hours=6)
+        self.modeToDelta['HR'] = timedelta(minutes=30)
+        self.modeToDelta['MIN'] = timedelta(minutes=5)
+        self.modeToDelta['MS'] = timedelta(milliseconds=750)
         # String used by strftime/strptime to parse UTC strings
         self.fmtStr = '%Y %j %b %d %H:%M:%S.%f'
 
@@ -121,12 +121,13 @@ class DateAxis(pg.AxisItem):
     def fmtTimeStmp(self, window, times):
         splits = times.split(' ')
         t = splits[4]
+        rng = self.window.getSelectedTimeRange()
 
-        if rng > 60 * 60 * 24: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
+        if rng > window.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
             return f'{splits[2]} {splits[3]} {t.split(":")[0]}:{t.split(":")[1]}:{t.split(":",1)[0]}'
-        elif rng > 30 * 60: # if over half hour show hh:mm:ss
+        elif rng > window.hrCutoff: # if over half hour show hh:mm:ss
             return t.rsplit('.',1)[0]
-        elif rng > 10 * 60: # if over 10 seconds show mm:ss
+        elif rng > window.minCutoff: # if over 10 seconds show mm:ss
             return t.split(':',1)[1].split('.')[0]
         else:
             return t.split(':',1)[1] # else show mm:ss.mmm
