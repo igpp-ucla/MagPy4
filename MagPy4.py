@@ -844,9 +844,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         rng = self.getSelectedTimeRange()
         if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
             return 'DAY'
-        elif rng > self.hrCutoff: # if over half hour show hh:mm:ss
+        elif rng > self.hrCutoff: # if over hour show hh:mm:ss
             return 'HR'
-        elif rng > self.minCutoff: # if over 5 seconds show mm:ss
+        elif rng > self.minCutoff: # if over 10 seconds show mm:ss
             return 'MIN'
         else: # else show mm:ss.sss
             return 'MS'
@@ -857,9 +857,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
             self.ui.timeLabel.setText('hh:mm:ss')
-        elif rng > self.hrCutoff: # if over half hour show hh:mm:ss
+        elif rng > self.hrCutoff: # if hour show hh:mm:ss
             self.ui.timeLabel.setText('hh:mm:ss')
-        elif rng > self.minCutoff: # if over 5 seconds show mm:ss
+        elif rng > self.minCutoff: # if over 10 seconds show mm:ss
             self.ui.timeLabel.setText('mm:ss')
         else: # else show mm:ss.sss
             self.ui.timeLabel.setText('mm:ss.sss')
