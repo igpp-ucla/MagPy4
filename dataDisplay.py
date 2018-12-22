@@ -40,7 +40,9 @@ class DataDisplayUI(object):
         fileHL.addWidget(self.fileCombo, 0, 1, 1, 1)
         filePathLayout = QtGui.QHBoxLayout()
         self.filePathCB = QtGui.QCheckBox('Show Full &Path')
+        self.viewEdtdDta = QtGui.QCheckBox('View Edited Data')
         filePathLayout.addWidget(self.filePathCB)
+        filePathLayout.addWidget(self.viewEdtdDta)
         filePathLayout.addStretch()
         fileHL.addLayout(filePathLayout, 1, 1, 1, 1)
         topHL.addLayout(fileHL)
@@ -186,7 +188,7 @@ class FFTableModel(QtCore.QAbstractTableModel):
 
 class DataDisplay(QtGui.QFrame, DataDisplayUI):
     """ file data dialog """
-    def __init__(self, FIDs, Title=None, parent=None):
+    def __init__(self, window, FIDs, Title=None, parent=None):
         QtGui.QWidget.__init__(self, parent)
         self.ui = DataDisplayUI()
         self.ui.setupUi(self)
@@ -194,10 +196,12 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.FIDs = FIDs
         self.curFID = FIDs[0]
         self.updateFile()
+        self.window = window
 
         self.setFileComboNames()
         self.ui.fileCombo.currentIndexChanged.connect(self.fileComboChanged)
         self.ui.filePathCB.stateChanged.connect(self.setFileComboNames)
+        self.ui.viewEdtdDta.stateChanged.connect(self.edtdDtaMode)
 
         self.ui.buttonBox.rejected.connect(self.close)
         buttonBox = self.ui.buttonBox
@@ -207,12 +211,15 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.checkBox.clicked.connect(self.toggleTimeDisplay)
         self.ui.moveByTime.clicked.connect(self.moveByTime)
         self.ui.moveByRow.clicked.connect(self.moveByRow)
-#       printButton = QPushButton("Print Data")
-#       printPanelButton.clicked.connect(self.printPanel)
-#       buttonBox.addButton(printButton, QDialogButtonBox.ApplyRole)
 
         self.update()
         self.clip = QtGui.QApplication.clipboard()
+
+        # Disable 'View Edited Data' checkbox if set to view only unedited data
+        if self.window.currentEdit == 0:
+            self.ui.viewEdtdDta.setEnabled(False)
+        else:
+            self.ui.viewEdtdDta.setEnabled(True)
 
     def fileComboChanged(self,i):
         self.curFID = self.FIDs[i]
@@ -226,8 +233,6 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         for FID in self.FIDs:
             name = FID.name if fullPath else os.path.split(FID.name)[1]
             self.ui.fileCombo.addItem(name)
-        #self.ui.fileCombo.resize(self.ui.fileCombo.sizeHint())
-        #print(self.ui.fileCombo.sizeHint())
         self.ui.fileCombo.adjustSize()
         self.ui.fileCombo.blockSignals(False)
 
@@ -238,22 +243,153 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.dataByRec = records["data"]
         self.dataByCol = FF_File.arrayToColumns(records["data"])
 
-    def update(self):
-        parm = self.curFID.FFParm
-        info = self.curFID.FFInfo
-        #self.ui.fileLabel.setText(parm["DATA"].info)
+    def edtdDtaMode(self):
+        if self.ui.viewEdtdDta.isChecked():
+            # If user manages to check the view edited data button while
+            # the original data is being displayed, reset window settings
+            if self.window.currentEdit == 0:
+                self.ui.viewEdtdDta.setChecked(False)
+                self.ui.viewEdtdDta.setEnabled(False)
+                self.edtdDtaMode()
+                return
+            # Otherwise, grey out filepath combo-box and checkboxes
+            self.ui.filePathCB.setEnabled(False)
+            self.ui.fileCombo.setEnabled(False)
+        else:
+            # Re-enable file chooser and update table data with FF data
+            self.ui.filePathCB.setEnabled(True)
+            self.ui.fileCombo.setEnabled(True)
+            self.updateFile()
+        self.update()
+
+    # Used to find list of times with the longest length
+    def findLargestTimeRng(self, tms):
+        maxIndex = 0
+        i = 0
+        for tm in tms:
+            if len(tm) > len(tms[maxIndex]):
+                maxIndex = i
+            i = i + 1
+        return tms[maxIndex]
+
+    # Given a list of times and a min/max time from another list of times,
+    # try to find the indices where these min/max times occur in the list
+    def findStartEndIndices(self, timeVals, minTime, maxTime):
+        # Find index where second list starts in first list
+        startIndex = 0
+        for t in timeVals:
+            if t == minTime:
+                break
+            startIndex += 1
+
+        # Find index where second list ends in first list
+        timeValsLen = len(timeVals)
+        endIndex = startIndex
+        for i in range(startIndex, timeValsLen):
+            if timeVals[i] == maxTime:
+                break
+            endIndex += 1
+
+        return startIndex, endIndex
+
+    def getEditedData(self):
+        dta = []
+        tms = []
+        hdrs = ['SCET']
+
+        for dstr in self.window.DATADICT.keys():
+            dataValsList = self.window.DATADICT[dstr]
+            en = self.window.currentEdit
+
+            # If dstr has no value for current edit:
+            if dataValsList[en] == []:
+                # Look for the most recent edit number that has data for it
+                while dataValsList[en] == [] and en >= 0:
+                    en = en - 1
+            # If only unedited data available, skip this datastring
+            if en == 0:
+                continue
+
+            # Get the matching time values list and dataVals
+            timeVals, res, avgRes = self.window.getTimes(dstr, en)
+            dataVals = dataValsList[en]
+
+            # Add dataVals, timeVals, and the datastring to overall lists
+            dta.append(list(dataVals))
+            tms.append(list(timeVals))
+            hdrs.append(dstr)
+
+        # Get the list of time values with the largest range
+        timeLine = self.findLargestTimeRng(tms)
+        i = 0
+        for tvs in tms:
+            s = tvs[0]  # First time in table
+            e = tvs[-1] # Last time in table
+            start, end = self.findStartEndIndices(timeLine, s, e)
+            # For each dstr's values list, if there is no value at a given
+            # time, fill it with NaN
+            ppnd = [np.nan]*start
+            apnd = [np.nan]*(len(timeLine) - end - 1)
+            dta[i] = ppnd + dta[i] + apnd
+            i = i+1
+        return (dta, timeLine, hdrs)     
+
+    def updtTimeEditAndStats(self, nRows, nCols, epoch):
+        # Update time edit parameters with UTC strings
+        start = FFTIME(self.time[0], Epoch=epoch)
+        stop_ = FFTIME(self.time[-1], Epoch=epoch)
+        self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))
+        self.ui.dateTimeEdit.setMinimumDateTime(UTCQDate.UTC2QDateTime(start.UTC))
+        self.ui.dateTimeEdit.setMaximumDateTime(UTCQDate.UTC2QDateTime(stop_.UTC)) 
+        
+        # Update statistics in corner of window
+        nrows = 'Rows: ' + str(nRows)
+        ncols = 'Columns: ' + str(nCols)
+        epoch = 'Epoch: ' + str(epoch)
+        startTime = start.UTC
+        endTime = stop_.UTC
+        stats = f'{nrows}, {ncols}, {epoch}          \n{startTime}\n{endTime}'
+        self.ui.timesLabel.setText(stats)    
+
+    def createTable(self, header, epoch):
+        if self.dataByCol is not None:        
+            tm = FFTableModel(self.time, self.dataByCol, header, parent=None, epoch=epoch)
+            tm.setUTC(not self.ui.checkBox.isChecked())
+            self.ui.dataTableView.setModel(tm)
+            self.ui.dataTableView.resizeColumnToContents(0) # make time column resize to fit        
+
+    def updateEditedData(self):
+        self.setWindowTitle('Edited Data')
+
+        # Get edited data and update class info/data
+        dta, tms, hdrs = self.getEditedData()
+        self.dataByCol = dta
+        self.dataByRec = np.transpose(dta)
+        self.time = tms
+        self.headerStrings = hdrs
+        header = [h for h in hdrs]
+
+        # Set table row settings
+        self.ui.Row.setMinimum(1)
+        self.ui.Row.setMaximum(len(tms))
+
+        # Create table from data
+        epoch = self.window.epoch
+        self.createTable(header, epoch)
+        self.updtTimeEditAndStats(len(tms), len(dta)+1, epoch)
+
+
+    def updateFfData(self):
         self.setWindowTitle(self.title)
 
-        nrows = 'Rows: ' + parm['NROWS'].info.lstrip()
-        ncols = 'Columns: ' + parm['NCOLS'].info.lstrip()
-        epoch = 'Epoch: ' + parm['EPOCH'].info
-        startTime = info['FIRST_TIME'].info.replace('UTC', '')
-        endTime = info['LAST_TIME'].info.replace('UTC', '')
-        #stats = f'Times: [{startTime}]>>[{endTime}] [{epoch}] [{nrows}] [{ncols}]'
-        stats = f'{nrows}, {ncols}, {epoch}          \n{startTime}\n{endTime}'
-        self.ui.timesLabel.setText(stats)
-        epoch = self.curFID.getEpoch()
-        # actually it's the last data (data not allfile)
+        # Create header
+        parm = self.curFID.FFParm
+        info = self.curFID.FFInfo
+        self.headerStrings = self.curFID.getColumnDescriptor('NAME')
+        units = self.curFID.getColumnDescriptor('UNITS')
+        header = [f'{h} ({u})' if u else f'{h}' for h,u in zip(self.headerStrings,units)]
+
+        # Update row settings in table
         nRow = self.curFID.getRows()
         rO = self.curFID.ffsearch(self.time[0], 1, nRow)
         rE = self.curFID.ffsearch(self.time[-1], 1, nRow)
@@ -261,34 +397,35 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             rE = nRow
         self.ui.Row.setMinimum(rO)
         self.ui.Row.setMaximum(rE)
-        start = FFTIME(self.time[0], Epoch=epoch)
-        stop_ = FFTIME(self.time[-1], Epoch=epoch)
-        self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))
-        self.ui.dateTimeEdit.setMinimumDateTime(UTCQDate.UTC2QDateTime(start.UTC))
-        self.ui.dateTimeEdit.setMaximumDateTime(UTCQDate.UTC2QDateTime(stop_.UTC))
-        self.headerStrings = self.curFID.getColumnDescriptor('NAME')
-        units = self.curFID.getColumnDescriptor('UNITS')
-        header = [f'{h} ({u})' if u else f'{h}' for h,u in zip(self.headerStrings,units)]
-        if self.dataByCol is not None:
-            tm = FFTableModel(self.time, self.dataByCol, header, parent=None, epoch=parm['EPOCH'].value)
-            tm.setUTC(not self.ui.checkBox.isChecked())
-            self.ui.dataTableView.setModel(tm)
-            self.ui.dataTableView.resizeColumnToContents(0) # make time column resize to fit
+
+        # Create table from flatfile data
+        epoch = self.curFID.getEpoch()
+        self.createTable(header, epoch)
+        self.updtTimeEditAndStats(len(self.time), len(self.dataByCol), epoch)           
+
+    def update(self):
+        if self.ui.viewEdtdDta.isChecked():
+            self.updateEditedData()
+        else:
+            self.updateFfData()
+            # dateTimeEdit wasn't updating after switching back to flatfile data
+            start = FFTIME(self.time[0], Epoch=self.curFID.getEpoch())
+            self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))        
 
     # saves flatfile data to a plain text file
     def saveData(self):
+        defaultSfx = '.csv'
         QQ = QtGui.QFileDialog(self)
         QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
         path = os.path.expanduser(".")
         QQ.setDirectory(path)
-        fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='Comma-separated value file (*.csv)')
+        fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='CSV file (*.csv)')
         if fullname is None:
             print('Save failed')
             return
         if fullname[0] == '':
             print('Save cancelled')
             return
-        np.set_printoptions(formatter={'float': '{:+10.4f}'.format}, linewidth=10000)
         epoch = self.curFID.FFParm["EPOCH"].value
         nRows = len(self.time)
 
@@ -305,9 +442,13 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             header = header + self.headerStrings[i] + ','
         header += self.headerStrings[numCols-1] # No delimiter after last col name
 
+        # If file name doesn't end with default suffix, add it before saving
+        filename = fullname[0]
+        if filename.endswith(defaultSfx) == False:
+            filename += defaultSfx
         # Write data to file
         print(f'Writing {nRows} records to {fullname[0]}...')
-        np.savetxt(fullname[0], dataShaped, fmt = '%.4f', header=header, 
+        np.savetxt(filename, dataShaped, fmt = '%.10f', header=header, 
             delimiter=',', comments='')
 
         print(f'Save complete')
@@ -328,7 +469,16 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         doy = datetime.datetime(*dtInt).timetuple().tm_yday
         UTC = dtList[0] + " " + str(doy) + DTSTRM[4:]
         t = FFTIME(UTC, Epoch=self.curFID.getEpoch()).tick
-        iRow = self.curFID.ffsearch(t, 1, self.curFID.getRows()) - 1
+        iRow = 0
+        if self.ui.viewEdtdDta.isChecked():
+            # Find the time just after the selected time and return index just before it
+            for timeVal in self.time:
+                if timeVal > t:
+                    break
+                iRow = iRow + 1 
+            iRow = iRow - 1
+        else:
+            iRow = self.curFID.ffsearch(t, 1, self.curFID.getRows()) - 1
         self.ui.dataTableView.selectRow(iRow)
 
     def moveByRow(self):

@@ -320,7 +320,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             return
 
         self.closeData() # this isnt actually needed it still closes somehow?
-        self.dataDisplay = DataDisplay(self.FIDs, Title='Flatfile Data')
+        self.dataDisplay = DataDisplay(self, self.FIDs, Title='Flatfile Data')
         self.dataDisplay.show()
 
     def openTraceStats(self, plotIndex):
