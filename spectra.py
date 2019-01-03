@@ -25,16 +25,16 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         
         self.ui.updateButton.clicked.connect(self.updateSpectra)
         self.ui.bandWidthSpinBox.valueChanged.connect(self.updateSpectra)
-        self.ui.separateTracesCheckBox.stateChanged.connect(self.updateSpectra)
+        self.ui.separateTracesCheckBox.stateChanged.connect(self.initPlots)
         self.ui.aspectLockedCheckBox.stateChanged.connect(self.setAspect)
         self.ui.waveAnalysisButton.clicked.connect(self.openWaveAnalysis)
+        self.ui.logModeCheckBox.stateChanged.connect(self.updateScaling)
 
         self.plotItems = []
-        #self.updateSpectra()
         self.window.setLinesVisible(False, 'general')
         self.wasClosed = False
-
         self.waveAnalysis = None
+        self.linearMode = False
 
     def closeWaveAnalysis(self):
         if self.waveAnalysis:
@@ -54,11 +54,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.closeWaveAnalysis()
         self.window.endGeneralSelect()
         self.wasClosed = True # setting self.window.spectra=None caused program to crash with no errors.. couldnt figure out why so switched to this
-
-    def setAspect(self):
-        aspect = self.ui.aspectLockedCheckBox.isChecked()
-        for pi in self.plotItems:
-            pi.setAspectLocked(aspect)
 
     # return start and stop indices of selected data
     def getIndices(self, dstr, en):
@@ -85,6 +80,26 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             self.ffts[dstr] = fft
         return self.ffts[dstr]
 
+    # Used to make the appearance of logAxis axes and linear axes more uniform
+    def setAxisAppearance(self, lst):
+        for v in lst:
+            v.tickFont = QtGui.QFont()
+            v.tickFont.setPixelSize(14)
+
+    def updateScaling(self):
+        self.linearMode = not self.ui.logModeCheckBox.isChecked()
+        self.initPlots()
+
+    def setAspect(self):
+        if self.ui.aspectLockedCheckBox.isChecked() == True:
+            # Setting ratio to None locks in current aspect ratio
+            for pi in self.plotItems:
+                pi.setAspectLocked(True, ratio=None)
+        else: # Unlock aspect ratio for each plot and update graphs
+            for pi in self.plotItems:
+                pi.setAspectLocked(False)
+        self.updateSpectra()
+
     def updateCalculations(self):
         plotInfos = self.window.getSelectedPlotInfo()
 
@@ -94,8 +109,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.powers = {}
         self.maxN = 0
 
-        startTime = time.time()
-
         for li, (strList, penList) in enumerate(plotInfos):
             for i,(dstr,en) in enumerate(strList):
                 fft = self.getfft(dstr,en)
@@ -104,9 +117,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 power = self.calculatePower(fft, N)
                 self.powers[dstr] = power
 
-        print(f'powers in {time.time() - startTime}')
-        startTime = time.time()
-
         # calculate coherence and phase from pairs
         c0 = self.ui.cohPair0.currentText()
         c1 = self.ui.cohPair1.currentText()
@@ -114,49 +124,58 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.coh = coh
         self.pha = pha
 
-        print(f'coh/pha in {time.time() - startTime}')
-
-    # some weird stuff is going on in here because there was many conflicts with combining linked y range between plots of each row,
-    # log scale, and fixed aspect ratio settings. its all working now pretty good though
-    def updateSpectra(self):
-        startTime = time.time()
-        print('updating spectra')
-
-        self.updateCalculations()
-
-        startTime = time.time()
-
-        plotInfos = self.window.getSelectedPlotInfo()
-
+    # Initialize all plots that will be used with the current scaling
+    # Sets up initial plots, label formats, axis types, and plot placement
+    def initPlots(self):
+        # Clear all current plots
         self.ui.grid.clear()
         self.ui.labelLayout.clear()
+        self.plotItems = []
+
+        # Get updated information about plots/settings
+        self.updateCalculations()
+        plotInfos = self.window.getSelectedPlotInfo()
         oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
         aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
+
         numberPlots = 0
-        curRow = [] # list of plot items in rows of spectra
-        self.plotItems = []
+        curRow = []
         maxTitleWidth = 0
-        for listIndex, (strList,penList) in enumerate(plotInfos):
-            for i,(dstr,en) in enumerate(strList):
+        # For every plot in main window:
+        for listIndex, (strList, penList) in enumerate(plotInfos):
+            # For every trace/pen in the given plot:
+            for i, (dstr, en) in enumerate(strList):
+                # If first dstr or there are separate traces, create a new plot
                 if i == 0 or oneTracePerPlot:
+                    # Set up axes and viewBox
                     ba = LogAxis(True,True,True,orientation='bottom')
                     la = LogAxis(True,True,True,orientation='left')
+                    if self.linearMode:
+                        ba = pg.AxisItem(orientation='bottom')
+                        la = pg.AxisItem(orientation='left')
+                        self.setAxisAppearance([ba,la])
                     pi = pg.PlotItem(viewBox = SpectraViewBox(), axisItems={'bottom':ba, 'left':la})
-                    if aspectLocked:
-                        pi.setAspectLocked()
-                    titleString = ''
+
+                    # Set up range/scaling modes
                     pi.setLogMode(True, True)
+                    if self.linearMode:
+                        pi.setLogMode(False, False)
                     pi.enableAutoRange(y=False) # disable y auto scaling so doesnt interfere with custom range settings
+                    if self.linearMode:
+                        pi.enableAutoRange(x=True, y=True)
                     pi.hideButtons() # hide autoscale button
+
                     numberPlots += 1
+                    titleString = ''
                     powers = []
 
+                # Get x and y values
                 freq = self.getFreqs(dstr,en)
                 power = self.powers[dstr]
                 powers.append(power)
 
+                # Initialize pens, plot title, and plot data
                 pen = penList[i]
-                #abbrv = self.window.ABBRV_DSTR_DICT[dstr]
                 pstr = self.window.getLabel(dstr,en)
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
                 pi.plot(freq, power, pen=pen)
@@ -165,7 +184,10 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 # also links the y scale of each row together
                 lastPlotInList = i == len(strList) - 1
                 if lastPlotInList or oneTracePerPlot:
-                    pi.setLabels(title=titleString, left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)', bottom='Log Frequency (Hz)')
+                    btmLabel = 'Log Frequency (Hz)'
+                    if self.linearMode:
+                        btmLabel = 'Frequency (Hz)'
+                    pi.setLabels(title=titleString, left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)', bottom=btmLabel)
                     piw = pi.titleLabel._sizeHint[0][0] + 60 # gestimating padding
                     maxTitleWidth = max(maxTitleWidth,piw)
                     self.ui.grid.addItem(pi)
@@ -174,7 +196,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     if numberPlots % 4 == 0:
                         self.setYRangeForRow(curRow)
                         curRow = []
-
         if curRow:
             self.setYRangeForRow(curRow)
 
@@ -199,20 +220,47 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.labelLayout.nextColumn()
         self.ui.labelLayout.addItem(rightLabel)
 
-        print(f'plotted spectra in {time.time() - startTime}')
-        startTime = time.time()
-
         self.updateCohPha()
-
-        print(f'plotted coh/pha in {time.time() - startTime}')
-        startTime = time.time()
-        ## end of def
 
         # this is done to avoid it going twice with one click (ideally should make this multithreaded eventually so gui is more responsive)
         bw = self.ui.bandWidthSpinBox.value()
         self.ui.bandWidthSpinBox.setMinimum(max(1,bw-2))
         self.ui.bandWidthSpinBox.setMaximum(bw+2)
         QtCore.QTimer.singleShot(500, self.removeLimits)
+
+    # Updates all current plots currently being viewed (unless scaling mode changes)
+    def updateSpectra(self):
+        self.updateCalculations()
+        plotInfos = self.window.getSelectedPlotInfo()
+        oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
+        plotNum = 0
+        # For every plot spectra is generated from:
+        for listIndex, (strList, penList) in enumerate(plotInfos):
+            # Get the corresponding plot and clear it
+            pi = self.plotItems[listIndex]
+            if oneTracePerPlot == False: # Don't clear in this case bc listIndex != plotNum
+                pi.clear()
+            powers = []
+            titleString = ''
+            # For every trace in plot:
+            for i, (dstr, en) in enumerate(strList):
+                # Get current plot by plot number if separate traces are used
+                if self.ui.separateTracesCheckBox.isChecked():
+                    pi = self.plotItems[plotNum]
+                    pi.clear()
+                    powers = []
+                    titleString = ''
+                # Get x, y, and pen values and plot graph
+                freq = self.getFreqs(dstr,en)
+                power = self.powers[dstr]
+                powers.append(power)
+                pen = penList[i]
+                pstr = self.window.getLabel(dstr,en)
+                titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
+                pi.plot(freq, power, pen=pen)
+                plotNum += 1
+        # Update coherence and phase graphs
+        self.updateCohPha()
 
     # remove limits later incase they want to type in directly
     def removeLimits(self):
@@ -232,12 +280,22 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             d[0].clear()
             ba = LogAxis(True,True,False,orientation='bottom')
             la = LogAxis(False,False,False,orientation='left')
+            if self.linearMode:
+                ba = pg.AxisItem(orientation='bottom')
+                la = pg.AxisItem(orientation='left')
+                self.setAxisAppearance([ba,la])
             pi = pg.PlotItem(axisItems={'bottom':ba, 'left':la})
             pi.setLogMode(True, False)
+            if self.linearMode:
+                pi.setLogMode(False, False)
             #if self.ui.aspectLockedCheckBox.isChecked():
             #    pi.setAspectLocked()
             pi.plot(freqs, d[1], pen=self.window.pens[0])
-            pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}', bottom='Log Frequency (Hz)')
+            btmLabel = 'Log Frequency (Hz)'
+            if self.linearMode:
+                btmLabel = 'Frequency (Hz)'
+            pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}', bottom=btmLabel)
+
             d[0].addItem(pi)
             #self.plotItems.append(pi)
 
@@ -259,8 +317,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                                     
         #if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or
         #np.isinf(maxVal):
-        minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
-        maxVal = np.log10(maxVal)
+        if not self.linearMode:
+            minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
+            maxVal = np.log10(maxVal)
         for item in curRow:
             item[0].setYRange(minVal,maxVal)
 

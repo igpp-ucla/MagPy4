@@ -339,7 +339,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.spectra:
             self.clearStatusMsg()
             self.spectra.show()
-            self.spectra.updateSpectra()
+            self.spectra.initPlots()
             PyQtUtils.moveToFront(self.spectra)
 
     def openHelp(self):

@@ -58,6 +58,9 @@ class SpectraUI(object):
         self.aspectLockedCheckBox.setChecked(True)
         ###aspectLockedLabel = QtGui.QLabel("Lock Aspect Ratio")
 
+        self.logModeCheckBox = QtGui.QCheckBox('Logarithmic scaling')
+        self.logModeCheckBox.setChecked(True)
+
         optFrame = QtWidgets.QGroupBox()
 
         optLayout = QtWidgets.QGridLayout(optFrame)
@@ -67,6 +70,7 @@ class SpectraUI(object):
         ###optLayout.addWidget(separateTraces, 1, 0, 1, 2)
         optLayout.addWidget(self.aspectLockedCheckBox, 2, 0, 1, 2)
         ###optLayout.addWidget(aspectLockedLabel, 2, 0, 1, 2)
+        optLayout.addWidget(self.logModeCheckBox, 3, 0, 1, 2)
 
         bottomLayout.addWidget(optFrame)
 
@@ -110,8 +114,6 @@ class SpectraUI(object):
 
         layout.addLayout(bottomLayout)
         
-
-
 class SpectraViewBox(pg.ViewBox): # custom viewbox event handling
     def __init__(self, *args, **kwds):
         pg.ViewBox.__init__(self, *args, **kwds)
