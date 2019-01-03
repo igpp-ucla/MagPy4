@@ -78,7 +78,7 @@ class SpectraUI(object):
         timeLayout = QtWidgets.QVBoxLayout(timeFrame)
 
         # setup datetime edits
-        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14))
+        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 12))
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
 
         timeLayout.addWidget(self.timeEdit.start)
@@ -104,13 +104,16 @@ class SpectraUI(object):
 
         self.waveAnalysisButton = QtWidgets.QPushButton('Open Wave Analysis')
         self.waveAnalysisButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
-        bottomLayout.addWidget(self.waveAnalysisButton)
-
-        bottomLayout.addStretch()
 
         self.updateButton = QtWidgets.QPushButton('Update')
         self.updateButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
-        bottomLayout.addWidget(self.updateButton)
+
+        # Create frame w/ vertical layout for update & wave buttons
+        btnFrame = QtWidgets.QGroupBox()
+        btnLayout = QtWidgets.QVBoxLayout(btnFrame)
+        btnLayout.addWidget(self.waveAnalysisButton)
+        btnLayout.addWidget(self.updateButton)
+        bottomLayout.addWidget(btnFrame)
 
         layout.addLayout(bottomLayout)
         
