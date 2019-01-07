@@ -121,6 +121,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.helpWindow = None
         self.aboutDialog = None
         self.FIDs = []
+        self.tickOffset = 0 # Smallest tick in data, used when plotting x data
 
         # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False
@@ -768,7 +769,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         tt = self.getTimeFromTick(self.iO)
         for line in self.trackerLines:
             line.show()
-            line.setValue(tt)
+            line.setValue(tt-self.tickOffset)
 
         dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
         self.ui.timeEdit.setStartNoCallback(dt)
@@ -785,7 +786,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         tt = self.getTimeFromTick(self.iE)
         for line in self.trackerLines:
             line.show()
-            line.setValue(tt + 1) #offset by linewidth so its not visible once released
+            line.setValue(tt - self.tickOffset + 1) #offset by linewidth so its not visible once released
 
         dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
         self.ui.timeEdit.setEndNoCallback(dt)
@@ -865,7 +866,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.ui.timeLabel.setText('mm:ss.sss')
 
         for pi in self.plotItems:
-            pi.setXRange(self.tO, self.tE, 0.0)
+            pi.setXRange(self.tO-self.tickOffset, self.tE-self.tickOffset, 0.0)
 
         # Update ticks/labels on bottom axis, clear top axis
         labelMode = self.getTimeLabelMode()
@@ -1027,10 +1028,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.plotTracePens.append(tracePens)
 
             # set plot to current range based on time sliders
-            pi.setXRange(self.tO, self.tE, 0.0)
+            pi.setXRange(self.tO-self.tickOffset, self.tE-self.tickOffset, 0.0)
 
             #todo: needs to be set for current min and max of all time ranges
-            pi.setLimits(xMin=self.minTime, xMax=self.maxTime)
+            pi.setLimits(xMin=self.minTime-self.tickOffset, xMax=self.maxTime-self.tickOffset)
 
             # add Y axis label based on traces (label gets set below)
             li = BLabelItem()
@@ -1215,20 +1216,37 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if len(Y) <= 1: # not sure if this can happen but just incase
             print(f'Error: insufficient Y data for column "{dstr}"')
             return
+
         times,resolutions,avgRes = self.getTimes(dstr, editNumber)
+
+        # Find smallest tick in data
+        ofst = min(times)
+        self.tickOffset = ofst
+        pi.tickOffset = ofst
+        pi.getAxis('bottom').tickOffset = ofst
+        # Subtract offset value from all times values for plotting
+        ofstTimes = [t - ofst for t in times]
+
+        # Determine data segments/type and plot
         if not self.ui.bridgeDataGaps.isChecked():
             segs = Mth.getSegmentsFromErrorsAndGaps(self.ORIGDATADICT[dstr], resolutions, self.errorFlag, avgRes * 2)   
             for a,b in segs:
                 if self.ui.drawPoints.isChecked():
-                    pi.addItem(PlotPointsItem(times[a:b], Y[a:b], pen=pen))
+                    pi.addItem(PlotPointsItem(ofstTimes[a:b], Y[a:b], pen=pen))
                 else:
-                    pi.addItem(PlotDataItemBDS(times[a:b], Y[a:b], pen=pen))
+                    pi.addItem(PlotDataItemBDS(ofstTimes[a:b], Y[a:b], pen=pen))
         else:
             if self.ui.drawPoints.isChecked():
-                pi.addItem(PlotPointsItem(times, Y, pen=pen))
+                pi.addItem(PlotPointsItem(ofstTimes, Y, pen=pen))
             else:
-                pi.addItem(PlotDataItemBDS(times, Y, pen=pen))
+                pi.addItem(PlotDataItemBDS(ofstTimes, Y, pen=pen))
 
+        # Get the plot's general lines and set its bounds/tickOffset
+        lines = pi.getViewBox().lines
+        for k in lines:
+            for i in lines[k]:
+                i.tickOffset = self.tickOffset
+                i.setBounds((self.minTime-self.tickOffset, self.maxTime-self.tickOffset))
     
     def updateYRange(self):
         """
@@ -1314,8 +1332,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.setLinesVisible(False, 'general')
 
     def updateLinesByTimeEdit(self, timeEdit, lineStr):
-        x0 = self.plotItems[0].getViewBox().lines[lineStr][0].getXPos()
-        x1 = self.plotItems[0].getViewBox().lines[lineStr][1].getXPos()
+        x0 = self.plotItems[0].getViewBox().lines[lineStr][0].getXOfstPos()
+        x1 = self.plotItems[0].getViewBox().lines[lineStr][1].getXOfstPos()
         i0,i1 = self.getTicksFromTimeEdit(timeEdit)
         t0 = self.getTimeFromTick(i0)
         t1 = self.getTimeFromTick(i1)
@@ -1325,8 +1343,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def updateTimeEditByLines(self, timeEdit, lineStr, index):
         oi = 0 if index == 1 else 1
-        x = self.plotItems[0].getViewBox().lines[lineStr][index].getXPos()
-        ox = self.plotItems[0].getViewBox().lines[lineStr][oi].getXPos()
+        x = self.plotItems[0].getViewBox().lines[lineStr][index].getXOfstPos()
+        ox = self.plotItems[0].getViewBox().lines[lineStr][oi].getXOfstPos()
         t0 = UTCQDate.UTC2QDateTime(FFTIME(x, Epoch=self.epoch).UTC)
         t1 = UTCQDate.UTC2QDateTime(FFTIME(ox, Epoch=self.epoch).UTC)
 
@@ -1336,12 +1354,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.updateLinesPos(lineStr, index, x)
 
     def updateGeneralLines(self, index, x):
-        self.updateLinesPos('general', index, x)
+        # General lines use the true line position (not the tick time from data),
+        # so it must be set directly
+        for pi in self.plotItems:
+            pi.getViewBox().lines['general'][index].setPos(x)
         self.updateTimeEditByLines(self.generalTimeEdit, 'general', index)
 
     def updateLinesPos(self, lineStr, index, x):
         for pi in self.plotItems:
-            pi.getViewBox().lines[lineStr][index].setPos(x)
+            pi.getViewBox().lines[lineStr][index].setOfstPos(x)
         self.updateTraceStats()
 
     def resetLinesPos(self, lineStr):
@@ -1407,8 +1428,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def getSelectionStartEndTimes(self):
         lines = self.plotItems[0].getViewBox().lines['general']
-        t0 = lines[0].getXPos()
-        t1 = lines[1].getXPos()
+        t0 = lines[0].getXOfstPos()
+        t1 = lines[1].getXOfstPos()
         return (t0,t1) if t0 <= t1 else (t1,t0) # need parens here!
 
     def getSelectedPlotInfo(self):

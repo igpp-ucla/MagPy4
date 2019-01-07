@@ -14,6 +14,7 @@ from math import ceil
 # also with built in label support (infiniteline has this but doesnt how i want)
 class LinkedInfiniteLine(pg.InfiniteLine):
     def __init__(self, callback, mylabel=None, labelColor=None, *args, **kwds):
+        self.tickOffset = 0
         pg.InfiniteLine.__init__(self, *args, **kwds)
         self.callback = callback
 
@@ -25,6 +26,16 @@ class LinkedInfiniteLine(pg.InfiniteLine):
         pg.InfiniteLine.mouseDragEvent(self, ev)
         if self.movable and ev.button() == QtCore.Qt.LeftButton:
             self.callback(self.getXPos())
+
+    # Returns x position + offset
+    def getXOfstPos(self):
+        pos = pg.InfiniteLine.getXPos(self)
+        return pos + self.tickOffset
+
+    # Set the line position relative to the offset
+    def setOfstPos(self, pos):
+        pos = pos - self.tickOffset
+        pg.InfiniteLine.setPos(self, pos)
 
 class LinkedInfLineLabel(pg.InfLineLabel):
     #def __init__(self, *args, **kwds):
@@ -106,6 +117,7 @@ class LogAxis(pg.AxisItem):
 class DateAxis(pg.AxisItem):
     def __init__(self, orientation, pen=None, linkView=None, parent=None,
                 maxTickLength=-5, showValues=True):
+        self.tickOffset = 0
         pg.AxisItem.__init__(self, orientation, pen, linkView, parent,
                             maxTickLength,showValues)
         # Dictionary holding default increment values for ticks
@@ -198,6 +210,10 @@ class DateAxis(pg.AxisItem):
         # Creates lists mapping datetime objs to UTC strings and FFTime ticks/values
         tickStrs = list(map(self.dateTimeToTmstmp, tickTimes))
         tickVals = list(map(self.tickStrToVal, tickStrs))
+
+        # If ticks start at a given offset, subtract it from all tick values
+        for i in range(0, len(tickVals)):
+            tickVals[i] = tickVals[i] - self.tickOffset
 
         # Create a list of time value/string tuples to use in setTicks function
         tickPairs = []
