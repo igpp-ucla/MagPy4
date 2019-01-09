@@ -501,7 +501,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             arbStr = newDataStrings[0]
 
             curTime, curRes, curAvgRes = self.getTimes(arbStr,0)
-            segments = Mth.getSegmentsFromTimeGaps(curRes, curAvgRes * 2)
+            segments = Mth.getSegmentsFromTimeGaps(curRes, self.maxRes)
             f0 = ffTime[0]
             f1 = ffTime[-1]
             segLen = len(segments)
@@ -526,6 +526,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     times = np.concatenate(joined)
 
                     resolutions = np.diff(times)
+                    self.maxRes = max(resolutions)
                     resolutions = np.append(resolutions, resolutions[-1]) # so same length as times
                 
                     uniqueRes = np.unique(resolutions)
@@ -569,6 +570,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             avgRes = np.mean(resolutions)
 
             self.resolution = min(self.resolution, avgRes)
+            self.maxRes = max(resolutions)
             self.TIMES.append([ffTime, resolutions, avgRes])
 
             for i, dstr in enumerate(newDataStrings):
@@ -678,6 +680,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             resolutions = np.append(resolutions,resolutions[-1])
             avgRes = np.mean(resolutions)
             self.resolution = min(self.resolution, avgRes)
+            self.maxRes = max(resolutions)
             self.TIMES.append([times, resolutions, avgRes])
 
             for dstr in dstrs:
@@ -1229,7 +1232,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # Determine data segments/type and plot
         if not self.ui.bridgeDataGaps.isChecked():
-            segs = Mth.getSegmentsFromErrorsAndGaps(self.ORIGDATADICT[dstr], resolutions, self.errorFlag, avgRes * 2)   
+            segs = Mth.getSegmentsFromErrorsAndGaps(self.ORIGDATADICT[dstr], resolutions, self.errorFlag, self.maxRes)
             for a,b in segs:
                 if self.ui.drawPoints.isChecked():
                     pi.addItem(PlotPointsItem(ofstTimes[a:b], Y[a:b], pen=pen))

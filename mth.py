@@ -108,12 +108,9 @@ class Mth:
         segments.append(dataLen) # add one to end so last segment will be added (also if no errors)
         segList = []
         st = 0 #start index
-        for seg in segments: # collect start and end range of each segment
-            while st in segments:
-                st += 1
-            if st >= seg:
-                continue
-            segList.append((st,seg))
+        for seg in segments: # collect start and end of each segment
+            if (st != seg):
+                segList.append((st, seg))
             st = seg + 1
         # returns empty list if data is pure errors
         return segList    
