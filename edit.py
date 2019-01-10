@@ -275,7 +275,11 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     # takes a matrix, notes for the history, and a name for the history entry
     def apply(self, mat, notes, name, multType='R'):
-        R = Mth.mult(self.curSelection[0], mat) #shows total matrix from beginning
+        # shows total matrix from beginning
+        if multType == 'R':
+            R = Mth.mult(self.curSelection[0], mat)
+        else:
+            R = Mth.mult(mat, self.curSelection[0])
         self.generateData(mat, name, multType)
         self.addHistory(R, notes, f'{name}')
 
