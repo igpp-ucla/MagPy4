@@ -220,7 +220,11 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         #comAmb = sqrt[ps[3]]
         #comRat = ps[3] / powSpectra
 
-        avg = [np.mean(self.window.getData(dstr)) for dstr in dstrs]
+        avg = []
+        for dstr in dstrs:
+            en = self.window.currentEdit
+            sI, eI = self.spectra.getIndices(dstr, en)
+            avg.append(np.mean(self.window.getData(dstr)[sI:eI]))
 
         qqq = np.linalg.norm(qs)
         qqqd = avg[3]
