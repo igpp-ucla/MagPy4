@@ -357,11 +357,13 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
 		Given transformed versions of real and imaginary powers and matrices
 		calculate polarization and ellipticity (both with joe means versions), and azimuth angle
 		"""
+        # Calculate polarization/ellipticity parameters by Born-Wolf
         trj = trp[0][0] + trp[1][1]
         detj = trp[0][0] * trp[1][1] - trp[1][0] * trp[1][0] - tip[1][0] * tip[1][0]
         fnum = 1 - (4 * detj) / (trj * trj)
         if fnum <= 0:
-            pp = 0
+            fnum = 0.0
+            pp = 0.0
         else:
             pp = 100 * math.sqrt(fnum)
         vetm = trj * trj - 4.0 * detj
@@ -371,14 +373,24 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
             elip = -1.0*math.tan(0.5*math.asin(fnum))
         else:
             elip = math.tan(0.5*math.asin(fnum))
+
+        # Calculate polarization/ellipticity parameters by Joe Means method
         trj = trm[0][0] + trm[1][1]
         detj=trm[0][0]*trm[1][1]-trm[0][1]*trm[1][0]-tim[1][0]*tim[1][0]
-        difm = trm[0][0] - trm[1][1]
         fnum = 1 - (4 * detj) / (trj * trj)
-        ppm = 100 * math.sqrt(fnum)
+        if fnum <= 0:
+            fnum = 0
+            ppm = 0
+        else:
+            ppm = 100 * math.sqrt(fnum)
+        vetm = trj * trj - 4.0 * detj
+        eden = 1 if vetm <= 0 else math.sqrt(vetm)
         fnum = 2.0 * tim[0][1] / eden
         elipm = math.tan(0.5 * math.asin(fnum))
+
+        # Calculate azimuth angle
         fnum = 2.0 * trm[0][1]
+        difm = trm[0][0] - trm[1][1]
         angle = fnum / difm
         azim = 0.5 * math.atan(angle) * Mth.R2D
         return pp, ppm, elip, elipm, azim
