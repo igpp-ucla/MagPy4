@@ -151,14 +151,13 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         # kinda annoying to use those qtextbrowser things. copy and paste doesnt work how u think it would inherently
 
         freqs = self.getDefaultFreqs()
-        #m = len(ffts[0]) // 2
-        m = len(freqs) // 2
+        m = len(freqs)
         self.ui.minFreqIndex.setMinimum(0)
         self.ui.maxFreqIndex.setMinimum(0)
-        self.ui.minFreqIndex.setMaximum(m)
-        self.ui.maxFreqIndex.setMaximum(m)
+        self.ui.minFreqIndex.setMaximum(m-1)
+        self.ui.maxFreqIndex.setMaximum(m-1)
         self.ui.minFreqIndex.setValue(0)
-        self.ui.maxFreqIndex.setValue(m)
+        self.ui.maxFreqIndex.setValue(m-1)
 
         self.ui.minFreqIndex.valueChanged.emit(0)#otherwise wont refresh first time
 
@@ -174,12 +173,13 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
     def updateCalculations(self):
         """ update all wave analysis values and corresponding UI elements """
 
+        en = self.window.currentEdit
         dstrs = [dd.currentText() for dd in self.ui.axesDropdowns]
-
-        ffts = [self.spectra.getfft(dstr,0) for dstr in dstrs]
+        ffts = [self.spectra.getfft(dstr,en) for dstr in dstrs]
 
         fO = self.ui.minFreqIndex.value()
         fE = self.ui.maxFreqIndex.value()
+
         # ensure first frequency index is less than last and not the same value
         if fE < fO:
             fO,fE = fE,fO
@@ -187,24 +187,25 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
             fE = fO + 2
         self.ui.minFreqIndex.setValue(fO)
         self.ui.maxFreqIndex.setValue(fE)
-        
-        #print(f'{fO} {fE} {ffts[0][fO]} {ffts[0][fE]}')
-        #print(f'{fO} {fE} {freqs[fO]} {freqs[fE]}')
 
+        # Generate the indices (relative to fO*2) in ffts arrays corresponding to a freq num
+        # since each freq corresponds to a (cos, sin) pair in the fast fourier transformed values
+        # Starts at index 1 (see scipy rfft documentation)
         k = fE - fO - 1
-        counts = np.array(range(int(k))) + 1
+        counts = np.array(range(int(k))) + 1 
         steps = 2 * counts - 1
-        #print(steps)
 
-        ffts = [fft[fO:fE * 2] for fft in ffts]
-        sqrs = [fft * fft for fft in ffts]
-
+        ffts = [fft[fO*2:fE*2] for fft in ffts]
         deltaf = 2.0 / (self.spectra.maxN * self.spectra.maxN)
 
+        # Compute real part of matrix's diagonals
+        sqrs = [fft * fft for fft in ffts]
         ps = [sum([sq[i] + sq[i + 1] for i in steps]) * deltaf for sq in sqrs]
-        #x,y  x,z  y,z
-        axisPairs = [(ffts[0],ffts[1]),(ffts[0],ffts[2]),(ffts[1],ffts[2])]
 
+        # (x,y), (x,z), (y,z)
+        axisPairs = [(ffts[0],ffts[1]),(ffts[0],ffts[2]),(ffts[1],ffts[2])]
+        # Compute real part of matrix's off-diagonals and the elements in the
+        # imaginary matrix that can be used to compute the wave normal vector
         cs = [sum([fft0[i] * fft1[i] + fft0[i + 1] * fft1[i + 1] for i in steps]) * deltaf for fft0,fft1 in axisPairs]
         qs = [sum([fft0[i] * fft1[i + 1] - fft0[i + 1] * fft1[i] for i in steps]) * deltaf for fft0,fft1 in axisPairs]
 
@@ -214,22 +215,18 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.ui.rpMat.setMatrix(realPower)
         self.ui.ipMat.setMatrix(imagPower)
 
-        #powSpectra = ps[0] + ps[1] + ps[2]
-        #traAmp = sqrt(powSpectra)
-        #comPow = ps[3]
-        #comAmb = sqrt[ps[3]]
-        #comRat = ps[3] / powSpectra
-
+        # Compute the average field for each dstr within the given time range
         avg = []
         for dstr in dstrs:
-            en = self.window.currentEdit
             sI, eI = self.spectra.getIndices(dstr, en)
             avg.append(np.mean(self.window.getData(dstr)[sI:eI]))
 
+        # Wave propogation direction
         qqq = np.linalg.norm(qs)
+        qkem = np.array([-qs[2] / qqq, qs[1] / qqq, -qs[0] / qqq])
+
         qqqd = avg[3]
         qqqp = np.linalg.norm(avg[:-1])
-        qkem = np.array([qs[2] / qqq, -qs[1] / qqq, qs[0] / qqq]) # propogation direction
         qqqn = np.dot(qkem, avg[:-1])
         if qqqn < 0:
             qkem = qkem * -1
@@ -242,7 +239,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         qqq = qqqn / qqqp
         qalm = Mth.R2D * math.acos(qqq)
 
-        #means transformation matrix
+        # Means transformation matrix
         yx = qkem[1] * avg[2] - qkem[2] * avg[1]
         yy = qkem[2] * avg[0] - qkem[0] * avg[2]
         yz = qkem[0] * avg[1] - qkem[1] * avg[0]
@@ -253,9 +250,11 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         xx = yy * qkem[2] - yz * qkem[1]
         xy = yz * qkem[0] - yx * qkem[2]
         xz = yx * qkem[1] - yy * qkem[0]
+
         bmat = [[xx, yx, qkem[0]], [xy, yy, qkem[1]], [xz, yz, qkem[2]]]
-        duhh, amat = np.linalg.eigh(np.transpose(realPower), UPLO="U")
-        #self.thbk, self.thkk = getAngles(amat, avg, qkem)
+        duhh, amat = np.linalg.eigh(realPower, UPLO="U")
+        bmat = np.transpose(bmat)
+        amat = np.transpose(amat)
 
         # Transformed Values Spectral Matrices 
         trp = Mth.arpat(amat, realPower) # transformed real power
@@ -278,9 +277,6 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.ui.elipmLabel.setText(Mth.formatNumber(elipm))
         self.ui.azimLabel.setText(Mth.formatNumber(azim))
 
-        #self.updateBornAnalysis(pp, ppm, elip, elipm, azim)
-
-    # this was directly imported from original magpy
     def bornWolf(self, trp, tip, trm, tim):
         """
 		Given transformed versions of real and imaginary powers and matrices
@@ -294,9 +290,9 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         else:
             pp = 100 * math.sqrt(fnum)
         vetm = trj * trj - 4.0 * detj
-        eden = 1 if vetm < 0 else math.sqrt(vetm)
+        eden = 1 if vetm <= 0 else math.sqrt(vetm)
         fnum = 2 * tip[0][1] / eden
-        if (trp[0][1] < -1e-10):
+        if (trp[0][1] < 0):
             elip = -1.0*math.tan(0.5*math.asin(fnum))
         else:
             elip = math.tan(0.5*math.asin(fnum))
@@ -306,9 +302,6 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         fnum = 1 - (4 * detj) / (trj * trj)
         ppm = 100 * math.sqrt(fnum)
         fnum = 2.0 * tim[0][1] / eden
-        if fnum <= 0:
-            fnum = 0
-            pp = 0
         elipm = math.tan(0.5 * math.asin(fnum))
         fnum = 2.0 * trm[0][1]
         angle = fnum / difm
