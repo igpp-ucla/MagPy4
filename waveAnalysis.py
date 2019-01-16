@@ -7,6 +7,7 @@ from mth import Mth
 import math
 from MagPy4UI import MatrixWidget
 import functools
+import os
 
 class WaveAnalysisUI(object):
     def setupUI(self, Frame, window):
@@ -117,8 +118,8 @@ class WaveAnalysisUI(object):
 
 
         botLayout = QtWidgets.QHBoxLayout()
-        logButton = QtWidgets.QPushButton('Export Log')
-        botLayout.addWidget(logButton)
+        self.logButton = QtWidgets.QPushButton('Export Log')
+        botLayout.addWidget(self.logButton)
         botLayout.addStretch()
         self.layout.addLayout(botLayout)
 
@@ -141,14 +142,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.ui.updateButton.clicked.connect(self.updateCalculations)
         self.ui.minFreqIndex.valueChanged.connect(functools.partial(self.updateLabel, self.ui.minFreqLabel))
         self.ui.maxFreqIndex.valueChanged.connect(functools.partial(self.updateLabel, self.ui.maxFreqLabel))
-
-        # ya make freq sliders, half number of frequencys per number of bands selected, line gets plotted at actually frequency value (band is just index into fft array)
-        # then hook them up to lines like u do for spectra selection
-        # then let them select on the graph itself?? kinda annoying with multiple spectra plots, maybe do that later
-        # just do another bisect search thing
-
-        #make export to log just print everything out nicely formatted........ would be nice if u could just copy and paste what u want but ehhh
-        # kinda annoying to use those qtextbrowser things. copy and paste doesnt work how u think it would inherently
+        self.ui.logButton.clicked.connect(self.exportLog)
 
         freqs = self.getDefaultFreqs()
         m = len(freqs)
@@ -162,6 +156,87 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.ui.minFreqIndex.valueChanged.emit(0)#otherwise wont refresh first time
 
         self.updateCalculations() # should add update button later
+
+    def getTableData(self):
+        # Create a dictionary of matrix titles and their arrays
+        matrixBoxes = [self.ui.rpMat, self.ui.ipMat, self.ui.trpMat, self.ui.tipMat, 
+            self.ui.trMat, self.ui.tiMat]
+        matrixNames = ['Real Power', 'Imaginary Power', 'Transformed Real Power',
+            'Transformed Imaginary Power', 'Transformed Real Matrix',
+            'Transformed Imaginary Matrix']
+        matrices = {}
+        for i in range(0, len(matrixBoxes)):
+            matrices[matrixNames[i]] = matrixBoxes[i].getMatrix()
+
+        # Recreate Born-Wolf and Joe Means results table in an array
+        resultsTable = [['', 'Born-Wolf', 'Joe Means'],
+            ['% Polarization:', self.ui.ppLabel.text(), self.ui.ppmLabel.text()],
+            ['Ellipticity:', self.ui.elipLabel.text(), self.ui.elipmLabel.text()], 
+            ['Azimuth Angle:', self.ui.azimLabel.text(), '']]
+
+        # Get and format info about file, time range, and wave analysis parameters
+        fileName = self.window.getFileNameString()
+
+        timeFmtStr = 'yyyy MMM dd HH:mm:ss.zzz'
+        startTime = self.spectra.ui.timeEdit.start.dateTime().toString(timeFmtStr)
+        endTime = self.spectra.ui.timeEdit.end.dateTime().toString(timeFmtStr)
+        timeRangeStr = 'Time Range: ' + startTime + ' to ' + endTime + '\n'
+
+        startFreq = self.ui.minFreqLabel.text()
+        endFreq = self.ui.maxFreqLabel.text()
+        freqRangeStr = 'Min freq: ' + startFreq + '\nMax freq: ' + endFreq
+
+        axesStr = 'Axes: '
+        for a in self.ui.axesDropdowns:
+            axesStr += a.currentText() + ', '
+        axesStr = axesStr[:-2] # Remove extra comma at end
+
+        logInfo = ['File(s): '+fileName, timeRangeStr, axesStr, freqRangeStr]
+
+        return logInfo, matrices, resultsTable
+
+    def writeMatrix(self, f, M):
+        # Write matrix to file with only one row per line and padded entries
+        for row in M:
+            for entry in row:
+                f.write(str(entry).ljust(15))
+                f.write(' ')
+            f.write('\n')
+        f.write('\n')
+
+    def exportLog(self):
+        logInfo, matrices, results = self.getTableData()
+
+        # Save file dialog
+        defaultSfx = '.txt'
+        QQ = QtGui.QFileDialog(self)
+        QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        path = os.path.expanduser(".")
+        QQ.setDirectory(path)
+        fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='TXT file (*.txt)')
+        if fullname is None:
+            print('Save failed')
+            return
+        if fullname[0] == '':
+            print('Save cancelled')
+            return
+
+        # If file name doesn't end with default suffix, add it before saving
+        filename = fullname[0]
+        if filename.endswith(defaultSfx) == False:
+            filename += defaultSfx
+
+        # Write logInfo, each matrix, and results to file
+        f = open(filename, 'w')
+        for entry in logInfo:
+            f.write(entry)
+            f.write('\n')
+        f.write('\n')
+        for k in list(matrices.keys()):
+            f.write(k + '\n')
+            self.writeMatrix(f, matrices[k])
+        self.writeMatrix(f, results)
+        f.close()
 
     def updateLabel(self, label, val):
         freqs = self.getDefaultFreqs()
