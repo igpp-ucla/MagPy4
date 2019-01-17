@@ -1230,7 +1230,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # Determine data segments/type and plot
         if not self.ui.bridgeDataGaps.isChecked():
             # Replace error flags with NaN so those points will not be plotted
-            YWithNan = Mth.replaceErrorsWithNaN(Y, self.errorFlag)
+            YWithNan = Mth.replaceErrorsWithNaN(self.ORIGDATADICT[dstr], self.errorFlag)
             # Split data into segments so points with large time gaps are not connected
             segs = Mth.getSegmentsFromTimeGaps(resolutions, avgRes*2)
             for a, b in segs:
