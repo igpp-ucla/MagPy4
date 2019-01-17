@@ -175,7 +175,12 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
             ['Azimuth Angle:', self.ui.azimLabel.text(), '']]
 
         # Get and format info about file, time range, and wave analysis parameters
-        fileName = self.window.getFileNameString()
+        fileName = 'unknown'
+        if len(self.window.FIDs) > 0:
+            names = [os.path.split(FID.name)[1] for FID in self.window.FIDs]
+            fileName = ', \n'.join(names)
+        elif self.window.cdfName:
+            fileName = self.window.cdfName
 
         timeFmtStr = 'yyyy MMM dd HH:mm:ss.zzz'
         startTime = self.spectra.ui.timeEdit.start.dateTime().toString(timeFmtStr)
