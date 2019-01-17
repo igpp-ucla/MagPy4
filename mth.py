@@ -115,6 +115,14 @@ class Mth:
         # returns empty list if data is pure errors
         return segList    
 
+    def replaceErrorsWithNaN(dta, errorFlag):
+        """
+        This function replaces all errorFlag values in the given array with NaN
+        """
+        dtaWithNan = dta.copy()
+        dtaWithNan[dtaWithNan > errorFlag] = np.nan
+        return dtaWithNan
+
     def interpolateErrors(origData, errorFlag):
         """
         This smooths over data gaps, required for spectra analysis

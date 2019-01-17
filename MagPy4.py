@@ -1229,12 +1229,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # Determine data segments/type and plot
         if not self.ui.bridgeDataGaps.isChecked():
-            segs = Mth.getSegmentsFromErrorsAndGaps(self.ORIGDATADICT[dstr], resolutions, self.errorFlag, avgRes*2)
-            for a,b in segs:
+            # Replace error flags with NaN so those points will not be plotted
+            YWithNan = Mth.replaceErrorsWithNaN(Y, self.errorFlag)
+            # Split data into segments so points with large time gaps are not connected
+            segs = Mth.getSegmentsFromTimeGaps(resolutions, avgRes*2)
+            for a, b in segs:
                 if self.ui.drawPoints.isChecked():
-                    pi.addItem(PlotPointsItem(ofstTimes[a:b], Y[a:b], pen=pen))
+                    pi.addItem(PlotPointsItem(ofstTimes[a:b], YWithNan[a:b], pen=pen, connect='finite'))
                 else:
-                    pi.addItem(PlotDataItemBDS(ofstTimes[a:b], Y[a:b], pen=pen))
+                    pi.addItem(PlotDataItemBDS(ofstTimes[a:b], YWithNan[a:b], pen=pen, connect='finite'))
         else:
             if self.ui.drawPoints.isChecked():
                 pi.addItem(PlotPointsItem(ofstTimes, Y, pen=pen))
