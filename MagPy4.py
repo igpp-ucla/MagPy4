@@ -1220,7 +1220,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         times,resolutions,avgRes = self.getTimes(dstr, editNumber)
 
         # Find smallest tick in data
-        ofst = min(times)
+        ofst = self.minTime
         self.tickOffset = ofst
         pi.tickOffset = ofst
         pi.getAxis('bottom').tickOffset = ofst
@@ -1230,7 +1230,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # Determine data segments/type and plot
         if not self.ui.bridgeDataGaps.isChecked():
             # Replace error flags with NaN so those points will not be plotted
-            YWithNan = Mth.replaceErrorsWithNaN(self.ORIGDATADICT[dstr], self.errorFlag)
+            YWithNan = Mth.replaceErrorsWithNaN(Y, self.ORIGDATADICT[dstr], self.errorFlag)
             # Split data into segments so points with large time gaps are not connected
             segs = Mth.getSegmentsFromTimeGaps(resolutions, avgRes*2)
             for a, b in segs:

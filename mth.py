@@ -115,12 +115,19 @@ class Mth:
         # returns empty list if data is pure errors
         return segList    
 
-    def replaceErrorsWithNaN(dta, errorFlag):
+    def replaceErrorsWithNaN(newDta, ogDta, errorFlag):
         """
         This function replaces all errorFlag values in the given array with NaN
         """
-        dtaWithNan = dta.copy()
-        dtaWithNan[dtaWithNan > errorFlag] = np.nan
+        # Get section of original data corresponding to new data
+        if len(ogDta) != len(newDta):
+            diff = len(ogDta) - len(newDta) + 1
+            ogDtaResized = ogDta[diff // 2:-diff // 2 + 1]
+        else:
+            ogDtaResized = ogDta
+        # Replace all the values corresponding to errors in the new data with NaN
+        dtaWithNan = newDta.copy()
+        dtaWithNan[ogDtaResized >= errorFlag] = np.nan
         return dtaWithNan
 
     def interpolateErrors(origData, errorFlag):
