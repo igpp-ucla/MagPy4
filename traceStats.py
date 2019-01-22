@@ -31,7 +31,7 @@ class TraceStatsUI(object):
         # setup datetime edits
         timeFrame = QtWidgets.QGroupBox()
         timeLayout = QtWidgets.QVBoxLayout(timeFrame)
-        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14))
+        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 12))
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
         timeLayout.addWidget(self.timeEdit.start)
         timeLayout.addWidget(self.timeEdit.end)
@@ -41,10 +41,15 @@ class TraceStatsUI(object):
         # Setup button in trace stats window to crop main window to selected range
         selectedRngFrame = QtWidgets.QGroupBox()
         selectedRngLayout = QtWidgets.QHBoxLayout(selectedRngFrame)
-        self.dispRangeBtn = QtGui.QPushButton('Display Selected Range')
+        self.dispRangeBtn = QtGui.QPushButton('View Selection')
         self.dispRangeBtn.setSizePolicy(QSizePolicy(QSizePolicy.Minimum,
             QSizePolicy.Minimum))
         selectedRngLayout.addWidget(self.dispRangeBtn)
+        self.dtaBtn = QtGui.QPushButton('Data')
+        self.dtaBtn.setSizePolicy(QSizePolicy(QSizePolicy.Minimum,
+            QSizePolicy.Minimum))
+        selectedRngLayout.addWidget(self.dtaBtn)
+
         selectedRngLayout.addStretch(1)
 
         self.layout.addWidget(selectedRngFrame)
@@ -61,8 +66,8 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
             self.toggleWindowOnTop(True)
         self.ui.onTopCheckBox.clicked.connect(self.toggleWindowOnTop)
         self.ui.dispRangeBtn.clicked.connect(self.updtDispRange)
-
-        self.funcStrs = ['min', 'max', 'mean', 'median','std dev']
+        self.ui.dtaBtn.clicked.connect(self.viewData)
+        self.funcStrs = ['Min', 'Max', 'Mean', 'Median','Std Dev']
         self.funcs = [np.min, np.max, np.mean, np.median, np.std]
 
         self.clip = QtGui.QApplication.clipboard()
@@ -80,6 +85,14 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         flags = flags | dialogFlag if val else flags & ~dialogFlag
         self.setWindowFlags(flags)
         self.show()
+
+    def viewData(self):
+        self.window.showData()
+        if self.window.currentEdit > 0:
+            self.window.dataDisplay.ui.viewEdtdDta.setChecked(True)
+        startDt = self.ui.timeEdit.start.dateTime()
+        self.window.dataDisplay.ui.dateTimeEdit.setDateTime(startDt)
+        self.window.dataDisplay.moveByTime()
 
     def update(self):
         plotInfo = self.window.getSelectedPlotInfo()
