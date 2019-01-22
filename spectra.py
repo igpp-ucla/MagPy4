@@ -214,7 +214,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         rightLabel = BLabelItem({'justify':'left'})
 
         leftLabel.setHtml('File:<br>Frequency Bands:<br>Time:')
-        rightLabel.setHtml(f'{self.window.getFileNameString()}<br>{self.maxN}<br>{startDate} to {endDate}')
+        maxLabelWidth = self.window.getMaxLabelWidth(rightLabel, self.ui.grid)
+        rightLabel.setHtml(f'{self.window.getFileNameString(maxLabelWidth)}<br>{self.maxN}<br>{startDate} to {endDate}')
            
         self.ui.labelLayout.addItem(leftLabel)
         self.ui.labelLayout.nextColumn()

@@ -930,19 +930,44 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             i -= 1
         return dstr if i == 0 else f'{dstr} {self.editNames[i][:8]}'
 
-    def getFileNameString(self): # returns list of all loaded files
+    def getFileNameString(self, maxLabelWidth): # returns list of all loaded files
         name = 'unknown'
         if len(self.FIDs) > 1:
             names = [os.path.split(FID.name)[1] for FID in self.FIDs]
-            if len(names) > 4: # abbreviate if too many files are loaded
-                del[names[3:len(names) - 1]]
-                names.insert(3,'... ')
-            name = ', '.join(names)
+            firstFile = names[0]
+            lastFile = names[-1]
+            middleFiles = ', '
+            labelLen = len(firstFile) + len(lastFile)
+
+            # For any files in between first and last files
+            for currFile in names[1:-1]:
+                # If the given file makes the label too long, use an ellipsis and
+                # stop iterating through the rest of the filenames
+                if (labelLen + len(currFile)) > maxLabelWidth:
+                    middleFiles += '. . . , '
+                    break
+                else:
+                # Otherwise, add it to the list and update the label length
+                    middleFiles += currFile + ', '
+                    labelLen += len(currFile)
+
+            # Return the first/last files and any files in between that fit
+            name = firstFile + middleFiles + lastFile
+
         elif len(self.FIDs) > 0:
             name = self.FIDs[0].name
         elif self.cdfName:
             name = self.cdfName
         return name
+
+    def getMaxLabelWidth(self, label, gwin):
+        # Gives the maximum number of characters that should, on average, fit
+        # within the width of the window the label is in
+        lblFont = label.font()
+        fntMet = QtGui.QFontMetrics(lblFont)
+        avgCharWidth = fntMet.averageCharWidth()
+        winWidth = gwin.width()
+        return winWidth / avgCharWidth
 
     def plotData(self, dataStrings, links):
         self.ui.glw.clear()
@@ -960,7 +985,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # add label for file name at top right
         fileNameLabel = BLabelItem()
         fileNameLabel.opts['justify'] = 'right'
-        fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.getFileNameString()}</span>")
+        maxLabelWidth = self.getMaxLabelWidth(fileNameLabel, self.ui.glw)
+        fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.getFileNameString(maxLabelWidth)}</span>")
         self.ui.glw.nextColumn()
         self.ui.glw.addItem(fileNameLabel)
         self.ui.glw.nextRow()
