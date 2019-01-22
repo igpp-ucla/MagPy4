@@ -190,6 +190,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # Update timeEdit values
         self.onStartSliderChanged(newTO)
         self.onEndSliderChanged(newTE)
+        self.ui.timeEdit.start.update() # Update appearance for OSX users
+        self.ui.timeEdit.end.update()
 
         # Update plots
         self.setTimes()
