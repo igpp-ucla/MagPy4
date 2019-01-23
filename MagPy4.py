@@ -1233,9 +1233,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if len(Y) < len(times):
             diff = len(times) - len(Y) + 1
             times = times[diff // 2:-diff // 2 + 1]
-            # resolutions shouldn't change because they are used with original data only
             assert len(Y) == len(times), 'filter time correction failed...'
-
+            resolutions = np.diff(times)
         return times,resolutions,avgRes
 
     # both plotData and replot use this function internally
