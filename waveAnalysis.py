@@ -14,7 +14,9 @@ class WaveAnalysisUI(object):
         Frame.setWindowTitle('Wave Analysis')
         Frame.resize(700,500)  
 
-        self.layout = QtWidgets.QVBoxLayout(Frame)
+        self.layout = QtWidgets.QGridLayout(Frame)
+        prncpFrame = QtWidgets.QGroupBox('Principal Axis Analysis')
+        self.prncplLayout = QtWidgets.QVBoxLayout(prncpFrame)
 
         self.axLayout = QtWidgets.QGridLayout()
         self.window = window
@@ -24,22 +26,21 @@ class WaveAnalysisUI(object):
         for i,ax in enumerate(axes):
             dd = QtGui.QComboBox()
             self.axLayout.addWidget(QtWidgets.QLabel(ax),0,i,1,1)
+            # Add elements into comboboxes
             for s in self.window.DATASTRINGS:
                 if ax.lower() in s.lower():
                     dd.addItem(s)
             dd.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
             self.axesDropdowns.append(dd)
             self.axLayout.addWidget(dd,1,i,1,1)
 
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.axLayout.addItem(spacer, 0, 100, 1, 1)
+        self.axLayout.addItem(spacer, 0, 150, 1, 1)
 
-        self.layout.addLayout(self.axLayout)
+        self.layout.addLayout(self.axLayout, 0, 0, 1, 1)
             
         self.matLayout = QtWidgets.QGridLayout()
-
-        #self.rpMatrix = self.addMatrixBox('Real Power', self.matLayout, 0, 0, 1, 1)
-        #self.ipMatrix = self.addMatrixBox('Imaginary Power', self.matLayout, 1, 0, 1, 1)
 
         self.rpMat, rpFrame = self.addMatrixBox('Real Power')
         self.ipMat, ipFrame = self.addMatrixBox('Imaginary Power')
@@ -58,17 +59,12 @@ class WaveAnalysisUI(object):
         spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.matLayout.addItem(spacer, 0, 100, 1, 1)
 
-        self.layout.addLayout(self.matLayout)
+        self.layout.addLayout(self.matLayout, 1, 0, 1, 1)
 
         freqGroupLayout = QtWidgets.QHBoxLayout()
 
         freqFrame = QtWidgets.QGroupBox('Frequency Selection')
         freqLayout = QtWidgets.QGridLayout(freqFrame)
-
-        #freqLayoutH = QtWidgets.QHBoxLayout(freqFrame)
-        #freqLayout = QtWidgets.QVBoxLayout()
-        #freqLayoutH.addLayout(freqLayout)
-        #freqLayoutH.addStretch()
 
         self.minFreqLabel = QtWidgets.QLabel()
         self.maxFreqLabel = QtWidgets.QLabel()
@@ -77,14 +73,15 @@ class WaveAnalysisUI(object):
         self.updateButton = QtWidgets.QPushButton('Update')
 
         freqLayout.addWidget(self.minFreqIndex, 0, 0, 1, 1)
-        freqLayout.addWidget(self.minFreqLabel, 0, 1, 1, 1)
-        freqLayout.addWidget(self.maxFreqIndex, 1, 0, 1, 1)
+        freqLayout.addWidget(self.minFreqLabel, 1, 0, 1, 1)
+        freqLayout.addWidget(self.maxFreqIndex, 0, 1, 1, 1)
         freqLayout.addWidget(self.maxFreqLabel, 1, 1, 1, 1)
-        freqLayout.addWidget(self.updateButton, 2, 0, 1, 1)
+        freqLayout.addWidget(self.updateButton, 0, 3, 1, 1)
 
         freqGroupLayout.addWidget(freqFrame)
 
-        bornWolfFrame = QtWidgets.QGroupBox('Wave Analysis')
+        # Setup Born-Wolf Analysis grid
+        bornWolfFrame = QtWidgets.QGroupBox('Born-Wolf Analysis')
         bornWolfGrid = QtWidgets.QGridLayout(bornWolfFrame)
 
         self.ppLabel = QtWidgets.QLabel()
@@ -104,24 +101,60 @@ class WaveAnalysisUI(object):
         bornWolfGrid.addWidget(QtWidgets.QLabel('Azimuth Angle:'), 3, 0, 1, 1)
         bornWolfGrid.addWidget(self.azimLabel, 3, 1, 1, 1)
 
-        #pp, ppm, elip, elipm, azim
-        freqGroupLayout.addWidget(bornWolfFrame)
+        # Setup Joe Means Analysis table
+        joeMeansFrame = QtWidgets.QGroupBox('Joe Means Analysis')
+        joeMeansGrid = QtWidgets.QGridLayout(joeMeansFrame)
 
-        #self.wolfText = QtGui.QTextBrowser()
-        #freqGroupLayout.addWidget(self.wolfText)
+        self.prop = QtWidgets.QLabel()
+        self.jmAngle = QtWidgets.QLabel()
+        self.linVar = QtWidgets.QLabel()
+        self.lvAngle = QtWidgets.QLabel()
 
-        freqGroupLayout.addStretch()
+        joeMeansGrid.addWidget(QtWidgets.QLabel('Propagation: '), 0, 0, 1, 1)
+        joeMeansGrid.addWidget(self.prop, 0, 1, 1, 1)
+        joeMeansGrid.addWidget(QtWidgets.QLabel('Angle: '), 0, 2, 1, 1)
+        joeMeansGrid.addWidget(self.jmAngle, 0, 3, 1, 1)
+        joeMeansGrid.addWidget(QtWidgets.QLabel('Linear Var: '), 1, 0, 1, 1)
+        joeMeansGrid.addWidget(self.linVar, 1, 1, 1, 1)
+        joeMeansGrid.addWidget(QtWidgets.QLabel('Angle: '), 1, 2, 1, 1)
+        joeMeansGrid.addWidget(self.lvAngle, 1, 3, 1, 1)
 
-        self.layout.addLayout(freqGroupLayout)
+        # Set up eigenvectors/values table
+        eigenLayout = QtWidgets.QHBoxLayout()
+        self.eigenVecs, eigenVecFrame = self.addMatrixBox('Eigenvectors')
+        eigenValsFrame = QtWidgets.QGroupBox('Eigenvalues')
+        eigenValsGrid = QtWidgets.QVBoxLayout(eigenValsFrame)
 
-        self.layout.addStretch()
+        eigenValsGrid.setAlignment(QtCore.Qt.AlignCenter)
+        self.ev1, self.ev2, self.ev3 = QtWidgets.QLabel(), QtWidgets.QLabel(), QtWidgets.QLabel()
+        for ev in [self.ev1, self.ev2, self.ev3]:
+            eigenValsGrid.addWidget(ev)
+            ev.setAlignment(QtCore.Qt.AlignCenter)
 
+        eigenLayout.addStretch()
+        eigenLayout.addWidget(eigenVecFrame)
+        eigenLayout.addStretch()
+        eigenLayout.addWidget(eigenValsFrame)
+        eigenLayout.addStretch()
 
-        botLayout = QtWidgets.QHBoxLayout()
+        # Setup principal axis analysis grid
+        self.prncplLayout.addLayout(eigenLayout)
+        self.prncplLayout.addWidget(joeMeansFrame)
+        self.prncplLayout.addWidget(bornWolfFrame)
+        self.layout.addWidget(prncpFrame, 1, 1, 1, 1)
+        self.layout.addLayout(freqGroupLayout, 4, 0, 1, 3)
+
+        # Setup export button in layout
         self.logButton = QtWidgets.QPushButton('Export Log')
-        botLayout.addWidget(self.logButton)
-        botLayout.addStretch()
-        self.layout.addLayout(botLayout)
+        self.bntLayout = QtWidgets.QVBoxLayout()
+        self.bntLayout.addStretch()
+        self.bntLayout.addWidget(self.logButton)
+        freqGroupLayout.addStretch()
+        freqGroupLayout.addLayout(self.bntLayout)
+
+        # Center titles above each principal axis analysis results group
+        for grp in [prncpFrame, joeMeansFrame, bornWolfFrame, eigenVecFrame, eigenValsFrame]:
+            grp.setAlignment(QtCore.Qt.AlignCenter)
 
     def addMatrixBox(self, name):
         frame = QtWidgets.QGroupBox(name)
@@ -168,11 +201,24 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         for i in range(0, len(matrixBoxes)):
             matrices[matrixNames[i]] = matrixBoxes[i].getMatrix()
 
+        # Set up eigenvector/eigenvalue matrix objects
+        eigenVecs = self.ui.eigenVecs.getMatrix()
+        eigenVals = [[ev.text()] for ev in [self.ui.ev1, self.ui.ev2, self.ui.ev3]]
+
+        # Recreate Joe Means results matrix in an array
+        jmResults = [['Propagation: ', self.ui.prop.text(), 'Angle: ',
+            self.ui.jmAngle.text()], ['Linear Var: ', self.ui.linVar.text(),
+            'Angle: ', self.ui.lvAngle.text()]]
+
         # Recreate Born-Wolf and Joe Means results table in an array
-        resultsTable = [['', 'Born-Wolf', 'Joe Means'],
+        bwResults = [['', 'Born-Wolf', 'Joe Means'],
             ['% Polarization:', self.ui.ppLabel.text(), self.ui.ppmLabel.text()],
             ['Ellipticity:', self.ui.elipLabel.text(), self.ui.elipmLabel.text()], 
             ['Azimuth Angle:', self.ui.azimLabel.text(), '']]
+
+        # Create tuple pairs of results matrices and titles in principal axis analysis
+        resultsTable = [('Eigenvectors', eigenVecs), ('Eigenvalues', eigenVals),
+            ('Joe Means analysis', jmResults), ('Born-Wolf analysis', bwResults)]
 
         # Get and format info about file, time range, and wave analysis parameters
         fileName = 'unknown'
@@ -240,8 +286,18 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         for k in list(matrices.keys()):
             f.write(k + '\n')
             self.writeMatrix(f, matrices[k])
-        self.writeMatrix(f, results)
+
+        for lbl, mat in results:
+            f.write(lbl + '\n')
+            self.writeMatrix(f, mat)
         f.close()
+
+    def vectorLabel(self, vec):
+        txt = ''
+        prec = 3
+        for i in vec:
+            txt += str(round(i, 3)) + '\t'
+        return txt
 
     def updateLabel(self, label, val):
         freqs = self.getDefaultFreqs()
@@ -292,8 +348,9 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         realPower = [[ps[0], cs[0], cs[1]], [cs[0], ps[1], cs[2]], [cs[1], cs[2], ps[2]]]
         imagPower = [[0.0, -qs[0], -qs[1]], [qs[0], 0.0, -qs[2]], [qs[1], qs[2], 0.0]]
 
-        self.ui.rpMat.setMatrix(realPower)
-        self.ui.ipMat.setMatrix(imagPower)
+        prec = 7
+        self.ui.rpMat.setMatrix(np.round(realPower, prec))
+        self.ui.ipMat.setMatrix(np.round(imagPower, prec))
 
         # Compute the average field for each dstr within the given time range
         avg = []
@@ -344,10 +401,10 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         trm = Mth.arpat(bmat, realPower) # transformed real matrix
         tim = Mth.arpat(bmat, imagPower) # transformed imaginary matrix
 
-        self.ui.trpMat.setMatrix(trp)
-        self.ui.tipMat.setMatrix(tip)
-        self.ui.trMat.setMatrix(trm)
-        self.ui.tiMat.setMatrix(tim)
+        self.ui.trpMat.setMatrix(np.round(trp, prec))
+        self.ui.tipMat.setMatrix(np.round(tip, prec))
+        self.ui.trMat.setMatrix(np.round(trm, prec))
+        self.ui.tiMat.setMatrix(np.round(tim, prec))
 
         pp, ppm, elip, elipm, azim = self.bornWolf(trp,tip,trm,tim)
 
@@ -356,6 +413,17 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.ui.elipLabel.setText(Mth.formatNumber(elip))
         self.ui.elipmLabel.setText(Mth.formatNumber(elipm))
         self.ui.azimLabel.setText(Mth.formatNumber(azim))
+
+        self.ui.prop.setText(self.vectorLabel(qkem))
+        self.ui.jmAngle.setText(str(round(qtem, 3)))
+        self.ui.linVar.setText(self.vectorLabel(qdlm))
+        self.ui.lvAngle.setText(str(round(qalm, 3)))
+
+        # Set eigenvector, eigenvalue, and eigenvalue labels in correct order/arrngment
+        amat = np.round(np.transpose(amat), prec)
+        self.ui.eigenVecs.setMatrix(np.array([amat[:,2], amat[:,1], amat[:,0]]))
+        for ev, lbl in zip(duhh[::-1], [self.ui.ev1, self.ui.ev2, self.ui.ev3]):
+            lbl.setText(str(round(ev, 5)))
 
     def bornWolf(self, trp, tip, trm, tim):
         """
