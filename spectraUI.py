@@ -27,6 +27,9 @@ class SpectraUI(object):
         Frame.setWindowTitle('Spectra')
         Frame.resize(1000,700)
 
+        self.plotApprAction = QtWidgets.QAction(window)
+        self.plotApprAction.setText('Change Plot Appearance...')
+
         layout = QtWidgets.QVBoxLayout(Frame)
 
         self.tabs = QtWidgets.QTabWidget()

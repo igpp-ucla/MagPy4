@@ -30,6 +30,7 @@ from MagPy4UI import MagPy4UI, PyQtUtils
 from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
+from plotAppearance import PlotAppearance
 from edit import Edit
 from traceStats import TraceStats
 from helpWindow import HelpWindow
@@ -102,6 +103,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionAbout.triggered.connect(self.openAbout)
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
+
+        self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
+
         self.insightMode = False
 
         # options menu dropdown
@@ -116,6 +120,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay = None
         self.plotMenu = None
         self.spectra = None
+        self.plotAppr = None
         self.edit = None
         self.traceStats = None
         self.helpWindow = None
@@ -237,6 +242,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def closeAllSubWindows(self):
         self.closePlotMenu()
+        self.closePlotAppr()
         self.closeEdit()
         self.closeData()
         self.closeTraceStats()
@@ -305,6 +311,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         geo = self.geometry()
         self.plotMenu.move(geo.x() + 200, geo.y() + 100)
         self.plotMenu.show()
+
+    def openPlotAppr(self):
+        self.closePlotAppr()
+        self.plotAppr = PlotAppearance(self, self.plotItems)
+        self.plotAppr.show()
+
+    def closePlotAppr(self):
+        if self.plotAppr:
+            self.plotAppr.close()
+            self.plotAppr = None
 
     def openEdit(self):
         self.closeTraceStats()
@@ -1499,9 +1515,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     def __init__(self, window, plotIndex, *args, **kwds):
         pg.ViewBox.__init__(self, *args, **kwds)
-        #self.setMouseMode(self.RectMode)
         self.window = window
         self.plotIndex = plotIndex
+        self.menuSetup()
 
         generalLines = []
         for i in range(2):
@@ -1512,6 +1528,13 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 self.addItem(line, ignoreBounds = True)
                 line.setBounds((self.window.minTime, self.window.maxTime))
                 line.hide()
+
+    def menuSetup(self):
+        actions = self.menu.actions()
+        xAction, yAction, mouseAction = actions[1:4]
+        for a in [xAction, yAction, mouseAction]:
+            self.menu.removeAction(a)
+        self.menu.addAction(self.window.ui.plotApprAction)
 
     def onLeftClick(self, ev):
          # map the mouse click to data coordinates

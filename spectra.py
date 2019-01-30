@@ -7,6 +7,7 @@ import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
 from FF_Time import FFTIME
+from plotAppearance import PlotAppearance
 from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis, BLabelItem
 from dataDisplay import UTCQDate
 from MagPy4UI import TimeEdit
@@ -29,11 +30,13 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.aspectLockedCheckBox.stateChanged.connect(self.setAspect)
         self.ui.waveAnalysisButton.clicked.connect(self.openWaveAnalysis)
         self.ui.logModeCheckBox.stateChanged.connect(self.updateScaling)
+        self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
 
         self.plotItems = []
         self.window.setLinesVisible(False, 'general')
         self.wasClosed = False
         self.waveAnalysis = None
+        self.plotAppr = None
         self.linearMode = False
 
     def closeWaveAnalysis(self):
@@ -46,12 +49,24 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.waveAnalysis = WaveAnalysis(self, self.window)
         self.waveAnalysis.show()
 
+    def openPlotAppr(self, sig, plotItems=None):
+        if plotItems == None:
+            plotItems = self.plotItems
+        self.plotAppr = PlotAppearance(self, plotItems)
+        self.plotAppr.show()
+
+    def closePlotAppr(self):
+        if self.plotAppr:
+            self.plotAppr.close()
+            self.plotAppr = None
+
     def updateDelayed(self):
         self.ui.bandWidthSpinBox.setReadOnly(True)
         QtCore.QTimer.singleShot(100, self.updateSpectra)
 
     def closeEvent(self, event):
         self.closeWaveAnalysis()
+        self.closePlotAppr()
         self.window.endGeneralSelect()
         self.wasClosed = True # setting self.window.spectra=None caused program to crash with no errors.. couldnt figure out why so switched to this
 
@@ -175,7 +190,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 powers.append(power)
 
                 # Initialize pens, plot title, and plot data
-                pen = penList[i]
+                pen = QtGui.QPen(penList[i]) # Only copy color from main window
                 pstr = self.window.getLabel(dstr,en)
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
                 pi.plot(freq, power, pen=pen)
@@ -223,6 +238,10 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
         self.updateCohPha()
 
+        # Add plot appearance menu to context menu for each plot:
+        for plt in self.plotItems:
+            plt.getViewBox().menu.addAction(self.ui.plotApprAction)
+
         # this is done to avoid it going twice with one click (ideally should make this multithreaded eventually so gui is more responsive)
         bw = self.ui.bandWidthSpinBox.value()
         self.ui.bandWidthSpinBox.setMinimum(max(1,bw-2))
@@ -255,7 +274,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 freq = self.getFreqs(dstr,en)
                 power = self.powers[dstr]
                 powers.append(power)
-                pen = penList[i]
+                pen = QtGui.QPen(penList[i])
                 pstr = self.window.getLabel(dstr,en)
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
                 pi.plot(freq, power, pen=pen)
@@ -276,6 +295,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         freqs = self.getFreqs(c0,0)
 
         datas = [[self.ui.cohGrid, self.coh, 'Coherence', ''],[self.ui.phaGrid, self.pha, 'Phase', ' (&deg;)']]
+        plts = []
 
         for d in datas:
             d[0].clear()
@@ -289,21 +309,26 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             pi.setLogMode(True, False)
             if self.linearMode:
                 pi.setLogMode(False, False)
-            #if self.ui.aspectLockedCheckBox.isChecked():
-            #    pi.setAspectLocked()
-            pi.plot(freqs, d[1], pen=self.window.pens[0])
+            pi.plot(freqs, d[1], pen=QtGui.QPen(self.window.pens[0]))
             btmLabel = 'Log Frequency (Hz)'
             if self.linearMode:
                 btmLabel = 'Frequency (Hz)'
             pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}', bottom=btmLabel)
-
             d[0].addItem(pi)
-            #self.plotItems.append(pi)
+            plts.append(pi)
 
             # y axis should be in angles for phase
             if d[2] == 'Phase':
                 angleTicks = [(x,f'{x}') for x in range(360,-361,-90)]
                 la.setTicks([angleTicks])
+
+        # Custom context menu handling for coh/pha
+        actText = 'Change Plot Appearance...'
+        self.plotApprActs = [QtWidgets.QAction(actText), QtWidgets.QAction(actText)]
+        for pi, act in zip(plts, self.plotApprActs):
+            act.triggered.connect(functools.partial(self.openPlotAppr, None, [pi]))
+            vb = pi.getViewBox()
+            vb.menu.addAction(act)
 
     # scale each plot to use same y range
     # the viewRange function was returning incorrect results so had to do manually

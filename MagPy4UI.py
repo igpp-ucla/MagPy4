@@ -1,6 +1,7 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
+from plotAppearance import PlotAppearance, PlotAppearanceUI
 
 import pyqtgraph as pg
 import functools
@@ -109,13 +110,8 @@ class MagPy4UI(object):
         self.helpMenu.addSeparator()
         self.helpMenu.addAction(self.actionAbout)
 
-        #empty widget (cant use spacer in toolbar?) does same thing tho so this action goes far right
-        #spacer = QtWidgets.QWidget()
-        #spacer.setSizePolicy(QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        #self.toolBar.addWidget(spacer)
-
-        #self.toolBar.addAction(self.switchMode)
-        #self.toolBar.addAction(self.runTests)
+        self.plotApprAction = QtWidgets.QAction(window)
+        self.plotApprAction.setText('Change Plot Appearance...')
 
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
@@ -139,7 +135,6 @@ class MagPy4UI(object):
         self.timeEdit = TimeEdit(QtGui.QFont("monospace", 11))
 
         # Create buttons for moving plot windows L or R by a fixed amt
-        # TODO: Change button size, location, etc.
         self.mvLftBtn = QtWidgets.QPushButton('<', window)
         self.mvRgtBtn = QtWidgets.QPushButton('>', window)
         self.mvLftBtn.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
