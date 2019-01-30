@@ -198,6 +198,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.curFID = FIDs[0]
         self.updateFile()
         self.window = window
+        self.rangeSelection = None
 
         self.setFileComboNames()
         self.ui.fileCombo.currentIndexChanged.connect(self.fileComboChanged)
