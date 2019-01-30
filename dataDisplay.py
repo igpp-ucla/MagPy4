@@ -225,9 +225,16 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         else:
             self.ui.viewEdtdDta.setEnabled(True)
 
+    def closeEvent(self, event):
+        self.closeRangeSelection()
+
     def selectRange(self):
         self.rangeSelection = RangeSelection(self)
         self.rangeSelection.show()
+
+    def closeRangeSelection(self):
+        if self.rangeSelection:
+            self.rangeSelection.close()
 
     def fileComboChanged(self,i):
         self.curFID = self.FIDs[i]
@@ -488,18 +495,10 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         UTC = dtList[0] + " " + str(doy) + DTSTRM[4:]
         t = FFTIME(UTC, Epoch=self.curFID.getEpoch()).tick
         iRow = 0
-        if self.ui.viewEdtdDta.isChecked():
-            # Find the time just after the selected time and return index just before it
-            for timeVal in self.time:
-                if timeVal > t:
-                    break
-                iRow = iRow + 1 
-            iRow = iRow - 1
+        if t in list(self.time):
+            iRow = list(self.time).index(t) - 1
         else:
-            iRow = self.curFID.ffsearch(t, 1, self.curFID.getRows()) - 1
-            if iRow == None:
-                iRow = bisect.bisect(self.time, t)
-
+            iRow = bisect.bisect(self.time, t)
         return iRow
 
     def moveByRow(self):
