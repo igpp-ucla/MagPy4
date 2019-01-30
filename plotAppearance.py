@@ -202,10 +202,9 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         # Update every plot's label sizes for every axis
         for plt in self.plotItems:
             for ax in [plt.getAxis('bottom'), plt.getAxis('left')]:
-                lblText = ax.label.toPlainText()
-                if lblText == '': # Do not change size if no label
+                if ax.label.toPlainText() == '': # Do not change size if no label
                     continue
-                # Convert new value to apprp string and set
+                # Convert new value to apprp string and update label info
                 sizeStr = str(val) + 'pt'
-                labelStyle = {'font-size':sizeStr}
-                ax.setLabel(lblText, **labelStyle)
+                ax.labelStyle = {'font-size':sizeStr}
+                ax.label.setHtml(ax.labelString()) # Uses updated HTML string
