@@ -5,6 +5,7 @@ import FF_File
 from FF_Time import FFTIME, FF_EPOCH
 import numpy as np
 import datetime, time
+import bisect, functools
 import os
 # from tqdm import tqdm
 
@@ -205,9 +206,12 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 
         self.ui.buttonBox.rejected.connect(self.close)
         buttonBox = self.ui.buttonBox
-        saveButton = QtGui.QPushButton("&Save Data")
+        saveButton = QtGui.QPushButton("&Save All Data")
         saveButton.clicked.connect(self.saveData)
         buttonBox.addButton(saveButton, QtGui.QDialogButtonBox.ApplyRole)
+        saveRangeBtn = QtGui.QPushButton("Save Range of Data")
+        saveRangeBtn.clicked.connect(self.selectRange)
+        buttonBox.addButton(saveRangeBtn, QtGui.QDialogButtonBox.ActionRole)
         self.ui.checkBox.clicked.connect(self.toggleTimeDisplay)
         self.ui.moveByTime.clicked.connect(self.moveByTime)
         self.ui.moveByRow.clicked.connect(self.moveByRow)
@@ -220,6 +224,10 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             self.ui.viewEdtdDta.setEnabled(False)
         else:
             self.ui.viewEdtdDta.setEnabled(True)
+
+    def selectRange(self):
+        self.rangeSelection = RangeSelection(self)
+        self.rangeSelection.show()
 
     def fileComboChanged(self,i):
         self.curFID = self.FIDs[i]
@@ -413,7 +421,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))        
 
     # saves flatfile data to a plain text file
-    def saveData(self):
+    def saveData(self, sig, indices=None):
         defaultSfx = '.csv'
         QQ = QtGui.QFileDialog(self)
         QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
@@ -427,13 +435,20 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             print('Save cancelled')
             return
         epoch = self.curFID.FFParm["EPOCH"].value
-        nRows = len(self.time)
 
         # Shape data
-        shape = np.shape(self.dataByRec)
+        selectedDta = self.dataByRec
+        selectedTime = self.time
+        if indices is not None:
+            startIndex, endIndex = indices
+            selectedDta = selectedDta[startIndex:endIndex+1]
+            selectedTime = selectedTime[startIndex:endIndex+1]
+
+        shape = np.shape(selectedDta)
         dataShaped = np.zeros((shape[0], shape[1]+1))
-        dataShaped[:,1:] = self.dataByRec
-        dataShaped[:,0] = self.time
+        dataShaped[:,1:] = selectedDta
+        dataShaped[:,0] = selectedTime
+        nRows = len(selectedTime)
 
         # Create header to write at top of file
         header = ''
@@ -458,10 +473,13 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.update()
 
     def moveByTime(self):
-        # grab data ui.dateTimeEdit
+        row = self.getRowFrmDTime(self.ui.dateTimeEdit)
+        self.ui.dataTableView.selectRow(row)
+
+    def getRowFrmDTime(self, dt):
         formMM = 'yyyy MM dd hh mm ss zzz'
         formMMM = 'yyyy MMM dd hh:mm:ss.zzz'
-        DT = self.ui.dateTimeEdit.dateTime()
+        DT = dt.dateTime()
         DTSTR = DT.toString(formMM)
         DTSTRM = DT.toString(formMMM)
         dtList = DTSTR.split()
@@ -479,7 +497,10 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             iRow = iRow - 1
         else:
             iRow = self.curFID.ffsearch(t, 1, self.curFID.getRows()) - 1
-        self.ui.dataTableView.selectRow(iRow)
+            if iRow == None:
+                iRow = bisect.bisect(self.time, t)
+
+        return iRow
 
     def moveByRow(self):
         # grab data ui.Row
@@ -515,3 +536,92 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
                 self.clip.setText(s)
 
         e.accept()
+
+class RangeSelectionUI(object):
+    def setupUI(self, Frame, window):
+        Frame.setWindowTitle("Range Selection")
+        Frame.resize(200, 150)
+
+        layout = QtWidgets.QGridLayout(Frame)
+        instrLbl = QtWidgets.QLabel('Please select a range of data to save.')
+
+        # Set up time range selection
+        timeEditLayout = QtWidgets.QHBoxLayout()
+        self.startTimeEdit = QtGui.QDateTimeEdit()
+        startLbl = QtGui.QLabel('Start time: ')
+        startRwLbl = QtWidgets.QLabel(' Start row: ')
+        self.startRwBox = QtWidgets.QSpinBox()
+        for e in [startLbl, self.startTimeEdit, startRwLbl, self.startRwBox]:
+            timeEditLayout.addWidget(e)
+        timeEditLayout.addStretch()
+
+        # Set up row range selection
+        rowLayout = QtWidgets.QHBoxLayout()
+        self.endTimeEdit = QtGui.QDateTimeEdit()
+        endLbl = QtGui.QLabel('End time:   ')
+        self.endRwBox = QtWidgets.QSpinBox()
+        endRwLbl = QtWidgets.QLabel(' End row:   ')
+        for e in [endLbl, self.endTimeEdit, endRwLbl, self.endRwBox]:
+            rowLayout.addWidget(e)
+        rowLayout.addStretch()
+
+        # Set up min/max and default values for range selectors
+        start = FFTIME(window.time[0], Epoch=window.window.epoch) # Main window's epoch
+        stop_ = FFTIME(window.time[-1], Epoch=window.window.epoch)
+        self.startTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))
+        self.endTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(stop_.UTC))
+        for te in [self.startTimeEdit, self.endTimeEdit]:
+            te.setDisplayFormat('yyyy MMM dd hh:mm:ss')
+            te.setMinimumDateTime(UTCQDate.UTC2QDateTime(start.UTC))
+            te.setMaximumDateTime(UTCQDate.UTC2QDateTime(stop_.UTC))
+
+        maxRows = window.ui.Row.maximum()
+        for rowObj in [self.startRwBox, self.endRwBox]:
+            rowObj.setMinimum(1)
+            rowObj.setMaximum(maxRows)
+        self.endRwBox.setValue(maxRows)
+
+        # Save button
+        self.saveBtn = QtWidgets.QPushButton('Save Data')
+        self.saveBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        # Add everything to layout
+        layout.addWidget(instrLbl, 0, 0, 1, 2)
+        layout.addLayout(timeEditLayout, 1, 0, 1, 2)
+        layout.addLayout(rowLayout, 2, 0, 1, 2)
+        layout.addWidget(self.saveBtn, 4, 1, 1, 1)
+
+class RangeSelection(QtWidgets.QFrame, RangeSelectionUI):
+    def __init__(self, window):
+        super(RangeSelection, self).__init__(None)
+        self.window = window
+        self.ui = RangeSelectionUI()
+        self.ui.setupUI(self, window)
+
+        # Set up UI element connections
+        self.ui.startTimeEdit.dateTimeChanged.connect(functools.partial(self.updateRowByTime, self.ui.startTimeEdit, self.ui.startRwBox))
+        self.ui.endTimeEdit.dateTimeChanged.connect(functools.partial(self.updateRowByTime, self.ui.endTimeEdit, self.ui.endRwBox))
+        self.ui.startRwBox.valueChanged.connect(functools.partial(self.updateTimeEditByRow, self.ui.startTimeEdit))
+        self.ui.endRwBox.valueChanged.connect(functools.partial(self.updateTimeEditByRow, self.ui.endTimeEdit))
+        self.ui.saveBtn.clicked.connect(self.saveRangeData)
+
+    def updateRowByTime(self, te, rbox):
+        # Get row number from current time
+        row = self.window.getRowFrmDTime(te) + 1
+        # Set row spinbox value without signals
+        rbox.blockSignals(True)
+        rbox.setValue(row)
+        rbox.blockSignals(False)
+
+    def updateTimeEditByRow(self, te, row):
+        row = row-1
+        row = max(0, row)
+        # Get tick from data times corresponding to row number
+        newTime = self.window.time[row]
+        # Get UTC version of time and update timeEdit
+        tick = FFTIME(newTime, Epoch=self.window.window.epoch)
+        te.setDateTime(UTCQDate.UTC2QDateTime(tick.UTC))
+
+    def saveRangeData(self):
+        indices = (self.ui.startRwBox.value()-1, self.ui.endRwBox.value()-1)
+        self.window.saveData(True, indices)
