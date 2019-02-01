@@ -496,10 +496,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         UTC = dtList[0] + " " + str(doy) + DTSTRM[4:]
         t = FFTIME(UTC, Epoch=self.curFID.getEpoch()).tick
         iRow = 0
-        if t in list(self.time):
-            iRow = list(self.time).index(t) - 1
-        else:
-            iRow = bisect.bisect(self.time, t)
+        iRow = bisect.bisect(self.time, t)
         return iRow
 
     def moveByRow(self):
@@ -620,7 +617,9 @@ class RangeSelection(QtWidgets.QFrame, RangeSelectionUI):
         newTime = self.window.time[row]
         # Get UTC version of time and update timeEdit
         tick = FFTIME(newTime, Epoch=self.window.window.epoch)
+        te.blockSignals(True)
         te.setDateTime(UTCQDate.UTC2QDateTime(tick.UTC))
+        te.blockSignals(False)
 
     def saveRangeData(self):
         indices = (self.ui.startRwBox.value()-1, self.ui.endRwBox.value()-1)
