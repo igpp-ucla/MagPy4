@@ -26,7 +26,7 @@ import pyqtgraph as pg
 import FF_File
 from FF_Time import FFTIME, leapFile
 
-from MagPy4UI import MagPy4UI, PyQtUtils
+from MagPy4UI import MagPy4UI, PyQtUtils, PlotGrid, StackedLabel
 from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
@@ -395,11 +395,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def runTests(self):
         Tests.runTests()
-
-    def resizeEvent(self, event):
-        #print(event.size())
-        #self.additionalResizing()
-        pass
 
     def openFileDialog(self, isFlatfile, clearCurrent):
         if isFlatfile:
@@ -872,16 +867,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def updateXRange(self):
         rng = self.getSelectedTimeRange()
-        self.ui.timeLabel.setText('yellow')
+        self.pltGrd.setTimeLabel('yellow')
 
         if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
-            self.ui.timeLabel.setText('hh:mm:ss')
+            self.pltGrd.setTimeLabel('hh:mm:ss')
         elif rng > self.hrCutoff: # if hour show hh:mm:ss
-            self.ui.timeLabel.setText('hh:mm:ss')
+            self.pltGrd.setTimeLabel('hh:mm:ss')
         elif rng > self.minCutoff: # if over 10 seconds show mm:ss
-            self.ui.timeLabel.setText('mm:ss')
+            self.pltGrd.setTimeLabel('mm:ss')
         else: # else show mm:ss.sss
-            self.ui.timeLabel.setText('mm:ss.sss')
+            self.pltGrd.setTimeLabel('mm:ss.sss')
 
         for pi in self.plotItems:
             pi.setXRange(self.tO-self.tickOffset, self.tE-self.tickOffset, 0.0)
@@ -1005,9 +1000,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         fileNameLabel.opts['justify'] = 'right'
         maxLabelWidth = self.getMaxLabelWidth(fileNameLabel, self.ui.glw)
         fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.getFileNameString(maxLabelWidth)}</span>")
-        self.ui.glw.nextColumn()
-        self.ui.glw.addItem(fileNameLabel)
-        self.ui.glw.nextRow()
+        self.ui.glw.addItem(fileNameLabel, 0, 1, 1, 1)
+        self.pltGrd = PlotGrid(self)
+        self.ui.glw.addItem(self.pltGrd, 1, 1, 1, 1)
 
         self.trackerLines = []
 
@@ -1052,6 +1047,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 ba.setStyle(showValues=False)
 
             tracePens = []
+            dstrList = []
+            colorsList = []
             # add traces on this plot for each dstr
             for i,(dstr,editNum) in enumerate(dstrs):
                 u = self.UNITDICT[dstr]
@@ -1068,6 +1065,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 tracePens.append(pen)
 
                 self.plotTrace(pi, dstr, editNum, pen)
+                dstrList.append(dstr)
+                colorsList.append(pen.color().name())
+
 
             self.plotTracePens.append(tracePens)
 
@@ -1077,15 +1077,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #todo: needs to be set for current min and max of all time ranges
             pi.setLimits(xMin=self.minTime-self.tickOffset, xMax=self.maxTime-self.tickOffset)
 
-            # add Y axis label based on traces (label gets set below)
-            li = BLabelItem()
-            self.labelItems.append(li)
+            # Determine units to be placed on label
+            unit = ''
+            for dstr in dstrList:
+                u = self.UNITDICT[dstr]
+                # figure out if each axis trace shares same unit
+                if unit == '':
+                    unit = u
+                elif unit != None and unit != u:
+                    unit = None
+            if unit == '':
+                unit = None
 
-            self.ui.glw.addItem(li)
-            self.ui.glw.addItem(pi)
-            self.ui.glw.nextRow()
-
-        self.additionalResizing()
+            # Create plot label and add to grid
+            stckLbl = StackedLabel(dstrList, colorsList, unit)
+            self.pltGrd.addPlt(pi, stckLbl)
 
         ## end of main for loop
 
@@ -1095,103 +1101,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for pi in self.plotItems:
             for item in pi.items:
                 item.viewRangeChanged()
-
-    ## end of plot function
-
-    def setYAxisLabels(self):
-        """sets y axis label strings for each plot"""
-        plots = len(self.plotItems)
-        for dstrs,pens,li in zip(self.lastPlotStrings,self.plotTracePens,self.labelItems):
-            traceCount = len(dstrs)
-            alab = ''
-            unit = ''
-            for (dstr,editNum),pen in zip(dstrs,pens):
-                u = self.UNITDICT[dstr]
-                # figure out if each axis trace shares same unit
-                if unit == '':
-                    unit = u
-                elif unit != None and unit != u:
-                    unit = None
-
-                l = self.getLabel(dstr, editNum)
-                if l in self.ABBRV_DSTR_DICT:
-                    l = self.ABBRV_DSTR_DICT[l]
-                alab += f"<span style='color:{pen.color().name()};'>{l}</span>\n"
-
-            # add unit label if each trace on this plot shares same unit
-            if unit != None and unit != '':
-                alab += f"<span style='color:#888888;'>[{unit}]</span>\n"
-            else:
-                alab = alab[:-1] #remove last newline character
-
-            fontSize = self.suggestedFontSize
-            if traceCount > plots and plots > 1:
-                fontSize -= (traceCount - plots) * (1.0 / min(4, plots) + 0.35)
-            fontSize = min(16, max(fontSize,4))
-            li.setHtml(f"<span style='font-size:{fontSize}pt; white-space:pre;'>{alab}</span>")
-
-
-    def additionalResizing(self):
-        """
-        this function tries to correctly estimate size of rows. the problem is last one needs to be a bit larger since bottom axis
-        this is super hacked but it actually works okay. end goal is for bottom plot to be same height as the rest
-        """
-
-        # may want to redo with viewGeometry of plots in mind, might be more consistent than fontsize stuff on mac for example
-        #for pi in self.plotItems:
-        #    print(pi.viewGeometry())
-
-        #print('additionally resizing')
-
-        qggl = self.ui.glw.layout
-        rows = qggl.rowCount()
-        plots = rows - 1
-
-        width = self.ui.glw.viewRect().width()
-        height = self.ui.glw.viewRect().height()
-
-        self.ui.timeLabel.setPos(width / 2, height - 30)
-
-        # set font size, based on viewsize and plot number
-        # very hardcoded just based on nice numbers i found. the goal here is for the labels to be smaller so the plotItems will dictate scaling
-        # if these labelitems are larger they will cause qgridlayout to stretch and the plots wont be same height which is bad
-        if plots > 0:
-            self.suggestedFontSize = height / plots * 0.065
-            self.setYAxisLabels()
-
-        if plots <= 1: # if just one plot dont need handle multiplot problems
-            return
-
-        # all of this depends on screen resolution so this is a pretty bad fix for now
-        bPadding = 20 # for bottom axis text
-        #plotSpacing = 10 if self.OS == 'mac' else 7
-        plotSpacing = 0.01 * height   #7/689 is about 1% of screen, this is so filth lol but it kinda works
-
-        edgePadding = 60
-        height -= bPadding + edgePadding + (plots - 1) * plotSpacing # the spaces in between plots hence the -1
-
-        # when running out of room bottom plot starts shrinking
-        # pyqtgraph is doing some additional resizing independent of the underlying qt layout, but cant figure out where (this kind of works)
-        for i in range(rows):
-            if i == 0:
-                continue
-
-            h = height / plots if i < rows - 1 else height / plots + bPadding
-            qggl.setRowFixedHeight(i, h)
-            qggl.setRowMinimumHeight(i, h)
-            qggl.setRowMaximumHeight(i, h) 
-
-        # this ensures the plots always have same physical width (important because they all share bottom time axis)
-        # it works but at start of plot its wrong because the bounds and stuff isnt correct yet
-        # this is a recurring problem in multiple areas but not sure how to figure out yet and its not that bad in this case
-        maxWidth = 0
-        for pi in self.plotItems:
-            la = pi.getAxis('left')
-            maxWidth = max(maxWidth, la.calcDesiredWidth())
-        for pi in self.plotItems:
-            la = pi.getAxis('left')
-            la.setWidth(maxWidth)
-        #print(maxWidth)
 
     def replotDataCallback(self):
         # done this way to ignore the additional information ui callbacks will provide
@@ -1238,7 +1147,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 j+=1
 
-        self.setYAxisLabels()
         self.updateYRange()
 
     def getTimes(self, dstr, editNumber):
@@ -1508,7 +1416,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             for line in lines:
                 line.setPen(pen)
                 line.mylabel.setText(name, color)
-        
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox

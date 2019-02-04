@@ -116,9 +116,6 @@ class MagPy4UI(object):
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = GridGraphicsLayout(window) # made this based off pg.GraphicsLayout
-        #self.glw.setContentsMargins(0,0,0,0)
-        self.timeLabel = BLabelItem()
-        self.gview.sceneObj.addItem(self.timeLabel)
 
         self.gview.setCentralItem(self.glw)
 
@@ -304,3 +301,119 @@ class PyQtUtils:
             window.raise_()
             # this will activate the window
             window.activateWindow()
+
+
+class PlotGrid(pg.GraphicsLayout):
+    def __init__(self, window=None, *args, **kwargs):
+        self.window = window
+        self.numPlots = 0
+        self.plotItems = window.plotItems
+        self.labels = []
+        pg.GraphicsLayout.__init__(self, *args, **kwargs)
+        self.layout.setVerticalSpacing(2)
+        self.layout.setContentsMargins(0,0,0,0)
+
+    def setTimeLabel(self, text):
+        if self.plotItems == []:
+            return
+        bottomAxis = self.plotItems[-1].getAxis('bottom')
+        bottomAxis.setLabel(text)
+
+    def resizeEvent(self, event):
+        if self.numPlots == 0:
+            pg.GraphicsLayout.resizeEvent(self, event)
+            return
+
+        # Determine new height for each plot
+        botmAxisHeight = max(self.plotItems[-1].getAxis('bottom').height(), 0)
+        gridHeight = self.boundingRect().height()
+        vertSpacing = self.layout.verticalSpacing() * (self.numPlots - 1)
+        plotAreaHeight = gridHeight - vertSpacing - botmAxisHeight
+        plotHeight = plotAreaHeight / self.numPlots
+
+        # Update label font sizes
+        for lbl in self.labels:
+            lbl.adjustLabelSizes(plotAreaHeight, self.numPlots)
+
+        # Set row heights, add in extra space for last plot's dateTime axis
+        for row in range(0, self.numPlots-1):
+            self.layout.setRowPreferredHeight(row, plotHeight)
+        self.layout.setRowPreferredHeight(self.numPlots-1, plotHeight + botmAxisHeight)
+
+        # Adjust vertical placement of bottom label
+        botmLabel = self.labels[-1]
+        lm, rm, tm, bm = botmLabel.layout.getContentsMargins()
+        botmLabel.layout.setContentsMargins(lm, rm, tm, botmAxisHeight)
+
+        self.adjustPlotWidths()
+
+    def addPlt(self, plt, lbl):
+        # Inserts a plot and its label item into the grid
+        lblCol, pltCol = 0, 1
+        self.addItem(lbl, self.numPlots, lblCol, 1, 1)
+        self.addItem(plt, self.numPlots, pltCol, 1, 1)
+        self.labels.append(lbl)
+        self.numPlots += 1
+
+    def adjustPlotWidths(self):
+        # Get minimum width of all left axes
+        maxWidth = 0
+        for pi in self.plotItems:
+            la = pi.getAxis('left')
+            maxWidth = max(maxWidth, la.calcDesiredWidth())
+
+        # Update all left axes widths
+        for pi in self.plotItems:
+            la = pi.getAxis('left')
+            la.setWidth(maxWidth)
+
+        # Limit label column width
+        self.layout.setColumnMaximumWidth(0, 25)
+
+class StackedLabel(pg.GraphicsLayout):
+    def __init__(self, dstrs, colors, units=None, window=None, *args, **kwargs):
+        self.subLabels = []
+        self.dstrs = dstrs
+        self.colors = colors
+        pg.GraphicsLayout.__init__(self, *args, **kwargs)
+
+        # Spacing/margins setup
+        self.layout.setVerticalSpacing(-2)
+        self.layout.setContentsMargins(10, 0, 5, 0)
+        self.layout.setRowStretchFactor(0, 1)
+        rowNum = 1
+
+        # Add in every dstr label and set its color
+        for dstr, clr in zip(dstrs, colors):
+            curLabel = self.addLabel(text=dstr, color=clr, row=rowNum, col=0)
+            self.subLabels.append(curLabel)
+            rowNum += 1
+
+        # Add unit label to bottom of stack
+        if units is not None:
+            unitStr = '[' + units + ']'
+            unitLbl = self.addLabel(text=unitStr, color='#888888', row=rowNum, col=0)
+            self.subLabels.append(unitLbl)
+            self.dstrs.append(unitStr)
+            self.colors.append('#888888')
+            rowNum += 1
+
+        self.layout.setRowStretchFactor(rowNum, 1)
+
+    def adjustLabelSizes(self, height, numPlots):
+        if self.subLabels == []:
+            return
+
+        # Determines new font size and updates all labels accordingly
+        fontSize = self.detFontSize(height, numPlots)
+        for lbl, txt, clr in zip(self.subLabels, self.dstrs, self.colors):
+            lbl.setText(txt, color=clr, size=str(fontSize)+'pt')
+
+    def detFontSize(self, height, numPlots):
+        # Hard-coded method for determing label font sizes based on window size
+        fontSize = height / numPlots * 0.08
+        traceCount = len(self.subLabels) + 1 # Stretch factor added in
+        if traceCount > numPlots and numPlots > 1:
+            fontSize -= (traceCount - numPlots) * (1.0 / min(4, numPlots) + 0.35)
+        fontSize = min(18, max(fontSize,4))
+        return fontSize

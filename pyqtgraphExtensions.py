@@ -266,7 +266,6 @@ class GridGraphicsLayout(pg.GraphicsLayout):
         w = vr.width()
         h = vr.height()
         if w != self.lastWidth or h != self.lastHeight:
-            self.window.additionalResizing()
             self.lastWidth = w
             self.lastHeight = h
 
