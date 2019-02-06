@@ -370,6 +370,19 @@ class PlotGrid(pg.GraphicsLayout):
         # Limit label column width
         self.layout.setColumnMaximumWidth(0, 25)
 
+    def adjustTitleColors(self, penList):
+        # Get each pen list and stacked list corresponding to a plot
+        for lbl, pltPenList in zip(self.labels, penList):
+            subLblNum = 0
+            # Match pen colors to sublabels in stacked label
+            for dstrLabel, pen in zip(lbl.subLabels, pltPenList):
+                color = pen.color()
+                fontSize = dstrLabel.opts['size']
+                dstrLabel.setText(dstrLabel.text, size=fontSize, color=color)
+                # Update stacked label's list of colors to use when resizing
+                lbl.colors[subLblNum] = color
+                subLblNum += 1
+
 class StackedLabel(pg.GraphicsLayout):
     def __init__(self, dstrs, colors, units=None, window=None, *args, **kwargs):
         self.subLabels = []

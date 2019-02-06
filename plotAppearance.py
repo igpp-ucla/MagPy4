@@ -63,8 +63,15 @@ class PlotAppearanceUI(object):
                 lineWidth.setMaximum(5)
                 self.lineWidthBoxes.append((lineWidth, (pltNum, traceNum)))
 
+                # Create elements for choosing line color
+                colorLbl = QtWidgets.QLabel('Color: ')
+                colorBtn = QtWidgets.QPushButton()
+                colorBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+                self.colorBoxes.append((colorBtn, (pltNum, traceNum)))
+
                 # Add all elements to sublayout
-                for e in [label, styleLabel, lineStyle, widthLabel, lineWidth]:
+                for e in [label, colorLbl, colorBtn, styleLabel, lineStyle,
+                        widthLabel, lineWidth]:
                     traceLayout.addWidget(e)
 
                 plotLayout.addLayout(traceLayout)
@@ -103,6 +110,12 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
             pltPen, traceList = plotsInfo[pltNum][trcNum]
             ls.currentIndexChanged.connect(functools.partial(self.updateLineStyle, ls, traceList))
 
+        # Connect line color modifiers to function
+        for cs, indices in self.ui.colorBoxes:
+            pltNum, trcNum = indices
+            pltPen, traceList = plotsInfo[pltNum][trcNum]
+            cs.clicked.connect(functools.partial(self.openColorSelect, cs, traceList))
+
     def getPlotsInfo(self):
         # Creates list of per-plot lists containing tuples of pens and a list of
         # data items within the given plot that correspond to it
@@ -110,43 +123,20 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         plotsInfo = []
         for plt in self.plotItems:
             pltInfo = []
-            uniqPltPens = []
+            uniqPltPens = [] # Create list of unique pens in current plot
             for pt in plt.listDataItems():
                 pen = pt.opts['pen']
                 if pen not in uniqPltPens:
+                    # Add unseen pens to list and init its list of traces
                     uniqPltPens.append(pen)
                     pltInfo.append((pen, [pt]))
                 else:
-                    # Find corresp. pen in current plot info list
+                    # Add current trace item to corresp. pen's trace list
                     index = uniqPltPens.index(pen)
                     penItemList = pltInfo[index][1]
                     penItemList.append(pt)
             plotsInfo.append(pltInfo)
         return plotsInfo
-
-    def updateLineWidth(self, lw, ll, val):
-        for pt in ll:
-            pen = pt.opts['pen']
-            pen.setWidth(val)
-            pt.setPen(pen)
-
-    def updateLineStyle(self, ls, ll):
-        # Get style object from name
-        styleStr = ls.currentText()
-        if styleStr == 'Dashed':
-            style = QtCore.Qt.DashLine
-        elif styleStr == 'Dotted':
-            style = QtCore.Qt.DotLine
-        elif styleStr == 'DashDot':
-            style = QtCore.Qt.DashDotLine
-        else:
-            style = QtCore.Qt.SolidLine
-
-        # Update pens for selected plots
-        for pt in ll:
-            pen = pt.opts['pen']
-            pen.setStyle(style)
-            pt.setPen(pen)
 
     def initVars(self, plotsInfo):
         # Initializes all values in UI elements with current plot properties
@@ -172,7 +162,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
             axisLblSize = plt.getAxis('bottom').labelStyle['font-size'][:-2]
             self.ui.axisLblSzBox.setValue(int(axisLblSize))
         else:
-            self.ui.axisLblSzBox.setValue(11)
+            self.ui.axisLblSzBox.setValue(11) # Default axis label font size
         self.ui.axisLblSzBox.blockSignals(False)
 
         traceNum = 0
@@ -193,7 +183,75 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
                 # Initialize plot trace line widths
                 width = pen.width()
                 self.ui.lineWidthBoxes[traceNum][0].setValue(width)
+
+                # Initialize plot trace line colors
+                color = pen.color()
+                self.setButtonColor(self.ui.colorBoxes[traceNum][0], color)
+
                 traceNum += 1
+
+    def updateLineWidth(self, lw, ll, val):
+        for pt in ll:
+            pen = pt.opts['pen']
+            pen.setWidth(val)
+            pt.setPen(pen)
+
+    def updateLineStyle(self, ls, ll):
+        # Get style object from name
+        styleStr = ls.currentText()
+        if styleStr == 'Dashed':
+            style = QtCore.Qt.DashLine
+        elif styleStr == 'Dotted':
+            style = QtCore.Qt.DotLine
+        elif styleStr == 'DashDot':
+            style = QtCore.Qt.DashDotLine
+        else:
+            style = QtCore.Qt.SolidLine
+
+        # Update pens for selected plots
+        for pt in ll:
+            pen = pt.opts['pen']
+            pen.setStyle(style)
+            pt.setPen(pen)
+
+    def openColorSelect(self, cs, ll):
+        # Open color selection dialog and connect to line color update function
+        clrDialog = QtWidgets.QColorDialog(self)
+        clrDialog.show()
+        clrDialog.colorSelected.connect(functools.partial(self.setLineColor, cs, ll))
+
+    def setLineColor(self, cs, ll, color):
+        # Update pen color of every trace item in ll corresp. to the original pen
+        for pt in ll:
+            pen = pt.opts['pen']
+            pen.setColor(color)
+            pt.setPen(pen)
+
+        # Match the color selection button to the selected color
+        self.setButtonColor(cs, color)
+        # Set the title colors to match, if implemented
+        self.adjustTitleColors(self.getPenList())
+
+    def setButtonColor(self, cs, color):
+        palette = QtGui.QPalette()
+        palette.setColor(QtGui.QPalette.Button, color)
+        cs.setPalette(palette)
+
+    # Placeholder func to be implemented if title colors must match line colors
+    def adjustTitleColors(self, penList):
+        pass
+
+    def getPenList(self):
+        # Returns a list of the pen lists for each plot in plotItems
+        pltInfos = self.getPlotsInfo()
+        penList = []
+        # For each plot, extract its pen list from its plotInfo
+        for pltInfo in pltInfos:
+            pltPens = []
+            for pen, ll in pltInfo:
+                pltPens.append(pen)
+            penList.append(pltPens)
+        return penList
 
     def changeTitleSize(self, val):
         for plt in self.plotItems:
@@ -214,6 +272,14 @@ class MagPyPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
         PlotAppearance.__init__(self, window, plotItems, parent)
 
+    def adjustTitleColors(self, penList):
+        self.window.pltGrd.adjustTitleColors(penList)
+        self.window.plotTracePens = penList
+
 class SpectraPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
         PlotAppearance.__init__(self, window, plotItems, parent)
+
+    def adjustTitleColors(self, penList):
+        self.window.updateTitleColors(penList)
+        self.window.tracePenList = penList

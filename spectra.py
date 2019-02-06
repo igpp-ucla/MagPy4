@@ -284,6 +284,24 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         # Update coherence and phase graphs
         self.updateCohPha()
 
+    def updateTitleColors(self, penList):
+        # Update title colors to match colors from a list of pens
+        plotInfos = self.window.getSelectedPlotInfo()
+        titleString = ''
+        # For every plot
+        for listIndex, (strList, prevPens) in enumerate(plotInfos):
+            pi = self.plotItems[listIndex] # Get the corresponding plot
+            # For every trace in plot:
+            for i, (dstr, en) in enumerate(strList):
+                if i == 0 or self.ui.separateTracesCheckBox.isChecked():
+                    pi = self.plotItems[listIndex+i]
+                    titleString = ''
+                # Get new pen color from list corresponding to plot and trace num
+                pen = penList[listIndex][i]
+                pstr = self.window.getLabel(dstr,en)
+                titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
+                pi.setTitle(titleString)
+
     # remove limits later incase they want to type in directly
     def removeLimits(self):
         self.ui.bandWidthSpinBox.setMinimum(1)
