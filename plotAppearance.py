@@ -50,14 +50,14 @@ class PlotAppearanceUI(object):
                 label = QtWidgets.QLabel('Line '+str(traceNum + 1)+': ')
 
                 # Create all elements for choosing line style
-                styleLabel = QtWidgets.QLabel('Style: ')
+                styleLabel = QtWidgets.QLabel(' Style: ')
                 lineStyle = QtWidgets.QComboBox()
                 for t in ['Solid', 'Dashed', 'Dotted', 'DashDot']:
                     lineStyle.addItem(t)
                 self.lineStyleBoxes.append((lineStyle, (pltNum, traceNum)))
 
                 # Create all elements for choosing line thickness
-                widthLabel = QtWidgets.QLabel('Width: ')
+                widthLabel = QtWidgets.QLabel('  Width: ')
                 lineWidth = QtWidgets.QSpinBox()
                 lineWidth.setMinimum(1)
                 lineWidth.setMaximum(5)
@@ -66,6 +66,7 @@ class PlotAppearanceUI(object):
                 # Add all elements to sublayout
                 for e in [label, styleLabel, lineStyle, widthLabel, lineWidth]:
                     traceLayout.addWidget(e)
+
                 plotLayout.addLayout(traceLayout)
                 traceNum += 1
 
@@ -208,3 +209,11 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
                 sizeStr = str(val) + 'pt'
                 ax.labelStyle = {'font-size':sizeStr}
                 ax.label.setHtml(ax.labelString()) # Uses updated HTML string
+
+class MagPyPlotApp(PlotAppearance):
+    def __init__(self, window, plotItems, parent=None):
+        PlotAppearance.__init__(self, window, plotItems, parent)
+
+class SpectraPlotApp(PlotAppearance):
+    def __init__(self, window, plotItems, parent=None):
+        PlotAppearance.__init__(self, window, plotItems, parent)

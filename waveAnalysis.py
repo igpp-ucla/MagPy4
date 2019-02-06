@@ -70,6 +70,8 @@ class WaveAnalysisUI(object):
         self.maxFreqLabel = QtWidgets.QLabel()
         self.minFreqIndex = QtWidgets.QSpinBox()
         self.maxFreqIndex = QtWidgets.QSpinBox()
+        self.maxFreqIndex.setFixedWidth(100)
+        self.minFreqIndex.setFixedWidth(100)
         self.updateButton = QtWidgets.QPushButton('Update')
 
         freqLayout.addWidget(self.minFreqIndex, 0, 0, 1, 1)

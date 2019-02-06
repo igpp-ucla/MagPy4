@@ -7,7 +7,7 @@ import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
 from FF_Time import FFTIME
-from plotAppearance import PlotAppearance
+from plotAppearance import PlotAppearance, SpectraPlotApp
 from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis, BLabelItem
 from dataDisplay import UTCQDate
 from MagPy4UI import TimeEdit
@@ -33,6 +33,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
 
         self.plotItems = []
+        self.tracePenList = []
         self.window.setLinesVisible(False, 'general')
         self.wasClosed = False
         self.waveAnalysis = None
@@ -52,7 +53,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     def openPlotAppr(self, sig, plotItems=None):
         if plotItems == None:
             plotItems = self.plotItems
-        self.plotAppr = PlotAppearance(self, plotItems)
+            self.plotAppr = SpectraPlotApp(self, plotItems)
+        else:
+            self.plotAppr = PlotAppearance(self, plotItems)
         self.plotAppr.show()
 
     def closePlotAppr(self):
@@ -190,9 +193,10 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 powers.append(power)
 
                 # Initialize pens, plot title, and plot data
-                pen = QtGui.QPen(penList[i]) # Only copy color from main window
+                pen = pg.mkPen(penList[i].color()) # Only copy color from main window
                 pstr = self.window.getLabel(dstr,en)
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
+                pi.titleLabel.setAttr('size', '12pt') # Set up default font size
                 pi.plot(freq, power, pen=pen)
 
                 # this part figures out layout of plots into rows depending on settings
@@ -211,6 +215,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                     if numberPlots % 4 == 0:
                         self.setYRangeForRow(curRow)
                         curRow = []
+            self.tracePenList.append(penList)
         if curRow:
             self.setYRangeForRow(curRow)
 
@@ -261,7 +266,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             if oneTracePerPlot == False: # Don't clear in this case bc listIndex != plotNum
                 pi.clear()
             powers = []
-            titleString = ''
             # For every trace in plot:
             for i, (dstr, en) in enumerate(strList):
                 # Get current plot by plot number if separate traces are used
@@ -274,9 +278,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 freq = self.getFreqs(dstr,en)
                 power = self.powers[dstr]
                 powers.append(power)
-                pen = QtGui.QPen(penList[i])
-                pstr = self.window.getLabel(dstr,en)
-                titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
+                pen = self.tracePenList[listIndex][i]
                 pi.plot(freq, power, pen=pen)
                 plotNum += 1
         # Update coherence and phase graphs
@@ -313,6 +315,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             btmLabel = 'Log Frequency (Hz)'
             if self.linearMode:
                 btmLabel = 'Frequency (Hz)'
+            pi.titleLabel.setAttr('size', '12pt') # Set up default font size
             pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}', bottom=btmLabel)
             d[0].addItem(pi)
             plts.append(pi)

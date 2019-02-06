@@ -136,7 +136,7 @@ class DateAxis(pg.AxisItem):
         rng = self.window.getSelectedTimeRange()
 
         if rng > window.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
-            return f'{splits[2]} {splits[3]} {t.split(":")[0]}:{t.split(":")[1]}:{t.split(":")[2][:2]}'
+            return f'{splits[2]} {splits[3]} {t.split(":")[0]}:{t.split(":")[1]}'
         elif rng > window.hrCutoff: # if over half hour show hh:mm:ss
             return t.rsplit('.',1)[0]
         elif rng > window.minCutoff: # if over 10 seconds show mm:ss

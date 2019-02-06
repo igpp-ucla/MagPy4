@@ -30,7 +30,7 @@ from MagPy4UI import MagPy4UI, PyQtUtils, PlotGrid, StackedLabel
 from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
-from plotAppearance import PlotAppearance
+from plotAppearance import MagPyPlotApp
 from edit import Edit
 from traceStats import TraceStats
 from helpWindow import HelpWindow
@@ -158,7 +158,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # setup pens
         self.pens = []
-        colors = ['#0000ff','#009900','#ff0000','#000000'] # b darkgreen r black
+        # Blue, Green, Red, Cyan, Magenta, Black
+        colors = ['#0000ff','#00ad05','#ea0023','#00b5a8', '#ce0d9e', '#000000']
         for c in colors:
             self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
         self.trackerPen = pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine)
@@ -314,7 +315,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def openPlotAppr(self):
         self.closePlotAppr()
-        self.plotAppr = PlotAppearance(self, self.plotItems)
+        self.plotAppr = MagPyPlotApp(self, self.plotItems)
         self.plotAppr.show()
 
     def closePlotAppr(self):
@@ -870,13 +871,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.pltGrd.setTimeLabel('yellow')
 
         if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
-            self.pltGrd.setTimeLabel('hh:mm:ss')
+            self.pltGrd.setTimeLabel('HH:MM')
         elif rng > self.hrCutoff: # if hour show hh:mm:ss
-            self.pltGrd.setTimeLabel('hh:mm:ss')
+            self.pltGrd.setTimeLabel('HH:MM:SS')
         elif rng > self.minCutoff: # if over 10 seconds show mm:ss
-            self.pltGrd.setTimeLabel('mm:ss')
+            self.pltGrd.setTimeLabel('MM:SS')
         else: # else show mm:ss.sss
-            self.pltGrd.setTimeLabel('mm:ss.sss')
+            self.pltGrd.setTimeLabel('MM:SS.SSS')
 
         for pi in self.plotItems:
             pi.setXRange(self.tO-self.tickOffset, self.tE-self.tickOffset, 0.0)
@@ -887,12 +888,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         lastPlot = self.plotItems[lastPlotIndex]
         tickAxis = lastPlot.getAxis('bottom')
         tickAxis.updateTicks(self, labelMode)
-        lastPlot.getAxis('top').setTicks([[],[]])
+        topTicks = [(tv, '') for tv, ts in tickAxis._tickLevels[0]]
+        lastPlot.getAxis('top').setTicks([topTicks,[]])
 
         # Update the other plot's tick marks to match (w/o labels)
         for i in range(0, lastPlotIndex):
             self.plotItems[i].getAxis('bottom').setTicks(tickAxis._tickLevels)
-            self.plotItems[i].getAxis('top').setTicks([[],[]])
+            self.plotItems[i].getAxis('top').setTicks([topTicks,[]])
 
     # try to find good default plot strings
     def getDefaultPlotInfo(self):
