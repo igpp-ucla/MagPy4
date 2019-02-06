@@ -25,12 +25,14 @@ class WaveAnalysisUI(object):
         self.axesDropdowns = []
         for i,ax in enumerate(axes):
             dd = QtGui.QComboBox()
-            self.axLayout.addWidget(QtWidgets.QLabel(ax),0,i,1,1)
+            dlbl = QtWidgets.QLabel(ax)
+            self.axLayout.addWidget(dlbl,0,i,1,1)
             # Add elements into comboboxes
             for s in self.window.DATASTRINGS:
                 if ax.lower() in s.lower():
                     dd.addItem(s)
             dd.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+            dlbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 
             self.axesDropdowns.append(dd)
             self.axLayout.addWidget(dd,1,i,1,1)
@@ -79,6 +81,7 @@ class WaveAnalysisUI(object):
         freqLayout.addWidget(self.maxFreqIndex, 0, 1, 1, 1)
         freqLayout.addWidget(self.maxFreqLabel, 1, 1, 1, 1)
         freqLayout.addWidget(self.updateButton, 0, 3, 1, 1)
+        freqFrame.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 
         freqGroupLayout.addWidget(freqFrame)
 
@@ -144,15 +147,13 @@ class WaveAnalysisUI(object):
         self.prncplLayout.addWidget(joeMeansFrame)
         self.prncplLayout.addWidget(bornWolfFrame)
         self.layout.addWidget(prncpFrame, 1, 1, 1, 1)
-        self.layout.addLayout(freqGroupLayout, 4, 0, 1, 3)
+        self.layout.addLayout(freqGroupLayout, 2, 0, 1, 2)
 
         # Setup export button in layout
-        self.logButton = QtWidgets.QPushButton('Export Log')
-        self.bntLayout = QtWidgets.QVBoxLayout()
-        self.bntLayout.addStretch()
-        self.bntLayout.addWidget(self.logButton)
         freqGroupLayout.addStretch()
-        freqGroupLayout.addLayout(self.bntLayout)
+        self.logButton = QtWidgets.QPushButton('Export Log')
+        self.logButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.layout.addWidget(self.logButton, 3, 0, 1, 1)
 
         # Center titles above each principal axis analysis results group
         for grp in [prncpFrame, joeMeansFrame, bornWolfFrame, eigenVecFrame, eigenValsFrame]:

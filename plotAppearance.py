@@ -50,7 +50,7 @@ class PlotAppearanceUI(object):
                 label = QtWidgets.QLabel('Line '+str(traceNum + 1)+': ')
 
                 # Create all elements for choosing line style
-                styleLabel = QtWidgets.QLabel(' Style: ')
+                styleLabel = QtWidgets.QLabel('  Style: ')
                 lineStyle = QtWidgets.QComboBox()
                 for t in ['Solid', 'Dashed', 'Dotted', 'DashDot']:
                     lineStyle.addItem(t)
@@ -73,6 +73,7 @@ class PlotAppearanceUI(object):
                 for e in [label, colorLbl, colorBtn, styleLabel, lineStyle,
                         widthLabel, lineWidth]:
                     traceLayout.addWidget(e)
+                    traceLayout.setAlignment(e, QtCore.Qt.AlignBaseline)
 
                 plotLayout.addLayout(traceLayout)
                 traceNum += 1
@@ -233,9 +234,9 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         self.adjustTitleColors(self.getPenList())
 
     def setButtonColor(self, cs, color):
-        palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.Button, color)
-        cs.setPalette(palette)
+        styleSheet = "* { background:" + color.name() + " }"
+        cs.setStyleSheet(styleSheet)
+        cs.show()
 
     # Placeholder func to be implemented if title colors must match line colors
     def adjustTitleColors(self, penList):
