@@ -2,6 +2,7 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from plotAppearance import PlotAppearance, PlotAppearanceUI
+from addTickLabels import LabelSetGrid
 
 import pyqtgraph as pg
 import functools
@@ -112,6 +113,9 @@ class MagPy4UI(object):
 
         self.plotApprAction = QtWidgets.QAction(window)
         self.plotApprAction.setText('Change Plot Appearance...')
+
+        self.addTickLblsAction = QtWidgets.QAction(window)
+        self.addTickLblsAction.setText('Add Additional Tick Labels')
 
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
@@ -309,6 +313,12 @@ class PlotGrid(pg.GraphicsLayout):
         self.numPlots = 0
         self.plotItems = window.plotItems
         self.labels = []
+
+        # Elements used if additional tick labels are added
+        self.labelSetGrd = None
+        self.labelSetLabel = None
+        self.startRow = 1
+
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
         self.layout.setVerticalSpacing(2)
         self.layout.setContentsMargins(0,0,0,0)
@@ -326,9 +336,12 @@ class PlotGrid(pg.GraphicsLayout):
 
         # Determine new height for each plot
         botmAxisHeight = max(self.plotItems[-1].getAxis('bottom').height(), 0)
+        labelSetHeight = 0
+        if self.labelSetGrd:
+            labelSetHeight = self.labelSetGrd.boundingRect().height()
         gridHeight = self.boundingRect().height()
         vertSpacing = self.layout.verticalSpacing() * (self.numPlots - 1)
-        plotAreaHeight = gridHeight - vertSpacing - botmAxisHeight
+        plotAreaHeight = gridHeight - vertSpacing - botmAxisHeight - labelSetHeight
         plotHeight = plotAreaHeight / self.numPlots
 
         # Update label font sizes
@@ -336,9 +349,9 @@ class PlotGrid(pg.GraphicsLayout):
             lbl.adjustLabelSizes(plotAreaHeight, self.numPlots)
 
         # Set row heights, add in extra space for last plot's dateTime axis
-        for row in range(0, self.numPlots-1):
+        for row in range(self.startRow, self.startRow+self.numPlots-1):
             self.layout.setRowPreferredHeight(row, plotHeight)
-        self.layout.setRowPreferredHeight(self.numPlots-1, plotHeight + botmAxisHeight)
+        self.layout.setRowPreferredHeight(self.startRow+self.numPlots-1, plotHeight + botmAxisHeight)
 
         # Adjust vertical placement of bottom label
         botmLabel = self.labels[-1]
@@ -350,10 +363,51 @@ class PlotGrid(pg.GraphicsLayout):
     def addPlt(self, plt, lbl):
         # Inserts a plot and its label item into the grid
         lblCol, pltCol = 0, 1
-        self.addItem(lbl, self.numPlots, lblCol, 1, 1)
-        self.addItem(plt, self.numPlots, pltCol, 1, 1)
+        self.addItem(lbl, self.startRow + self.numPlots, lblCol, 1, 1)
+        self.addItem(plt, self.startRow + self.numPlots, pltCol, 1, 1)
         self.labels.append(lbl)
         self.numPlots += 1
+
+    def addLabelSet(self, dstr):
+        # Initialize label set grid/stacked label if one hasn't been created yet
+        if self.labelSetGrd == None:
+            self.labelSetGrd = LabelSetGrid(self.window)
+            self.labelSetLabel = StackedLabel([],[])
+            self.labelSetLabel.setContentsMargins(0, 0, 0, 2)
+            self.addItem(self.labelSetGrd, 0, 1, 1, 1)
+            self.addItem(self.labelSetLabel, 0, 0, 1, 1)
+
+        # Add dstr to label and create an axis for it
+        self.labelSetLabel.addSubLabel(dstr, '#000000')
+        self.labelSetGrd.addLabelSet(dstr)
+
+        # Limit the sublabel heights
+        for row in range(self.labelSetLabel.layout.rowCount()):
+            self.labelSetLabel.layout.setRowMaximumHeight(row, 15)
+
+        # Initialize tick label locations/strings
+        ticks = self.plotItems[0].getAxis('bottom')._tickLevels
+        if ticks == None:
+            return
+        self.labelSetGrd.updateTicks(ticks)
+        self.adjustPlotWidths() # Resize label set axis widths
+
+    def removeLabelSet(self, dstr):
+        if self.labelSetGrd == None:
+            return
+        else:
+            # Get new dstrs list after removing, remove old items, and reset vals
+            dstrs = self.labelSetLabel.dstrs[:]
+            dstrs.remove(dstr)
+            self.removeItem(self.labelSetLabel)
+            self.removeItem(self.labelSetGrd)
+            self.labelSetGrd = None
+            self.labelSetLabel = None
+
+            # Recreate label and label set grid if new dstrs list is not empty
+            if dstrs != []:
+                for dstr in dstrs:
+                    self.addLabelSet(dstr)
 
     def adjustPlotWidths(self):
         # Get minimum width of all left axes
@@ -368,7 +422,10 @@ class PlotGrid(pg.GraphicsLayout):
             la.setWidth(maxWidth)
 
         # Limit label column width
-        self.layout.setColumnMaximumWidth(0, 25)
+        self.layout.setColumnMaximumWidth(0, 50)
+
+        if self.labelSetGrd: # Match extra tick axis widths to maxWidth
+            self.labelSetGrd.adjustWidths(maxWidth)
 
     def adjustTitleColors(self, penList):
         # Get each pen list and stacked list corresponding to a plot
@@ -388,6 +445,7 @@ class StackedLabel(pg.GraphicsLayout):
         self.subLabels = []
         self.dstrs = dstrs
         self.colors = colors
+        self.units = units
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
 
         # Spacing/margins setup
@@ -412,6 +470,17 @@ class StackedLabel(pg.GraphicsLayout):
             rowNum += 1
 
         self.layout.setRowStretchFactor(rowNum, 1)
+
+    def addSubLabel(self, dstr, color):
+        # Add another sublabel at end of stackedLabel
+        lbl = self.addLabel(text=dstr, color=color, row=len(self.subLabels)+1, col=0)
+        # Update all internal lists
+        self.subLabels.append(lbl)
+        self.dstrs.append(dstr)
+        self.colors.append(color)
+        # Reset stretch factor used to center the sublabels within the stackedLabel
+        self.layout.setRowStretchFactor(len(self.subLabels)+1, 0)
+        self.layout.setRowStretchFactor(len(self.subLabels)+1+1, 1)
 
     def adjustLabelSizes(self, height, numPlots):
         if self.subLabels == []:
