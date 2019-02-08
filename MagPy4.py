@@ -31,6 +31,7 @@ from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
 from plotAppearance import MagPyPlotApp
+from addTickLabels import AddTickLabels
 from edit import Edit
 from traceStats import TraceStats
 from helpWindow import HelpWindow
@@ -105,6 +106,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.runTests.triggered.connect(self.runTests)
 
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
+        self.ui.addTickLblsAction.triggered.connect(self.openAddTickLbls)
 
         self.insightMode = False
 
@@ -121,6 +123,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotMenu = None
         self.spectra = None
         self.plotAppr = None
+        self.addTickLbls = None
         self.edit = None
         self.traceStats = None
         self.helpWindow = None
@@ -163,7 +166,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for c in colors:
             self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
         self.trackerPen = pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine)
+        self.customPens = []
 
+        self.pltGrd = None
         self.plotItems = []
         self.labelItems = []
         self.trackerLines = []
@@ -248,6 +253,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeData()
         self.closeTraceStats()
         self.closeSpectra()
+        self.closeAddTickLbls()
 
     def initVariables(self):
         """init variables here that should be reset when file changes"""
@@ -259,6 +265,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.currentEdit = 0 # current edit number selected
         self.editNames = [] # list of edit names, index into list is edit number
         self.editHistory = []
+        self.customPens = []
+        self.pltGrd = None
         
     def closePlotMenu(self):
         if self.plotMenu:
@@ -322,6 +330,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.plotAppr:
             self.plotAppr.close()
             self.plotAppr = None
+
+    def openAddTickLbls(self):
+        self.closeAddTickLbls()
+        self.addTickLbls = AddTickLabels(self, self.pltGrd)
+        self.addTickLbls.show()
+
+    def closeAddTickLbls(self):
+        if self.addTickLbls:
+            self.addTickLbls.close()
+            self.addTickLbls = None
 
     def openEdit(self):
         self.closeTraceStats()
@@ -896,6 +914,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.plotItems[i].getAxis('bottom').setTicks(tickAxis._tickLevels)
             self.plotItems[i].getAxis('top').setTicks([topTicks,[]])
 
+        # Update additional tick labels, if there are any
+        if self.pltGrd.labelSetGrd:
+            self.pltGrd.labelSetGrd.updateTicks(tickAxis._tickLevels)
+
     # try to find good default plot strings
     def getDefaultPlotInfo(self):
         dstrs = []
@@ -1002,9 +1024,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         fileNameLabel.opts['justify'] = 'right'
         maxLabelWidth = self.getMaxLabelWidth(fileNameLabel, self.ui.glw)
         fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.getFileNameString(maxLabelWidth)}</span>")
-        self.ui.glw.addItem(fileNameLabel, 0, 1, 1, 1)
+        self.ui.glw.addItem(fileNameLabel, 0, 0, 1, 1)
+
+        # Store any previous label sets (for current file)
+        prevLabelSets = []
+        if self.pltGrd is not None and self.pltGrd.labelSetGrd is not None:
+            prevLabelSets = self.pltGrd.labelSetLabel.dstrs
+
+        # Create new plot grid
         self.pltGrd = PlotGrid(self)
-        self.ui.glw.addItem(self.pltGrd, 1, 1, 1, 1)
+        self.ui.glw.addItem(self.pltGrd, 1, 0, 1, 1)
 
         self.trackerLines = []
 
@@ -1063,6 +1092,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                     penIndex = min(i,numPens - 1) 
                 pen = self.pens[penIndex]
 
+                # If user set custom trace pen through plotAppr, use that pen instead,
+                # searching through the customPens list for a match
+                if plotIndex < len(self.customPens):
+                    if i < len(self.customPens[plotIndex]):
+                        prevDstr, prevEn, prevPen = self.customPens[plotIndex][i]
+                        if prevDstr == dstr and prevEn == editNum:
+                            pen = prevPen
+
                 #save pens so spectra can stay synced with main plot
                 tracePens.append(pen)
 
@@ -1096,6 +1133,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.pltGrd.addPlt(pi, stckLbl)
 
         ## end of main for loop
+
+        # Add in all previous label sets, if there are any
+        for labelSetDstr in prevLabelSets:
+            self.pltGrd.addLabelSet(labelSetDstr)
 
         self.updateXRange()
         self.updateYRange()
@@ -1440,10 +1481,13 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
     def menuSetup(self):
         actions = self.menu.actions()
+        # Remove menu options that won't be used
         xAction, yAction, mouseAction = actions[1:4]
         for a in [xAction, yAction, mouseAction]:
             self.menu.removeAction(a)
-        self.menu.addAction(self.window.ui.plotApprAction)
+        # Add in custom menu actions
+        self.menu.addAction(self.window.ui.plotApprAction) # Plot appearance
+        self.menu.addAction(self.window.ui.addTickLblsAction) # Additional labels
 
     def onLeftClick(self, ev):
          # map the mouse click to data coordinates

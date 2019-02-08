@@ -115,7 +115,7 @@ class MagPy4UI(object):
         self.plotApprAction.setText('Change Plot Appearance...')
 
         self.addTickLblsAction = QtWidgets.QAction(window)
-        self.addTickLblsAction.setText('Add Additional Tick Labels')
+        self.addTickLblsAction.setText('Additional Tick Labels...')
 
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
@@ -374,23 +374,23 @@ class PlotGrid(pg.GraphicsLayout):
             self.labelSetGrd = LabelSetGrid(self.window)
             self.labelSetLabel = StackedLabel([],[])
             self.labelSetLabel.setContentsMargins(0, 0, 0, 2)
+            self.labelSetLabel.layout.setVerticalSpacing(-2)
             self.addItem(self.labelSetGrd, 0, 1, 1, 1)
             self.addItem(self.labelSetLabel, 0, 0, 1, 1)
 
-        # Add dstr to label and create an axis for it
+        # Add dstr to labelSet label and align it to the right
         self.labelSetLabel.addSubLabel(dstr, '#000000')
+        self.labelSetLabel.subLabels[-1].setAttr('justify', 'right')
+        self.labelSetLabel.subLabels[-1].setText(dstr)
+        # Create an axis for the dstr label set
         self.labelSetGrd.addLabelSet(dstr)
-
-        # Limit the sublabel heights
-        for row in range(self.labelSetLabel.layout.rowCount()):
-            self.labelSetLabel.layout.setRowMaximumHeight(row, 15)
 
         # Initialize tick label locations/strings
         ticks = self.plotItems[0].getAxis('bottom')._tickLevels
         if ticks == None:
             return
         self.labelSetGrd.updateTicks(ticks)
-        self.adjustPlotWidths() # Resize label set axis widths
+        self.resizeEvent(None) # Update widths and adjust for new heights
 
     def removeLabelSet(self, dstr):
         if self.labelSetGrd == None:

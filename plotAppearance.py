@@ -196,6 +196,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
             pen = pt.opts['pen']
             pen.setWidth(val)
             pt.setPen(pen)
+        self.setChangesPersistent(self.getPenList())
 
     def updateLineStyle(self, ls, ll):
         # Get style object from name
@@ -214,6 +215,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
             pen = pt.opts['pen']
             pen.setStyle(style)
             pt.setPen(pen)
+        self.setChangesPersistent(self.getPenList())
 
     def openColorSelect(self, cs, ll):
         # Open color selection dialog and connect to line color update function
@@ -232,6 +234,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         self.setButtonColor(cs, color)
         # Set the title colors to match, if implemented
         self.adjustTitleColors(self.getPenList())
+        self.setChangesPersistent(self.getPenList())
 
     def setButtonColor(self, cs, color):
         styleSheet = "* { background:" + color.name() + " }"
@@ -240,6 +243,11 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
 
     # Placeholder func to be implemented if title colors must match line colors
     def adjustTitleColors(self, penList):
+        pass
+
+    # Placeholder func to be implemented to make line changes persistent
+    # between changes to the plot traces
+    def setChangesPersistent(self, penList):
         pass
 
     def getPenList(self):
@@ -277,10 +285,26 @@ class MagPyPlotApp(PlotAppearance):
         self.window.pltGrd.adjustTitleColors(penList)
         self.window.plotTracePens = penList
 
+    def setChangesPersistent(self, penList):
+        # Update main window's current pen list
+        self.window.plotTracePens = penList
+        # Create new pen list to look through every time plots are rebuilt w/ plotData
+        allPltStrs = self.window.lastPlotStrings
+        customPens = []
+        for pltStrs, pltPens in zip(allPltStrs, penList):
+            pltCstmPens = []
+            for (pltStr, en), pen in zip(pltStrs, pltPens):
+                pltCstmPens.append((pltStr, en, pen))
+            customPens.append(pltCstmPens)
+        # Stores per-plot lists of (dstr, en, newPen) tuples for every trace
+        self.window.customPens = customPens
+
 class SpectraPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
         PlotAppearance.__init__(self, window, plotItems, parent)
 
     def adjustTitleColors(self, penList):
         self.window.updateTitleColors(penList)
+
+    def setChangesPersistent(self, penList):
         self.window.tracePenList = penList

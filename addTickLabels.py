@@ -35,7 +35,7 @@ class AddTickLabelsUI(object):
                 rowNum = int(numDstrs/maxWidth) # Calculate row and column nums
                 colNum = numDstrs % maxWidth
                 chkbx = QtWidgets.QCheckBox(dstr)
-                layout.addWidget(chkbx, rowNum, dstrNum, 1, 1)
+                layout.addWidget(chkbx, rowNum, colNum, 1, 1)
                 self.chkboxes.append(chkbx)
                 chkbx.setChecked(True)
 
@@ -47,10 +47,11 @@ class AddTickLabels(QtGui.QFrame, AddTickLabelsUI):
         self.pltGrd = pltGrd
 
         # Get list of all dstrs not currently plotted
-        allDstrs = window.DATASTRINGS.copy()
+        allDstrs = window.DATASTRINGS[:]
         for dstrList in window.lastPlotStrings:
             for dstr, en in dstrList:
-                allDstrs.remove(dstr)
+                if dstr in allDstrs: # Remove currently plotted dstrs
+                    allDstrs.remove(dstr)
         
         # Get list of all dstrs that currently have extra tick labels set
         prevDstrs = []
@@ -159,7 +160,7 @@ class LabelSetGrid(pg.GraphicsLayout):
         self.labelSets = []
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
         self.layout.setVerticalSpacing(1)
-        self.layout.setContentsMargins(0,0,0,2)
+        self.layout.setContentsMargins(0,0,0,0)
         self.layout.setColumnAlignment(0, QtCore.Qt.AlignBottom)
     
     def addLabelSet(self, dstr):

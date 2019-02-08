@@ -161,6 +161,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         maxTitleWidth = 0
         # For every plot in main window:
         for listIndex, (strList, penList) in enumerate(plotInfos):
+            # Only copy color from main window
+            penList = [pg.mkPen(pen.color()) for pen in penList]
             # For every trace/pen in the given plot:
             for i, (dstr, en) in enumerate(strList):
                 # If first dstr or there are separate traces, create a new plot
@@ -193,7 +195,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 powers.append(power)
 
                 # Initialize pens, plot title, and plot data
-                pen = pg.mkPen(penList[i].color()) # Only copy color from main window
+                pen = penList[i]
                 pstr = self.window.getLabel(dstr,en)
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
                 pi.titleLabel.setAttr('size', '12pt') # Set up default font size
@@ -216,6 +218,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                         self.setYRangeForRow(curRow)
                         curRow = []
             self.tracePenList.append(penList)
+
         if curRow:
             self.setYRangeForRow(curRow)
 
