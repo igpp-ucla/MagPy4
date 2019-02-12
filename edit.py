@@ -393,7 +393,7 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         self.ui = MinVarUI()
         self.ui.setupUI(self, window)
 
-        self.window.startGeneralSelect('MINVAR', '#0000FF', self.ui.timeEdit)
+        self.window.initGeneralSelect('Min Var', '#ffbf51', self.ui.timeEdit)
 
         self.ui.applyButton.clicked.connect(self.calcMinVar)
 

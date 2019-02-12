@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import QSizePolicy
 
 import numpy as np
 from MagPy4UI import PyQtUtils, TimeEdit
+from scipy import stats
 
 class TraceStatsUI(object):
     def setupUI(self, Frame, window):
@@ -97,7 +98,8 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
     def update(self):
         plotInfo = self.window.getSelectedPlotInfo()
        
-        colStrs = ['value'] if self.window.generalSelectStep <= 2 else self.funcStrs
+        singleLine = (len(self.window.regions) == 1 and self.window.regions[0].isLine())
+        colStrs = ['value'] if singleLine else self.funcStrs
         rowStrs = []
 
         grid = []
@@ -105,17 +107,23 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         for dstrs,pens in plotInfo:
             group = []
             for i,(dstr,en) in enumerate(dstrs):
-                i0,i1 = self.window.calcDataIndicesFromLines(dstr,en)
+                indices = []
+                for regNum in range(len(self.window.regions)):
+                    indices.append(self.window.calcDataIndicesFromLines(dstr, en, regNum))
 
                 rowStrs.append([self.window.getLabel(dstr,en), pens[i].color().name()])
                 row = []
-                if self.window.generalSelectStep <= 2:
-                    row.append(f'{self.window.getData(dstr)[i0]:.{prec}f}')
+                if singleLine:
+                    row.append(f'{self.window.getData(dstr)[indices[0][0]]:.{prec}f}')
                 else:
-                    pruned = self.window.getPrunedData(dstr,en,i0,i1)
+                    prunedData = []
+                    for i0, i1 in indices:
+                        # Merge data from all regions into single list
+                        pruned = self.window.getPrunedData(dstr,en,i0,i1)
+                        prunedData.extend(pruned)
                     for func in self.funcs:
-                        if len(pruned) > 0:
-                            row.append(f'{func(pruned):.{prec}f}')
+                        if len(prunedData) > 0:
+                            row.append(f'{func(prunedData):.{prec}f}')
                         else:
                             row.append('---')
                 group.append(row)

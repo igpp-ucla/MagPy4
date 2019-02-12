@@ -36,7 +36,7 @@ from edit import Edit
 from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
-from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, LinkedInfiniteLine, BLabelItem
+from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion
 from mth import Mth
 from tests import Tests
 import bisect
@@ -172,6 +172,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotItems = []
         self.labelItems = []
         self.trackerLines = []
+        self.regions = []
         #starterFile = 'testData/mms15092720'
         starterFile = 'testData/insight/IFGlr_pCAL_20180816T045752_20180817T090012' #insight test file
         if os.path.exists(starterFile + '.ffd'):
@@ -259,14 +260,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         """init variables here that should be reset when file changes"""
         self.lastPlotStrings = None
         self.lastPlotLinks = None
-        # 0: not selecting, 1 : no lines, 2 : one line, 3+ : two lines
-        self.generalSelectStep = 0
-        self.generalSelectCanHide = False
+        self.selectMode = None
         self.currentEdit = 0 # current edit number selected
         self.editNames = [] # list of edit names, index into list is edit number
         self.editHistory = []
         self.customPens = []
         self.pltGrd = None
+        self.regions = []
         
     def closePlotMenu(self):
         if self.plotMenu:
@@ -371,7 +371,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if not self.spectra or self.spectra.wasClosed:
             self.spectra = Spectra(self)
             self.showStatusMsg('Selecting spectra range...')
-            self.startGeneralSelect('SPECTRA', '#FF0000', self.spectra.ui.timeEdit, True)
+            self.initGeneralSelect('Spectra', '#c551ff', self.spectra.ui.timeEdit, True)
 
     def showSpectra(self):
         if self.spectra:
@@ -1107,7 +1107,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 dstrList.append(dstr)
                 colorsList.append(pen.color().name())
 
-
             self.plotTracePens.append(tracePens)
 
             # set plot to current range based on time sliders
@@ -1237,13 +1236,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 pi.addItem(PlotPointsItem(ofstTimes, Y, pen=pen))
             else:
                 pi.addItem(PlotDataItemBDS(ofstTimes, Y, pen=pen))
-
-        # Get the plot's general lines and set its bounds/tickOffset
-        lines = pi.getViewBox().lines
-        for k in lines:
-            for i in lines[k]:
-                i.tickOffset = self.tickOffset
-                i.setBounds((self.minTime-self.tickOffset, self.maxTime-self.tickOffset))
     
     def updateYRange(self):
         """
@@ -1305,82 +1297,58 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 l2 = (largest - diff) / 2.0
                 self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2, padding = 0.05)
 
-
     def updateTraceStats(self):
         if self.traceStats:
             self.traceStats.update()
 
     # color is hex string ie: '#ff0000' for red
-    def startGeneralSelect(self, name, color, timeEdit, canHide=False):
-        self.updateLinesAppearance(name, color)
-        self.generalSelectStep = 1
-        self.generalSelectCanHide = canHide
-        self.generalTimeEdit = timeEdit
-        self.resetLinesPos('general')
-        self.connectLinesToTimeEdit(timeEdit, 'general')
+    def initGeneralSelect(self, name, color, timeEdit, canHide=False):
+        # Initialize all variables used to set up selected regions
+        self.selectMode = name
+        self.selectTimeEdit = timeEdit
+        self.selectColor = color
+        timeEdit.linesConnected = False
 
-    def connectLinesToTimeEdit(self, timeEdit, lineStr):
-        timeEdit.start.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, lineStr))
-        timeEdit.end.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, lineStr))
+    def connectLinesToTimeEdit(self, timeEdit, region):
+        if self.selectMode == 'Stats' and timeEdit.linesConnected:
+            # Disconnect from any previously connected regions (only in Stats mode)
+            timeEdit.start.dateTimeChanged.disconnect()
+            timeEdit.end.dateTimeChanged.disconnect()
+        # Connect timeEdit to currently being moved / recently added region
+        timeEdit.start.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
+        timeEdit.end.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
+        timeEdit.linesConnected = True
 
     def endGeneralSelect(self):
-        self.generalSelectStep = 0
-        self.generalTimeEdit = None
-        self.setLinesVisible(False, 'general')
+        # Clear all region selection variables
+        self.selectTimeEdit = None
+        self.selectMode = None
+        self.selectColor = None
 
-    def updateLinesByTimeEdit(self, timeEdit, lineStr):
-        x0 = self.plotItems[0].getViewBox().lines[lineStr][0].getXOfstPos()
-        x1 = self.plotItems[0].getViewBox().lines[lineStr][1].getXOfstPos()
+        # Remove all selected regions from actual plots
+        for region in self.regions:
+            region.removeRegionItems()
+        self.regions = []
+
+    def updateLinesByTimeEdit(self, timeEdit, region):
+        x0, x1 = region.getRegion()
         i0,i1 = self.getTicksFromTimeEdit(timeEdit)
         t0 = self.getTimeFromTick(i0)
         t1 = self.getTimeFromTick(i1)
         assert(t0 <= t1)
-        self.updateLinesPos(lineStr, 0, t0 if x0 < x1 else t1)
-        self.updateLinesPos(lineStr, 1, t1 if x0 < x1 else t0)
+        self.updateLinesPos(region, t0 if x0 < x1 else t1, t1 if x0 < x1 else t0)
 
-    def updateTimeEditByLines(self, timeEdit, lineStr, index):
-        oi = 0 if index == 1 else 1
-        x = self.plotItems[0].getViewBox().lines[lineStr][index].getXOfstPos()
-        ox = self.plotItems[0].getViewBox().lines[lineStr][oi].getXOfstPos()
-        t0 = UTCQDate.UTC2QDateTime(FFTIME(x, Epoch=self.epoch).UTC)
-        t1 = UTCQDate.UTC2QDateTime(FFTIME(ox, Epoch=self.epoch).UTC)
+    def updateTimeEditByLines(self, timeEdit, region):
+        x0, x1 = region.getRegion()
+        t0 = UTCQDate.UTC2QDateTime(FFTIME(x0, Epoch=self.epoch).UTC)
+        t1 = UTCQDate.UTC2QDateTime(FFTIME(x1, Epoch=self.epoch).UTC)
 
         timeEdit.setStartNoCallback(min(t0,t1))
         timeEdit.setEndNoCallback(max(t0,t1))
 
-        self.updateLinesPos(lineStr, index, x)
-
-    def updateGeneralLines(self, index, x):
-        # General lines use the true line position (not the tick time from data),
-        # so it must be set directly
-        for pi in self.plotItems:
-            pi.getViewBox().lines['general'][index].setPos(x)
-        self.updateTimeEditByLines(self.generalTimeEdit, 'general', index)
-
-    def updateLinesPos(self, lineStr, index, x):
-        for pi in self.plotItems:
-            pi.getViewBox().lines[lineStr][index].setOfstPos(x)
+    def updateLinesPos(self, region, t0, t1):
+        region.setRegion((t0 - self.tickOffset, t1 - self.tickOffset))
         self.updateTraceStats()
-
-    def resetLinesPos(self, lineStr):
-        self.updateLinesPos(lineStr, 0, self.minTime)
-        self.updateLinesPos(lineStr, 1, self.maxTime)
-
-    def setLinesVisible(self, isVisible, lineStr, index=None):
-        #print(f'{isVisible} {lineStr} {index} {exc}')
-        for pi in self.plotItems:
-            vb = pi.getViewBox()
-            if index is None:
-                for line in vb.lines[lineStr]:
-                    line.setVisible(isVisible)
-            else:
-                vb.lines[lineStr][index].setVisible(isVisible)      
-
-    def matchLinesVisible(self, lineStr):
-        for pi in self.plotItems:
-            vb = pi.getViewBox()
-            vb.lines[lineStr][1].setVisible(vb.lines[lineStr][0].isVisible())
-
 
     # get slider ticks from time edit
     def getTicksFromTimeEdit(self, timeEdit):
@@ -1411,11 +1379,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # could make combo of above two functions
     # tries to use second function when it can (find correct times file) otherwise uses first
     # somehow needs to figure out which times the tick values are within or something
-    def calcDataIndicesFromLines(self, dstr, editNumber):
+    def calcDataIndicesFromLines(self, dstr, editNumber, regNum=0):
         """given a data string, calculate its indices based on time range currently selected with lines"""
 
         times = self.getTimes(dstr,editNumber)[0]
-        t0,t1 = self.getSelectionStartEndTimes()
+        t0,t1 = self.getSelectionStartEndTimes(regNum)
         i0 = self.calcDataIndexByTime(times, t0)
         i1 = self.calcDataIndexByTime(times, t1)
         if i1 > len(times)-1:
@@ -1423,10 +1391,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         assert(i0 <= i1)
         return i0,i1
 
-    def getSelectionStartEndTimes(self):
-        lines = self.plotItems[0].getViewBox().lines['general']
-        t0 = lines[0].getXOfstPos()
-        t1 = lines[1].getXOfstPos()
+    def getSelectionStartEndTimes(self, regNum=0):
+        if self.regions == []:
+            return self.minTime, self.maxTime
+        t0, t1 = self.regions[regNum].getRegion()
         return (t0,t1) if t0 <= t1 else (t1,t0) # need parens here!
 
     def getSelectedPlotInfo(self):
@@ -1434,31 +1402,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         plotInfo = []
         for i,pi in enumerate(self.plotItems):
-            if pi.getViewBox().lines['general'][0].isVisible():
+            if pi.getViewBox().anyLinesVisible():
                 plotInfo.append((self.lastPlotStrings[i], self.plotTracePens[i]))
         return plotInfo
-
-    # show label on topmost line pair
-    def updateLineTextPos(self):
-        foundFirst = False
-        for i,pi in enumerate(self.plotItems):
-            lines = pi.getViewBox().lines['general']
-            if not foundFirst and lines[0].isVisible():
-                lines[0].mylabel.show()
-                if lines[1].isVisible():
-                    lines[1].mylabel.show()
-                foundFirst = True
-            else:
-                lines[0].mylabel.hide()
-                lines[1].mylabel.hide()
-
-    def updateLinesAppearance(self, name, color):
-        pen = pg.mkPen(color, width=1, style=QtCore.Qt.DashLine)
-        for i,pi, in enumerate(self.plotItems):
-            lines = pi.getViewBox().lines['general']
-            for line in lines:
-                line.setPen(pen)
-                line.mylabel.setText(name, color)
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
@@ -1469,19 +1415,9 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         self.plotIndex = plotIndex
         self.menuSetup()
 
-        generalLines = []
-        for i in range(2):
-            generalLines.append(LinkedInfiniteLine(functools.partial(window.updateGeneralLines, i), movable=True, angle=90, pos=0, mylabel='GENERAL', labelColor='#000000'))
-        self.lines = {'general':generalLines} # dictionary like this incase want to have concurrent line sets later
-        for key,lines in self.lines.items():
-            for line in lines:
-                self.addItem(line, ignoreBounds = True)
-                line.setBounds((self.window.minTime, self.window.maxTime))
-                line.hide()
-
     def menuSetup(self):
-        actions = self.menu.actions()
         # Remove menu options that won't be used
+        actions = self.menu.actions()
         xAction, yAction, mouseAction = actions[1:4]
         for a in [xAction, yAction, mouseAction]:
             self.menu.removeAction(a)
@@ -1490,63 +1426,80 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         self.menu.addAction(self.window.ui.addTickLblsAction) # Additional labels
 
     def onLeftClick(self, ev):
-         # map the mouse click to data coordinates
+        # map the mouse click to data coordinates
         mc = self.mapToView(ev.pos())
         x = mc.x()
         y = mc.y()
-        #print(f'{x} {y}')
 
         # if just clicking on the plots with no general select started then open a trace stats window
-        if self.window.generalSelectStep == 0:
+        if self.window.regions == [] and self.window.selectMode == None:
             self.window.openTraceStats(self.plotIndex)
-            self.window.startGeneralSelect('STATS', '#009900', self.window.traceStats.ui.timeEdit, True)
+            self.window.initGeneralSelect('Stats', None, self.window.traceStats.ui.timeEdit)
 
-        # if deselected everything then go back to first step
-        if self.window.generalSelectStep >= 3 and not self.window.getSelectedPlotInfo():
-            self.window.generalSelectStep = 1
+        window = self.window
+        plts, mode, color = window.plotItems, window.selectMode, window.selectColor
 
-        # add the first or second lines
-        if self.window.generalSelectStep > 0 and self.window.generalSelectStep < 3:
-            if self.window.generalSelectStep == 1:
-                self.window.generalSelectStep += 1
-                self.window.setLinesVisible(True, 'general', 0)
-                self.window.updateGeneralLines(0,x)
-            elif self.window.generalSelectStep == 2:
-                self.window.generalSelectStep += 1
-                self.window.matchLinesVisible('general')
-                self.window.updateGeneralLines(1,x)
-                if self.window.edit:
-                    PyQtUtils.moveToFront(self.window.edit.minVar)
-    
-                QtCore.QTimer.singleShot(100, self.window.showSpectra) #calls it with delay so ui has chance to draw lines first
+        # Holding ctrl key in stats mode allows selecting multiple regions
+        ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
+        multiSelect = (ctrlPressed and mode == 'Stats')
 
-            self.window.updateLineTextPos()
-            
-        # reselect this plot if it was deselected
-        elif self.window.generalSelectStep >= 3 and not self.anyLinesVisible():
-            self.setMyLinesVisible(True)
+        # Case where no regions have been created or just adding a new line
+        if window.regions == [] or (multiSelect and not window.regions[-1].isLine()):
+            region = LinkedRegion(window, plts, values=(x, x), mode=mode, color=color)
+            window.regions.append(region)
+
+        # Case where last region added is still a line
+        elif window.regions[-1].isLine():
+            # Get line's position x0 and create region between x0 and current x
+            prevX = self.window.regions[-1].linePos()
+            window.regions[-1].setRegion((prevX, x))
+
+            if self.window.edit:
+                PyQtUtils.moveToFront(self.window.edit.minVar)
+
+            if mode == 'Spectra' and len(self.window.regions) == 1:
+                QtCore.QTimer.singleShot(100, self.window.showSpectra) # calls it with delay so ui has chance to draw lines first
+
+        # Case where sub-region was previously set to hidden
+        elif window.regions[-1].isVisible(self.plotIndex) == False:
+            # Make sub-regions visible for this plot again
+            for region in window.regions:
+                region.setVisible(True, self.plotIndex)
+
+        # If this will be the only line in plots, drag shouldn't expand region
+        numRegions = len(window.regions)
+        if numRegions == 1 and window.regions[0].isLine():
+            window.regions[0].fixedLine = True
+        elif numRegions > 0: # Once first region is set, allow dragging the edges
+            window.regions[0].fixedLine = False
 
         self.window.updateTraceStats()
+        self.window.updateTimeEditByLines(self.window.selectTimeEdit, self.window.regions[-1])
 
     # check if either of lines are visible for this viewbox
     def anyLinesVisible(self):
-        lines = self.lines['general']
-        return lines[0].isVisible() or lines[1].isVisible()
+        isVisible = False
+        for region in self.window.regions:
+            if region.isVisible(self.plotIndex):
+                isVisible = True
+        return isVisible
 
     # sets the lines of this viewbox visible
     def setMyLinesVisible(self, isVisible):
-        for line in self.lines['general']:
-            line.setVisible(isVisible)
-        self.window.updateLineTextPos()
+        for region in self.window.regions:
+            region.setVisible(isVisible, self.plotIndex)
 
     def onRightClick(self, ev):
-        if self.window.generalSelectStep > 1 and self.window.generalSelectCanHide: # cancel selection on this plot (if able to)
+        if self.anyLinesVisible(): # cancel selection on this plot (if able to)
             self.setMyLinesVisible(False)
         else:
             pg.ViewBox.mouseClickEvent(self,ev) # default right click
 
         if not self.window.getSelectedPlotInfo(): # no plots then close
             self.window.closeTraceStats()
+            for region in self.window.regions:
+                region.removeRegionItems()
+            self.window.regions = []
         else:
             self.window.updateTraceStats()
 

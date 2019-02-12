@@ -5,41 +5,16 @@ import pyqtgraph.exporters
 from FF_Time import FFTIME
 from datetime import datetime, timedelta
 from math import ceil
+import functools
 
-# custom extensions to pyqtgraph for the projects needs
-# mostly just slightly edited versions of originals
-
-
-# vertical by default
-# also with built in label support (infiniteline has this but doesnt how i want)
-class LinkedInfiniteLine(pg.InfiniteLine):
-    def __init__(self, callback, mylabel=None, labelColor=None, *args, **kwds):
-        self.tickOffset = 0
-        pg.InfiniteLine.__init__(self, *args, **kwds)
-        self.callback = callback
-
-        if mylabel and labelColor:
-            opts = {'movable':False, 'position':1.0, 'color':labelColor }
-            self.mylabel = LinkedInfLineLabel(self, text=mylabel, **opts)
-
-    def mouseDragEvent(self, ev):
-        pg.InfiniteLine.mouseDragEvent(self, ev)
-        if self.movable and ev.button() == QtCore.Qt.LeftButton:
-            self.callback(self.getXPos())
-
-    # Returns x position + offset
-    def getXOfstPos(self):
-        pos = pg.InfiniteLine.getXPos(self)
-        return pos + self.tickOffset
-
-    # Set the line position relative to the offset
-    def setOfstPos(self, pos):
-        pos = pos - self.tickOffset
-        pg.InfiniteLine.setPos(self, pos)
-
-class LinkedInfLineLabel(pg.InfLineLabel):
-    #def __init__(self, *args, **kwds):
-    #    pg.InfLineLabel.__init__(self, *args,**kwds)
+# Label item placed at top
+class RegionLabel(pg.InfLineLabel):
+    def __init__(self, lines, text="", movable=False, position=0.5, anchors=None, **kwds):
+        self.lines = lines
+        position = 0.975
+        pg.InfLineLabel.__init__(self, lines[0], text=text, movable=False, position=position, anchors=None, **kwds)
+        self.lines[1].sigPositionChanged.connect(self.valueChanged)
+        self.setAnchor((0.5, 0))
 
     def updatePosition(self):
         # update text position to relative view location along line
@@ -48,11 +23,153 @@ class LinkedInfLineLabel(pg.InfLineLabel):
         if pt1 is None:
             return
         pt = pt2 * self.orthoPos + pt1 * (1-self.orthoPos)
-        self.setPos(pt)
-        self.setAnchor((0.5,0.0)) # in middle of line
+        # Calculate center point between region boundaries
+        x1, x2 = self.lines[0].x(), self.lines[1].x()
+        diff = abs(x1-x2)/2
+        if x1 > x2: # Switch offset if first line crossed second line
+            diff *= -1
+        self.setPos(QtCore.QPointF(pt.x(), -diff))
 
-    def valueChanged(self): # default behaviour will override mylabel changes
-        pass
+class LinkedRegion(pg.LinearRegionItem):
+    def __init__(self, window, plotItems, values=(0, 1), mode=None, color=None):
+        pg.LinearRegionItem.__init__(self, values=(0,0))
+        self.window = window
+        self.plotItems = plotItems
+        self.regionItems = []
+        self.labelText = mode if mode is not None else ''
+        self.fixedLine = False
+
+        for plt in self.plotItems:
+            # Create a LinearRegionItem for each plot with same initialized vals
+            regionItem = LinkedSubRegion(self, values=values, color=color)
+            regionItem.setBounds([0, self.window.maxTime-self.window.tickOffset])
+            plt.addItem(regionItem)
+            self.regionItems.append(regionItem)
+            # Connect plot's regions/lines to each other
+            line0, line1 = regionItem.lines
+            line0.sigDragged.connect(functools.partial(self.linesChanged, line0, 0))
+            line1.sigDragged.connect(functools.partial(self.linesChanged, line1, 1))
+
+        # Initialize region label at top-most plot
+        self.labelPltIndex = 0
+        self.setLabel(self.labelPltIndex)
+
+    def setLabel(self, plotNum):
+        # Create new label for line
+        fillColor = pg.mkColor('#212121') # Dark grey background color
+        fillColor.setAlpha(200)
+        opts = {'movable': False, 'position':1.0, 'color': pg.mkColor('#FFFFFF'),
+            'fill': fillColor}
+        label = RegionLabel(self.regionItems[plotNum].lines, text=self.labelText, **opts)
+        # Update line's label and store the plot index where it's currently located
+        self.regionItems[plotNum].lines[0].label = label
+        self.labelPltIndex = plotNum
+
+    def mouseDragEvent(self, ev):
+        # Called by sub-regions to drag all regions at same time
+        for regIt in self.regionItems:
+            pg.LinearRegionItem.mouseDragEvent(regIt, ev)
+        self.updateWindowInfo()
+
+    def linesChanged(self, line, lineNum, extra):
+        # Update all lines on same side of region as the original 'sub-line'
+        pos = line.value()
+        for regItem in self.regionItems:
+            lines = regItem.lines
+            lines[lineNum].setValue(pos)
+
+            # Update other line as well if region width is fixed to 0
+            if self.fixedLine:
+                lines[int(not lineNum)].setValue(pos)
+        # Update trace stats / timeEdits accordingly
+        self.updateWindowInfo()
+
+    def setRegion(self, rgn):
+        for regIt in self.regionItems:
+            regIt.setRegion(rgn)
+
+    def getRegion(self):
+        # Return region's ticks (with offset added back in)
+        if self.regionItems == []:
+            return [0,0]
+        else:
+            x1, x2 = self.regionItems[0].getRegion() # Use any region's bounds
+            return (x1+self.window.tickOffset, x2+self.window.tickOffset)
+
+    def removeRegionItems(self):
+        # Remove all sub-regions from corresponding plots
+        for plt, regIt in zip(self.plotItems, self.regionItems):
+            plt.removeItem(regIt)
+
+    def linePos(self, lineNum=0):
+        # Returns the line position for this region's left or right bounding line
+        if self.regionItems == []:
+            return 0
+        return self.regionItems[0].lines[lineNum].value()
+
+    def isLine(self):
+        # Returns True if region lines are at same position
+        return (self.linePos(0) == self.linePos(1))
+
+    def isVisible(self, plotIndex):
+        # Checks if sub-region at given plot num is set to visible
+        return self.regionItems[plotIndex].isVisible()
+
+    def setVisible(self, visible, plotIndex):
+        # Updates visibility of the sub-region at the given plot num
+        self.regionItems[plotIndex].setVisible(visible)
+        label = self.regionItems[self.labelPltIndex].lines[0].label
+        # If removing sub-region with label
+        if self.labelPltIndex == plotIndex and not visible:
+            label.setVisible(False)
+            plotIndex += 1
+            # Find the next visible sub-region and place the label there
+            while plotIndex < len(self.regionItems):
+                if self.regionItems[plotIndex].isVisible():
+                    self.setLabel(plotIndex)
+                    return
+                plotIndex += 1
+        # If adding in a sub-region at plot index higher than the one
+        # with the region label, move the label to this plot
+        elif plotIndex < self.labelPltIndex and visible:
+            label.setVisible(False)
+            self.setLabel(plotIndex)
+
+    def updateWindowInfo(self):
+        if self.window.selectTimeEdit == None:
+            return
+        # Update trace stats, connect lines to time edit, and update time edit
+        # values, if applicable
+        self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, self)
+        self.window.updateTimeEditByLines(self.window.selectTimeEdit, self)
+        self.window.updateTraceStats()
+
+class LinkedSubRegion(pg.LinearRegionItem):
+    def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):
+        self.grp = grp
+        pg.LinearRegionItem.__init__(self, values=values)
+
+        # Set region fill color to chosen color with some transparency
+        if color is not None:
+            color = pg.mkColor(color)
+            linePen = pg.mkPen(color)
+            color.setAlpha(20)
+        else: # Default fill and line colors
+            color = pg.mkColor('#b3b7f9')
+            linePen = pg.mkPen('#000cff')
+            color.setAlpha(35)
+        self.setBrush(pg.mkBrush(color))
+
+        # Set line's pen to same color but opaque and its hover pen to black
+        for line in self.lines:
+            pen = pg.mkPen('#000000')
+            pen.setWidth(2)
+            line.setHoverPen(pen)
+            line.setPen(linePen)
+
+    def mouseDragEvent(self, ev):
+        # If this sub-region is dragged, move all other sub-regions accordingly
+        self.grp.mouseDragEvent(ev)
 
 #todo show minor ticks on left side
 #hide minor tick labels always

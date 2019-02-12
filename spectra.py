@@ -34,7 +34,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
         self.plotItems = []
         self.tracePenList = []
-        self.window.setLinesVisible(False, 'general')
         self.wasClosed = False
         self.waveAnalysis = None
         self.plotAppr = None
