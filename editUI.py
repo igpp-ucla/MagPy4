@@ -11,7 +11,7 @@ class EditUI(object):
     def setupUI(self, Frame, window):
         Frame.setWindowTitle('Edit')
 
-        w = 600 if window.OS == 'windows' else 800
+        w = 600 if window.OS == 'windows' or window.OS == 'posix' else 800
         Frame.resize(w,350)
 
         mainLayout = QtWidgets.QVBoxLayout(Frame)
@@ -26,11 +26,11 @@ class EditUI(object):
         vectorFrame = QtWidgets.QGroupBox('Data Vectors')
         vectorFrame.setToolTip('Select x y z vectors of data to be rotated by next matrix')
         self.vectorLayout = QtWidgets.QVBoxLayout(vectorFrame)
+
         leftLayout.addWidget(vectorFrame)
 
         # axis rotation frame
         builderFrame = QtWidgets.QGroupBox('Matrix Builders')
-
         builderLayout = QtWidgets.QVBoxLayout(builderFrame)
 
         self.customRotButton = QtGui.QPushButton('Custom Rotation...')
@@ -43,20 +43,24 @@ class EditUI(object):
         self.minVarButton.setToolTip('Build a rotation matrix by selecting a minimum variance window')
         builderLayout.addWidget(self.minVarButton)
 
+        miscFrame = QtWidgets.QGroupBox('Other Edits')
+        miscLayout = QtWidgets.QVBoxLayout(miscFrame)
+        miscFrame.setSizePolicy(QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Maximum))
+
         self.filterButton = QtGui.QPushButton('Filter...')
         self.filterButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.filterButton.setToolTip('Apply various filters to smooth data')
+        miscLayout.addWidget(self.filterButton)
 
         btnTxt = 'Local Level Coordinates'
         if window.coordsChanged:
             btnTxt = 'Spacecraft Coordinates'
         self.chngCoordsBtn = QtWidgets.QPushButton(btnTxt)
         self.chngCoordsBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        builderLayout.addWidget(self.chngCoordsBtn)
 
         leftLayout.addWidget(builderFrame)
-        leftLayout.addWidget(self.filterButton)
-        leftLayout.addWidget(self.chngCoordsBtn)
-        leftLayout.addStretch()
+        leftLayout.addWidget(miscFrame)
         
         # history
         matFrame = QtWidgets.QGroupBox('Matrix History')
