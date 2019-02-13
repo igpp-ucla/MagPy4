@@ -3,7 +3,7 @@
 
 #define MyAppName "MarsPy"
 #define MyAppExeName "MarsPy.exe"
-#define MyAppVersion "1.0.0.1"
+#define MyAppVersion "1.0.1.0"
 #define MyAppPublisher "UCLA Institute of Geophysics and Planetary Physics"
 #define MyAppURL "www-ssc.igpp.ucla.edu"
 
