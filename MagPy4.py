@@ -130,6 +130,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.aboutDialog = None
         self.FIDs = []
         self.tickOffset = 0 # Smallest tick in data, used when plotting x data
+        self.coordsChanged = False
 
         # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False

@@ -47,8 +47,15 @@ class EditUI(object):
         self.filterButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.filterButton.setToolTip('Apply various filters to smooth data')
 
+        btnTxt = 'Local Level Coordinates'
+        if window.coordsChanged:
+            btnTxt = 'Spacecraft Coordinates'
+        self.chngCoordsBtn = QtWidgets.QPushButton(btnTxt)
+        self.chngCoordsBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
         leftLayout.addWidget(builderFrame)
         leftLayout.addWidget(self.filterButton)
+        leftLayout.addWidget(self.chngCoordsBtn)
         leftLayout.addStretch()
         
         # history
