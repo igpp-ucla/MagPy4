@@ -170,7 +170,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.pltGrd = None
         self.plotItems = []
-        self.labelItems = []
         self.trackerLines = []
         self.regions = []
         #starterFile = 'testData/mms15092720'
@@ -1078,12 +1077,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 ba.setStyle(showValues=False)
 
             tracePens = []
+            dstrLabels = []
             dstrList = []
             colorsList = []
             # add traces on this plot for each dstr
             for i,(dstr,editNum) in enumerate(dstrs):
-                u = self.UNITDICT[dstr]
-
                 # figure out which pen to use
                 numPens = len(self.pens)
                 if len(dstrs) == 1: # if just one trace then base it off which plot
@@ -1102,6 +1100,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
                 #save pens so spectra can stay synced with main plot
                 tracePens.append(pen)
+
+                dstrText = self.getLabel(dstr, editNum)
+                if dstrText in self.ABBRV_DSTR_DICT:
+                    dstrText = self.ABBRV_DSTR_DICT[dstrText]
+                dstrLabels.append(dstrText)
 
                 self.plotTrace(pi, dstr, editNum, pen)
                 dstrList.append(dstr)
@@ -1128,7 +1131,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 unit = None
 
             # Create plot label and add to grid
-            stckLbl = StackedLabel(dstrList, colorsList, unit)
+            stckLbl = StackedLabel(dstrLabels, colorsList, unit)
             self.pltGrd.addPlt(pi, stckLbl)
 
         ## end of main for loop

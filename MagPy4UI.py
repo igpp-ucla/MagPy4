@@ -422,7 +422,7 @@ class PlotGrid(pg.GraphicsLayout):
             la.setWidth(maxWidth)
 
         # Limit label column width
-        self.layout.setColumnMaximumWidth(0, 50)
+        self.layout.setColumnMaximumWidth(0, 25)
 
         if self.labelSetGrd: # Match extra tick axis widths to maxWidth
             self.labelSetGrd.adjustWidths(maxWidth)
@@ -440,6 +440,16 @@ class PlotGrid(pg.GraphicsLayout):
                 lbl.colors[subLblNum] = color
                 subLblNum += 1
 
+    def setPlotLabel(self, lbl, plotNum):
+        prevLabel = self.getPlotLabel(plotNum)
+        self.removeItem(prevLabel)
+        self.addItem(lbl, row=self.startRow+plotNum, col=0)
+        self.labels[plotNum] = lbl
+        self.resizeEvent(None)
+
+    def getPlotLabel(self, plotNum):
+        return self.labels[plotNum]
+
 class StackedLabel(pg.GraphicsLayout):
     def __init__(self, dstrs, colors, units=None, window=None, *args, **kwargs):
         self.subLabels = []
@@ -450,7 +460,7 @@ class StackedLabel(pg.GraphicsLayout):
 
         # Spacing/margins setup
         self.layout.setVerticalSpacing(-2)
-        self.layout.setContentsMargins(10, 0, 5, 0)
+        self.layout.setContentsMargins(10, 0, 0, 0)
         self.layout.setRowStretchFactor(0, 1)
         rowNum = 1
 

@@ -114,7 +114,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
                 rowStrs.append([self.window.getLabel(dstr,en), pens[i].color().name()])
                 row = []
                 if singleLine:
-                    row.append(f'{self.window.getData(dstr)[indices[0][0]]:.{prec}f}')
+                    row.append(f'{self.window.getData(dstr, en)[indices[0][0]]:.{prec}f}')
                 else:
                     prunedData = []
                     for i0, i1 in indices:

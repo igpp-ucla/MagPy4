@@ -1,6 +1,7 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
+from MagPy4UI import StackedLabel
 
 #import pyqtgraph as pg
 import numpy as np
@@ -243,6 +244,7 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         uihist.addItem(item)   
         uihist.setCurrentRow(uihist.count() - 1)
+        self.updateYLabels(uihist.count() - 1)
 
     # removes selected history
     def removeHistory(self):
@@ -258,6 +260,23 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.history.takeItem(curRow)
         del self.history[curRow]
 
+    def updateYLabels(self, currentEdit):
+        """Updates Y axis label strings for each plot"""
+        plotNum = 0
+        for dstrs,pens in zip(self.window.lastPlotStrings,self.window.plotTracePens):
+            previousLabel = self.window.pltGrd.getPlotLabel(plotNum)
+            labels = []
+            colors = previousLabel.colors[:]
+            units = previousLabel.units
+            for (dstr,editNum),pen in zip(dstrs,pens):
+                l = self.window.getLabel(dstr, currentEdit)
+                if l in self.window.ABBRV_DSTR_DICT:
+                    l = self.window.ABBRV_DSTR_DICT[l]
+                labels.append(l)
+            newLabel = StackedLabel(labels, colors, units=units)
+            self.window.pltGrd.setPlotLabel(newLabel, plotNum)
+            plotNum += 1
+
     def onHistoryChanged(self, row):
         self.curSelection = self.history[row]
         self.window.currentEdit = row
@@ -268,6 +287,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.window.editNames = [self.ui.history.item(i).text() for i in range(self.ui.history.count())]
 
         self.window.replotData(row) # provide row (which is the edit number) so plotter can try to swap things to that automatically
+        self.updateYLabels(row)
 
         #print('-------------------------')
         #for k,v in self.window.DATADICT.items():
