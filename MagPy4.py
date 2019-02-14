@@ -1008,6 +1008,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def plotData(self, dataStrings, links):
         self.ui.glw.clear()
+        self.closeTraceStats() # Clear any regions
 
         # save what the last plotted strings and links are for other modules
         self.lastPlotStrings = dataStrings
