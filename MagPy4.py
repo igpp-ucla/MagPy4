@@ -1223,7 +1223,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         pi.tickOffset = ofst
         pi.getAxis('bottom').tickOffset = ofst
         # Subtract offset value from all times values for plotting
-        ofstTimes = [t - ofst for t in times]
+        ofstTimes = times - ofst
 
         # Determine data segments/type and plot
         if not self.ui.bridgeDataGaps.isChecked():

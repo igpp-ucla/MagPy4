@@ -72,6 +72,16 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         self.funcs = [np.min, np.max, np.mean, np.median, np.std]
 
         self.clip = QtGui.QApplication.clipboard()
+    
+    def createRow(self, dta, prec):
+        results = stats.describe(dta, axis=0, ddof=0)
+        minVal, maxVal = results[1]
+        mean = results[2]
+        stdDev = np.sqrt(results[3])
+        median = np.median(dta)
+        toStr = lambda val : f'{val:.{prec}f}'
+        row = [toStr(val) for val in [minVal, maxVal, mean, median, stdDev]]
+        return row
 
     def closeEvent(self, event):
         self.window.endGeneralSelect()
@@ -121,11 +131,11 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
                         # Merge data from all regions into single list
                         pruned = self.window.getPrunedData(dstr,en,i0,i1)
                         prunedData.extend(pruned)
-                    for func in self.funcs:
-                        if len(prunedData) > 0:
-                            row.append(f'{func(prunedData):.{prec}f}')
-                        else:
-                            row.append('---')
+                    # for func in self.funcs:
+                    if len(prunedData) > 0:
+                        row = self.createRow(prunedData, prec)
+                    else:
+                        row = ['---']*len(self.funcs)
                 group.append(row)
             grid.append(group)
 
