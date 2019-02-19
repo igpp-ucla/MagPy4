@@ -47,10 +47,17 @@ class EditUI(object):
         miscLayout = QtWidgets.QVBoxLayout(miscFrame)
         miscFrame.setSizePolicy(QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Maximum))
 
+        # Filter button setup
         self.filterButton = QtGui.QPushButton('Filter...')
         self.filterButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.filterButton.setToolTip('Apply various filters to smooth data')
         miscLayout.addWidget(self.filterButton)
+
+        # Simple calculations setup
+        self.calcBtn = QtGui.QPushButton('Calculate...')
+        self.calcBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.calcBtn.setToolTip('Perform simple calculations on data')
+        miscLayout.addWidget(self.calcBtn)
 
         btnTxt = 'Local Level Coordinates'
         if window.coordsChanged:

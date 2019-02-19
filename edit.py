@@ -13,6 +13,7 @@ import time
 
 from editUI import EditUI, CustomRotUI, MinVarUI
 from FilterDialog import FilterDialog
+from simpleCalculations import simpleCalc
 
 from mth import Mth
 from MagPy4UI import PyQtUtils
@@ -76,6 +77,8 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.filter = None
         self.ui.filterButton.clicked.connect(self.openFilter)
         self.ui.chngCoordsBtn.clicked.connect(self.spacecraftToLocal)
+        self.simpCalc = None
+        self.ui.calcBtn.clicked.connect(self.openSimpleCalc)
 
     def closeEvent(self, event):
         # save edit history
@@ -89,11 +92,13 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         self.closeCustomRot()
         self.closeMinVar()
+        self.closeSimpleCalc()
 
     def closeSubWindows(self):
         self.closeCustomRot()
         self.closeMinVar()
         self.closeFilter()
+        self.closeSimpleCalc()
 
     def openCustomRot(self):
         self.closeSubWindows()
@@ -114,6 +119,16 @@ class Edit(QtWidgets.QFrame, EditUI):
         if self.minVar:
             self.minVar.close()
             self.minVar = None
+
+    def openSimpleCalc(self):
+        self.closeSubWindows()
+        self.simpCalc = simpleCalc(self, self.window)
+        self.simpCalc.show()
+
+    def closeSimpleCalc(self):
+        if self.simpCalc:
+            self.simpCalc.close()
+            self.simpCalc = None
 
     def openFilter(self):
         self.closeSubWindows()
