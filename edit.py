@@ -275,6 +275,7 @@ class Edit(QtWidgets.QFrame, EditUI):
                     l = self.window.ABBRV_DSTR_DICT[l]
                 labels.append(l)
             newLabel = StackedLabel(labels, colors, units=units)
+            
             self.window.pltGrd.setPlotLabel(newLabel, plotNum)
             plotNum += 1
 

@@ -57,7 +57,8 @@ class EditUI(object):
             btnTxt = 'Spacecraft Coordinates'
         self.chngCoordsBtn = QtWidgets.QPushButton(btnTxt)
         self.chngCoordsBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        builderLayout.addWidget(self.chngCoordsBtn)
+        if window.insightMode:
+            builderLayout.addWidget(self.chngCoordsBtn)
 
         leftLayout.addWidget(builderFrame)
         leftLayout.addWidget(miscFrame)
