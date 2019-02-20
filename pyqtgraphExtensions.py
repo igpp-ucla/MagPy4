@@ -389,6 +389,38 @@ class GridGraphicsLayout(pg.GraphicsLayout):
             self.lastWidth = w
             self.lastHeight = h
 
+class SpectraPlotItem(pg.PlotItem):
+    # plotItem subclass so we can set Spectra plots to be square
+    def __init__(self, window=None, *args, **kargs):
+        self.squarePlot = False
+        pg.PlotItem.__init__(self, *args, **kargs)
+
+    def commonResize(self, w, h):
+        if not self.squarePlot:
+            pg.PlotItem.resize(self, w, h)
+            return
+        # Set plot heights and widths to be the same (accounting for difference in
+        # height due to title), so left/bottom axes are same length
+        titleht = 15
+        if h > w:
+            pg.PlotItem.resize(self, w, w + titleht)
+        elif h < w:
+            pg.PlotItem.resize(self, h + titleht, h)
+
+    def resize(self, w, h):
+        self.commonResize(w, h)
+
+    def resize(self, sze):
+        h, w = sze.height(), sze.width()
+        self.commonResize(w, h)
+
+    def resizeEvent(self, event):
+        if self.squarePlot:
+            sze = self.boundingRect().size()
+            self.resize(sze)
+        else:
+            pg.PlotItem.resizeEvent(self, event)
+
 class BLabelItem(pg.LabelItem):
     def setHtml(self, html):
         self.item.setHtml(html)
@@ -412,7 +444,7 @@ class LinearGraphicsLayout(pg.GraphicsWidget):
         self.setLayout(self.layout)
         self.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding))
         self.items = []
-        
+
     def addLayout(self, **kargs):
         """
         Create an empty GraphicsLayout and place it in the next available cell (or in the cell specified)
@@ -453,7 +485,7 @@ class LinearGraphicsLayout(pg.GraphicsWidget):
 
     def setSpacing(self, *args):
         self.layout.setSpacing(*args)
-    
+
 # same as pdi but with better down sampling (bds)
 class PlotDataItemBDS(pg.PlotCurveItem):
     def __init__(self, *args, **kwargs):

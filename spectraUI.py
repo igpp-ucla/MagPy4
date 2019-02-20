@@ -46,7 +46,7 @@ class SpectraUI(object):
 
         # bandwidth label and spinbox
         bottomLayout = QtWidgets.QHBoxLayout()
-        bandWidthLabel = QtGui.QLabel("Average Bandwidth:")
+        bandWidthLabel = QtGui.QLabel("Average Bandwidth:  ")
         self.bandWidthSpinBox = QtGui.QSpinBox()
         self.bandWidthSpinBox.setSingleStep(2)
         self.bandWidthSpinBox.setProperty("value", 3)
@@ -64,30 +64,36 @@ class SpectraUI(object):
         self.logModeCheckBox = QtGui.QCheckBox('Logarithmic scaling')
         self.logModeCheckBox.setChecked(True)
 
-        optFrame = QtWidgets.QGroupBox()
-
-        optLayout = QtWidgets.QGridLayout(optFrame)
-        optLayout.addWidget(bandWidthLabel, 0, 0, 1, 1)
-        optLayout.addWidget(self.bandWidthSpinBox, 0, 1, 1, 1)
-        optLayout.addWidget(self.separateTracesCheckBox, 1, 0, 1, 2)
-        ###optLayout.addWidget(separateTraces, 1, 0, 1, 2)
-        optLayout.addWidget(self.aspectLockedCheckBox, 2, 0, 1, 2)
-        ###optLayout.addWidget(aspectLockedLabel, 2, 0, 1, 2)
-        optLayout.addWidget(self.logModeCheckBox, 3, 0, 1, 2)
-
-        bottomLayout.addWidget(optFrame)
+        self.unitRatioCheckbox = QtGui.QCheckBox('Unit Ratio')
+        self.unitRatioCheckbox.setChecked(False)
+        self.unitRatioCheckbox.setToolTip('Set X/Y axes to have same scale and be the same size')
 
         timeFrame = QtWidgets.QGroupBox()
         timeLayout = QtWidgets.QVBoxLayout(timeFrame)
+        timeFrame.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
 
-        # setup datetime edits
+        # Set up bandwidth label and spinbox
+        bwLayout = QtWidgets.QHBoxLayout()
+        bwLayout.addWidget(bandWidthLabel)
+        bwLayout.addWidget(self.bandWidthSpinBox)
+        bwLayout.addStretch()
+        timeLayout.addLayout(bwLayout)
+
+        # Set up datetime edits
         self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 12))
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
-
         timeLayout.addWidget(self.timeEdit.start)
         timeLayout.addWidget(self.timeEdit.end)
-
         bottomLayout.addWidget(timeFrame)
+
+        # Set up options checkboxes
+        optFrame = QtWidgets.QGroupBox()
+        optLayout = QtWidgets.QGridLayout(optFrame)
+        optLayout.addWidget(self.separateTracesCheckBox, 1, 0, 1, 2)
+        optLayout.addWidget(self.aspectLockedCheckBox, 2, 0, 1, 2)
+        optLayout.addWidget(self.logModeCheckBox, 3, 0, 1, 2)
+        optLayout.addWidget(self.unitRatioCheckbox, 4, 0, 1, 2)
+        bottomLayout.addWidget(optFrame)
 
         # setup dropdowns for coherence and phase pair selection
         cohPhaseFrame = QtWidgets.QGroupBox('Coherence/Phase Pair')

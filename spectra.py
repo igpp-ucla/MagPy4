@@ -8,7 +8,7 @@ from scipy import fftpack
 import numpy as np
 from FF_Time import FFTIME
 from plotAppearance import PlotAppearance, SpectraPlotApp
-from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis, BLabelItem
+from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis, BLabelItem, SpectraPlotItem
 from dataDisplay import UTCQDate
 from MagPy4UI import TimeEdit
 from spectraUI import SpectraUI, SpectraViewBox
@@ -31,6 +31,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.waveAnalysisButton.clicked.connect(self.openWaveAnalysis)
         self.ui.logModeCheckBox.stateChanged.connect(self.updateScaling)
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
+        self.ui.unitRatioCheckbox.stateChanged.connect(self.squarePlots)
 
         self.plotItems = []
         self.tracePenList = []
@@ -103,6 +104,22 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             v.tickFont = QtGui.QFont()
             v.tickFont.setPixelSize(14)
 
+    def squarePlots(self):
+        # If unit ratio, set plots to be square and axes to have same scaling
+        if self.ui.unitRatioCheckbox.isChecked():
+            for plt in self.plotItems:
+                plt.squarePlot = True
+                plt.getViewBox().setAspectLocked(lock=True, ratio=1.0)
+                # Update plot sizes
+                plt.resizeEvent(None)
+        else:
+            # Unlock aspect ratio and reset sizes to fill expand w/ grid
+            for plt in self.plotItems:
+                plt.squarePlot = False
+                plt.getViewBox().setAspectLocked(lock=False)
+                plt.adjustSize()
+        self.ui.grid.resizeEvent(None)
+
     def updateScaling(self):
         self.linearMode = not self.ui.logModeCheckBox.isChecked()
         self.initPlots()
@@ -173,7 +190,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                         ba = pg.AxisItem(orientation='bottom')
                         la = pg.AxisItem(orientation='left')
                         self.setAxisAppearance([ba,la])
-                    pi = pg.PlotItem(viewBox = SpectraViewBox(), axisItems={'bottom':ba, 'left':la})
+                    pi = SpectraPlotItem(viewBox = SpectraViewBox(), axisItems={'bottom':ba, 'left':la})
 
                     # Set up range/scaling modes
                     pi.setLogMode(True, True)
