@@ -13,8 +13,9 @@ class PlotAppearanceUI(object):
         # Font size label setup
         self.titleSzLbl = QtWidgets.QLabel('Title font size: ')
         self.axisLblSzLbl = QtWidgets.QLabel('Axis label font size: ')
+        self.tickLblSzLbl = QtWidgets.QLabel('Tick label font size: ')
 
-        # Title and axis spinboxes setup
+        # Title, axis label, and tick label spinboxes setup
         self.titleSzBox = QtWidgets.QSpinBox()
         self.titleSzBox.setMinimum(5)
         self.titleSzBox.setMaximum(30)
@@ -23,11 +24,17 @@ class PlotAppearanceUI(object):
         self.axisLblSzBox.setMinimum(5)
         self.axisLblSzBox.setMaximum(25)
 
+        self.tickLblSzBox = QtWidgets.QSpinBox()
+        self.tickLblSzBox.setMinimum(5)
+        self.tickLblSzBox.setMaximum(18)
+
         layout.addWidget(self.titleSzLbl, 0, 0, 1, 1)
         layout.addWidget(self.axisLblSzLbl, 1, 0, 1, 1)
+        layout.addWidget(self.tickLblSzLbl, 2, 0, 1, 1)
 
         layout.addWidget(self.titleSzBox, 0, 1, 1, 1)
         layout.addWidget(self.axisLblSzBox, 1, 1, 1, 1)
+        layout.addWidget(self.tickLblSzBox, 2, 1, 1, 1)
 
         # Set up UI for setting plot trace colors, line style, thickness, etc.
         tracePropFrame = QtWidgets.QGroupBox('Line Properties')
@@ -98,6 +105,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         # Connect buttons to functions
         self.ui.titleSzBox.valueChanged.connect(self.changeTitleSize)
         self.ui.axisLblSzBox.valueChanged.connect(self.changeAxisLblSize)
+        self.ui.tickLblSzBox.valueChanged.connect(self.changeTickLblSize)
 
         # Connect line width modifiers to function
         for lw, indices in self.ui.lineWidthBoxes:
@@ -165,6 +173,19 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         else:
             self.ui.axisLblSzBox.setValue(11) # Default axis label font size
         self.ui.axisLblSzBox.blockSignals(False)
+
+        # Initialize tick label font size
+        self.ui.tickLblSzBox.blockSignals(True)
+        axis = plt.getAxis('bottom')
+        if axis.tickFont == None: # No custom font, use default
+            self.ui.tickLblSzBox.setValue(11)
+        else:
+            tickFont = axis.tickFont
+            tickSize = tickFont.pointSize()
+            if tickSize < 0: # No point size set, use default
+                tickSize = 11
+            self.ui.tickLblSzBox.setValue(int(tickSize))
+        self.ui.tickLblSzBox.blockSignals(False)
 
         traceNum = 0
         for pltGrp in plotsInfo:
@@ -277,6 +298,30 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
                 ax.labelStyle = {'font-size':sizeStr}
                 ax.label.setHtml(ax.labelString()) # Uses updated HTML string
 
+    def changeTickLblSize(self, val):
+        # Update every axes' tick label sizes
+        for plt in self.plotItems:
+            for axis in [plt.getAxis('left'), plt.getAxis('bottom')]:
+                # Update font-size, using default if not previously set
+                tickFont = axis.style['tickFont']
+                if tickFont == None:
+                    tickFont = QtGui.QFont()
+                tickFont.setPointSize(val)
+                axis.setStyle(tickFont=tickFont)
+                axis.tickFont = tickFont
+
+                # Adjust vert/horz spacing reserved for bottom ticks if necessary
+                self.adjustTickHeights(axis, tickFont)
+
+    def adjustTickHeights(self, axis, tickFont):
+        # Adjust vertical spacing reserved for bottom ticks if necessary
+        mets = QtGui.QFontMetrics(tickFont)
+        ht = mets.boundingRect('AJOW').height() # Tall
+        if ht > 18 and axis.orientation == 'bottom':
+            axis.setStyle(tickTextOffset=5)
+        elif axis.orientation == 'bottom':
+            axis.setStyle(tickTextOffset=2)
+
 class MagPyPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
         PlotAppearance.__init__(self, window, plotItems, parent)
@@ -308,3 +353,15 @@ class SpectraPlotApp(PlotAppearance):
 
     def setChangesPersistent(self, penList):
         self.window.tracePenList = penList
+
+    def adjustTickHeights(self, axis, tickFont):
+        # Adjust horizontal spacing to account for numbers w/ superscripts
+        mets = QtGui.QFontMetrics(tickFont)
+        wdth = mets.averageCharWidth()
+        # Default is 2, other values were found through testing
+        if axis.orientation == 'left' and wdth > 11:
+            axis.setStyle(tickTextOffset=13)
+        elif axis.orientation == 'left' and wdth > 9:
+            axis.setStyle(tickTextOffset=7)
+        elif axis.orientation == 'left':
+            axis.setStyle(tickTextOffset=2)
