@@ -92,6 +92,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.timeEdit.start.dateTimeChanged.connect(self.onStartEditChanged)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
 
+        # Main menu action connections
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True))
         self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False))
         self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False,True))
@@ -105,6 +106,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
 
+        # Content menu action connections
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
         self.ui.addTickLblsAction.triggered.connect(self.openAddTickLbls)
 

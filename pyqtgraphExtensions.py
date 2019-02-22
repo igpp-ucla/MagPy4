@@ -174,10 +174,28 @@ class LinkedSubRegion(pg.LinearRegionItem):
         # If this sub-region is dragged, move all other sub-regions accordingly
         self.grp.mouseDragEvent(ev)
 
+class MagPyAxisItem(pg.AxisItem):
+    def __init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True):
+        self.tickDiff = None
+        pg.AxisItem.__init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True)
+
+    def setCstmTickSpacing(self, diff):
+        self.setTickSpacing(major=diff, minor=diff*1000)
+        self.tickDiff = diff
+
+    def resetTickSpacing(self):
+        self._tickSpacing = None
+        self.picture = None
+        self.update()
+
+    def axisType(self):
+        return 'Regular'
+
 #todo show minor ticks on left side
 #hide minor tick labels always
 class LogAxis(pg.AxisItem):
     def __init__(self, customTicks, customStrings, customSpacing, *args, **kwargs):
+        self.tickDiff = None
         pg.AxisItem.__init__(self, *args, **kwargs)
 
         self.tickFont = QtGui.QFont()
@@ -198,8 +216,17 @@ class LogAxis(pg.AxisItem):
 
     def tickSpacing(self, minVal, maxVal, size):
         if self.customSpacing:
-            return [(10.0,0),(1.0,0),(0.5,0)]
+            if self.tickDiff:
+                return [(self.tickDiff, 0)]
+            else:
+                return [(10.0,0),(1.0,0),(0.5,0)]
         return pg.AxisItem.tickSpacing(self,minVal,maxVal,size)
+
+    def axisType(self):
+        if self.customStrings:
+            return 'Log'
+        else:
+            return 'Regular'
 
     # overriden from source to be able to have superscript text
     def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
@@ -231,6 +258,15 @@ class LogAxis(pg.AxisItem):
             #p.drawText(rect, flags, text)
             #p.drawRect(rect)
 
+    def setCstmTickSpacing(self, diff):
+        self.setTickSpacing(major=diff, minor=diff)
+        self.tickDiff = diff
+
+    def resetTickSpacing(self):
+        self._tickSpacing = None
+        self.tickDiff = None
+        self.picture = None
+        self.update()
 
 # subclass based off example here:
 # https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
@@ -248,6 +284,7 @@ class DateAxis(pg.AxisItem):
         self.modeToDelta['MS'] = timedelta(milliseconds=750)
         # String used by strftime/strptime to parse UTC strings
         self.fmtStr = '%Y %j %b %d %H:%M:%S.%f'
+        self.tickDiff = None
 
     # Format a timestamp according to format underneath axis
     def fmtTimeStmp(self, window, times):
@@ -319,13 +356,13 @@ class DateAxis(pg.AxisItem):
         # Generate all possible tick times in between start and end times
         tickTimes = [strtDt]
         currDt = strtDt + td
-        while currDt < endDt:
+        while currDt <= endDt:
             tickTimes.append(currDt)
             currDt = currDt + td
-        tickTimes.append(endDt)
 
         # Reduce the number of ticks if there are too many
-        tickTimes = self.limitTicks(tickTimes)
+        if self.tickDiff is None:
+            tickTimes = self.limitTicks(tickTimes)
 
         # Creates lists mapping datetime objs to UTC strings and FFTime ticks/values
         tickStrs = list(map(self.dateTimeToTmstmp, tickTimes))
@@ -358,13 +395,24 @@ class DateAxis(pg.AxisItem):
         maxDt = self.tmstmpToDateTime(maxTimeStr)
 
         # Identify first and last times that should appear in range
-        td = self.modeToDelta[mode]
+        td = self.modeToDelta[mode] if self.tickDiff is None else self.tickDiff
         strtDt = self.firstTickDt(minDt, td)
         endDt = self.lastTickDt(maxDt, td)
 
         # Get all tick labels/values in-between and update on plot
         tickPairs = self.getTickTimes(strtDt, endDt, td, window)
         self.setTicks(tickPairs)
+
+    def setCstmTickSpacing(self, diff):
+        self.tickDiff = diff
+        self.update()
+
+    def resetTickSpacing(self):
+        self.tickDiff = None
+        self.update()
+
+    def axisType(self):
+        return 'DateTime'
 
 class GridGraphicsLayout(pg.GraphicsLayout):
     def __init__(self, window=None, *args, **kwargs):
@@ -491,7 +539,7 @@ class PlotDataItemBDS(pg.PlotCurveItem):
     def __init__(self, *args, **kwargs):
         pg.PlotCurveItem.__init__(self, *args, **kwargs)
 
-class LinkedAxis(pg.AxisItem):
+class LinkedAxis(MagPyAxisItem):
     def calcDesiredWidth(self):
         w = 0
         if not self.style['showValues']:

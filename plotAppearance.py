@@ -1,6 +1,9 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
+from datetime import datetime, timedelta
+import numpy as np
+
 import pyqtgraph as pg
 import functools
 
@@ -11,9 +14,9 @@ class PlotAppearanceUI(object):
         layout = QtWidgets.QGridLayout(Frame)
 
         # Font size label setup
-        self.titleSzLbl = QtWidgets.QLabel('Title font size: ')
-        self.axisLblSzLbl = QtWidgets.QLabel('Axis label font size: ')
-        self.tickLblSzLbl = QtWidgets.QLabel('Tick label font size: ')
+        self.titleSzLbl = QtWidgets.QLabel('Title size:')
+        self.axisLblSzLbl = QtWidgets.QLabel('Axis label size:')
+        self.tickLblSzLbl = QtWidgets.QLabel('  Tick label size:')
 
         # Title, axis label, and tick label spinboxes setup
         self.titleSzBox = QtWidgets.QSpinBox()
@@ -28,13 +31,17 @@ class PlotAppearanceUI(object):
         self.tickLblSzBox.setMinimum(5)
         self.tickLblSzBox.setMaximum(18)
 
+        self.tickIntBtn = QtWidgets.QPushButton('Adjust Tick Spacing...')
+
         layout.addWidget(self.titleSzLbl, 0, 0, 1, 1)
         layout.addWidget(self.axisLblSzLbl, 1, 0, 1, 1)
-        layout.addWidget(self.tickLblSzLbl, 2, 0, 1, 1)
+        layout.addWidget(self.tickLblSzLbl, 0, 2, 1, 1)
 
         layout.addWidget(self.titleSzBox, 0, 1, 1, 1)
         layout.addWidget(self.axisLblSzBox, 1, 1, 1, 1)
-        layout.addWidget(self.tickLblSzBox, 2, 1, 1, 1)
+        layout.addWidget(self.tickLblSzBox, 0, 3, 1, 1)
+
+        layout.addWidget(self.tickIntBtn, 1, 2, 1, 2)
 
         # Set up UI for setting plot trace colors, line style, thickness, etc.
         tracePropFrame = QtWidgets.QGroupBox('Line Properties')
@@ -88,7 +95,7 @@ class PlotAppearanceUI(object):
             tracePropLayout.addWidget(plotFrame)
             pltNum += 1
 
-        layout.addWidget(tracePropFrame, 3, 0, 1, 2)
+        layout.addWidget(tracePropFrame, 3, 0, 1, 4)
 
 class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
     def __init__(self, window, plotItems, parent=None):
@@ -96,6 +103,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         self.ui = PlotAppearanceUI()
         self.plotItems = plotItems
         self.window = window
+        self.tickIntervals = None
 
         # Get plots' trace/label infos and use to setup/initialize UI elements
         plotsInfo = self.getPlotsInfo()
@@ -106,6 +114,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         self.ui.titleSzBox.valueChanged.connect(self.changeTitleSize)
         self.ui.axisLblSzBox.valueChanged.connect(self.changeAxisLblSize)
         self.ui.tickLblSzBox.valueChanged.connect(self.changeTickLblSize)
+        self.ui.tickIntBtn.clicked.connect(self.openTickIntervals)
 
         # Connect line width modifiers to function
         for lw, indices in self.ui.lineWidthBoxes:
@@ -316,11 +325,25 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
     def adjustTickHeights(self, axis, tickFont):
         # Adjust vertical spacing reserved for bottom ticks if necessary
         mets = QtGui.QFontMetrics(tickFont)
-        ht = mets.boundingRect('AJOW').height() # Tall
+        ht = mets.boundingRect('AJOW').height() # Tall letters
         if ht > 18 and axis.orientation == 'bottom':
             axis.setStyle(tickTextOffset=5)
         elif axis.orientation == 'bottom':
             axis.setStyle(tickTextOffset=2)
+
+    def openTickIntervals(self):
+        self.closeTickIntervals()
+        self.tickIntervals = TickIntervals(self.window, self.plotItems)
+        self.tickIntervals.show()
+
+    def closeTickIntervals(self):
+        if self.tickIntervals:
+            self.tickIntervals.close()
+            self.tickIntervals = None
+
+    def closeEvent(self, event):
+        self.closeTickIntervals()
+        self.close()
 
 class MagPyPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
@@ -344,6 +367,11 @@ class MagPyPlotApp(PlotAppearance):
         # Stores per-plot lists of (dstr, en, newPen) tuples for every trace
         self.window.customPens = customPens
 
+    def openTickIntervals(self):
+        self.closeTickIntervals()
+        self.tickIntervals = MagPyTickIntervals(self.window, self.plotItems)
+        self.tickIntervals.show()
+
 class SpectraPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
         PlotAppearance.__init__(self, window, plotItems, parent)
@@ -365,3 +393,141 @@ class SpectraPlotApp(PlotAppearance):
             axis.setStyle(tickTextOffset=7)
         elif axis.orientation == 'left':
             axis.setStyle(tickTextOffset=2)
+
+
+### Tick Spacing classes ###
+class TickIntervalsUI(object):
+    def setupUI(self, Frame, window, plotItems):
+        Frame.setWindowTitle('Set Tick Spacing')
+        Frame.resize(200, 100)
+        layout = QtWidgets.QGridLayout(Frame)
+
+        btmPlt = plotItems[-1]
+
+        # Determine Y val with largest magnitude to set spinbox max for left axes
+        yMax = 100
+        for plt in plotItems:
+            for pdi in plt.listDataItems():
+                yMax = max(yMax, max(np.absolute(pdi.yData)))
+
+        # Collect UI boxes/buttons and information about the corresp. axis
+        self.intervalBoxes = []
+        for name in ['left', 'bottom']:
+            # Get axis, axis type, and create UI elements as apprp.
+            ax = btmPlt.getAxis(name)
+            axType = ax.axisType()
+            axisFrame, box, applyBtn, defBtn = self.buildIntervalUI(name, axType)
+
+            # Set maximum interval for left axes
+            if name == 'left' and axType == 'Regular':
+                box.setMaximum(yMax)
+
+            if axType == 'DateTime':
+                # Determine initial time interval if previously set
+                if ax.tickDiff is not None:
+                    hr = ax.tickDiff.seconds / 3600
+                    minutes = (ax.tickDiff.seconds % 3600)/60
+                    seconds = (ax.tickDiff.seconds % 60)
+                    prevTime = QtCore.QTime(hr, minutes, seconds)
+                    box.setTime(prevTime)
+                else:
+                    # Otherwise, default to 10 minutes
+                    hrtime = QtCore.QTime(0,10,0)
+                    box.setTime(hrtime)
+            else:
+                # Set initial value for spinbox if previously set
+                if ax.tickDiff is not None:
+                    box.setValue(ax.tickDiff)
+                else:
+                    box.setValue(1)
+
+            # Store this axe's info/UI elements and add frame to layout
+            self.intervalBoxes.append((box, name, axType, applyBtn, defBtn))
+            layout.addWidget(axisFrame)
+
+    def buildIntervalUI(self, name, axType):
+        # Initialize common UI elements
+        name = 'Left Axis' if name == 'left' else 'Bottom Axis'
+        axisFrame = QtWidgets.QGroupBox(name + ':')
+        applyBtn = QtWidgets.QPushButton('Apply')
+        defBtn = QtWidgets.QPushButton('Default')
+
+        if axType == 'DateTime':
+            # Create layout w/ timeEdit and label to describe time sections
+            dateTimeLt = QtWidgets.QGridLayout(axisFrame)
+            lbl = QtWidgets.QLabel('HH:MM:SS')
+            intervalBox = QtWidgets.QTimeEdit()
+            intervalBox.setDisplayFormat('HH:mm:ss')
+            intervalBox.setMinimumTime(QtCore.QTime(0, 0, 1))
+            dateTimeLt.addWidget(lbl, 0, 0, 1, 2)
+            dateTimeLt.addWidget(intervalBox, 1, 0, 1, 1)
+            dateTimeLt.addWidget(defBtn, 1, 1, 1, 1)
+            dateTimeLt.addWidget(applyBtn, 1, 2, 1, 1)
+        else:
+            # Create spinbox and add elements to horizontal layout
+            intervalLt = QtWidgets.QHBoxLayout(axisFrame)
+            intervalBox = QtWidgets.QDoubleSpinBox()
+            # Log spinbox should only take integers and is prefixed by '10^'
+            if axType == 'Log':
+                intervalBox = QtWidgets.QSpinBox()
+                intervalBox.setPrefix('10^')
+                intervalBox.setMinimum(1)
+            else:
+                intervalBox.setMinimum(0.01)
+            intervalLt.addWidget(intervalBox)
+            intervalLt.addWidget(defBtn)
+            intervalLt.addWidget(applyBtn)
+        return axisFrame, intervalBox, applyBtn, defBtn
+
+class TickIntervals(QtGui.QFrame, TickIntervalsUI):
+    def __init__(self, window, plotItems, parent=None):
+        super(TickIntervals, self).__init__(parent)
+        self.ui = TickIntervalsUI()
+        self.ui.setupUI(self, window, plotItems)
+        self.window = window
+        self.plotItems = plotItems
+
+        # Connect 'apply' and 'default' buttons to appr functions
+        for i, (intBox, name, axType, applyBtn, defBtn) in enumerate(self.ui.intervalBoxes):
+            applyBtn.clicked.connect(functools.partial(self.applyChange, intBox, name, axType))
+            defBtn.clicked.connect(functools.partial(self.setDefault, name))
+
+    def setDefault(self, name):
+        # Have each plot's corresp. axes reset its tick spacing
+        for plt in self.plotItems:
+            axis = plt.getAxis(name)
+            axis.resetTickSpacing()
+
+        self.additionalUpdates()
+
+    def applyChange(self, intBox, name, axType):
+        # Get spinbox value
+        if axType == 'DateTime':
+            # Convert QTime object to a timedelta object for DateTime axes
+            value = intBox.time()
+            formatStr = '%H:%M:%S'
+            minBoxTime = datetime.strptime(QtWidgets.QTimeEdit().minimumTime().toString(), formatStr)
+            valTime = datetime.strptime(value.toString(), formatStr)
+            value = valTime - minBoxTime
+        else:
+            value = intBox.value()
+
+        # Have each plot's corresp. axes update its tick spacing with value
+        for plt in self.plotItems:
+            axis = plt.getAxis(name)
+            axis.setCstmTickSpacing(value)
+
+        self.additionalUpdates()
+
+    # Placeholder function to update plot ticks elsewhere as needed
+    def additionalUpdates(self):
+        pass
+
+class MagPyTickIntervals(TickIntervals):
+    def __init__(self, window, plotItems, parent=None):
+        TickIntervals.__init__(self, window, plotItems, parent)
+
+    def additionalUpdates(self):
+        # Update plot ranges so tick marks are uniform across axes/plots
+        self.window.updateXRange()
+        self.window.updateYRange()
