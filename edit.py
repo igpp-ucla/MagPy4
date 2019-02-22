@@ -76,7 +76,6 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.customRotButton.clicked.connect(self.openCustomRot)
         self.filter = None
         self.ui.filterButton.clicked.connect(self.openFilter)
-        self.ui.chngCoordsBtn.clicked.connect(self.spacecraftToLocal)
         self.simpCalc = None
         self.ui.calcBtn.clicked.connect(self.openSimpleCalc)
 
@@ -306,55 +305,6 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.window.replotData(row) # provide row (which is the edit number) so plotter can try to swap things to that automatically
         self.updateYLabels(row)
 
-        if self.window.insightMode:
-            # Maps what notes should be if coordinates have been changed in an edit
-            notesState = { False: 'Insight Spacecraft Coordinates',
-                            True: 'InSight Local Level Coordinates' }
-            newNotes = self.history[row][1]
-            currentState = self.window.coordsChanged
-            # If switching from LL to original data OR to edit that switched to
-            # a coordinate system different from current one
-            switchingToOriginal = (row == 0 and currentState == True)
-            stateDiffers = (newNotes == notesState[not currentState])
-            # Then update button text and state
-            if stateDiffers or switchingToOriginal:
-                self.switchCoordSettings()
-
-    def spacecraftToLocal(self):
-        # Spacecraft to Local Level coordinates transformation
-        matrix = np.array([[0.99886589, -0.00622313, 0.04720395],
-                        [0.00862136, 0.99867298, -0.05077360],
-                        [-0.04682533, 0.05112297, 0.99759402]])
-
-        # Find vector axis row for spacecraft coordinates
-        rowNum = 0
-        vectorRow = 0
-        for row in self.axisDropdowns:
-            for dd in row:
-                if '_SC' in dd.currentText():
-                    vectorRow = rowNum
-            rowNum += 1
-        axisVecs = [self.axisDropdowns[vectorRow]]
-
-        if self.window.coordsChanged: # Switch back to SC if already changed
-            self.localToSpacecraft(matrix, axisVecs)
-        else:
-            # Otherwise apply the transformation to the relevant vectors
-            self.switchCoordSettings()
-            self.apply(matrix, 'InSight Local Level Coordinates', 'LL', 'L', axisVecs)
-
-    def localToSpacecraft(self, mat, axisVecs):
-        # Local level to Spacecraft coordinates transformation
-        matInv = np.linalg.inv(mat)
-        self.switchCoordSettings()
-        self.apply(matInv, 'Insight Spacecraft Coordinates', 'SC', 'L', axisVecs)
-
-    def switchCoordSettings(self):
-        # Updates coordinate system state and button text
-        self.window.coordsChanged = not self.window.coordsChanged
-        btnText = { True:'Spacecraft Coordinates', False:'Local Level Coordinates' }
-        self.ui.chngCoordsBtn.setText(btnText[self.window.coordsChanged])
-
     # takes a matrix, notes for the history, and a name for the history entry
     # axisVecs defines vectors to modify instead of dropdown selections
     def apply(self, mat, notes, name, multType='R', axisVecs=None):
@@ -425,6 +375,8 @@ class CustomRot(QtWidgets.QFrame, CustomRotUI):
                 self.axisChecked = gb.text()
 
         self.ui.applyButton.clicked.connect(self.apply)
+        self.ui.spaceToLocBtn.clicked.connect(self.loadSpaceToLocMat)
+        self.ui.instrToSpaceBtn.clicked.connect(self.loadInstrToSpaceMat)
 
         self.lastOpName = 'Custom'
 
@@ -467,6 +419,19 @@ class CustomRot(QtWidgets.QFrame, CustomRotUI):
 
     def loadCurrentEditMatrix(self):
         self.ui.R.setMatrix(self.edit.ui.M.getMatrix())
+
+    def loadInstrToSpaceMat(self):
+        theta = 57.9
+        mat = np.array([[cos(theta), -sin(theta), 0],
+                        [sin(theta), cos(theta), 0],
+                        [0, 0, 1]])
+        self.ui.R.setMatrix(mat)
+
+    def loadSpaceToLocMat(self):
+        mat = np.array([[0.99886589, -0.00622313, 0.04720395],
+                        [0.00862136, 0.99867298, -0.05077360],
+                        [-0.04682533, 0.05112297, 0.99759402]])
+        self.ui.R.setMatrix(mat)
 
 class MinVar(QtWidgets.QFrame, MinVarUI):
     def __init__(self, edit, window, parent=None):

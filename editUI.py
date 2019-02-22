@@ -59,14 +59,6 @@ class EditUI(object):
         self.calcBtn.setToolTip('Perform simple calculations on data')
         miscLayout.addWidget(self.calcBtn)
 
-        btnTxt = 'Local Level Coordinates'
-        if window.coordsChanged:
-            btnTxt = 'Spacecraft Coordinates'
-        self.chngCoordsBtn = QtWidgets.QPushButton(btnTxt)
-        self.chngCoordsBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        if window.insightMode:
-            builderLayout.addWidget(self.chngCoordsBtn)
-
         leftLayout.addWidget(builderFrame)
         leftLayout.addWidget(miscFrame)
         
@@ -111,6 +103,7 @@ class CustomRotUI(object):
         Frame.resize(300,300)
 
         self.layout = QtWidgets.QVBoxLayout(Frame)
+        self.layout.setSpacing(12)
 
         rFrame = QtWidgets.QGroupBox('Rotation Matrix')
         rLayout = QtWidgets.QVBoxLayout(rFrame)
@@ -158,6 +151,15 @@ class CustomRotUI(object):
         self.genButtons[0].setChecked(True)
 
         self.layout.addWidget(axFrame)
+
+        insightFrame = QtWidgets.QGroupBox('Load Insight coordinate transformation matrices')
+        insightLt = QtWidgets.QHBoxLayout(insightFrame)
+        self.spaceToLocBtn = QtWidgets.QPushButton('Spacecraft to Local Level')
+        self.instrToSpaceBtn = QtWidgets.QPushButton('Instrument to Spacecraft')
+        insightLt.addWidget(self.spaceToLocBtn)
+        insightLt.addWidget(self.instrToSpaceBtn)
+        if window.insightMode:
+            self.layout.addWidget(insightFrame)
 
         self.layout.addStretch()
 
