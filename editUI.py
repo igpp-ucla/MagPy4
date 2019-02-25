@@ -152,12 +152,12 @@ class CustomRotUI(object):
 
         self.layout.addWidget(axFrame)
 
-        insightFrame = QtWidgets.QGroupBox('Load Insight coordinate transformation matrices')
+        insightFrame = QtWidgets.QGroupBox('Load Insight coordinate transformation matrices:')
         insightLt = QtWidgets.QHBoxLayout(insightFrame)
         self.spaceToLocBtn = QtWidgets.QPushButton('Spacecraft to Local Level')
         self.instrToSpaceBtn = QtWidgets.QPushButton('Instrument to Spacecraft')
-        insightLt.addWidget(self.spaceToLocBtn)
         insightLt.addWidget(self.instrToSpaceBtn)
+        insightLt.addWidget(self.spaceToLocBtn)
         if window.insightMode:
             self.layout.addWidget(insightFrame)
 

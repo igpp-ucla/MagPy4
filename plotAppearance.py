@@ -12,6 +12,7 @@ class PlotAppearanceUI(object):
         Frame.setWindowTitle('Plot Appearance')
         Frame.resize(300, 200)
         layout = QtWidgets.QGridLayout(Frame)
+        self.layout = layout
 
         # Font size label setup
         self.titleSzLbl = QtWidgets.QLabel('Title size:')
@@ -31,17 +32,13 @@ class PlotAppearanceUI(object):
         self.tickLblSzBox.setMinimum(5)
         self.tickLblSzBox.setMaximum(18)
 
-        self.tickIntBtn = QtWidgets.QPushButton('Adjust Tick Spacing...')
-
         layout.addWidget(self.titleSzLbl, 0, 0, 1, 1)
         layout.addWidget(self.axisLblSzLbl, 1, 0, 1, 1)
-        layout.addWidget(self.tickLblSzLbl, 0, 2, 1, 1)
+        layout.addWidget(self.tickLblSzLbl, 1, 2, 1, 1)
 
         layout.addWidget(self.titleSzBox, 0, 1, 1, 1)
         layout.addWidget(self.axisLblSzBox, 1, 1, 1, 1)
-        layout.addWidget(self.tickLblSzBox, 0, 3, 1, 1)
-
-        layout.addWidget(self.tickIntBtn, 1, 2, 1, 2)
+        layout.addWidget(self.tickLblSzBox, 1, 3, 1, 1)
 
         # Set up UI for setting plot trace colors, line style, thickness, etc.
         tracePropFrame = QtWidgets.QGroupBox('Line Properties')
@@ -96,6 +93,9 @@ class PlotAppearanceUI(object):
             pltNum += 1
 
         layout.addWidget(tracePropFrame, 3, 0, 1, 4)
+
+        self.tickIntBtn = QtWidgets.QPushButton('Adjust Tick Spacing...')
+        layout.addWidget(self.tickIntBtn, 4, 1, 1, 2)
 
 class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
     def __init__(self, window, plotItems, parent=None):
@@ -348,6 +348,10 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
 class MagPyPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
         PlotAppearance.__init__(self, window, plotItems, parent)
+        self.ui.layout.removeWidget(self.ui.titleSzBox)
+        self.ui.layout.removeWidget(self.ui.titleSzLbl)
+        self.ui.titleSzBox.deleteLater()
+        self.ui.titleSzLbl.deleteLater()
 
     def adjustTitleColors(self, penList):
         self.window.pltGrd.adjustTitleColors(penList)

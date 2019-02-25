@@ -175,6 +175,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         numberPlots = 0
         curRow = []
         maxTitleWidth = 0
+        self.tracePenList = []
         # For every plot in main window:
         for listIndex, (strList, penList) in enumerate(plotInfos):
             # Only copy color from main window
