@@ -281,7 +281,7 @@ class DateAxis(pg.AxisItem):
         self.modeToDelta['DAY'] = timedelta(hours=6)
         self.modeToDelta['HR'] = timedelta(minutes=30)
         self.modeToDelta['MIN'] = timedelta(minutes=5)
-        self.modeToDelta['MS'] = timedelta(milliseconds=750)
+        self.modeToDelta['MS'] = timedelta(milliseconds=500)
         # String used by strftime/strptime to parse UTC strings
         self.fmtStr = '%Y %j %b %d %H:%M:%S.%f'
         self.tickDiff = None

@@ -161,8 +161,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # setup pens
         self.pens = []
-        # Blue, Green, Red, Cyan, Magenta, Black
-        colors = ['#0000ff','#00ad05','#ea0023','#00b5a8', '#ce0d9e', '#000000']
+        # Blue, Green, Red, Yellow, Magenta, Black
+        colors = ['#0000ff','#00ad05','#ea0023','#fc9f00', '#ce0d9e', '#000000']
         for c in colors:
             self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
         self.trackerPen = pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine)
