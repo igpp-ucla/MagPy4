@@ -423,8 +423,8 @@ class CustomRot(QtWidgets.QFrame, CustomRotUI):
 
     def loadInstrToSpaceMat(self):
         theta = 57.9 * self.D2R
-        mat = np.array([[cos(theta), sin(theta), 0],
-                        [-sin(theta), cos(theta), 0],
+        mat = np.array([[cos(theta), -sin(theta), 0],
+                        [sin(theta), cos(theta), 0],
                         [0, 0, 1]])
         self.ui.R.setMatrix(mat)
 
