@@ -110,8 +110,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
         self.ui.addTickLblsAction.triggered.connect(self.openAddTickLbls)
 
-        self.insightMode = False
-
         # options menu dropdown
         self.ui.scaleYToCurrentTimeAction.triggered.connect(self.updateYRange)
         self.ui.antialiasAction.triggered.connect(self.toggleAntialiasing)
@@ -174,11 +172,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotItems = []
         self.trackerLines = []
         self.regions = []
-        #starterFile = 'testData/mms15092720'
-        starterFile = 'testData/insight/IFGlr_pCAL_20180816T045752_20180817T090012' #insight test file
-        if os.path.exists(starterFile + '.ffd'):
-            self.openFF(starterFile)
-            self.swapMode()
+
+        self.startUp = True
 
     def shiftWindow(self, direction):
         winWidth = abs(self.iE - self.iO) # Number of ticks currently displayed
@@ -430,6 +425,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if not fileNames:
             print(f'No files selected, cancelling open operation')
             return
+
+        if self.startUp:
+            self.ui.setupView()
+            self.startUp = False
 
         if clearCurrent:
             for fid in self.FIDs:

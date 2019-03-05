@@ -375,8 +375,9 @@ class CustomRot(QtWidgets.QFrame, CustomRotUI):
                 self.axisChecked = gb.text()
 
         self.ui.applyButton.clicked.connect(self.apply)
-        self.ui.spaceToLocBtn.clicked.connect(self.loadSpaceToLocMat)
-        self.ui.instrToSpaceBtn.clicked.connect(self.loadInstrToSpaceMat)
+        if self.window.insightMode:
+            self.ui.spaceToLocBtn.clicked.connect(self.loadSpaceToLocMat)
+            self.ui.instrToSpaceBtn.clicked.connect(self.loadInstrToSpaceMat)
 
         self.lastOpName = 'Custom'
 

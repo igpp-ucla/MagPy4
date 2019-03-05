@@ -14,6 +14,7 @@ class MagPy4UI(object):
 
     def setupUI(self, window):
 
+        self.window = window
         # gives default window options in top right
         window.setWindowFlags(QtCore.Qt.Window)
         window.resize(1280, 700)
@@ -79,8 +80,8 @@ class MagPy4UI(object):
         self.runTests.setStatusTip('Runs unit tests for code')
 
         self.switchMode = QtWidgets.QAction(window)
-        #self.switchMode.setText('Switch to MarsPy')
-        #self.switchMode.setToolTip('Loads various presets specific to the Insight mission')
+        self.switchMode.setText('Switch to MarsPy')
+        self.switchMode.setToolTip('Loads various presets specific to the Insight mission')
 
         # Build the menu bar.
 
@@ -91,6 +92,8 @@ class MagPy4UI(object):
         self.fileMenu.addAction(self.actionAddFF)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.actionOpenCDF)
+        self.fileMenu.addSeparator()
+        self.fileMenu.addAction(self.switchMode)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.actionExit)
 
@@ -117,14 +120,7 @@ class MagPy4UI(object):
         self.addTickLblsAction = QtWidgets.QAction(window)
         self.addTickLblsAction.setText('Additional Tick Labels...')
 
-        self.gview = pg.GraphicsView()
-        self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        self.glw = GridGraphicsLayout(window) # made this based off pg.GraphicsLayout
-
-        self.gview.setCentralItem(self.glw)
-
         layout = QtWidgets.QVBoxLayout(self.centralWidget)
-        layout.addWidget(self.gview)
 
         # SLIDER setup
         sliderLayout = QtWidgets.QGridLayout() # r, c, w, h
@@ -172,7 +168,11 @@ class MagPy4UI(object):
 
         layout.addLayout(sliderLayout)
 
-         # update slider tick amount and timers and labels and stuff based on new file
+        # Set up start screen
+        self.layout = layout
+        self.startUp(window)
+
+    # update slider tick amount and timers and labels and stuff based on new file
     def setupSliders(self, tick, max, minmax):
         #dont want to trigger callbacks from first plot
         self.startSlider.blockSignals(True)
@@ -193,6 +193,111 @@ class MagPy4UI(object):
 
         self.startSlider.blockSignals(False)
         self.endSlider.blockSignals(False)
+
+    def enableUIElems(self, enabled=True):
+        # Enable/disable all elems for interacting w/ plots
+        elems = [self.startSlider, self.endSlider, self.shftPrcntBox, self.mvLftBtn,
+                self.mvRgtBtn, self.timeEdit.start, self.timeEdit.end,
+                self.mvLftShrtct, self.mvRgtShrtct, self.switchMode]
+        for e in elems:
+            e.setEnabled(enabled)
+
+    def startUp(self, window):
+        # Create frame and insert it into main layout
+        self.startFrame = QtWidgets.QFrame()
+        self.layout.insertWidget(0, self.startFrame)
+        # Set frame background to white
+        startLt = QtWidgets.QVBoxLayout(self.startFrame)
+        styleSheet = ".QFrame { background-color:" + '#ffffff' + '}'
+        self.startFrame.setStyleSheet(styleSheet)
+
+        # Set up main title, its font size, and color
+        nameLabel = QtWidgets.QLabel('MarsPy / MagPy4')
+        font = QtGui.QFont()
+        font.setPointSize(40)
+        font.setBold(True)
+        font.setWeight(75)
+        nameLabel.setFont(font)
+        styleSheet = "* { color:" + '#f44242' + " }"
+        nameLabel.setStyleSheet(styleSheet)
+
+        # Mode selection UI elements
+        modeLbl = QtWidgets.QLabel('Mode: ')
+        self.modeComboBx = QtWidgets.QComboBox()
+        self.modeComboBx.addItem('MarsPy')
+        self.modeComboBx.addItem('MagPy')
+        self.modeComboBx.currentTextChanged.connect(self.switchMainMode)
+
+        # Checkbox to save mode for next time
+        self.saveModeChkBx = QtWidgets.QCheckBox('Set As Default')
+        self.saveModeChkBx.clicked.connect(self.saveState)
+
+        # Initialize default mode based on state file
+        stateFileName = 'state.txt'
+        fd = open(stateFileName, 'r')
+        mode = fd.readline()
+        if mode.strip('\n').strip(' ') == 'MagPy':
+            self.modeComboBx.setCurrentIndex(1)
+            self.window.insightMode = False
+        else:
+            self.modeComboBx.setCurrentIndex(0)
+            self.window.insightMode = True
+
+        # Button to open a flat file
+        openFFBtn = QtWidgets.QPushButton('Open Flat File')
+        openFFBtn.clicked.connect(self.actionOpenFF.triggered)
+
+        # Create an HBox layout for every row, and add stretch factors
+        # to center everything
+        startLt.addStretch(12)
+        for itmGrp in [[nameLabel], None, [modeLbl, self.modeComboBx, openFFBtn],
+                        [self.saveModeChkBx], None]:
+            if itmGrp is None: # Use None to represent spacers
+                startLt.addStretch(1)
+                continue
+            itmLt = QtWidgets.QHBoxLayout()
+            itmLt.addStretch()
+            for itm in itmGrp:
+                itmLt.addWidget(itm)
+            itmLt.addStretch()
+            startLt.addLayout(itmLt)
+        startLt.addStretch(12)
+        self.startLt = startLt
+
+        # Disable UI elements for interacting with plots
+        self.enableUIElems(False)
+
+    def saveState(self):
+        # Save the current text in the mode combo box to the state file
+        if self.saveModeChkBx.isChecked():
+            mode = self.modeComboBx.currentText()
+            stateFileName = 'state.txt'
+            fd = open(stateFileName, 'w')
+            fd.write(mode)
+
+    def switchMainMode(self):
+        # Set insightMode in window so it knows which defaults/settings to load
+        mode = self.modeComboBx.currentText()
+        if mode == 'MarsPy':
+            self.window.insightMode = True
+        else:
+            self.window.insightMode = False
+        self.saveState()
+
+    def setupView(self):
+        # Remove start up layout and setup main plot grid
+        self.gview = pg.GraphicsView()
+        self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        self.glw = GridGraphicsLayout(self.window)
+        self.gview.setCentralItem(self.glw)
+
+        self.layout.removeWidget(self.startFrame)
+        self.startFrame.deleteLater()
+
+        self.layout.insertWidget(0, self.gview)
+
+        # Re-enable all UI elements for interacting w/ plots
+        self.enableUIElems(True)
 
 class TimeEdit():
     def __init__(self, font):
