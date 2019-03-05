@@ -234,8 +234,12 @@ class MagPy4UI(object):
 
         # Initialize default mode based on state file
         stateFileName = 'state.txt'
-        fd = open(stateFileName, 'r')
-        mode = fd.readline()
+        try: # If file exists, use setting
+            fd = open(stateFileName, 'r')
+            mode = fd.readline()
+            fd.close()
+        except: # Otherwise MagPy is default
+            mode = 'MagPy'
         if mode.strip('\n').strip(' ') == 'MagPy':
             self.modeComboBx.setCurrentIndex(1)
             self.window.insightMode = False
@@ -274,6 +278,7 @@ class MagPy4UI(object):
             stateFileName = 'state.txt'
             fd = open(stateFileName, 'w')
             fd.write(mode)
+            fd.close()
 
     def switchMainMode(self):
         # Set insightMode in window so it knows which defaults/settings to load
