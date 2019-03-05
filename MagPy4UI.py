@@ -234,7 +234,7 @@ class MagPy4UI(object):
 
         # Initialize default mode based on state file
         stateFileName = 'state.txt'
-        fd = open(stateFileName, 'r')
+        fd = open(stateFileName, 'w+')
         mode = fd.readline()
         if mode.strip('\n').strip(' ') == 'MagPy':
             self.modeComboBx.setCurrentIndex(1)
