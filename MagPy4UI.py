@@ -57,6 +57,10 @@ class MagPy4UI(object):
         self.actionEdit.setText('&Edit...')
         self.actionEdit.setStatusTip('Opens edit window that allows you to rotate the data with matrices')
 
+        self.actionPlaneNormal = QtWidgets.QAction(window)
+        self.actionPlaneNormal.setText('Plane Normal...')
+        self.actionPlaneNormal.setStatusTip('Calculates the normal to the plane using timing method')
+
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
         self.scaleYToCurrentTimeAction.setStatusTip('')
         self.antialiasAction = QtWidgets.QAction('Smooth &Lines (Antialiasing)',checkable=True,checked=True)
@@ -102,6 +106,9 @@ class MagPy4UI(object):
         self.toolsMenu.addAction(self.actionPlotMenu)
         self.toolsMenu.addAction(self.actionSpectra)
         self.toolsMenu.addAction(self.actionEdit)
+
+        self.MMSMenu = self.menuBar.addMenu('&MMS Tools')
+        self.MMSMenu.addAction(self.actionPlaneNormal)
 
         self.optionsMenu = self.menuBar.addMenu('&Options')
         self.optionsMenu.addAction(self.scaleYToCurrentTimeAction)
@@ -198,9 +205,12 @@ class MagPy4UI(object):
         # Enable/disable all elems for interacting w/ plots
         elems = [self.startSlider, self.endSlider, self.shftPrcntBox, self.mvLftBtn,
                 self.mvRgtBtn, self.timeEdit.start, self.timeEdit.end,
-                self.mvLftShrtct, self.mvRgtShrtct, self.switchMode]
+                self.mvLftShrtct, self.mvRgtShrtct, self.switchMode, self.MMSMenu]
         for e in elems:
             e.setEnabled(enabled)
+
+    def showMMSMenu(self, visible):
+        self.MMSMenu.menuAction().setVisible(visible)
 
     def startUp(self, window):
         # Create frame and insert it into main layout
@@ -237,6 +247,7 @@ class MagPy4UI(object):
         try: # If file exists, use setting
             fd = open(stateFileName, 'r')
             mode = fd.readline()
+            nameLabel.setText(mode.strip('\n'))
             fd.close()
         except: # Otherwise MagPy is default
             mode = 'MagPy'
@@ -398,6 +409,23 @@ class MatrixWidget(QtWidgets.QWidget):
 
     def toString(self):
         return Mth.matToString(self.getMatrix())
+
+class VectorWidget(QtWidgets.QWidget):
+    def __init__(self):
+        super(VectorWidget, self).__init__(None)
+        vecLt = QtWidgets.QGridLayout(self)
+        vecLt.setContentsMargins(0,0,0,0)
+        self.lbls = []
+        for i in range(0, 3):
+            lbl = QtWidgets.QLabel()
+            lbl.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            vecLt.addWidget(lbl, i, 0, 1, 1)
+            self.lbls.append(lbl)
+        self.setVector([0,0,0])
+
+    def setVector(self, vec):
+        for i in range(0, 3):
+            self.lbls[i].setText(str(vec[i]))
 
 # pyqt utils
 class PyQtUtils:

@@ -37,6 +37,7 @@ from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion
+from MMSTools import PlaneNormal
 from mth import Mth
 from tests import Tests
 import bisect
@@ -106,6 +107,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
 
+        self.ui.actionPlaneNormal.triggered.connect(self.openPlaneNormal)
+
         # Content menu action connections
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
         self.ui.addTickLblsAction.triggered.connect(self.openAddTickLbls)
@@ -130,6 +133,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.aboutDialog = None
         self.FIDs = []
         self.tickOffset = 0 # Smallest tick in data, used when plotting x data
+
+        # MMS Tools
+        self.planeNormal = None
 
         # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False
@@ -251,6 +257,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeTraceStats()
         self.closeSpectra()
         self.closeAddTickLbls()
+        self.closePlaneNormal()
 
     def initVariables(self):
         """init variables here that should be reset when file changes"""
@@ -308,6 +315,24 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     #        return
     #    self.subWindows[key].close()
     #    self.subWindows[key] = None
+
+    def openPlaneNormal(self):
+        from MagPy4UI import TimeEdit
+        self.closePlaneNormal()
+        self.planeNormal = PlaneNormal(self)
+        timeEdit = TimeEdit(QtGui.QFont())
+        self.initGeneralSelect('Plane Normal', '#42f495', timeEdit)
+
+    def showNormal(self):
+        if self.planeNormal:
+            self.planeNormal.show()
+            self.planeNormal.calculate()
+
+    def closePlaneNormal(self):
+        if self.planeNormal:
+            self.planeNormal.close()
+            self.planeNormal = None
+            self.endGeneralSelect()
 
     def openPlotMenu(self):
         self.closePlotMenu()
@@ -401,6 +426,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         txt = self.ui.switchMode.text()
         self.insightMode = not self.insightMode
         txt = 'Switch to MMS' if self.insightMode else 'Switch to MarsPy'
+        # Hide or show MMS tools menu
+        self.ui.showMMSMenu(not self.insightMode)
         tooltip = 'Loads various presets specific to the MMS mission and better for general use cases' if self.insightMode else 'Loads various presets specific to the Insight mission'
         self.ui.switchMode.setText(txt)
         self.ui.switchMode.setToolTip(tooltip)
@@ -429,6 +456,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.startUp:
             self.ui.setupView()
             self.startUp = False
+            self.ui.showMMSMenu(not self.insightMode)
+            self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
 
         if clearCurrent:
             for fid in self.FIDs:
@@ -652,6 +681,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         print(f'slider ticks: {self.iiE}')
 
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
+
 
     def openCDF(self,PATH):#,q):
         """ opens a cdf file and loads the data into program structures """
@@ -950,7 +980,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def plotDataDefault(self):
         dstrs,links = self.getDefaultPlotInfo()
-                
+
         self.plotData(dstrs, links)
 
     def getData(self, dstr, editNumber=None):
@@ -1464,6 +1494,9 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
             if mode == 'Spectra' and len(self.window.regions) == 1:
                 QtCore.QTimer.singleShot(100, self.window.showSpectra) # calls it with delay so ui has chance to draw lines first
+
+            if mode == 'Plane Normal' and len(self.window.regions) == 1:
+                QtCore.QTimer.singleShot(100, self.window.showNormal)
 
         # Case where sub-region was previously set to hidden
         elif window.regions[-1].isVisible(self.plotIndex) == False:
