@@ -30,10 +30,10 @@ class MMSTools():
         fieldDstrs = []
         for dstr in self.window.DATASTRINGS:
             for pk in posKeys:
-                if pk in dstr:
+                if pk.lower() in dstr.lower() and 'b'+pk.lower() not in dstr.lower():
                     positionDstrs.append(dstr)
             for fk in fieldKeys:
-                if fk in dstr:
+                if fk.lower() in dstr.lower():
                     fieldDstrs.append(dstr)
 
         # Pre-sort
@@ -61,7 +61,7 @@ class MMSTools():
         self.grps['Field'] = fieldDict
 
         # Organize by spacecraft number
-        spcrftNums = [i for i in range(1, 4+1)]
+        spcrftNums = [1, 2, 3, 4]
         scPosDict = {}
         scFieldDict = {}
         for spcrftNum in spcrftNums:
