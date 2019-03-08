@@ -67,6 +67,7 @@ class Edit(QtWidgets.QFrame, EditUI):
             self.addHistory(Mth.IDENTITY, 'original data', 'Identity')
 
         self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
+        self.ui.history.itemChanged.connect(functools.partial(self.onHistoryChanged, None))
 
         self.onHistoryChanged(self.ui.history.currentRow())
 
@@ -293,7 +294,9 @@ class Edit(QtWidgets.QFrame, EditUI):
             self.window.pltGrd.setPlotLabel(newLabel, plotNum)
             plotNum += 1
 
-    def onHistoryChanged(self, row):
+    def onHistoryChanged(self, row=None):
+        if row == None:
+            row = self.ui.history.currentRow()
         self.curSelection = self.history[row]
         self.window.currentEdit = row
         self.ui.M.setMatrix(self.curSelection[0])
@@ -427,12 +430,14 @@ class CustomRot(QtWidgets.QFrame, CustomRotUI):
                         [-sin(theta), cos(theta), 0],
                         [0, 0, 1]])
         self.ui.R.setMatrix(mat)
+        self.lastOpName = 'SC'
 
     def loadSpaceToLocMat(self):
         mat = np.array([[0.99886589, -0.00622313, 0.04720395],
                         [0.00862136, 0.99867298, -0.05077360],
                         [-0.04682533, 0.05112297, 0.99759402]])
         self.ui.R.setMatrix(mat)
+        self.lastOpName = 'LL'
 
 class MinVar(QtWidgets.QFrame, MinVarUI):
     def __init__(self, edit, window, parent=None):

@@ -86,7 +86,6 @@ class EditUI(object):
         leftButtons.addStretch()
         histLayout.addLayout(leftButtons,1)
         self.history = QtWidgets.QListWidget()
-        self.history.setEditTriggers(QtWidgets.QAbstractItemView.SelectedClicked)
         histLayout.addWidget(self.history,2)
 
         rightLayout.addWidget(histFrame)
