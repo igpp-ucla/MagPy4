@@ -131,14 +131,14 @@ class PlaneNormalUI(object):
 
         # Set up velocity and normal vector frames/layouts
         self.velLbl = QtWidgets.QLabel('NaN')
-        velocFrame = QtWidgets.QGroupBox('Normal Velocity')
-        velocFrame.setAlignment(QtCore.Qt.AlignCenter)
-        velocLt = QtWidgets.QGridLayout(velocFrame)
+        self.velocFrame = QtWidgets.QGroupBox('Normal Velocity')
+        self.velocFrame.setAlignment(QtCore.Qt.AlignCenter)
+        velocLt = QtWidgets.QGridLayout(self.velocFrame)
         velocLt.addWidget(self.velLbl, 0, 0, 1, 1)
 
-        vecFrame = QtWidgets.QGroupBox('Normal Vector')
-        vecLt = QtWidgets.QVBoxLayout(vecFrame)
-        vecFrame.setAlignment(QtCore.Qt.AlignCenter)
+        self.vecFrame = QtWidgets.QGroupBox('Normal Vector')
+        vecLt = QtWidgets.QVBoxLayout(self.vecFrame)
+        self.vecFrame.setAlignment(QtCore.Qt.AlignCenter)
         self.normalVec = VectorWidget()
         vecLt.addWidget(self.normalVec)
 
@@ -151,8 +151,8 @@ class PlaneNormalUI(object):
         layout.addWidget(addInfoFrame, 1, 0, 1, 2)
         layout.addWidget(rFrame, 2, 0, 1, 1)
         layout.addWidget(tFrame, 2, 1, 1, 1)
-        layout.addWidget(velocFrame, 1, 2, 1, 1)
-        layout.addWidget(vecFrame, 2, 2, 1, 1)
+        layout.addWidget(self.velocFrame, 1, 2, 1, 1)
+        layout.addWidget(self.vecFrame, 2, 2, 1, 1)
 
         # Set up update button and status bar
         self.updateBtn = QtWidgets.QPushButton('Update')
@@ -161,8 +161,121 @@ class PlaneNormalUI(object):
         self.statusBar = QtWidgets.QStatusBar()
         self.statusBar.setSizeGripEnabled(False)
 
-        layout.addWidget(self.updateBtn, 3, 0, 1, 1)
-        layout.addWidget(self.statusBar, 3, 1, 1, 3)
+        # Set up button to average over a range of values
+        self.avgBtn = QtWidgets.QPushButton('Average...')
+        self.avgBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        # Arrange bottom layout
+        botmLt = QtWidgets.QHBoxLayout()
+        botmLt.addWidget(self.updateBtn)
+        botmLt.addWidget(self.avgBtn)
+        botmLt.addWidget(self.statusBar)
+
+        layout.addLayout(botmLt, 3, 0, 1, 4)
+
+class RangeSelectUI(object):
+    def setupUI(self, Frame, maxMin, minMax):
+        Frame.setWindowTitle('Threshold Range')
+        Frame.resize(100, 100)
+        layout = QtWidgets.QGridLayout(Frame)
+
+        instrLbl = QtWidgets.QLabel('Please select a value range to average over: ')
+
+        # Threshold range spinboxes set up
+        rangeLt = QtWidgets.QHBoxLayout()
+        minLbl = QtWidgets.QLabel('Min: ')
+        maxLbl = QtWidgets.QLabel(' Max: ')
+        self.threshMin = QtWidgets.QDoubleSpinBox()
+        self.threshMax = QtWidgets.QDoubleSpinBox()
+        for box in [self.threshMin, self.threshMax]:
+            box.setDecimals(7)
+            box.setMaximum(minMax)
+            box.setMinimum(maxMin)
+        self.threshMin.setValue(maxMin)
+        self.threshMax.setValue(minMax)
+
+        # Step size box setup
+        stepLbl = QtWidgets.QLabel('Step size:')
+        self.stepSize = QtWidgets.QDoubleSpinBox()
+        self.stepSize.setMinimum(0.01)
+        self.stepSize.setMaximum(abs(minMax - maxMin)/2)
+        self.stepSize.setDecimals(3)
+        self.stepSize.setValue(1)
+        stepLt = QtWidgets.QHBoxLayout()
+        stepLt.addWidget(stepLbl)
+        stepLt.addWidget(self.stepSize)
+        stepLt.addStretch(2)
+
+        # Set up range spinboxes/labels layout
+        for e in [minLbl, self.threshMin, None, maxLbl, self.threshMax, None]:
+            if e == None:
+                rangeLt.addStretch()
+            else:
+                rangeLt.addWidget(e)
+        rangeLt.addStretch(2)
+
+        self.applyBtn = QtWidgets.QPushButton('Apply')
+
+        layout.addWidget(instrLbl, 0, 0, 1, 4)
+        layout.addLayout(rangeLt, 1, 0, 1, 4)
+        layout.addLayout(stepLt, 2, 0, 1, 4)
+        layout.addWidget(self.applyBtn, 3, 3, 1, 1)
+
+class RangeSelect(QtGui.QFrame, RangeSelectUI):
+    def __init__(self, window, axis, dataRanges, maxMin, minMax, parent=None):
+        super(RangeSelect, self).__init__(parent)
+        self.window = window
+        self.axis = axis
+        self.dataRanges = dataRanges
+
+        # Do not open anything if range not valid
+        if not window.checkRangeValidity(dataRanges, maxMin, minMax):
+            window.avgNormal = None
+            return
+
+        self.ui = RangeSelectUI()
+        self.ui.setupUI(self, maxMin, minMax)
+        self.ui.applyBtn.clicked.connect(self.calcAvg)
+
+    def calcAvg(self):
+        # Get parameters
+        step = self.ui.stepSize.value()
+        startVal = self.ui.threshMin.value()
+        endVal = self.ui.threshMax.value()
+        # Swap if not in correct order
+        startVal = min(startVal, endVal)
+        endVal = max(startVal, endVal)
+
+        # Compute normal vec/vel at each step and average
+        numSteps = 0
+        avgVel = 0
+        avgVec = np.zeros(3)
+        currVal = startVal
+        while currVal <= endVal:
+            rD, tD, nvec, nvel = self.window.calcNormal(self.axis, self.dataRanges, currVal)
+            avgVec = avgVec + nvec
+            avgVel = avgVel + nvel
+            numSteps += 1
+            currVal += step
+
+        if numSteps == 0: # Return if failed
+            return
+        avgVec = avgVec / numSteps
+        avgVel = avgVel / numSteps
+
+        # Update main window's displayed values and close this window
+        self.updateUI(avgVec, avgVel, startVal, endVal)
+        self.close()
+
+    def updateUI(self, vec, vel, startVal, endVal):
+        # Change frame titles and values + updt current threshold text w/ range
+        prec = 5
+        self.window.ui.velocFrame.setTitle('Avg Normal Velocity')
+        self.window.ui.velLbl.setText(str(np.round(vel, decimals=prec)))
+        self.window.ui.vecFrame.setTitle('Avg Normal Vector')
+        self.window.ui.normalVec.setVector(np.round(vec, decimals=prec))
+        sv, ev = np.round(startVal, decimals=prec), np.round(endVal, decimals=prec)
+        self.window.ui.threshold.setText(str((sv, ev)))
 
 class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
     def __init__(self, window, parent=None):
@@ -175,8 +288,24 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
 
         self.ui.setupUI(self, window)
         self.ui.updateBtn.clicked.connect(self.calculate)
+        self.ui.avgBtn.clicked.connect(self.openRangeSelect)
         self.ui.axisComboBox.currentIndexChanged.connect(self.calculate)
+
         self.state = 0 # Startup state, nothing has been calculated yet
+        self.rangeSelect = None
+
+    def openRangeSelect(self):
+        # Open window to select a range to computer average over
+        self.closeRangeSelect()
+        axis = self.ui.axisComboBox.currentText()
+        dataRanges, maxMin, minMax = self.getDataRange(axis)
+        self.rangeSelect = RangeSelect(self, axis, dataRanges, maxMin, minMax)
+        self.rangeSelect.show()
+
+    def closeRangeSelect(self):
+        if self.rangeSelect:
+            self.rangeSelect.close()
+            self.rangeSelect = None
 
     def closeEvent(self, event):
         # Remove all threshold lines before closing
@@ -186,6 +315,7 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
             plotNum += 1
 
         self.window.endGeneralSelect()
+        self.closeRangeSelect()
         self.close()
 
     def getVec(self, scNum, index):
@@ -334,10 +464,13 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         self.addLinesToPlots(threshold)
 
         # Calculate the normal vector and update window
-        self.determineNormal(axis, dataRanges, threshold)
+        rD, tD, normalVec, vel = self.calcNormal(axis, dataRanges, threshold)
+
+        # Update all UI elements with newly calculated values
+        self.updateLabels(threshold, rD, tD, normalVec, vel)
         self.state = 1 # Mark as no longer being in startup state
 
-    def determineNormal(self, axis, dataRanges, threshold):
+    def calcNormal(self, axis, dataRanges, threshold):
         # Calculate the times where each spacecraft crosses threshold value
         crossTimes = self.detCrossTimes(axis, dataRanges, threshold)
 
@@ -369,11 +502,12 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         # Multiply the system solution by the velocity to get the normal vector
         normalVec = systemSol * velocity
 
-        # Update all UI elements with newly calculated values
-        self.updateLabels(threshold, rDelta, tDelta, normalVec, velocity)
+        return rDelta, tDelta, normalVec, velocity
 
     def updateLabels(self, threshold, rDelta, tDelta, normalVec, normalVeloc):
         prec = 5
+        self.ui.velocFrame.setTitle('Normal Velocity')
+        self.ui.vecFrame.setTitle('Normal Vector')
         self.ui.threshold.setText(str(round(threshold, prec)))
         self.ui.threshBox.setValue(threshold)
         self.ui.rDeltaMat.setMatrix(np.round(rDelta, decimals=prec))
