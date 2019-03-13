@@ -26,7 +26,7 @@ import pyqtgraph as pg
 import FF_File
 from FF_Time import FFTIME, leapFile
 
-from MagPy4UI import MagPy4UI, PyQtUtils, PlotGrid, StackedLabel
+from MagPy4UI import MagPy4UI, PyQtUtils, PlotGrid, StackedLabel, TimeEdit
 from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
@@ -37,7 +37,7 @@ from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion
-from MMSTools import PlaneNormal
+from MMSTools import PlaneNormal, Curlometer
 from mth import Mth
 from tests import Tests
 import bisect
@@ -108,6 +108,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.runTests.triggered.connect(self.runTests)
 
         self.ui.actionPlaneNormal.triggered.connect(self.openPlaneNormal)
+        self.ui.actionCurlometer.triggered.connect(self.openCurlometer)
 
         # Content menu action connections
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
@@ -136,6 +137,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # MMS Tools
         self.planeNormal = None
+        self.curlometer = None
 
         # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False
@@ -258,6 +260,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeSpectra()
         self.closeAddTickLbls()
         self.closePlaneNormal()
+        self.closeCurlometer()
 
     def initVariables(self):
         """init variables here that should be reset when file changes"""
@@ -316,12 +319,25 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     #    self.subWindows[key].close()
     #    self.subWindows[key] = None
 
+    def openCurlometer(self):
+        self.closeCurlometer()
+        self.curlometer = Curlometer(self)
+        self.initGeneralSelect('Curlometer', '#ffa500', self.curlometer.ui.timeEdit)
+
+    def showCurlometer(self):
+        if self.curlometer:
+            self.curlometer.show()
+            self.curlometer.calculate()
+
+    def closeCurlometer(self):
+        if self.curlometer:
+            self.curlometer.close()
+            self.curlometer = None
+
     def openPlaneNormal(self):
-        from MagPy4UI import TimeEdit
         self.closePlaneNormal()
         self.planeNormal = PlaneNormal(self)
-        timeEdit = TimeEdit(QtGui.QFont())
-        self.initGeneralSelect('Plane Normal', '#42f495', timeEdit)
+        self.initGeneralSelect('Plane Normal', '#42f495', None)
 
     def showNormal(self):
         if self.planeNormal:
@@ -1336,15 +1352,25 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.traceStats:
             self.traceStats.update()
 
+    def updateCurlometer(self):
+        if self.curlometer:
+            self.curlometer.calculate()
+
     # color is hex string ie: '#ff0000' for red
     def initGeneralSelect(self, name, color, timeEdit, canHide=False):
         # Initialize all variables used to set up selected regions
         self.selectMode = name
         self.selectTimeEdit = timeEdit
         self.selectColor = color
-        timeEdit.linesConnected = False
+        if timeEdit is not None:
+            timeEdit.linesConnected = False
 
-    def connectLinesToTimeEdit(self, timeEdit, region):
+    def connectLinesToTimeEdit(self, timeEdit, region, single=False):
+        if timeEdit == None:
+            return
+        elif single:
+            timeEdit.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
+            return
         if self.selectMode == 'Stats' and timeEdit.linesConnected:
             # Disconnect from any previously connected regions (only in Stats mode)
             timeEdit.start.dateTimeChanged.disconnect()
@@ -1365,8 +1391,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             region.removeRegionItems()
         self.regions = []
 
-    def updateLinesByTimeEdit(self, timeEdit, region):
+    def updateLinesByTimeEdit(self, timeEdit, region, single=False):
         x0, x1 = region.getRegion()
+
+        if x1 == x0:
+            i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.dateTime()), Epoch=self.epoch)._tick)
+            t0 = self.getTimeFromTick(i0)
+            self.updateLinesPos(region, t0, t0)
+            return
+
         i0,i1 = self.getTicksFromTimeEdit(timeEdit)
         t0 = self.getTimeFromTick(i0)
         t1 = self.getTimeFromTick(i1)
@@ -1378,12 +1411,18 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         t0 = UTCQDate.UTC2QDateTime(FFTIME(x0, Epoch=self.epoch).UTC)
         t1 = UTCQDate.UTC2QDateTime(FFTIME(x1, Epoch=self.epoch).UTC)
 
+        if x0 == x1 and self.selectMode == 'Curlometer':
+            timeEdit.blockSignals(True)
+            timeEdit.setDateTime(min(t0,t1))
+            timeEdit.blockSignals(False)
+            return
         timeEdit.setStartNoCallback(min(t0,t1))
         timeEdit.setEndNoCallback(max(t0,t1))
 
     def updateLinesPos(self, region, t0, t1):
         region.setRegion((t0 - self.tickOffset, t1 - self.tickOffset))
         self.updateTraceStats()
+        self.updateCurlometer()
 
     # get slider ticks from time edit
     def getTicksFromTimeEdit(self, timeEdit):
@@ -1477,14 +1516,21 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         # Holding ctrl key in stats mode allows selecting multiple regions
         ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
         multiSelect = (ctrlPressed and mode == 'Stats')
+        singleLineMode = (mode == 'Curlometer')
 
         # Case where no regions have been created or just adding a new line
         if window.regions == [] or (multiSelect and not window.regions[-1].isLine()):
             region = LinkedRegion(window, plts, values=(x, x), mode=mode, color=color)
             window.regions.append(region)
+            if mode == 'Curlometer':
+                self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, region, True)
+                QtCore.QTimer.singleShot(100, self.window.showCurlometer)
+            else:
+                # Initial connection to time edit
+                self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, region)
 
         # Case where last region added is still a line
-        elif window.regions[-1].isLine():
+        elif window.regions[-1].isLine() and not singleLineMode:
             # Get line's position x0 and create region between x0 and current x
             prevX = self.window.regions[-1].linePos()
             window.regions[-1].setRegion((prevX, x))
@@ -1493,13 +1539,13 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 PyQtUtils.moveToFront(self.window.edit.minVar)
 
             if mode == 'Spectra' and len(self.window.regions) == 1:
-                QtCore.QTimer.singleShot(100, self.window.showSpectra) # calls it with delay so ui has chance to draw lines first
+                QtCore.QTimer.singleShot(100, self.window.showSpectra)
 
             if mode == 'Plane Normal' and len(self.window.regions) == 1:
                 QtCore.QTimer.singleShot(100, self.window.showNormal)
 
         # Case where sub-region was previously set to hidden
-        elif window.regions[-1].isVisible(self.plotIndex) == False:
+        elif window.regions[-1].isVisible(self.plotIndex) == False and not singleLineMode:
             # Make sub-regions visible for this plot again
             for region in window.regions:
                 region.setVisible(True, self.plotIndex)
@@ -1508,11 +1554,13 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         numRegions = len(window.regions)
         if numRegions == 1 and window.regions[0].isLine():
             window.regions[0].fixedLine = True
-        elif numRegions > 0: # Once first region is set, allow dragging the edges
+        # Once first region is set, allow dragging the edges
+        elif numRegions > 0 and not singleLineMode: 
             window.regions[0].fixedLine = False
 
         self.window.updateTraceStats()
-        self.window.updateTimeEditByLines(self.window.selectTimeEdit, self.window.regions[-1])
+        if mode != 'Plane Normal':
+            self.window.updateTimeEditByLines(self.window.selectTimeEdit, self.window.regions[-1])
 
     # check if either of lines are visible for this viewbox
     def anyLinesVisible(self):
@@ -1535,6 +1583,8 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
         if not self.window.getSelectedPlotInfo(): # no plots then close
             self.window.closeTraceStats()
+            self.window.closeCurlometer()
+            self.window.closePlaneNormal()
             for region in self.window.regions:
                 region.removeRegionItems()
             self.window.regions = []

@@ -54,9 +54,6 @@ class LinkedRegion(pg.LinearRegionItem):
         self.labelPltIndex = 0
         self.setLabel(self.labelPltIndex)
 
-        # Initial connection to time edit
-        self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, self)
-
     def setLabel(self, plotNum):
         # Create new label for line
         fillColor = pg.mkColor('#212121') # Dark grey background color
@@ -143,9 +140,11 @@ class LinkedRegion(pg.LinearRegionItem):
             return
         # Update trace stats, connect lines to time edit, and update time edit
         # values, if applicable
-        self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, self)
+        if self.window.selectMode == 'Stats':
+            self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, self)
         self.window.updateTimeEditByLines(self.window.selectTimeEdit, self)
         self.window.updateTraceStats()
+        self.window.updateCurlometer()
 
 class LinkedSubRegion(pg.LinearRegionItem):
     def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):

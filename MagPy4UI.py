@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import QSizePolicy
 from plotAppearance import PlotAppearance, PlotAppearanceUI
 from addTickLabels import LabelSetGrid
 
+import numpy as np
 import pyqtgraph as pg
 import functools
 
@@ -59,7 +60,11 @@ class MagPy4UI(object):
 
         self.actionPlaneNormal = QtWidgets.QAction(window)
         self.actionPlaneNormal.setText('Plane Normal...')
-        self.actionPlaneNormal.setStatusTip('Calculates the normal to the plane using timing method')
+        self.actionPlaneNormal.setStatusTip('Calculates the normal to the plane using the timing method')
+
+        self.actionCurlometer = QtWidgets.QAction(window)
+        self.actionCurlometer.setText('Curlometer...')
+        self.actionCurlometer.setStatusTip('Estimates the electric current density inside the tetrahedron')
 
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
         self.scaleYToCurrentTimeAction.setStatusTip('')
@@ -109,6 +114,7 @@ class MagPy4UI(object):
 
         self.MMSMenu = self.menuBar.addMenu('&MMS Tools')
         self.MMSMenu.addAction(self.actionPlaneNormal)
+        self.MMSMenu.addAction(self.actionCurlometer)
 
         self.optionsMenu = self.menuBar.addMenu('&Options')
         self.optionsMenu.addAction(self.scaleYToCurrentTimeAction)
@@ -363,10 +369,11 @@ class TimeEdit():
         return d0,d1    
 
 class MatrixWidget(QtWidgets.QWidget):
-    def __init__(self, type='labels', parent=None):
+    def __init__(self, type='labels', prec=None, parent=None):
         #QtWidgets.QWidget.__init__(self, parent)
         super(MatrixWidget, self).__init__(parent)
         grid = QtWidgets.QGridLayout(self)
+        self.prec = prec
         self.mat = [] # matrix of label or line widgets
         grid.setContentsMargins(0,0,0,0)
         for y in range(3):
@@ -390,7 +397,13 @@ class MatrixWidget(QtWidgets.QWidget):
     def setMatrix(self, m):
         for i in range(3):
             for j in range(3):
-                self.mat[i][j].setText(Mth.formatNumber(m[i][j]))
+                if self.prec == None:
+                    self.mat[i][j].setText(Mth.formatNumber(m[i][j]))
+                else:
+                    if abs(np.min(m)) < 1/1000 or abs(np.max(m)) < 1/1000000:
+                        self.mat[i][j].setText(np.format_float_scientific(m[i][j], precision=self.prec))
+                    else:
+                        self.mat[i][j].setText(np.array2string(m[i][j], precision=self.prec))
                 self.mat[i][j].repaint() # seems to fix max repaint problems
 
     # returns list of numbers
@@ -411,11 +424,12 @@ class MatrixWidget(QtWidgets.QWidget):
         return Mth.matToString(self.getMatrix())
 
 class VectorWidget(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, prec=None):
         super(VectorWidget, self).__init__(None)
         vecLt = QtWidgets.QGridLayout(self)
         vecLt.setContentsMargins(0,0,0,0)
         self.lbls = []
+        self.prec = prec
         for i in range(0, 3):
             lbl = QtWidgets.QLabel()
             lbl.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
@@ -425,7 +439,13 @@ class VectorWidget(QtWidgets.QWidget):
 
     def setVector(self, vec):
         for i in range(0, 3):
-            self.lbls[i].setText(str(vec[i]))
+            if self.prec == None:
+                self.lbls[i].setText(str(vec[i]))
+            else:
+                if abs(np.min(vec)) < 1/1000 or abs(np.max(vec)) > (10 ** (self.prec + 1)):
+                    self.lbls[i].setText(np.format_float_scientific(vec[i], precision=self.prec))
+                else:
+                    self.lbls[i].setText(str(np.round(vec[i], decimals=self.prec)))
 
 # pyqt utils
 class PyQtUtils:

@@ -1,6 +1,10 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from MagPy4UI import MatrixWidget, VectorWidget
+from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit
+from dataDisplay import DataDisplay, UTCQDate
+from FF_Time import FFTIME, leapFile
+
+from scipy import constants
 
 import pyqtgraph as pg
 import numpy as np
@@ -21,6 +25,15 @@ class MMSTools():
 
     def getDstrsByVec(self, vec, grp='Field'):
         return self.grps[grp][vec]
+
+    def getVec(self, scNum, index, grp='Field'):
+        # Gets the spacecraft's data vector (bx, by, bz) at a given data index
+        dstrs = self.getDstrsBySpcrft(scNum, grp)
+        vec = []
+        for dstr in dstrs:
+            dta = self.window.getData(dstr)
+            vec.append(dta[index])
+        return np.array(vec)
 
     def initGroups(self):
         # Extract all position datastrings and field datastrings separately
@@ -318,15 +331,6 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         self.closeRangeSelect()
         self.close()
 
-    def getVec(self, scNum, index):
-        # Gets the spacecraft's data vector (bx, by, bz) at a given data index
-        dstrs = self.getDstrsBySpcrft(scNum)
-        vec = []
-        for dstr in dstrs:
-            dta = self.window.getData(dstr)
-            vec.append(dta[index])
-        return np.array(vec)
-
     def getDstr(self, scNum, axis):
         return self.getDstrsByVec(axis)[scNum-1]
 
@@ -531,3 +535,307 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
                 # Update line position for new thresholds
                 self.lines[plotNum].setPos(threshold)
             plotNum += 1
+
+# Calculations derived from ESA paper on curlometer technique
+class CurlometerUI(object):
+    def setupUI(self, Frame, window):
+        Frame.setWindowTitle('Curlometer')
+        Frame.resize(300, 200)
+        layout = QtWidgets.QGridLayout(Frame)
+
+        # Set up frames for values w/ own frames
+        rFrame = QtWidgets.QFrame()
+        JFrame = QtWidgets.QFrame()
+        curlFrame = QtWidgets.QFrame()
+        jParFrame = QtWidgets.QFrame()
+        jPerpFrame = QtWidgets.QFrame()
+        frames = [rFrame, JFrame, curlFrame, jParFrame, jPerpFrame]
+        for frm in frames:
+            frm.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+
+        # Set up layouts for centering widgets
+        rLt = QtWidgets.QHBoxLayout(rFrame)
+        jLt = QtWidgets.QHBoxLayout(JFrame)
+        curlLt = QtWidgets.QHBoxLayout(curlFrame)
+        jParLt = QtWidgets.QHBoxLayout(jParFrame)
+        jPerpLt = QtWidgets.QHBoxLayout(jPerpFrame)
+        layouts = [rLt, jLt, curlLt, jParLt, jPerpLt]
+
+        # Set up value widgets
+        self.curlB = VectorWidget(prec=5)
+        self.Rmat = MatrixWidget(prec=5)
+        self.AvgDensVec = VectorWidget(prec=5)
+        self.divB = QtWidgets.QLabel()
+        self.divBcurlB = QtWidgets.QLabel()
+        self.jPar = QtWidgets.QLabel()
+        self.jPerp = QtWidgets.QLabel()
+        widgets = [self.Rmat, self.AvgDensVec, self.curlB, self.jPar, self.jPerp]
+
+        # Make value label widgets selectable
+        for lbl in [self.divB, self.divBcurlB, self.jPar, self.jPerp]:
+            lbl.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+
+        # Center layouts that contain only one element
+        for lt, wdg in zip(layouts, widgets):
+            lt.addStretch()
+            lt.addWidget(wdg)
+            lt.addStretch()
+
+        # Set up labels for all widgets that will display values
+        rLbl = QtWidgets.QLabel('R')
+        jLbl = QtWidgets.QLabel('<p> Current Density J (nA/m<sup>2</sup>)</p>')
+        divLbl = QtWidgets.QLabel('<p>Div B: </p>')
+        curlLbl = QtWidgets.QLabel('<p>Curl B</p>')
+        ratioLbl = QtWidgets.QLabel('<p>|Div B|÷|Curl B|:</p>')
+        jParLbl = QtWidgets.QLabel('<p>| J<sub>PAR</sub> |</p>')
+        jPerpLbl = QtWidgets.QLabel('<p>| J<sub>PERP</sub> |</p>')
+
+        # Set up quality measures layout
+        qmFrame = QtWidgets.QFrame()
+        qmFrame.setFrameStyle(QtWidgets.QFrame.StyledPanel)
+        qmLt = QtWidgets.QGridLayout(qmFrame)
+        qmLbl = QtWidgets.QLabel('Quality Measures')
+
+        qmLt.addWidget(divLbl, 0, 0, 1, 1)
+        qmLt.addWidget(self.divB, 0, 1, 1, 1)
+        qmLt.addWidget(ratioLbl, 1, 0, 1, 1)
+        qmLt.addWidget(self.divBcurlB, 1, 1, 1, 1)
+
+        # Insert all widgets into layout
+        colNum = 0
+        order = [(rLbl, 2), (curlLbl, 1), (jLbl, 2)]
+        for e, spn in order:
+            layout.addWidget(e, 0, colNum, 1, spn, alignment=QtCore.Qt.AlignCenter)
+            colNum += spn
+
+        colNum = 0
+        order = [(rFrame, 2, 3), (curlFrame, 1, 3), (JFrame, 2, 3)]
+        for e, spn, ht in order:
+            layout.addWidget(e, 1, colNum, ht, spn)
+            colNum += spn
+
+        layout.addWidget(qmLbl, 4, 0, 1, 2, alignment=QtCore.Qt.AlignCenter)
+        layout.addWidget(qmFrame, 5, 0, 2, 2)
+
+        layout.addWidget(jParLbl, 4, 2, 1, 1, alignment=QtCore.Qt.AlignCenter)
+        layout.addWidget(jPerpLbl, 4, 3, 1, 2, alignment=QtCore.Qt.AlignCenter)
+        layout.addWidget(jParFrame, 5, 2, 2, 1)
+        layout.addWidget(jPerpFrame, 5, 3, 2, 2)
+
+        # Set up TimeEdit and checkbox to keep window on top of main win
+        self.timeEdit = QtWidgets.QTimeEdit()
+        self.timeEdit.setDisplayFormat('yyyy MMM dd hh:mm:ss.zzz')
+        minDt, maxDt = window.getMinAndMaxDateTime()
+        self.timeEdit.setMinimumDateTime(minDt)
+        self.timeEdit.setMaximumDateTime(maxDt)
+        self.onTopCheckBox = QtWidgets.QCheckBox('Stay On Top')
+
+        layout.addWidget(self.timeEdit, 7, 0, 1, 1)
+        layout.addWidget(self.onTopCheckBox, 7, 2, 1, 1)
+
+class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
+    def __init__(self, window, parent=None):
+        super(Curlometer, self).__init__(parent)
+        self.window = window
+
+        MMSTools.__init__(self, window)
+        self.ui = CurlometerUI()
+        self.ui.setupUI(self, window)
+
+        if self.ui.onTopCheckBox.isChecked():
+            self.toggleWindowOnTop(True)
+        self.ui.onTopCheckBox.clicked.connect(self.toggleWindowOnTop)
+
+    def closeEvent(self, event):
+        self.window.endGeneralSelect()
+        self.close()
+
+    def toggleWindowOnTop(self, val):
+        # Keeps window on top of main window while user updates lines
+        self.setParent(self.window if val else None)
+        dialogFlag = QtCore.Qt.Dialog
+        if self.window.OS == 'posix':
+            dialogFlag = QtCore.Qt.Tool
+        flags = self.windowFlags()
+        flags = flags | dialogFlag if val else flags & ~dialogFlag
+        self.setWindowFlags(flags)
+        self.show()
+
+    def calculate(self):
+        refSpc = 4 # Current default for now
+        mu0 = constants.mu_0
+
+        # Determine data index corresponding to selected time
+        tO, tE = self.window.getSelectionStartEndTimes()
+        times = self.window.getTimes(self.window.DATASTRINGS[0], 0)[0]
+        index = self.window.calcDataIndexByTime(times, tO)
+        if index == len(times):
+            index = index - 1
+
+        # Calculate R, I
+        R = self.getRMatrix(refSpc, index)
+        I = self.getIVec(refSpc, index)
+
+        # Calculate curl(B) and J from R and I
+        Rinv = np.linalg.inv(R)
+        curlB = np.matmul(Rinv, I)
+        J = (1/mu0) * curlB
+
+        # Calculate quality measures
+        divB = self.calcDivB(refSpc, index)
+        divCurlB = abs(divB) / np.linalg.norm(curlB)
+
+        # Calculate J_Parallel and J_Perpendicular magnitudes
+        jPara, jPerp = self.calcJperpJpar(J, index)
+
+        # Switch all results back to original units
+        jPara = self.convertToOriginal(jPara)
+        jPerp = self.convertToOriginal(jPerp)
+        R = self.convertToOriginal(R, dtaType='pos')
+        J = self.convertToOriginal(J)
+        divB = self.convertToOriginal(divB)
+        curlB = self.convertToOriginal(curlB)
+
+        self.setLabels(R, J, divB, curlB, divCurlB, (jPara, jPerp))
+
+    def calcDivB(self, refSpc, index):
+        spcrfts = [1, 2, 3, 4]
+        spcrfts.remove(refSpc)
+        spcrftStack = spcrfts[:] # Object to keep track of remaining spcrfts
+
+        i = 0
+        sumVal = 0
+        stackLen = len(spcrftStack)
+
+        # Cyclic sum, use a list to cycle through all (i, j, k) orderings
+        while i < stackLen:
+            top = spcrftStack[0] # Current i spacecraft
+            # Move to end for next combination, first two elems are now j and k
+            spcrftStack.remove(top)
+            spcrftStack.append(top)
+
+            # Calculate delta B_i and delta R_j x delta R_k
+            bDelta = self.getBDelta(top, refSpc, index)
+            crossDiff = self.crossDiffs(spcrftStack[0], spcrftStack[1], refSpc, index)
+
+            # Dot these two values together and add to sum
+            sumVal += np.dot(bDelta, crossDiff)
+
+            i += 1
+        sumVal = sumVal
+
+        # Calculate delta_R_i and delta_R_j x delta_R_k for first i,j,k combination
+        crossDiff = self.crossDiffs(spcrfts[1], spcrfts[2], refSpc, index)
+        rDelta = self.rDelta(spcrfts[0], refSpc, index)
+        denom = np.dot(rDelta, crossDiff)
+
+        # Result is the initial sum divided by this last dot product
+        return abs(sumVal / denom)
+
+    def setLabels(self, R, J, divB, curlB, divCurlB, parPerp):
+        # Updates all labels in window
+        self.ui.Rmat.setMatrix(R)
+        self.ui.AvgDensVec.setVector(J)
+        self.ui.divB.setText(np.format_float_scientific(divB, precision=5))
+        self.ui.curlB.setVector(curlB)
+        self.ui.divBcurlB.setText(np.format_float_scientific(divCurlB, precision=5))
+        jPara, jPerp = parPerp
+        self.ui.jPar.setText(str(np.round(jPara, decimals=5)))
+        self.ui.jPerp.setText(str(np.round(jPerp, decimals=5)))
+
+    def convertToSI(self, dta, dtaType='mag'):
+        # Converts data units to SI units
+        kmToMeters = 1e3
+        ntToTesla = 1e-9
+        convDta = dta
+        if dtaType == 'pos':
+            convDta *= kmToMeters
+        elif dtaType == 'mag':
+            convDta *= ntToTesla
+        return convDta
+
+    def convertToOriginal(self, dta, dtaType='mag'):
+        # Converts vectors/matrices from SI units back to original units
+        kmToMeters = 1e3
+        ntToTesla = 1e-9
+        convDta = dta
+        if dtaType == 'pos':
+            convDta /= kmToMeters
+        elif dtaType == 'mag':
+            convDta /= ntToTesla
+        return convDta
+
+    def getRMatrix(self, refSpc, index):
+        # Calculates cross product for Δ r_a, Δ r_b for all (a,b) pairs
+        otherSpcrfts = [1,2,3,4]
+        otherSpcrfts.remove(refSpc)
+
+        R = np.zeros((3,3))
+        rowNum = 0
+        pairs = [(otherSpcrfts[0], otherSpcrfts[1]),
+                (otherSpcrfts[1], otherSpcrfts[2]),
+                (otherSpcrfts[0], otherSpcrfts[2])]
+
+        for i in range(0, 3):
+            spc1, spc2 = pairs[rowNum]
+            R[rowNum] = self.crossDiffs(spc1, spc2, refSpc, index)
+            rowNum += 1
+
+        return R
+
+    def getIVec(self, refSpc, index):
+        # Calculates Δ B_a * Δ r_b - Δ B_b * Δ r_a for all (a, b) pairs
+        otherSpcrfts = [1,2,3,4]
+        otherSpcrfts.remove(refSpc)
+
+        I = np.zeros(3)
+        rowNum = 0
+        pairs = [(otherSpcrfts[0], otherSpcrfts[1]),
+                (otherSpcrfts[1], otherSpcrfts[2]),
+                (otherSpcrfts[0], otherSpcrfts[2])]
+
+        for i in range(0, 3):
+            # Calculate delta B's and delta R's
+            spc1, spc2 = pairs[rowNum]
+            bdelta1 = self.getBDelta(spc1, refSpc, index)
+            rdelta1 = self.rDelta(spc2, refSpc, index)
+            bdelta2 = self.getBDelta(spc2, refSpc, index)
+            rdelta2 = self.rDelta(spc1, refSpc, index)
+            # Dot and subtract
+            I[rowNum] = np.dot(bdelta1, rdelta1) - np.dot(bdelta2, rdelta2)
+            rowNum += 1
+
+        return I
+
+    def crossDiffs(self, nonRefSpc1, nonRefSpc2, refSpc, index):
+        # r_ij x r_kj, where r is the rdelta vector wrt refSpc
+        rDelta1 = self.rDelta(nonRefSpc1, refSpc, index)
+        rDelta2 = self.rDelta(nonRefSpc2, refSpc, index)
+        crossDiff = np.cross(rDelta1, rDelta2)
+        return crossDiff
+
+    def getBDelta(self, nonRefSpc, refSpc, index):
+        # b_i - b_ref, where b is the magnetic field vector
+        nonRefVec = self.getVec(nonRefSpc, index)
+        refVec = self.getVec(refSpc, index)
+        siVec = self.convertToSI(nonRefVec - refVec)
+        return siVec
+
+    def rDelta(self, nonRefSpc, refSpc, index):
+        # xyz_i - xyz_ref, where xyz is the position vector
+        nonRefVec = self.getVec(nonRefSpc, index, grp='Pos')
+        refVec = self.getVec(refSpc, index, grp='Pos')
+        siVec = self.convertToSI(nonRefVec - refVec, dtaType='pos')
+        return siVec
+
+    def calcJperpJpar(self, J, index):
+        B = np.zeros(3)
+        for scNum in [1,2,3,4]:
+            B = B + self.convertToOriginal(self.getVec(scNum, index))
+        B = B / 4
+
+        jPara = np.dot(J, B) / np.linalg.norm(B)
+        jProj = (np.dot(J, B) / (np.linalg.norm(B) ** 2)) * B
+        jPerp = np.linalg.norm(J - jProj)
+
+        return jPara, jPerp
