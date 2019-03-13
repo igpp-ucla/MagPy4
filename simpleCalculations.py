@@ -167,7 +167,8 @@ class simpleCalcUI(object):
         self.instrLbl = QtWidgets.QLabel('Please enter an expression to calculate:\n')
 
         self.textBox = QtWidgets.QTextEdit()
-        self.textBox.setPlaceholderText('Examples:\nBx_IFG = Bx_IFG * 3 + 5^2\nBx_SC = (Bx_SC + By_SC)/2')
+        exampleTxt = 'Examples:\nBx_IFG = Bx_IFG * 3 + 5^2\nBx_Avg = (BX_GSM1 + BX_GSM2)/2'
+        self.textBox.setPlaceholderText(exampleTxt)
 
         self.applyBtn = QtWidgets.QPushButton('Apply')
         self.applyBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
@@ -243,8 +244,35 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
             self.ui.statusBar.showMessage('Invalid expression!', 2000)
 
     def applyEdit(self, dta, exprStr):
+        # Add to current var's edited data
         if self.varName in self.window.DATASTRINGS:
             self.window.DATADICT[self.varName].append(dta)
             self.editWindow.addHistory(np.identity(3), exprStr, 'Calc')
+        elif self.varName.lower() in [dstr.lower() for dstr in self.window.DATASTRINGS]:
+            # If lowercase varname == lowercase existing datastring, raise an error msg
+            self.ui.statusBar.showMessage('Error: Invalid variable name.')
         else:
-            raise Exception('Variable name not in datastrings')
+            # If not in datastrings, create a new variable
+            self.initNewVar(self.varName, dta)
+            self.editWindow.addHistory(np.identity(3), exprStr, 'Calc ' + self.varName)
+            self.ui.statusBar.showMessage('New variable '+self.varName+' created.', 3000)
+
+    def initNewVar(self, dstr, dta):
+        # Add new variable name to list of datastrings
+        self.window.DATASTRINGS.append(dstr)
+        self.window.ABBRV_DSTR_DICT[dstr] = dstr
+
+        # Use any datastring's times as base
+        times = self.window.getTimes(self.window.DATASTRINGS[0], 0)
+        self.window.TIMES.append(times)
+        self.window.TIMEINDEX[dstr] = len(self.window.TIMES) - 1
+
+        # Add in data to dictionaries, no units
+        self.window.ORIGDATADICT[dstr] = dta
+        self.window.DATADICT[dstr] = [dta]
+        self.window.UNITDICT[dstr] = ''
+
+        # Pad rest of datadict to have same length
+        length = len(self.editWindow.history)
+        while len(self.window.DATADICT[dstr]) < length:
+            self.window.DATADICT[dstr].append([])
