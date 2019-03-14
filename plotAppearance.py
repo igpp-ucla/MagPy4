@@ -30,7 +30,7 @@ class PlotAppearanceUI(object):
 
         self.tickLblSzBox = QtWidgets.QSpinBox()
         self.tickLblSzBox.setMinimum(5)
-        self.tickLblSzBox.setMaximum(18)
+        self.tickLblSzBox.setMaximum(25)
 
         layout.addWidget(self.titleSzLbl, 0, 0, 1, 1)
         layout.addWidget(self.axisLblSzLbl, 1, 0, 1, 1)

@@ -623,14 +623,12 @@ class CurlometerUI(object):
         layout.addWidget(jPerpFrame, 5, 3, 2, 2)
 
         # Set up TimeEdit and checkbox to keep window on top of main win
-        self.timeEdit = QtWidgets.QTimeEdit()
-        self.timeEdit.setDisplayFormat('yyyy MMM dd hh:mm:ss.zzz')
+        self.timeEdit = TimeEdit(QtGui.QFont())
         minDt, maxDt = window.getMinAndMaxDateTime()
-        self.timeEdit.setMinimumDateTime(minDt)
-        self.timeEdit.setMaximumDateTime(maxDt)
+        self.timeEdit.setupMinMax((minDt, maxDt))
         self.onTopCheckBox = QtWidgets.QCheckBox('Stay On Top')
 
-        layout.addWidget(self.timeEdit, 7, 0, 1, 1)
+        layout.addWidget(self.timeEdit.start, 7, 0, 1, 1)
         layout.addWidget(self.onTopCheckBox, 7, 2, 1, 1)
 
 class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):

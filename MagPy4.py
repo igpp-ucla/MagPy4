@@ -1393,16 +1393,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def updateLinesByTimeEdit(self, timeEdit, region, single=False):
         x0, x1 = region.getRegion()
-
-        if x1 == x0:
-            i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.dateTime()), Epoch=self.epoch)._tick)
+        i0, i1 = self.getTicksFromTimeEdit(timeEdit)
+        t0 = self.getTimeFromTick(i0)
+        t1 = self.getTimeFromTick(i1)
+        if self.selectMode == 'Curlometer':
+            i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick)
             t0 = self.getTimeFromTick(i0)
             self.updateLinesPos(region, t0, t0)
             return
-
-        i0,i1 = self.getTicksFromTimeEdit(timeEdit)
-        t0 = self.getTimeFromTick(i0)
-        t1 = self.getTimeFromTick(i1)
         assert(t0 <= t1)
         self.updateLinesPos(region, t0 if x0 < x1 else t1, t1 if x0 < x1 else t0)
 
@@ -1411,11 +1409,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         t0 = UTCQDate.UTC2QDateTime(FFTIME(x0, Epoch=self.epoch).UTC)
         t1 = UTCQDate.UTC2QDateTime(FFTIME(x1, Epoch=self.epoch).UTC)
 
-        if x0 == x1 and self.selectMode == 'Curlometer':
-            timeEdit.blockSignals(True)
-            timeEdit.setDateTime(min(t0,t1))
-            timeEdit.blockSignals(False)
-            return
         timeEdit.setStartNoCallback(min(t0,t1))
         timeEdit.setEndNoCallback(max(t0,t1))
 
@@ -1523,7 +1516,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
             region = LinkedRegion(window, plts, values=(x, x), mode=mode, color=color)
             window.regions.append(region)
             if mode == 'Curlometer':
-                self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, region, True)
+                self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, region)
                 QtCore.QTimer.singleShot(100, self.window.showCurlometer)
             else:
                 # Initial connection to time edit
