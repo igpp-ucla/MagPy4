@@ -398,10 +398,9 @@ class SpectraPlotApp(PlotAppearance):
         elif axis.orientation == 'left':
             axis.setStyle(tickTextOffset=2)
 
-
 ### Tick Spacing classes ###
 class TickIntervalsUI(object):
-    def setupUI(self, Frame, window, plotItems):
+    def setupUI(self, Frame, window, plotItems, links):
         Frame.setWindowTitle('Set Tick Spacing')
         Frame.resize(200, 100)
         layout = QtWidgets.QGridLayout(Frame)
@@ -417,33 +416,58 @@ class TickIntervalsUI(object):
         # Collect UI boxes/buttons and information about the corresp. axis
         self.intervalBoxes = []
         for name in ['left', 'bottom']:
+            # Builds frames / UI elements for corresponding axis side
+            self.buildAxisBoxes(layout, name, btmPlt, yMax, links)
+
+    def getBoxName(self, axOrient, linkGrp):
+        # Create name for linked axes if more than one link grp
+        nameBase = 'Linked ' + axOrient[0].upper() + axOrient[1:] + ' Axes '
+        boxName = nameBase + str([pltNum + 1 for pltNum in linkGrp])
+        return boxName
+
+    def setupBoxDefaults(self, ax, axType, box, name, yMax):
+        # Set maximum interval for left axes
+        if name == 'left' and axType == 'Regular':
+            box.setMaximum(yMax)
+
+        if axType == 'DateTime':
+            # Determine initial time interval if previously set
+            if ax.tickDiff is not None:
+                hr = ax.tickDiff.seconds / 3600
+                minutes = (ax.tickDiff.seconds % 3600)/60
+                seconds = (ax.tickDiff.seconds % 60)
+                prevTime = QtCore.QTime(hr, minutes, seconds)
+                box.setTime(prevTime)
+            else:
+                # Otherwise, default to 10 minutes
+                hrtime = QtCore.QTime(0,10,0)
+                box.setTime(hrtime)
+        else:
+            # Set initial value for spinbox if previously set
+            if ax.tickDiff is not None:
+                box.setValue(ax.tickDiff)
+            else:
+                box.setValue(1)
+
+    def buildAxisBoxes(self, layout, name, btmPlt, yMax, links):
+        # For every linked axis group
+        numLinks = len(links) if name == 'left' else 1
+        for i in range(0, numLinks):
             # Get axis, axis type, and create UI elements as apprp.
             ax = btmPlt.getAxis(name)
             axType = ax.axisType()
-            axisFrame, box, applyBtn, defBtn = self.buildIntervalUI(name, axType)
 
-            # Set maximum interval for left axes
-            if name == 'left' and axType == 'Regular':
-                box.setMaximum(yMax)
+            # Create box label, add numbers corresp. to links if more than one grp
+            boxName = name[0].upper() + name[1:] + ' Axis'
+            if numLinks > 1 and name == 'left':
+                if len(links[i]) > 1:
+                    boxName = self.getBoxName(name, links[i])
+                else:
+                    boxName = boxName + ' ' + str(links[i][0]+1)
 
-            if axType == 'DateTime':
-                # Determine initial time interval if previously set
-                if ax.tickDiff is not None:
-                    hr = ax.tickDiff.seconds / 3600
-                    minutes = (ax.tickDiff.seconds % 3600)/60
-                    seconds = (ax.tickDiff.seconds % 60)
-                    prevTime = QtCore.QTime(hr, minutes, seconds)
-                    box.setTime(prevTime)
-                else:
-                    # Otherwise, default to 10 minutes
-                    hrtime = QtCore.QTime(0,10,0)
-                    box.setTime(hrtime)
-            else:
-                # Set initial value for spinbox if previously set
-                if ax.tickDiff is not None:
-                    box.setValue(ax.tickDiff)
-                else:
-                    box.setValue(1)
+            # Builds the actual UI elements from info above
+            axisFrame, box, applyBtn, defBtn = self.buildIntervalUI(boxName, axType)
+            self.setupBoxDefaults(ax, axType, box, name, yMax)
 
             # Store this axe's info/UI elements and add frame to layout
             self.intervalBoxes.append((box, name, axType, applyBtn, defBtn))
@@ -451,7 +475,6 @@ class TickIntervalsUI(object):
 
     def buildIntervalUI(self, name, axType):
         # Initialize common UI elements
-        name = 'Left Axis' if name == 'left' else 'Bottom Axis'
         axisFrame = QtWidgets.QGroupBox(name + ':')
         applyBtn = QtWidgets.QPushButton('Apply')
         defBtn = QtWidgets.QPushButton('Default')
@@ -484,27 +507,35 @@ class TickIntervalsUI(object):
         return axisFrame, intervalBox, applyBtn, defBtn
 
 class TickIntervals(QtGui.QFrame, TickIntervalsUI):
-    def __init__(self, window, plotItems, parent=None):
+    def __init__(self, window, plotItems, parent=None, links=None):
         super(TickIntervals, self).__init__(parent)
         self.ui = TickIntervalsUI()
-        self.ui.setupUI(self, window, plotItems)
+        self.ui.setupUI(self, window, plotItems, links)
         self.window = window
         self.plotItems = plotItems
+        self.links = links
 
         # Connect 'apply' and 'default' buttons to appr functions
         for i, (intBox, name, axType, applyBtn, defBtn) in enumerate(self.ui.intervalBoxes):
-            applyBtn.clicked.connect(functools.partial(self.applyChange, intBox, name, axType))
-            defBtn.clicked.connect(functools.partial(self.setDefault, name))
+            applyBtn.clicked.connect(functools.partial(self.applyChange, intBox, name, axType, i))
+            defBtn.clicked.connect(functools.partial(self.setDefault, name, i))
 
-    def setDefault(self, name):
+    def setDefault(self, name, index):
+        # Use all plots if no link settings, otherwise only update link grp
+        if self.links is not None and name == 'left':
+            pltIndices = self.links[index]
+        else:
+            pltIndices = [pltNum for pltNum in range(len(self.plotItems))]
+
         # Have each plot's corresp. axes reset its tick spacing
-        for plt in self.plotItems:
+        for pltNum in pltIndices:
+            plt = self.plotItems[pltNum]
             axis = plt.getAxis(name)
             axis.resetTickSpacing()
 
         self.additionalUpdates()
 
-    def applyChange(self, intBox, name, axType):
+    def applyChange(self, intBox, name, axType, index):
         # Get spinbox value
         if axType == 'DateTime':
             # Convert QTime object to a timedelta object for DateTime axes
@@ -516,8 +547,15 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
         else:
             value = intBox.value()
 
+        # Use all plots if no link settings, otherwise only update link grp
+        if self.links is not None and name == 'left':
+            pltIndices = self.links[index]
+        else:
+            pltIndices = [pltNum for pltNum in range(len(self.plotItems))]
+
         # Have each plot's corresp. axes update its tick spacing with value
-        for plt in self.plotItems:
+        for pltNum in pltIndices:
+            plt = self.plotItems[pltNum]
             axis = plt.getAxis(name)
             axis.setCstmTickSpacing(value)
 
@@ -529,7 +567,8 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
 
 class MagPyTickIntervals(TickIntervals):
     def __init__(self, window, plotItems, parent=None):
-        TickIntervals.__init__(self, window, plotItems, parent)
+        links = window.lastPlotLinks
+        TickIntervals.__init__(self, window, plotItems, parent, links=links)
 
     def additionalUpdates(self):
         # Update plot ranges so tick marks are uniform across axes/plots
