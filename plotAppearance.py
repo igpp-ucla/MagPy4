@@ -451,7 +451,7 @@ class TickIntervalsUI(object):
 
     def buildAxisBoxes(self, layout, name, btmPlt, yMax, links):
         # For every linked axis group
-        numLinks = len(links) if name == 'left' else 1
+        numLinks = len(links) if (name == 'left' and links is not None) else 1
         for i in range(0, numLinks):
             # Get axis, axis type, and create UI elements as apprp.
             ax = btmPlt.getAxis(name)
