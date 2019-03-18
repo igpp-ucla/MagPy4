@@ -20,6 +20,7 @@ class MMSTools():
         self.scGrps = {} # Internally maps by spacecraft number (bx1, by1, ...)
         self.initGroups()
 
+
     def getDstrsBySpcrft(self, scNum, grp='Field'):
         return self.scGrps[grp][scNum]
 
@@ -622,14 +623,38 @@ class CurlometerUI(object):
         layout.addWidget(jParFrame, 5, 2, 2, 1)
         layout.addWidget(jPerpFrame, 5, 3, 2, 2)
 
+        # New plot variables layout setup
+        prgrsLt = QtWidgets.QGridLayout()
+        plotFrame = QtWidgets.QGroupBox('Generate variables for plotting: ')
+        plotLt = QtWidgets.QHBoxLayout(plotFrame)
+        self.jParaChk = QtWidgets.QCheckBox('| J_Para |')
+        self.jMagChk = QtWidgets.QCheckBox('| J |')
+        self.jPerpChk = QtWidgets.QCheckBox('| J_Perp |')
+        for i, e in enumerate([self.jMagChk, self.jParaChk, self.jPerpChk]):
+            plotLt.addWidget(e)
+        plotLt.addStretch()
+
+        self.progressBar = QtWidgets.QProgressBar()
+        self.progressLbl = QtWidgets.QLabel()
+        self.applyBtn = QtWidgets.QPushButton('Apply')
+        self.applyBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        layout.addWidget(plotFrame, 7, 0, 3, 2)
+        layout.addWidget(self.applyBtn, 8, 2, 2, 1)
+        layout.addWidget(self.progressLbl, 8, 3, 1, 2)
+        layout.addWidget(self.progressBar, 9, 3, 1, 2)
+
         # Set up TimeEdit and checkbox to keep window on top of main win
+        btmLt = QtWidgets.QHBoxLayout()
         self.timeEdit = TimeEdit(QtGui.QFont())
         minDt, maxDt = window.getMinAndMaxDateTime()
         self.timeEdit.setupMinMax((minDt, maxDt))
         self.onTopCheckBox = QtWidgets.QCheckBox('Stay On Top')
+        btmLt.addWidget(self.timeEdit.start)
+        btmLt.addWidget(self.onTopCheckBox)
+        btmLt.addStretch()
 
-        layout.addWidget(self.timeEdit.start, 7, 0, 1, 1)
-        layout.addWidget(self.onTopCheckBox, 7, 2, 1, 1)
+        layout.addLayout(btmLt, 10, 0, 1, 3)
 
 class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
     def __init__(self, window, parent=None):
@@ -640,9 +665,24 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         self.ui = CurlometerUI()
         self.ui.setupUI(self, window)
 
+        # Set up window-on-top settings
         if self.ui.onTopCheckBox.isChecked():
             self.toggleWindowOnTop(True)
         self.ui.onTopCheckBox.clicked.connect(self.toggleWindowOnTop)
+
+        # Set up new plot variables interface
+        self.ui.applyBtn.clicked.connect(self.addNewVars)
+        self.ui.progressLbl.setVisible(False)
+        self.ui.progressBar.setVisible(False)
+
+        # Initializes plot variable checkboxes if previously added to DATASTRINGS
+        self.nameDict = {'| J |' : 'J', '| J_Para |' : 'J_Para', '| J_Perp |' : 'J_Perp'}
+        boxes = [self.ui.jMagChk, self.ui.jParaChk, self.ui.jPerpChk]
+        for box, name in zip(boxes, list(self.nameDict.values())):
+            box.blockSignals(True)
+            if name in window.DATASTRINGS:
+                box.setChecked(True)
+            box.blockSignals(False)
 
     def closeEvent(self, event):
         self.window.endGeneralSelect()
@@ -659,7 +699,7 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         self.setWindowFlags(flags)
         self.show()
 
-    def calculate(self):
+    def calculate(self, specIndex=None):
         refSpc = 4 # Current default for now
         mu0 = constants.mu_0
 
@@ -669,6 +709,9 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         index = self.window.calcDataIndexByTime(times, tO)
         if index == len(times):
             index = index - 1
+
+        if specIndex is not None:
+            index = specIndex
 
         # Calculate R, I
         R = self.getRMatrix(refSpc, index)
@@ -694,7 +737,10 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         divB = self.convertToOriginal(divB)
         curlB = self.convertToOriginal(curlB)
 
-        self.setLabels(R, J, divB, curlB, divCurlB, (jPara, jPerp))
+        if specIndex is None:
+            self.setLabels(R, J, divB, curlB, divCurlB, (jPara, jPerp))
+
+        return J, jPara, jPerp
 
     def calcDivB(self, refSpc, index):
         spcrfts = [1, 2, 3, 4]
@@ -827,13 +873,68 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         return siVec
 
     def calcJperpJpar(self, J, index):
+        # Calculate the magnitude of J_Perp and J_Par
         B = np.zeros(3)
         for scNum in [1,2,3,4]:
             B = B + self.convertToOriginal(self.getVec(scNum, index))
         B = B / 4
 
         jPara = np.dot(J, B) / np.linalg.norm(B)
-        jProj = (np.dot(J, B) / (np.linalg.norm(B) ** 2)) * B
+        jProj = (np.dot(J, B) / (np.linalg.norm(B) ** 2)) * B # J proj onto B
         jPerp = np.linalg.norm(J - jProj)
 
         return jPara, jPerp
+
+    def calcRange(self):
+        # Get data indices to generate values for
+        t0, t1 = self.window.minTime, self.window.maxTime
+        times = self.window.getTimes(self.window.DATASTRINGS[0], 0)[0]
+        i0 = self.window.calcDataIndexByTime(times, t0)
+        i1 = self.window.calcDataIndexByTime(times, t1)
+        numIndices = abs(i1 - i0)
+
+        # Initialize progress bar settings/visibility
+        progVal = 0
+        progStep = 100 / numIndices
+        self.setProgressVis(True)
+        self.ui.progressLbl.setText('Generating data...')
+
+        mat = np.zeros((3, numIndices))
+        for i in range(i0, i1):
+            # Calculate |J|, |J_perp|, |J_par| at every index and store it
+            matIndex = i - i0
+            J, jPar, jPerp = self.calculate(i)
+            mat[:,matIndex] = np.array([np.linalg.norm(J), jPar, jPerp])
+            progVal += progStep
+            self.ui.progressBar.setValue(progVal)
+
+        # Update progress bar to show finished status
+        self.ui.progressLbl.setText('Done!')
+        QtCore.QTimer.singleShot(2000, self.setProgressVis)
+
+        return mat
+
+    def addNewVars(self):
+        # Calculates selected values for entire dataset and creates corresp. new vars
+        varsToAdd = []
+        # Gather all new variables to be added and remove any unchecked ones
+        for box in [self.ui.jMagChk, self.ui.jParaChk, self.ui.jPerpChk]:
+            dstr = self.nameDict[box.text()]
+            if box.isChecked():
+                varsToAdd.append(dstr)
+            elif dstr in self.window.DATASTRINGS:
+                self.window.rmvCustomVar(dstr)
+
+        if len(varsToAdd) == 0:
+            return
+
+        # Calculate |J|, |J_Par|, |J_Perp| and initialize the new varialbes
+        resultMat = self.calcRange()
+        for dstr in varsToAdd:
+            index = list(self.nameDict.values()).index(dstr)
+            self.window.initNewVar(dstr, resultMat[index], 'nA/m^2')
+
+    def setProgressVis(self, b=False):
+        # Sets progress bar / label as hidden or visible
+        self.ui.progressBar.setVisible(b)
+        self.ui.progressLbl.setVisible(b)

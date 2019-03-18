@@ -499,6 +499,42 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.plotDataDefault()
 
+    def rmvCustomVar(self, dstr):
+        if dstr not in self.DATASTRINGS or dstr not in self.ABBRV_DSTR_DICT:
+            return
+
+        # Remove from datatstrings list
+        self.DATASTRINGS.remove(dstr)
+        self.ABBRV_DSTR_DICT.pop(dstr)
+
+        # Remove time index; TODO: How to remove TIMES w/o affecting other indices
+        ti = self.TIMEINDEX[dstr]
+        self.TIMEINDEX.pop(dstr)
+
+        # Remove data from dictionaries
+        for d in [self.ORIGDATADICT, self.DATADICT, self.UNITDICT]:
+            d.pop(dstr)
+
+    def initNewVar(self, dstr, dta, units=''):
+        # Add new variable name to list of datastrings
+        self.DATASTRINGS.append(dstr)
+        self.ABBRV_DSTR_DICT[dstr] = dstr
+
+        # Use any datastring's times as base
+        times = self.getTimes(self.DATASTRINGS[0], 0)
+        self.TIMES.append(times)
+        self.TIMEINDEX[dstr] = len(self.TIMES) - 1
+
+        # Add in data to dictionaries, no units
+        self.ORIGDATADICT[dstr] = dta
+        self.DATADICT[dstr] = [dta]
+        self.UNITDICT[dstr] = units
+
+        # Pad rest of datadict to have same length
+        length = len(self.editHistory)
+        while len(self.DATADICT[dstr]) < length:
+            self.DATADICT[dstr].append([])
+
     def initDataStorageStructures(self):
         """
         initializes all data structures used for storing loaded data

@@ -253,26 +253,6 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
             self.ui.statusBar.showMessage('Error: Invalid variable name.')
         else:
             # If not in datastrings, create a new variable
-            self.initNewVar(self.varName, dta)
+            self.window.initNewVar(self.varName, dta)
             self.editWindow.addHistory(np.identity(3), exprStr, 'Calc ' + self.varName)
             self.ui.statusBar.showMessage('New variable '+self.varName+' created.', 3000)
-
-    def initNewVar(self, dstr, dta):
-        # Add new variable name to list of datastrings
-        self.window.DATASTRINGS.append(dstr)
-        self.window.ABBRV_DSTR_DICT[dstr] = dstr
-
-        # Use any datastring's times as base
-        times = self.window.getTimes(self.window.DATASTRINGS[0], 0)
-        self.window.TIMES.append(times)
-        self.window.TIMEINDEX[dstr] = len(self.window.TIMES) - 1
-
-        # Add in data to dictionaries, no units
-        self.window.ORIGDATADICT[dstr] = dta
-        self.window.DATADICT[dstr] = [dta]
-        self.window.UNITDICT[dstr] = ''
-
-        # Pad rest of datadict to have same length
-        length = len(self.editWindow.history)
-        while len(self.window.DATADICT[dstr]) < length:
-            self.window.DATADICT[dstr].append([])
