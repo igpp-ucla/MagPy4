@@ -630,19 +630,21 @@ class CurlometerUI(object):
         self.jParaChk = QtWidgets.QCheckBox('| J_Para |')
         self.jMagChk = QtWidgets.QCheckBox('| J |')
         self.jPerpChk = QtWidgets.QCheckBox('| J_Perp |')
+        self.JxChk = QtWidgets.QCheckBox('Jx')
+        self.JyChk = QtWidgets.QCheckBox('Jy')
+        self.JzChk = QtWidgets.QCheckBox('Jz')
         for i, e in enumerate([self.jMagChk, self.jParaChk, self.jPerpChk]):
             plotLt.addWidget(e)
-        plotLt.addStretch()
+        for i, e in enumerate([self.JxChk, self.JyChk, self.JzChk]):
+            plotLt.addWidget(e)
 
         self.progressBar = QtWidgets.QProgressBar()
-        self.progressLbl = QtWidgets.QLabel()
         self.applyBtn = QtWidgets.QPushButton('Apply')
         self.applyBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 
-        layout.addWidget(plotFrame, 7, 0, 3, 2)
-        layout.addWidget(self.applyBtn, 8, 2, 2, 1)
-        layout.addWidget(self.progressLbl, 8, 3, 1, 2)
-        layout.addWidget(self.progressBar, 9, 3, 1, 2)
+        layout.addWidget(plotFrame, 7, 0, 3, 3)
+        layout.addWidget(self.applyBtn, 8, 3, 2, 1)
+        layout.addWidget(self.progressBar, 8, 4, 2, 1)
 
         # Set up TimeEdit and checkbox to keep window on top of main win
         btmLt = QtWidgets.QHBoxLayout()
@@ -672,12 +674,13 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
 
         # Set up new plot variables interface
         self.ui.applyBtn.clicked.connect(self.addNewVars)
-        self.ui.progressLbl.setVisible(False)
         self.ui.progressBar.setVisible(False)
 
         # Initializes plot variable checkboxes if previously added to DATASTRINGS
-        self.nameDict = {'| J |' : 'J', '| J_Para |' : 'J_Para', '| J_Perp |' : 'J_Perp'}
-        boxes = [self.ui.jMagChk, self.ui.jParaChk, self.ui.jPerpChk]
+        self.nameDict = {'| J |' : 'J', '| J_Para |' : 'J_Para', 
+            '| J_Perp |' : 'J_Perp', 'Jx': 'Jx', 'Jy':'Jy', 'Jz':'Jz'}
+        boxes = [self.ui.jMagChk, self.ui.jParaChk, self.ui.jPerpChk,
+            self.ui.JxChk, self.ui.JyChk, self.ui.JzChk]
         for box, name in zip(boxes, list(self.nameDict.values())):
             box.blockSignals(True)
             if name in window.DATASTRINGS:
@@ -897,19 +900,17 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         progVal = 0
         progStep = 100 / numIndices
         self.setProgressVis(True)
-        self.ui.progressLbl.setText('Generating data...')
 
-        mat = np.zeros((3, numIndices))
+        mat = np.zeros((6, numIndices))
         for i in range(i0, i1):
             # Calculate |J|, |J_perp|, |J_par| at every index and store it
             matIndex = i - i0
             J, jPar, jPerp = self.calculate(i)
-            mat[:,matIndex] = np.array([np.linalg.norm(J), jPar, jPerp])
+            mat[:,matIndex] = np.array([np.linalg.norm(J), jPar, jPerp, J[0], J[1], J[2]])
             progVal += progStep
             self.ui.progressBar.setValue(progVal)
 
         # Update progress bar to show finished status
-        self.ui.progressLbl.setText('Done!')
         QtCore.QTimer.singleShot(2000, self.setProgressVis)
 
         return mat
@@ -918,7 +919,8 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         # Calculates selected values for entire dataset and creates corresp. new vars
         varsToAdd = []
         # Gather all new variables to be added and remove any unchecked ones
-        for box in [self.ui.jMagChk, self.ui.jParaChk, self.ui.jPerpChk]:
+        for box in [self.ui.jMagChk, self.ui.jParaChk, self.ui.jPerpChk,
+            self.ui.JxChk, self.ui.JyChk, self.ui.JzChk]:
             dstr = self.nameDict[box.text()]
             if box.isChecked():
                 varsToAdd.append(dstr)
@@ -937,4 +939,3 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
     def setProgressVis(self, b=False):
         # Sets progress bar / label as hidden or visible
         self.ui.progressBar.setVisible(b)
-        self.ui.progressLbl.setVisible(b)
