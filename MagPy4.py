@@ -1522,7 +1522,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         # Remove menu options that won't be used
         actions = self.menu.actions()
         xAction, yAction, mouseAction = actions[1:4]
-        for a in [xAction, yAction, mouseAction]:
+        for a in [xAction, mouseAction]:
             self.menu.removeAction(a)
         # Add in custom menu actions
         self.menu.addAction(self.window.ui.plotApprAction) # Plot appearance
