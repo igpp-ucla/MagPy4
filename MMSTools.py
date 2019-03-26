@@ -879,10 +879,10 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         # Calculate the magnitude of J_Perp and J_Par
         B = np.zeros(3)
         for scNum in [1,2,3,4]:
-            Bunit = self.convertToOriginal(self.getVec(scNum, index))
-            Bunit = Bunit / np.linalg.norm(Bunit)
-            B += Bunit
+            currB = self.convertToSI(self.getVec(scNum, index))
+            B += currB
         B = B / 4
+        B = B / np.linalg.norm(B)
 
         jPara = np.dot(J, B)
         jProj = (np.dot(J, B) / (np.dot(B,B))) * B # J proj onto B
