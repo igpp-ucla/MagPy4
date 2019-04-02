@@ -145,6 +145,7 @@ class LinkedRegion(pg.LinearRegionItem):
         self.window.updateTimeEditByLines(self.window.selectTimeEdit, self)
         self.window.updateTraceStats()
         self.window.updateCurlometer()
+        self.window.updateCurvature()
 
 class LinkedSubRegion(pg.LinearRegionItem):
     def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):

@@ -37,7 +37,7 @@ from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion
-from MMSTools import PlaneNormal, Curlometer
+from MMSTools import PlaneNormal, Curlometer, Curvature
 from mth import Mth
 from tests import Tests
 import bisect
@@ -109,6 +109,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.ui.actionPlaneNormal.triggered.connect(self.openPlaneNormal)
         self.ui.actionCurlometer.triggered.connect(self.openCurlometer)
+        self.ui.actionCurvature.triggered.connect(self.openCurvature)
 
         # Content menu action connections
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
@@ -138,6 +139,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # MMS Tools
         self.planeNormal = None
         self.curlometer = None
+        self.curvature = None
 
         # these are saves for options for program lifetime
         self.plotMenuCheckBoxMode = False
@@ -273,6 +275,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.customPens = []
         self.pltGrd = None
         self.regions = []
+        self.newVars = []
         
     def closePlotMenu(self):
         if self.plotMenu:
@@ -319,8 +322,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     #    self.subWindows[key].close()
     #    self.subWindows[key] = None
 
-    def openCurlometer(self):
+    def closeMMSTools(self):
+        self.closePlaneNormal()
         self.closeCurlometer()
+        self.closeCurvature()
+
+    def openCurlometer(self):
+        self.closeMMSTools()
         self.curlometer = Curlometer(self)
         self.initGeneralSelect('Curlometer', '#ffa500', self.curlometer.ui.timeEdit)
 
@@ -334,8 +342,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.curlometer.close()
             self.curlometer = None
 
+    def openCurvature(self):
+        self.closeMMSTools()
+        self.curvature = Curvature(self)
+        self.initGeneralSelect('Curvature', '#ff4242', self.curvature.ui.timeEdit)
+
+    def showCurvature(self):
+        if self.curvature:
+            self.curvature.show()
+            self.curvature.updateCalculations()
+
+    def closeCurvature(self):
+        if self.curvature:
+            self.endGeneralSelect()
+            self.curvature.close()
+
     def openPlaneNormal(self):
-        self.closePlaneNormal()
+        self.closeMMSTools()
         self.planeNormal = PlaneNormal(self)
         self.initGeneralSelect('Plane Normal', '#42f495', None)
 
@@ -517,6 +540,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def initNewVar(self, dstr, dta, units=''):
         # Add new variable name to list of datastrings
+        self.newVars.append(dstr)
         self.DATASTRINGS.append(dstr)
         self.ABBRV_DSTR_DICT[dstr] = dstr
 
@@ -1392,6 +1416,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.curlometer:
             self.curlometer.calculate()
 
+    def updateCurvature(self):
+        if self.curvature:
+            self.curvature.updateCalculations()
+
     # color is hex string ie: '#ff0000' for red
     def initGeneralSelect(self, name, color, timeEdit, canHide=False):
         # Initialize all variables used to set up selected regions
@@ -1432,7 +1460,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         i0, i1 = self.getTicksFromTimeEdit(timeEdit)
         t0 = self.getTimeFromTick(i0)
         t1 = self.getTimeFromTick(i1)
-        if self.selectMode == 'Curlometer':
+        if self.selectMode == 'Curlometer' or self.selectMode == 'Curvature':
             i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick)
             t0 = self.getTimeFromTick(i0)
             self.updateLinesPos(region, t0, t0)
@@ -1452,6 +1480,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         region.setRegion((t0 - self.tickOffset, t1 - self.tickOffset))
         self.updateTraceStats()
         self.updateCurlometer()
+        self.updateCurvature()
 
     # get slider ticks from time edit
     def getTicksFromTimeEdit(self, timeEdit):
@@ -1545,7 +1574,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         # Holding ctrl key in stats mode allows selecting multiple regions
         ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
         multiSelect = (ctrlPressed and mode == 'Stats')
-        singleLineMode = (mode == 'Curlometer')
+        singleLineMode = (mode == 'Curlometer' or mode == 'Curvature')
 
         # Case where no regions have been created or just adding a new line
         if window.regions == [] or (multiSelect and not window.regions[-1].isLine()):
@@ -1554,6 +1583,9 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
             if mode == 'Curlometer':
                 self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, region)
                 QtCore.QTimer.singleShot(100, self.window.showCurlometer)
+            elif mode == 'Curvature' and len(self.window.regions) == 1:
+                self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, region)
+                QtCore.QTimer.singleShot(100, self.window.showCurvature)
             else:
                 # Initial connection to time edit
                 self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, region)
@@ -1569,8 +1601,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
             if mode == 'Spectra' and len(self.window.regions) == 1:
                 QtCore.QTimer.singleShot(100, self.window.showSpectra)
-
-            if mode == 'Plane Normal' and len(self.window.regions) == 1:
+            elif mode == 'Plane Normal' and len(self.window.regions) == 1:
                 QtCore.QTimer.singleShot(100, self.window.showNormal)
 
         # Case where sub-region was previously set to hidden

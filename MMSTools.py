@@ -1,9 +1,10 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit
+from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel
 from dataDisplay import DataDisplay, UTCQDate
 from FF_Time import FFTIME, leapFile
 
+import scipy
 from scipy import constants
 
 import pyqtgraph as pg
@@ -19,7 +20,21 @@ class MMSTools():
         self.grps = {} # Internally maps by field axis (bx1, bx2, ...)
         self.scGrps = {} # Internally maps by spacecraft number (bx1, by1, ...)
         self.initGroups()
+        self.initArrays()
 
+        self.mmsState = self.checkValidity()
+
+    def inValidState(self):
+        return self.mmsState
+
+    def checkValidity(self):
+        # Checks if all grps have right number of dstrs in them
+        for grp in ['Pos', 'Field']:
+            for scNum in range(1, 4+1):
+                numDstrs = len(self.scGrps[grp][scNum])
+                if numDstrs < 3 or numDstrs > 4:
+                    return False
+        return True
 
     def getDstrsBySpcrft(self, scNum, grp='Field'):
         return self.scGrps[grp][scNum]
@@ -28,13 +43,22 @@ class MMSTools():
         return self.grps[grp][vec]
 
     def getVec(self, scNum, index, grp='Field'):
-        # Gets the spacecraft's data vector (bx, by, bz) at a given data index
-        dstrs = self.getDstrsBySpcrft(scNum, grp)
-        vec = []
-        for dstr in dstrs:
-            dta = self.window.getData(dstr)
-            vec.append(dta[index])
-        return np.array(vec)
+        return self.vecArrays[grp][scNum][:,index]
+
+    def initArrays(self):
+        # Creates dictionary of arrays s.t. a column within the array
+        # corresponds to a field/position vector at a given data index
+        # i.e. vecArrays['Field'][4] = [[bx4 data] [by4 data] [bz4 data]]
+        self.vecArrays = {}
+        for grp in ['Pos', 'Field']:
+            self.vecArrays[grp] = {}
+            for scNum in [1,2,3,4]:
+                dstrs = self.getDstrsBySpcrft(scNum, grp)
+                vecArr = []
+                for dstr in dstrs:
+                    dta = self.window.getData(dstr)
+                    vecArr.append(dta)
+                self.vecArrays[grp][scNum] = np.array(vecArr)
 
     def initGroups(self):
         # Extract all position datastrings and field datastrings separately
@@ -43,6 +67,8 @@ class MMSTools():
         positionDstrs = []
         fieldDstrs = []
         for dstr in self.window.DATASTRINGS:
+            if dstr in self.window.newVars:
+                continue
             for pk in posKeys:
                 if pk.lower() in dstr.lower() and 'b'+pk.lower() not in dstr.lower():
                     positionDstrs.append(dstr)
@@ -941,3 +967,245 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
     def setProgressVis(self, b=False):
         # Sets progress bar / label as hidden or visible
         self.ui.progressBar.setVisible(b)
+
+class CurvatureUI(object):
+    def setupUI(self, Frame, window):
+        Frame.setWindowTitle('Curvature Results')
+        Frame.resize(100, 100)
+        layout = QtWidgets.QGridLayout(Frame)
+
+        # Set up curvature, radius, and error frames
+        self.vecs = []
+        curvFrame = self.setupMMSFrame('Curvature', self.vecs, VectorWidget, 5)
+
+        self.radii = []
+        radiiFrame = self.setupMMSFrame('Radius of Curvature', self.radii, NumLabel, 6)
+
+        self.errors = []
+        errFrame = self.setupMMSFrame('Estimated Error', self.errors, NumLabel, 6)
+
+        # Set up plot frame
+        plotFrame = self.setupPlotFrame()
+
+        # Add everything to main layout
+        layout.addWidget(curvFrame, 0, 0, 2, 1)
+        layout.addWidget(radiiFrame, 0, 1, 1, 1)
+        layout.addWidget(errFrame, 1, 1, 1, 1)
+        layout.addWidget(plotFrame, 3, 0, 1, 2)
+
+        # Set up settings layout for time edit, progress bar, and checkbox
+        self.timeEdit = TimeEdit(QtGui.QFont())
+        minDt, maxDt = window.getMinAndMaxDateTime()
+        self.timeEdit.setupMinMax((minDt, maxDt))
+        self.stayOnTopChk = QtWidgets.QCheckBox('Stay on top')
+        self.progBar = QtWidgets.QProgressBar()
+        self.progBar.setVisible(False)
+
+        settingsLt = QtWidgets.QHBoxLayout()
+        for e in [self.timeEdit.start, self.progBar, self.stayOnTopChk]:
+            settingsLt.addWidget(e)
+
+        layout.addLayout(settingsLt, 4, 0, 1, 2)
+
+    def setupMMSFrame(self, name, lst, widgetType, prec):
+        frame = QtWidgets.QGroupBox(name)
+        frameLt = QtWidgets.QGridLayout(frame)
+        frame.setAlignment(QtCore.Qt.AlignCenter)
+        frame.setContentsMargins(0, 18, 0, 2)
+
+        # Creates a separate groupbox frame for each element in main frame
+        for i in range(0, 1):
+            widget = widgetType(prec=prec)
+            frameLt.addWidget(widget, 0, 0, 1, 1, QtCore.Qt.AlignHCenter)
+            lst.append(widget)
+
+        return frame
+
+    def setupPlotFrame(self):
+        plotFrame = QtWidgets.QGroupBox('Generate plot variables: ')
+        plotLt = QtWidgets.QHBoxLayout(plotFrame)
+
+        self.checkboxes = []
+        for name in ['Curv_X', 'Curv_Y', 'Curv_Z', 'Radius']:
+            chkbx = QtWidgets.QCheckBox(name)
+            self.checkboxes.append(chkbx)
+            plotLt.addWidget(chkbx)
+
+        self.applyBtn = QtWidgets.QPushButton('Apply')
+        plotLt.addWidget(self.applyBtn)
+        return plotFrame
+
+class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
+    def __init__(self, window, parent=None):
+        super(Curvature, self).__init__(parent)
+        MMSTools.__init__(self, window)
+        self.window = window
+        self.ui = CurvatureUI()
+        self.ui.setupUI(self, window)
+
+        self.ui.stayOnTopChk.clicked.connect(self.toggleWindowOnTop)
+        self.ui.applyBtn.clicked.connect(self.addNewVars)
+
+    def closeEvent(self, ev):
+        self.window.endGeneralSelect()
+        self.close()
+
+    def toggleWindowOnTop(self, val):
+        # Keeps window on top of main window while user updates lines
+        self.setParent(self.window if val else None)
+        dialogFlag = QtCore.Qt.Dialog
+        if self.window.OS == 'posix':
+            dialogFlag = QtCore.Qt.Tool
+        flags = self.windowFlags()
+        flags = flags | dialogFlag if val else flags & ~dialogFlag
+        self.setWindowFlags(flags)
+        self.show()
+
+    def updateCalculations(self):
+        # Determine selected data index
+        tO, tE = self.window.getSelectionStartEndTimes()
+        dstr = self.getDstrsBySpcrft(1)[0] # Use any relevant dstr
+        times = self.window.getTimes(dstr, self.window.currentEdit)[0]
+        index = self.window.calcDataIndexByTime(times, tO)
+
+        # Run calculations for given spacecraft at this index and update window
+        vec, radius, err = self.calculate(index)
+        self.ui.vecs[0].setVector(vec)
+        self.ui.radii[0].setText(radius)
+        self.ui.errors[0].setText(err)
+
+    def calculate(self, index):
+        # Calculates curvature, radius, & error for given spcrft at given index
+        vec = self.calcCurv(index)
+        radius = self.getCurvRadius(vec)
+        err = self.estimateError(index, radius)
+        return vec, radius, err
+
+    def getCurvRadius(self, curv):
+        radius = 1 / np.linalg.norm(curv)
+        return radius
+
+    def estimateError(self, index, radius):
+        # Error = (sin^(-1)(L/2R) - L/2R)/ (L/2R) --> approx = (1/6)*(L/2R)^2
+        L = self.getAvgDist(index) # Average x distance between spcrft
+        alpha = L / (2 * radius)
+        error = (1/6) * (alpha ** 2)
+        return error
+
+    def getAvgDist(self, index):
+        # Finds the average x pos distance between the spacecfraft
+        L = 0
+        pairs = [(1, 2), (2, 3), (3, 4)]
+        for a, b in pairs:
+            vec1 = self.getVec(a, index, grp='Pos')
+            vec2 = self.getVec(b, index, grp='Pos')
+            diff = abs(vec1[0] - vec2[0])
+            L += diff
+        L = L / len(pairs)
+        return L
+
+    def getUnitVec(self, scNum, index):
+        # b = B / | B |
+        vec = self.getVec(scNum, index)
+        magn = np.sqrt(np.dot(vec, vec))
+        return vec / magn
+
+    def calcGradient(self, index):
+        bVecs = [self.getUnitVec(sc, index) for sc in [1,2,3,4]]
+        rVecs = [self.getVec(sc, index, grp='Pos') for sc in [1,2,3,4]]
+
+        # Subtract average position vector from all r Vecs
+        avgVec = sum(rVecs) / 4
+        rVecs = [rv - avgVec for rv in rVecs]
+
+        R = np.zeros((3,3))
+        for k in range(0, 3):
+            for j in range(0, k+1):
+                r_kj = 0
+                for alpha in range(0, 4):
+                    r_kj += rVecs[alpha][k] * rVecs[alpha][j]
+                r_kj = r_kj / 4
+                R[k][j] = r_kj
+                R[j][k] = r_kj
+
+        Rinv = np.linalg.inv(R)
+
+        G_0 = np.zeros((3, 3))
+        for i in range(0, 3):
+            for j in range(0, 3):
+                g_0_ij = 0
+                for alpha in range(0, 4):
+                    for k in range(0, 3):
+                        g_0_ij += bVecs[alpha][i] * rVecs[alpha][k] * Rinv[k][j]
+                g_0_ij = g_0_ij / 4
+                G_0[i][j] = g_0_ij
+
+        lambda_i = -sum(G_0[i][i] for i in range(0, 3))
+        lambda_i = lambda_i / sum(Rinv[i][i] for i in range(0, 3))
+
+        G = np.zeros((3, 3))
+        for i in range(0, 3):
+            for j in range(0, 3):
+                if i == j:
+                    continue
+                g_ij = 0
+                g_0_ij = G_0[i][j]
+                g_ij = g_0_ij + (lambda_i * Rinv[i][j])
+                G[i][j] = g_ij
+
+        return G
+
+    def getAvgBUnitVec(self, index):
+        # Computes the average b vector and normalizes it
+        bUnit = self.getVec(1, index)
+        for scNum in [2,3,4]:
+            bUnit += self.getVec(scNum, index)
+        bUnit = bUnit / 4
+        bUnit = bUnit / np.linalg.norm(bUnit)
+        return bUnit
+
+    def calcCurv(self, index, G=None):
+        G = self.calcGradient(index)
+        bUnit = self.getAvgBUnitVec(index)
+
+        curvature = np.zeros(3)
+        for i in range(0, 3):
+            curvature[i] = np.dot(G[i], bUnit)
+        return curvature
+
+    def addNewVars(self):
+        dstrs = ['Curv_X', 'Curv_Y', 'Curv_Z'] # Prefixes for variable names
+
+        # Determine the number of data points to use
+        arbDstr = self.getDstrsBySpcrft(1)[0]
+        dta = self.window.getData(arbDstr)
+        dtaLen = len(dta)
+
+        # Prepare progress bar for updating
+        self.ui.progBar.setVisible(True)
+        stepSize = 100 / dtaLen
+        progVal = 0
+
+        # Calculate curvatures
+        curvatures = np.zeros((3, dtaLen))
+        radii = np.zeros(dtaLen)
+        for index in range(0, dtaLen):
+            vec, radius, err = self.calculate(index)
+            curvatures[:,index] = vec
+            radii[index] = radius
+
+            # Update progress bar
+            progVal += stepSize
+            self.ui.progBar.setValue(progVal)
+
+        # Create new variables
+        i = 0
+        for dstr in dstrs:
+            if self.ui.checkboxes[i].isChecked():
+                self.window.initNewVar(dstr, curvatures[i], '1/km')
+            i += 1
+        if self.ui.checkboxes[i].isChecked():
+            self.window.initNewVar('RC', radii, 'km')
+
+        # Hide progress bar after work is done
+        self.ui.progBar.setVisible(False)

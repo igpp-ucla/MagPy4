@@ -66,6 +66,10 @@ class MagPy4UI(object):
         self.actionCurlometer.setText('Curlometer...')
         self.actionCurlometer.setStatusTip('Estimates the electric current density inside the tetrahedron')
 
+        self.actionCurvature = QtWidgets.QAction(window)
+        self.actionCurvature.setText('Curvature...')
+        self.actionCurvature.setStatusTip('Calculates the curvature of the magnetic field at the mesocenter')
+
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
         self.scaleYToCurrentTimeAction.setStatusTip('')
         self.antialiasAction = QtWidgets.QAction('Smooth &Lines (Antialiasing)',checkable=True,checked=True)
@@ -115,6 +119,7 @@ class MagPy4UI(object):
         self.MMSMenu = self.menuBar.addMenu('&MMS Tools')
         self.MMSMenu.addAction(self.actionPlaneNormal)
         self.MMSMenu.addAction(self.actionCurlometer)
+        self.MMSMenu.addAction(self.actionCurvature)
 
         self.optionsMenu = self.menuBar.addMenu('&Options')
         self.optionsMenu.addAction(self.scaleYToCurrentTimeAction)
@@ -447,6 +452,23 @@ class VectorWidget(QtWidgets.QWidget):
                 else:
                     self.lbls[i].setText(str(np.round(vec[i], decimals=self.prec)))
 
+class NumLabel(QtWidgets.QLabel):
+    def __init__(self, val=None, prec=None):
+        super(NumLabel, self).__init__(None)
+        self.prec = prec
+        if val is not None:
+            self.setText(val)
+        self.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+
+    def setText(self, val):
+        txt = str(val)
+        if self.prec is not None:
+            if abs(val) < 1/1000 or abs(val) > (10 ** (self.prec + 1)):
+                txt = np.format_float_scientific(val, precision=self.prec)
+            else:
+                txt = str(np.round(val, decimals=self.prec))
+        QtWidgets.QLabel.setText(self, txt)
+
 # pyqt utils
 class PyQtUtils:
     def clearLayout(layout):
@@ -463,7 +485,6 @@ class PyQtUtils:
             window.raise_()
             # this will activate the window
             window.activateWindow()
-
 
 class PlotGrid(pg.GraphicsLayout):
     def __init__(self, window=None, *args, **kwargs):
