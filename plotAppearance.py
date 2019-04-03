@@ -15,9 +15,9 @@ class PlotAppearanceUI(object):
         self.layout = layout
 
         # Font size label setup
-        self.titleSzLbl = QtWidgets.QLabel('Title size:')
-        self.axisLblSzLbl = QtWidgets.QLabel('Axis label size:')
-        self.tickLblSzLbl = QtWidgets.QLabel('  Tick label size:')
+        self.titleSzLbl = QtWidgets.QLabel('Title size: ')
+        self.axisLblSzLbl = QtWidgets.QLabel('Axis label size: ')
+        self.tickLblSzLbl = QtWidgets.QLabel('  Tick label size: ')
 
         # Title, axis label, and tick label spinboxes setup
         self.titleSzBox = QtWidgets.QSpinBox()
@@ -40,15 +40,22 @@ class PlotAppearanceUI(object):
         layout.addWidget(self.axisLblSzBox, 1, 1, 1, 1)
         layout.addWidget(self.tickLblSzBox, 1, 3, 1, 1)
 
+        for lbl in [self.titleSzLbl, self.axisLblSzLbl, self.tickLblSzLbl]:
+            lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
         # Set up UI for setting plot trace colors, line style, thickness, etc.
         tracePropFrame = QtWidgets.QGroupBox('Line Properties')
         tracePropFrame.setAlignment(QtCore.Qt.AlignCenter)
-        tracePropLayout = QtWidgets.QVBoxLayout(tracePropFrame)
+        tracePropLayout = QtWidgets.QGridLayout(tracePropFrame)
 
-        pltNum = 0
+        pltNum = 0 # Lists for storing interactive UI elements
         self.lineWidthBoxes = []
         self.lineStyleBoxes = []
         self.colorBoxes = []
+
+        colNum, rowNum = 0, 0 # Layout ordering for excessive number of plots
+        maxTracesPerCol = 3 * 3
+        totTraces = 0
 
         for trcList in plotsInfo:
             # Group plot traces by plot number
@@ -88,14 +95,27 @@ class PlotAppearanceUI(object):
 
                 plotLayout.addLayout(traceLayout)
                 traceNum += 1
+            plotLayout.addStretch()
 
-            tracePropLayout.addWidget(plotFrame)
+            tracePropLayout.addWidget(plotFrame, rowNum, colNum, 1, 1)
             pltNum += 1
+
+            # Move to next column if max num of traces in row
+            rowNum += 1
+            totTraces += traceNum
+
+            if totTraces >= maxTracesPerCol*(colNum+1):
+                rowNum = 0
+                colNum += 1
 
         layout.addWidget(tracePropFrame, 3, 0, 1, 4)
 
-        self.tickIntBtn = QtWidgets.QPushButton('Adjust Tick Spacing...')
-        layout.addWidget(self.tickIntBtn, 4, 1, 1, 2)
+        # Add in button to open tick spacing window
+        self.tickIntBtn = QtWidgets.QPushButton(' Adjust Tick Spacing... ')
+        if colNum >= 1 and rowNum >= 1:
+            layout.addWidget(self.tickIntBtn, 4, 0, 1, 2)
+        else:
+            layout.addWidget(self.tickIntBtn, 4, 1, 1, 2)
 
 class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
     def __init__(self, window, plotItems, parent=None):
