@@ -1115,7 +1115,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         rVecs = [self.getVec(sc, index, grp='Pos') for sc in [1,2,3,4]]
 
         # Subtract average position vector from all r Vecs
-        avgVec = sum(rVecs) / 4
+        avgVec = (rVecs[0] + rVecs[1] + rVecs[2] + rVecs[3]) / 4
         rVecs = [rv - avgVec for rv in rVecs]
 
         R = np.zeros((3,3))
@@ -1146,8 +1146,6 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         G = np.zeros((3, 3))
         for i in range(0, 3):
             for j in range(0, 3):
-                if i == j:
-                    continue
                 g_ij = 0
                 g_0_ij = G_0[i][j]
                 g_ij = g_0_ij + (lambda_i * Rinv[i][j])
@@ -1171,6 +1169,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         curvature = np.zeros(3)
         for i in range(0, 3):
             curvature[i] = np.dot(G[i], bUnit)
+
         return curvature
 
     def addNewVars(self):
