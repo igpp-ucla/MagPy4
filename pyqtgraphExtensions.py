@@ -146,6 +146,7 @@ class LinkedRegion(pg.LinearRegionItem):
         self.window.updateTraceStats()
         self.window.updateCurlometer()
         self.window.updateCurvature()
+        self.window.updateDynamicSpectra()
 
 class LinkedSubRegion(pg.LinearRegionItem):
     def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):
@@ -274,6 +275,7 @@ class DateAxis(pg.AxisItem):
     def __init__(self, orientation, pen=None, linkView=None, parent=None,
                 maxTickLength=-5, showValues=True):
         self.tickOffset = 0
+        self.timeRange = None
         pg.AxisItem.__init__(self, orientation, pen, linkView, parent,
                             maxTickLength,showValues)
         # Dictionary holding default increment values for ticks
@@ -290,7 +292,10 @@ class DateAxis(pg.AxisItem):
     def fmtTimeStmp(self, window, times):
         splits = times.split(' ')
         t = splits[4]
-        rng = self.window.getSelectedTimeRange()
+        rng = window.getSelectedTimeRange()
+
+        if self.timeRange is not None:
+            rng = abs(self.timeRange[1] - self.timeRange[0])
 
         if rng > window.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
             return f'{splits[2]} {splits[3]} {t.split(":")[0]}:{t.split(":")[1]}'
@@ -381,10 +386,13 @@ class DateAxis(pg.AxisItem):
             tickPairs.append((tickVals[i], tickStrs[i]))
         return [tickPairs,[]] # Second list is for 'minor ticks'
 
-    def updateTicks(self, window, mode):
+    def updateTicks(self, window, mode, timeRange=None):
         # In case sliders swapped, just get min/max times
         minTime = min(window.tO, window.tE)
         maxTime = max(window.tO, window.tE)
+
+        if timeRange is not None:
+            minTime, maxTime = timeRange
 
         # Convert start/end times to strings
         minTimeStr = str(FFTIME(minTime, Epoch=window.epoch).UTC)
@@ -475,6 +483,115 @@ class BLabelItem(pg.LabelItem):
         self.updateMin()
         self.resizeEvent(None)
         self.updateGeometry()
+
+# Based off pyqtgraph's GradientLegend class but modified to be a graphics widget
+class GradientLegend(pg.GraphicsWidget):
+    """
+    Draws a color gradient rectangle along with text labels denoting the value at specific 
+    points along the gradient.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.setAcceptedMouseButtons(QtCore.Qt.NoButton)
+        self.brush = QtGui.QBrush(QtGui.QColor(200,0,0))
+        self.pen = QtGui.QPen(QtGui.QColor(0,0,0))
+        self.labels = {'max': 1, 'min': 0}
+        self.gradient = QtGui.QLinearGradient()
+        self.gradient.setColorAt(0, QtGui.QColor(0,0,0))
+        self.gradient.setColorAt(1, QtGui.QColor(255,0,0))
+
+    def setGradient(self, g):
+        self.gradient = g
+        self.update()
+
+    def mouseClickEvent(self, ev):
+        if ev.button() == QtCore.Qt.RightButton:
+            print ('Right Click')
+        ev.accept()
+
+    def setIntColorScale(self, minVal, maxVal, *args, **kargs):
+        colors = [fn.intColor(i, maxVal-minVal, *args, **kargs) for i in range(minVal, maxVal)]
+        g = QtGui.QLinearGradient()
+        for i in range(len(colors)):
+            x = float(i)/len(colors)
+            g.setColorAt(x, colors[i])
+        self.setGradient(g)
+        if 'labels' not in kargs:
+            self.setLabels({str(minVal/10.): 0, str(maxVal): 1})
+        else:
+            self.setLabels({kargs['labels'][0]:0, kargs['labels'][1]:1})
+
+    def setLabels(self, l):
+        """Defines labels to appear next to the color scale. Accepts a dict of {text: value} pairs"""
+        self.labels = l
+        self.update()
+
+    def paint(self, p, opt, widget):
+        pg.GraphicsWidget.paint(self, p, opt, widget)
+        rect = self.boundingRect()   ## Boundaries of visible area in scene coords.
+        unit = self.pixelSize()       ## Size of one view pixel in scene coords.
+        if unit[0] is None:
+            return
+
+        ## determine max width of all labels
+        labelWidth = 0
+        labelHeight = 0
+        for k in self.labels:
+            b = p.boundingRect(QtCore.QRectF(0, 0, 0, 0), QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, str(k))
+            labelWidth = max(labelWidth, b.width())
+            labelHeight = max(labelHeight, b.height())
+
+        labelWidth *= unit[0]
+        labelHeight *= unit[1]
+
+        textPadding = 10  # in px
+
+        x1 = rect.left() + 5
+        x3 = rect.right()
+        x2 = x3 - labelWidth - unit[0]*textPadding
+        y1 = rect.bottom() - 2
+        y2 = rect.top()
+
+        # Draw background
+        p.setPen(self.pen)
+        p.setBrush(QtGui.QBrush(QtGui.QColor(255,255,255,100)))
+
+        # Have to scale painter so that text and gradients are correct size
+        p.scale(unit[0], unit[1])
+
+        # Draw color bar
+        self.gradient.setStart(0, y1/unit[1])
+        self.gradient.setFinalStop(0, y2/unit[1])
+        p.setBrush(self.gradient)
+        rect = QtCore.QRectF(
+            QtCore.QPointF(x1, y1), 
+            QtCore.QPointF(x2, y2)
+        )
+        p.drawRect(rect)
+
+        ## draw labels
+        tx = x2 + unit[0]*textPadding
+        lh = labelHeight/unit[1]
+        for k in self.labels:
+            p.setPen(QtGui.QPen(QtGui.QColor(0,0,0)))
+            y = y1 + self.labels[k] * (y2-y1)
+            # Draw text labels
+            p.drawText(QtCore.QRectF(tx/unit[0], y/unit[1] - lh/2.0, 1000, lh), QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, str(k))
+            # Draw tick marks
+            p.drawLine(x2-5, y, x2, y)
+
+    def setParentItem(self, p):
+        ret = GraphicsWidget.setParentItem(self, p)
+        return ret
+
+    def updateSize(self):
+        height = 0
+        width = 0
+        for sample, label in self.items:
+            height += max(sample.height(), label.height()) + 3
+            width = max(width, sample.width()+label.width())
+        self.setGeometry(0, 0, width, height)
 
 # based off class here, except i wanted a linear version (deleted a lot of stuff i wasnt gonna use to save time)
 #https://github.com/pyqtgraph/pyqtgraph/blob/develop/pyqtgraph/graphicsItems/GraphicsLayout.py

@@ -54,6 +54,10 @@ class MagPy4UI(object):
         self.actionSpectra.setText('&Spectra...')
         self.actionSpectra.setStatusTip('Opens spectral analysis window')
 
+        self.actionDynamicSpectra = QtWidgets.QAction(window)
+        self.actionDynamicSpectra.setText('Dynamic Spectrogram...')
+        self.actionDynamicSpectra.setStatusTip('Generates a dynamic spectrogram based on user settings')
+
         self.actionEdit = QtWidgets.QAction(window)
         self.actionEdit.setText('&Edit...')
         self.actionEdit.setStatusTip('Opens edit window that allows you to rotate the data with matrices')
@@ -114,6 +118,7 @@ class MagPy4UI(object):
         self.toolsMenu.addAction(self.actionShowData)
         self.toolsMenu.addAction(self.actionPlotMenu)
         self.toolsMenu.addAction(self.actionSpectra)
+        self.toolsMenu.addAction(self.actionDynamicSpectra)
         self.toolsMenu.addAction(self.actionEdit)
 
         self.MMSMenu = self.menuBar.addMenu('&MMS Tools')

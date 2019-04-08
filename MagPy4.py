@@ -38,6 +38,7 @@ from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion
 from MMSTools import PlaneNormal, Curlometer, Curvature
+from dynamicSpectra import DynamicSpectra
 from mth import Mth
 from tests import Tests
 import bisect
@@ -101,6 +102,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionPlotMenu.triggered.connect(self.openPlotMenu)
         self.ui.actionSpectra.triggered.connect(self.startSpectra)
+        self.ui.actionDynamicSpectra.triggered.connect(self.startDynamicSpectra)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.actionHelp.triggered.connect(self.openHelp)
         self.ui.actionAbout.triggered.connect(self.openAbout)
@@ -127,6 +129,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay = None
         self.plotMenu = None
         self.spectra = None
+        self.dynSpectra = None
         self.plotAppr = None
         self.addTickLbls = None
         self.edit = None
@@ -262,6 +265,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeSpectra()
         self.closeAddTickLbls()
         self.closePlaneNormal()
+        self.closeDynamicSpectra()
         self.closeCurlometer()
 
     def initVariables(self):
@@ -423,8 +427,29 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def openTraceStats(self, plotIndex):
         self.closeSpectra()
+        self.closeDynamicSpectra()
         self.traceStats = TraceStats(self, plotIndex)
         self.traceStats.show()
+
+    def startDynamicSpectra(self):
+        self.closeTraceStats()
+        self.closeDynamicSpectra()
+        if not self.dynSpectra or self.dynSpectra.wasClosed:
+            self.dynSpectra = DynamicSpectra(self)
+            self.initGeneralSelect('Dynamic Spectra', '#c700ff', self.dynSpectra.ui.timeEdit)
+            self.showStatusMsg('Selecting dynamic spectrogram range...')
+
+    def showDynamicSpectra(self):
+        if self.dynSpectra:
+            self.dynSpectra.show()
+            self.dynSpectra.updateParameters()
+            self.dynSpectra.update()
+
+    def closeDynamicSpectra(self):
+        if self.dynSpectra:
+            self.clearStatusMsg()
+            self.dynSpectra.close()
+            self.dynSpectra = None
 
     def startSpectra(self):
         self.closeTraceStats()
@@ -979,8 +1004,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def getSelectedTimeRange(self):
         return abs(self.tE - self.tO)
 
-    def getTimeLabelMode(self):
-        rng = self.getSelectedTimeRange()
+    def getTimeLabelMode(self, rng=None):
+        if rng is None:
+            rng = self.getSelectedTimeRange()
         if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
             return 'DAY'
         elif rng > self.hrCutoff: # if over hour show hh:mm:ss
@@ -990,18 +1016,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         else: # else show mm:ss.sss
             return 'MS'
 
+    def getTimeLabel(self, rng):
+        if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
+            return 'HH:MM'
+        elif rng > self.hrCutoff: # if hour show hh:mm:ss
+            return 'HH:MM:SS'
+        elif rng > self.minCutoff: # if over 10 seconds show mm:ss
+            return 'MM:SS'
+        else: # else show mm:ss.sss
+            return 'MM:SS.SSS'
+
     def updateXRange(self):
-        rng = self.getSelectedTimeRange()
         self.pltGrd.setTimeLabel('yellow')
 
-        if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
-            self.pltGrd.setTimeLabel('HH:MM')
-        elif rng > self.hrCutoff: # if hour show hh:mm:ss
-            self.pltGrd.setTimeLabel('HH:MM:SS')
-        elif rng > self.minCutoff: # if over 10 seconds show mm:ss
-            self.pltGrd.setTimeLabel('MM:SS')
-        else: # else show mm:ss.sss
-            self.pltGrd.setTimeLabel('MM:SS.SSS')
+        # Update bottom axis' time label
+        rng = self.getSelectedTimeRange()
+        timeLbl = self.getTimeLabel(rng)
+        self.pltGrd.setTimeLabel(timeLbl)
 
         for pi in self.plotItems:
             pi.setXRange(self.tO-self.tickOffset, self.tE-self.tickOffset, 0.0)
@@ -1416,6 +1447,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.curlometer:
             self.curlometer.calculate()
 
+    def updateDynamicSpectra(self):
+        if self.dynSpectra:
+            self.dynSpectra.updateParameters()
+
     def updateCurvature(self):
         if self.curvature:
             self.curvature.updateCalculations()
@@ -1488,6 +1523,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         i1 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.end.dateTime()), Epoch=self.epoch)._tick)
         return (i0,i1) if i0 < i1 else (i1,i0) #need parenthesis here, otherwise it will eval like 3 piece tuple with if in the middle lol yikes
 
+    def getTimeTicksFromTimeEdit(self, timeEdit):
+        t0 = FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick
+        t1 = FFTIME(UTCQDate.QDateTime2UTC(timeEdit.end.dateTime()), Epoch=self.epoch)._tick
+        return (t0, t1) if t0 < t1 else (t0, t1)
+
     # tick index refers to slider indices
     # THIS IS NOT ACCURATE when the time resolution is varying (which is usual)
     # keeping this one for now because not sure how to get function below this one to work when loading multiple files yet
@@ -1525,7 +1565,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def getSelectionStartEndTimes(self, regNum=0):
         if self.regions == []:
-            return self.minTime, self.maxTime
+            return self.tO, self.tE
         t0, t1 = self.regions[regNum].getRegion()
         return (t0,t1) if t0 <= t1 else (t1,t0) # need parens here!
 
@@ -1603,6 +1643,9 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 QtCore.QTimer.singleShot(100, self.window.showSpectra)
             elif mode == 'Plane Normal' and len(self.window.regions) == 1:
                 QtCore.QTimer.singleShot(100, self.window.showNormal)
+
+            if mode == 'Dynamic Spectra' and len(self.window.regions) == 1:
+                QtCore.QTimer.singleShot(100, self.window.showDynamicSpectra)
 
         # Case where sub-region was previously set to hidden
         elif window.regions[-1].isVisible(self.plotIndex) == False and not singleLineMode:
