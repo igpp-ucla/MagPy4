@@ -36,7 +36,7 @@ from edit import Edit
 from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
-from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion
+from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem
 from MMSTools import PlaneNormal, Curlometer, Curvature
 from dynamicSpectra import DynamicSpectra
 from mth import Mth
@@ -1179,11 +1179,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             axis = DateAxis(orientation='bottom')
             axis.window = self
             vb = MagPyViewBox(self, plotIndex)
-            pi = pg.PlotItem(viewBox = vb, axisItems={'bottom': axis, 'left': LinkedAxis(orientation='left') })
+            pi = MagPyPlotItem(viewBox = vb, axisItems={'bottom': axis, 'left': LinkedAxis(orientation='left') })
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             self.plotItems.append(pi) #save it for ref elsewhere
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
             pi.setDownsampling(ds=1, auto=True, mode='peak')
+
+            pi.ctrl.logYCheck.toggled.connect(functools.partial(self.updateLogScaling, plotIndex))
 
             # add some lines used to show where time series sliders will zoom to
             trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=self.trackerPen)
@@ -1395,9 +1397,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for plotIndex, dstrs in enumerate(self.lastPlotStrings):
             minVal = np.inf
             maxVal = -np.inf
+
+            logPlot = self.plotItems[plotIndex].ctrl.logYCheck.isChecked()
+
             # find min and max values out of all traces on this plot
             for (dstr,editNum) in dstrs:
                 Y = self.getData(dstr,editNum)
+
+                if logPlot: # Use *valid* log values to get range
+                    Y = np.log10(Y[Y>0])
+
                 if self.ui.scaleYToCurrentTimeAction.isChecked():
                     X = self.getTimes(dstr,editNum)[0] # first in list is time series
                     a = self.calcDataIndexByTime(X, self.tO)
@@ -1438,6 +1447,30 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 diff = values[i][1] - values[i][0]
                 l2 = (largest - diff) / 2.0
                 self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2, padding = 0.05)
+
+    def updateLogScaling(self, plotIndex, val):
+        # Look through all link sets the plot at the given index is in
+        for row in self.lastPlotLinks:
+            if plotIndex not in row:
+                continue
+
+            # Check link set to see if it contains a log-scaled plot or not
+            logModeDetected = False
+            for plotIndex in row:
+                if self.plotItems[plotIndex].ctrl.logYCheck.isChecked() == val:
+                    logModeDetected = True
+
+            # Adjust all other plots to have same scale
+            if logModeDetected:
+                for plotIndex in row:
+                    currPlt = self.plotItems[plotIndex]
+                    currPlt.ctrl.logYCheck.blockSignals(True)
+                    currPlt.ctrl.logYCheck.setChecked(val)
+                    currPlt.updateLogMode()
+                    currPlt.ctrl.logYCheck.blockSignals(False)
+
+        # Manually update y ranges
+        self.updateYRange()
 
     def updateTraceStats(self):
         if self.traceStats:
@@ -1706,7 +1739,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
             self.onRightClick(ev)
 
         ev.accept()
-            
+
     # mouse drags for now just get turned into clicks, like on release basically, feels nicer
     # technically only need to do this for spectra mode but not being used otherwise so whatever
     def mouseDragEvent(self, ev, axis=None):

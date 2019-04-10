@@ -174,6 +174,17 @@ class LinkedSubRegion(pg.LinearRegionItem):
     def mouseDragEvent(self, ev):
         # If this sub-region is dragged, move all other sub-regions accordingly
         self.grp.mouseDragEvent(ev)
+class MagPyPlotItem(pg.PlotItem):
+    def updateLogMode(self):
+        x = self.ctrl.logXCheck.isChecked()
+        y = self.ctrl.logYCheck.isChecked()
+        for i in self.items:
+            if hasattr(i, 'setLogMode'):
+                i.setLogMode(x,y)
+        self.getAxis('bottom').setLogMode(x)
+        self.getAxis('top').setLogMode(x)
+        self.getAxis('left').setLogMode(y)
+        self.getAxis('right').setLogMode(y)
 
 class MagPyAxisItem(pg.AxisItem):
     def __init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True):
@@ -652,9 +663,9 @@ class LinearGraphicsLayout(pg.GraphicsWidget):
         self.layout.setSpacing(*args)
 
 # same as pdi but with better down sampling (bds)
-class PlotDataItemBDS(pg.PlotCurveItem):
+class PlotDataItemBDS(pg.PlotDataItem):
     def __init__(self, *args, **kwargs):
-        pg.PlotCurveItem.__init__(self, *args, **kwargs)
+        pg.PlotDataItem.__init__(self, *args, **kwargs)
 
 class LinkedAxis(MagPyAxisItem):
     def calcDesiredWidth(self):
