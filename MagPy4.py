@@ -266,7 +266,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeAddTickLbls()
         self.closePlaneNormal()
         self.closeDynamicSpectra()
-        self.closeCurlometer()
+        self.closeMMSTools()
 
     def initVariables(self):
         """init variables here that should be reset when file changes"""

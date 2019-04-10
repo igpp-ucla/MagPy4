@@ -468,11 +468,15 @@ class NumLabel(QtWidgets.QLabel):
     def setText(self, val):
         txt = str(val)
         if self.prec is not None:
-            if abs(val) < 1/1000 or abs(val) > (10 ** (self.prec + 1)):
-                txt = np.format_float_scientific(val, precision=self.prec)
-            else:
-                txt = str(np.round(val, decimals=self.prec))
+            txt = NumLabel.formatVal(val, self.prec)
         QtWidgets.QLabel.setText(self, txt)
+
+    def formatVal(val, prec):
+        if abs(val) < 1/1000 or abs(val) > (10 ** (prec + 1)):
+            txt = np.format_float_scientific(val, precision=prec)
+        else:
+            txt = str(np.round(val, decimals=prec))
+        return txt
 
 # pyqt utils
 class PyQtUtils:

@@ -5,14 +5,20 @@ import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
 from FF_Time import FFTIME
-from MagPy4UI import TimeEdit
+from MagPy4UI import TimeEdit, NumLabel
 from pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, DateAxis, GradientLegend
+import bisect
+
+class SpectraLegend(GradientLegend):
+    def __init__(self):
+        GradientLegend.__init__(self)
 
 class SpectraLine(pg.PlotCurveItem):
-    def __init__(self, freq, colors, times, *args, **kargs):
+    def __init__(self, freq, colors, times, window, *args, **kargs):
         self.freq = freq
         self.colors = colors
         self.times = times
+        self.window = window
         self.paths = None
 
         yVals = [freq]*len(times)
@@ -55,6 +61,14 @@ class SpectraLine(pg.PlotCurveItem):
             p2.closeSubpath()
             p.fillPath(p2, pg.mkBrush(pg.mkColor(self.colors[pairNum])))
 
+    def mouseClickEvent(self, ev):
+        if ev.button() == QtCore.Qt.LeftButton:
+            time = ev.pos().x()
+            self.window.showPointValue(self.freq, time)
+            ev.accept()
+        else:
+            pg.PlotDataItem.mouseClickEvent(self, ev)
+
 class SpectrogramPlotItem(pg.PlotItem):
     def addItem(self, item, *args, **kargs):
         """
@@ -75,6 +89,10 @@ class SpectrogramPlotItem(pg.PlotItem):
             self.curves.append(item)
 
 class SpectrogramViewBox(pg.ViewBox):
+    def __init__(self, *args, **kargs):
+        pg.ViewBox.__init__(self, *args, **kargs)
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
+
     def addItem(self, item, ignoreBounds=False):
         if item.zValue() < self.zValue():
             item.setZValue(self.zValue()+1)
@@ -93,7 +111,7 @@ class DynamicSpectraUI(object):
     def setupUI(self, Frame, window):
         maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         Frame.setWindowTitle('Dynamic Spectrogram')
-        Frame.resize(1000, 800)
+        Frame.resize(1100, 900)
         layout = QtWidgets.QGridLayout(Frame)
 
         self.gview = pg.GraphicsView()
@@ -138,7 +156,14 @@ class DynamicSpectraUI(object):
         self.addPair(settingsLt, lbls[4], self.scaleModeBox, 1, 2, 1, 1, scaleTip)
         self.addPair(settingsLt, lbls[5], self.fftDataPts, 2, 2, 1, 1, dtaPtsTip)
         settingsLt.addItem(spacer, 3, 4, 1, 1)
-        settingsLt.addWidget(self.updateBtn, 2, 6, 1, 1)
+
+        # Set up power min/max checkbox layout
+        powerRngLt = self.setPowerRangeLt()
+        self.powerRngSelectToggled(False)
+        settingsLt.addLayout(powerRngLt, 0, 5, 3, 1)
+
+        settingsLt.addItem(spacer, 2, 6, 1, 1)
+        settingsLt.addWidget(self.updateBtn, 2, 7, 1, 1)
 
         layout.addWidget(settingsFrame, 0, 0, 1, 2)
 
@@ -182,63 +207,49 @@ class DynamicSpectraUI(object):
         endIndex = window.calcDataIndexByTime(times, maxTime)
         self.fftDataPts.setText(str(endIndex-startIndex))
 
-    def setupGradient(self, colorMap, colorPos):
-        # Create gradient legend and add it to the graphics layout
-        gradLegend = GradientLegend()
-        self.glw.addItem(gradLegend, 1, 5, 4, 1)
-        gradLegend.setMinimumWidth(75)
-
-        # Initialize gradient bounded by gradLegend's view rect
-        pos = gradLegend.boundingRect()
-        gradient = QtGui.QLinearGradient(pos.topLeft(), pos.bottomLeft())
-
-        # Create and set color gradient based on colormap
-        colors = colorMap.getColors()
-        colors = list(map(pg.mkColor, colors))
-        colorLocs = [0, 0.25, 0.5, 0.75, 1]
-        for color, loc in zip(colors, colorLocs):
-            gradient.setColorAt(loc, color)
-        gradLegend.setGradient(gradient)
-
-        # Set labels corresponding to color level
-        colorPos = list(map(np.log10, colorPos))
-        minLog, maxLog = colorPos[0], colorPos[-1]
-        locs = [(i-minLog)/(maxLog-minLog) for i in colorPos[1:-1]]
-        labels = list(map(str, list(map(int, colorPos[1:-1]))))
-        labelsDict = {}
-        for lbl, loc in zip(labels, locs):
-            labelsDict[lbl] = loc
-        gradLegend.setLabels(labelsDict)
-
-        # Add in spacers to align gradient legend with plot top/bottom boundaries
-        spacer = pg.LabelItem('') # Top spacer
-        spacer.setMaximumHeight(self.plotItem.titleLabel.height())
-        self.glw.addItem(spacer, 0, 5, 1, 1)
-
-        spacer = pg.LabelItem('') # Bottom spacer
-        botmAxisHt = self.plotItem.getAxis('bottom').boundingRect().height()
-        spacer.setMaximumHeight(botmAxisHt*2)
-        self.glw.addItem(spacer, 5, 5, 1, 1)
-
-        # Add in legend labels and center them
-        gradLabel = pg.LabelItem('Log Power')
-        gradUnitsLbl = pg.LabelItem('(nT^2/Hz)')
-        self.glw.addItem(gradLabel, 2, 6, 1, 1)
-        self.glw.addItem(gradUnitsLbl, 3, 6, 1, 1)
-        for lbl in [gradLabel, gradUnitsLbl]:
-            lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.glw.layout.setColumnAlignment(6, QtCore.Qt.AlignCenter)
-
     def addPair(self, layout, name, elem, row, col, rowspan, colspan, tooltip=None):
         # Create a label for given widget and place both into layout
         lbl = QtWidgets.QLabel(name)
         lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        layout.addWidget(lbl, row, col, 1, 1)
+        if name != '':
+            layout.addWidget(lbl, row, col, 1, 1)
         layout.addWidget(elem, row, col+1, rowspan, colspan)
 
         # Set any tooltips if given
         if tooltip is not None:
             lbl.setToolTip(tooltip)
+
+        return lbl
+
+    def setPowerRangeLt(self):
+        self.selectToggle = QtWidgets.QCheckBox(' Set Power Range: ')
+        rangeLt = QtWidgets.QGridLayout()
+
+        rngTip = 'Toggle to set max/min power levels represented by color gradient'
+        self.selectToggle.setToolTip(rngTip)
+
+        minTip = 'Minimum power level represented by color gradient'
+        maxTip = 'Maximum power level represented by color gradient'
+
+        self.powerMin = QtWidgets.QDoubleSpinBox()
+        self.powerMax = QtWidgets.QDoubleSpinBox()
+
+        # Set spinbox defaults
+        for box in [self.powerMax, self.powerMin]:
+            box.setPrefix('10^')
+            box.setMinimum(-100)
+            box.setMaximum(100)
+            box.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        spc = '       ' # Spaces that keep spinbox lbls aligned w/ chkbx lbl
+
+        rangeLt.addWidget(self.selectToggle, 0, 0, 1, 2)
+        self.maxLbl = self.addPair(rangeLt, spc+'Max: ', self.powerMax, 1, 0, 1, 1, maxTip)
+        self.minLbl = self.addPair(rangeLt, spc+'Min: ', self.powerMin, 2, 0, 1, 1, minTip)
+
+        # Connects checkbox to func that enables/disables rangeLt's items
+        self.selectToggle.toggled.connect(self.powerRngSelectToggled)
+        return rangeLt
 
     def initPlot(self):
         # Sets up plot settings / appearance
@@ -304,12 +315,69 @@ class DynamicSpectraUI(object):
         self.timeLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.glw.addItem(self.timeLbl, 6, 0, 1, 1)
 
+    def setupGradient(self, colorMap, colorPos):
+        # Create gradient legend and add it to the graphics layout
+        gradLegend = SpectraLegend()
+        self.glw.addItem(gradLegend, 1, 5, 4, 1)
+        gradLegend.setMinimumWidth(75)
+
+        # Initialize gradient bounded by gradLegend's view rect
+        pos = gradLegend.boundingRect()
+        gradient = QtGui.QLinearGradient(pos.topLeft(), pos.bottomLeft())
+
+        # Create and set color gradient based on colormap
+        colors = colorMap.getColors()
+        colors = list(map(pg.mkColor, colors))
+        colorLocs = [0, 0.25, 0.5, 0.75, 1]
+        for color, loc in zip(colors, colorLocs):
+            gradient.setColorAt(loc, color)
+        gradLegend.setGradient(gradient)
+
+        # Set labels corresponding to color level
+        colorPos = list(map(np.log10, colorPos))
+        minLog, maxLog = colorPos[0], colorPos[-1]
+        locs = [(i-minLog)/(maxLog-minLog) for i in colorPos[1:-1]]
+        labels = list(map(str, list(map(int, colorPos[1:-1]))))
+        labelsDict = {}
+        for lbl, loc in zip(labels, locs):
+            labelsDict[lbl] = loc
+        gradLegend.setLabels(labelsDict)
+
+        # Add in spacers to align gradient legend with plot top/bottom boundaries
+        spacer = pg.LabelItem('') # Top spacer
+        spacer.setMaximumHeight(self.plotItem.titleLabel.height())
+        self.glw.addItem(spacer, 0, 5, 1, 1)
+
+        spacer = pg.LabelItem('') # Bottom spacer
+        botmAxisHt = self.plotItem.getAxis('bottom').boundingRect().height()
+        spacer.setMaximumHeight(botmAxisHt*2)
+        self.glw.addItem(spacer, 5, 5, 1, 1)
+
+        # Add in legend labels and center them
+        gradLabel = pg.LabelItem('Log Power')
+        gradUnitsLbl = pg.LabelItem('(nT^2/Hz)')
+        self.glw.addItem(gradLabel, 2, 6, 1, 1)
+        self.glw.addItem(gradUnitsLbl, 3, 6, 1, 1)
+        for lbl in [gradLabel, gradUnitsLbl]:
+            lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.glw.layout.setColumnAlignment(6, QtCore.Qt.AlignCenter)
+
+    def powerRngSelectToggled(self, val):
+        self.powerMax.setEnabled(val)
+        self.powerMin.setEnabled(val)
+        self.minLbl.setEnabled(val)
+        self.maxLbl.setEnabled(val)
+
 class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
     def __init__(self, window, parent=None):
         super(DynamicSpectra, self).__init__(parent)
         self.ui = DynamicSpectraUI()
         self.window = window
         self.wasClosed = False
+        self.gradRange = None
+
+        self.rangeSelect = None
+        self.lastCalc = None
 
         self.ui.setupUI(self, window)
         self.ui.updateBtn.clicked.connect(self.update)
@@ -318,7 +386,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
 
     def closeEvent(self, ev):
         self.window.endGeneralSelect()
-        self.window.statusBar.clearMessage()
+        self.window.clearStatusMsg()
         self.wasClosed = True
 
     def updateParameters(self):
@@ -370,6 +438,16 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         dstr = self.ui.dstrBox.currentText()
         bw = self.ui.bwBox.value()
 
+        if self.ui.selectToggle.isChecked():
+            minGradPower = self.ui.powerMin.value()
+            maxGradPower = self.ui.powerMax.value()
+            # Adjust order if flipped
+            minGradPower = min(minGradPower, maxGradPower)
+            maxGradPower = max(minGradPower, maxGradPower)
+            self.gradRange = (10**minGradPower, 10**maxGradPower)
+        else:
+            self.gradRange = None
+
         # Error checking for user parameters
         if self.checkParameters(interval, shift, bw, numPoints) == False:
             return
@@ -379,9 +457,9 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         self.ui.initPlot()
 
         # Generate plot grid and spectrogram from this
-        self.calculate(dataRng, numPoints, interval, shift, bw, dstr)
+        self.calculate(dataRng, interval, shift, bw, dstr)
 
-    def calculate(self, dataRng, numPoints, interval, shift, bw, dstr):
+    def calculate(self, dataRng, interval, shift, bw, dstr):
         shiftAmnt = shift
         minIndex, maxIndex = dataRng
         startIndex, endIndex = minIndex, minIndex + interval
@@ -408,13 +486,21 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         pixelGrid = np.array(powerLst)
         pixelGrid = pixelGrid.T
 
+        # Store calculations for displaying values at a point
+        self.lastCalc = (timeSeries, freqs, pixelGrid)
+
         # Map powers to a color gradient based on min/max values in time series
         maxPower = np.max(pixelGrid)
         minPower = np.min(pixelGrid)
+        if self.gradRange is not None and self.wasClosed == False:
+            minPower, maxPower = self.gradRange # User-set range
+        else:
+            self.gradRange = None
         pixelGrid = self.mapValueToColor(pixelGrid, minPower, maxPower)
 
         self.ui.statusBar.showMessage('Generating plot...')
         self.createPlot(pixelGrid, freqs, timeSeries, shiftAmnt)
+
 
     def calcSpectra(self, dstr, bw, start, end):
         """
@@ -454,7 +540,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
 
             # Map its powers to colors and add the SpectraLine to the plot
             colors = list(map(pg.mkColor, freqTimeSeries))
-            pdi = SpectraLine(freqVal, colors, timeVals, fillLevel=lastFreq)
+            pdi = SpectraLine(freqVal, colors, timeVals, self, fillLevel=lastFreq)
             self.ui.plotItem.addItem(pdi)
 
             # Update progress in status bar
@@ -575,3 +661,29 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         fft = fftpack.rfft(data.tolist())
         return fft
 
+    def showPointValue(self, freq, time):
+        # Takes x,y values and uses them to find/display the power value
+        if self.lastCalc is None:
+            return
+
+        if self.ui.scaleModeBox.currentText() == 'Logarithmic':
+            freq = 10 ** freq
+
+        # Find grid indices corresponding to the point
+        times, freqs, powerGrid = self.lastCalc
+        freqIndex = max(bisect.bisect(freqs, freq)-1, 0)
+        timeIndex = max(bisect.bisect(times, time)-1, 0)
+
+        if freq > freqs[-1] or time < times[0] or time > times[-1]:
+            self.ui.statusBar.clearMessage()
+            return
+
+        # Extract the grid's frequency and power values
+        freq = freqs[freqIndex]
+        val = powerGrid[freqIndex][timeIndex]
+
+        # Create and display the freq/power values in the status bar
+        freqStr = NumLabel.formatVal(freq, 5)
+        valStr = NumLabel.formatVal(val, 5)
+        msg = 'Freq, Power: '+'('+freqStr+', '+valStr+')'
+        self.ui.statusBar.showMessage(msg)
