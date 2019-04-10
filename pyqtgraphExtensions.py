@@ -516,11 +516,6 @@ class GradientLegend(pg.GraphicsWidget):
         self.gradient = g
         self.update()
 
-    def mouseClickEvent(self, ev):
-        if ev.button() == QtCore.Qt.RightButton:
-            print ('Right Click')
-        ev.accept()
-
     def setIntColorScale(self, minVal, maxVal, *args, **kargs):
         colors = [fn.intColor(i, maxVal-minVal, *args, **kargs) for i in range(minVal, maxVal)]
         g = QtGui.QLinearGradient()

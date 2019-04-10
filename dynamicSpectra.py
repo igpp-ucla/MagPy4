@@ -318,6 +318,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
 
     def closeEvent(self, ev):
         self.window.endGeneralSelect()
+        self.window.statusBar.clearMessage()
         self.wasClosed = True
 
     def updateParameters(self):
