@@ -435,13 +435,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeTraceStats()
         self.closeDynamicSpectra()
         if not self.dynSpectra or self.dynSpectra.wasClosed:
-            self.clearStatusMsg()
             self.dynSpectra = DynamicSpectra(self)
             self.initGeneralSelect('Dynamic Spectra', '#c700ff', self.dynSpectra.ui.timeEdit)
             self.showStatusMsg('Selecting dynamic spectrogram range...')
 
     def showDynamicSpectra(self):
         if self.dynSpectra:
+            self.clearStatusMsg()
             self.dynSpectra.show()
             self.dynSpectra.updateParameters()
             self.dynSpectra.update()

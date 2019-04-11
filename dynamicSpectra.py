@@ -68,7 +68,8 @@ class SpectraLine(pg.PlotCurveItem):
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
             time = ev.pos().x()
-            self.window.showPointValue(self.freq, time)
+            freqVal = ev.pos().y()
+            self.window.showPointValue(freqVal, time)
             ev.accept()
         else:
             pg.PlotCurveItem.mouseClickEvent(self, ev)
@@ -540,11 +541,11 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         for freqNum in range(len(freqs)):
             # Get frequency value, its power time series, and the list of times
             freqVal = freqs[freqNum]
-            freqTimeSeries = pixelGrid[freqNum,:]
+            powerTimeSeries = pixelGrid[freqNum,:]
             timeVals = times
 
             # Map its powers to colors and add the SpectraLine to the plot
-            pdi = SpectraLine(freqVal, freqTimeSeries, timeVals, self, fillLevel=lastFreq)
+            pdi = SpectraLine(freqVal, powerTimeSeries, timeVals, self, fillLevel=lastFreq)
             self.ui.plotItem.addItem(pdi)
 
             # Update progress in status bar
@@ -675,7 +676,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
 
         # Find grid indices corresponding to the point
         times, freqs, powerGrid = self.lastCalc
-        freqIndex = max(bisect.bisect(freqs, freq)-1, 0)
+        freqIndex = max(bisect.bisect(freqs, freq), 0)
         timeIndex = max(bisect.bisect(times, time)-1, 0)
 
         if freq > freqs[-1] or time < times[0] or time > times[-1]:
