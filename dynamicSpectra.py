@@ -42,6 +42,9 @@ class SpectraLine(pg.PlotCurveItem):
 
         return self.paths
 
+    def mkRGBColor(self, rgbVals):
+        return QtGui.QColor(rgbVals[0], rgbVals[1], rgbVals[2])
+
     def paint(self, p, opt, widget):
         if self.xData is None or len(self.xData) == 0:
             return
@@ -59,7 +62,8 @@ class SpectraLine(pg.PlotCurveItem):
             p2.lineTo(x0, self.opts['fillLevel'])
             p2.lineTo(x0, yVal)
             p2.closeSubpath()
-            p.fillPath(p2, pg.mkBrush(pg.mkColor(self.colors[pairNum])))
+            color = self.mkRGBColor(self.colors[pairNum])
+            p.fillPath(p2, pg.mkBrush(color))
 
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
@@ -67,7 +71,7 @@ class SpectraLine(pg.PlotCurveItem):
             self.window.showPointValue(self.freq, time)
             ev.accept()
         else:
-            pg.PlotDataItem.mouseClickEvent(self, ev)
+            pg.PlotCurveItem.mouseClickEvent(self, ev)
 
 class SpectrogramPlotItem(pg.PlotItem):
     def addItem(self, item, *args, **kargs):
@@ -540,8 +544,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
             timeVals = times
 
             # Map its powers to colors and add the SpectraLine to the plot
-            colors = list(map(pg.mkColor, freqTimeSeries))
-            pdi = SpectraLine(freqVal, colors, timeVals, self, fillLevel=lastFreq)
+            pdi = SpectraLine(freqVal, freqTimeSeries, timeVals, self, fillLevel=lastFreq)
             self.ui.plotItem.addItem(pdi)
 
             # Update progress in status bar
