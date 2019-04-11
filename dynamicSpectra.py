@@ -162,6 +162,7 @@ class DynamicSpectraUI(object):
         self.powerRngSelectToggled(False)
         settingsLt.addLayout(powerRngLt, 0, 5, 3, 1)
 
+        spacer = QtWidgets.QSpacerItem(10, 1)
         settingsLt.addItem(spacer, 2, 6, 1, 1)
         settingsLt.addWidget(self.updateBtn, 2, 7, 1, 1)
 
@@ -205,7 +206,8 @@ class DynamicSpectraUI(object):
         times = window.getTimes(self.dstrBox.currentText(), 0)[0]
         startIndex = window.calcDataIndexByTime(times, minTime)
         endIndex = window.calcDataIndexByTime(times, maxTime)
-        self.fftDataPts.setText(str(endIndex-startIndex))
+        numPoints = abs(endIndex-startIndex)
+        self.fftDataPts.setText(str(numPoints))
 
     def addPair(self, layout, name, elem, row, col, rowspan, colspan, tooltip=None):
         # Create a label for given widget and place both into layout
@@ -374,9 +376,8 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         self.ui = DynamicSpectraUI()
         self.window = window
         self.wasClosed = False
-        self.gradRange = None
 
-        self.rangeSelect = None
+        self.gradRange = None
         self.lastCalc = None
 
         self.ui.setupUI(self, window)
