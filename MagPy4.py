@@ -39,6 +39,7 @@ from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem
 from MMSTools import PlaneNormal, Curlometer, Curvature
 from dynamicSpectra import DynamicSpectra
+from smoothingTool import SmoothingTool
 from mth import Mth
 from tests import Tests
 import bisect
@@ -109,6 +110,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
 
+        self.ui.actionSmooth.triggered.connect(self.startSmoothing)
+
+        # MMS Tool actions
         self.ui.actionPlaneNormal.triggered.connect(self.openPlaneNormal)
         self.ui.actionCurlometer.triggered.connect(self.openCurlometer)
         self.ui.actionCurvature.triggered.connect(self.openCurvature)
@@ -138,6 +142,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.aboutDialog = None
         self.FIDs = []
         self.tickOffset = 0 # Smallest tick in data, used when plotting x data
+        self.smoothing = None
 
         # MMS Tools
         self.planeNormal = None
@@ -465,6 +470,18 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.spectra.show()
             self.spectra.initPlots()
             PyQtUtils.moveToFront(self.spectra)
+
+    def startSmoothing(self):
+        self.closeSmoothing()
+        self.smoothing = SmoothingTool(self)
+        self.smoothing.restartSelect()
+        self.smoothing.show()
+
+    def closeSmoothing(self):
+        if self.smoothing:
+            self.smoothing.close()
+            self.smoothing = None
+            self.endGeneralSelect()
 
     def openHelp(self):
         self.closeHelp()
@@ -1085,7 +1102,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         return dstrs, [links]
 
-
     def plotDataDefault(self):
         dstrs,links = self.getDefaultPlotInfo()
 
@@ -1647,7 +1663,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
         # Holding ctrl key in stats mode allows selecting multiple regions
         ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
-        multiSelect = (ctrlPressed and mode == 'Stats')
+        multiSelect = (ctrlPressed and (mode == 'Stats' or mode == 'Smooth'))
         singleLineMode = (mode == 'Curlometer' or mode == 'Curvature')
 
         # Case where no regions have been created or just adding a new line

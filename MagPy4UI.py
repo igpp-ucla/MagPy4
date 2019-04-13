@@ -62,6 +62,10 @@ class MagPy4UI(object):
         self.actionEdit.setText('&Edit...')
         self.actionEdit.setStatusTip('Opens edit window that allows you to rotate the data with matrices')
 
+        self.actionSmooth = QtWidgets.QAction(window)
+        self.actionSmooth.setText('Smooth...')
+        self.actionSmooth.setStatusTip('Smooths/adjusts user-selected regions where abnormal data occurs')
+
         self.actionPlaneNormal = QtWidgets.QAction(window)
         self.actionPlaneNormal.setText('Plane Normal...')
         self.actionPlaneNormal.setStatusTip('Calculates the normal to the plane using the timing method')
@@ -120,6 +124,7 @@ class MagPy4UI(object):
         self.toolsMenu.addAction(self.actionSpectra)
         self.toolsMenu.addAction(self.actionDynamicSpectra)
         self.toolsMenu.addAction(self.actionEdit)
+        self.toolsMenu.addAction(self.actionSmooth)
 
         self.MMSMenu = self.menuBar.addMenu('&MMS Tools')
         self.MMSMenu.addAction(self.actionPlaneNormal)
