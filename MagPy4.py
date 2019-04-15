@@ -1109,7 +1109,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def getData(self, dstr, editNumber=None):
         edits = self.DATADICT[dstr]
-        i = self.currentEdit if (editNumber is None or len(edits) >= editNumber) else editNumber
+        i = len(edits) - 1 if (editNumber is None or len(edits) >= editNumber) else editNumber
         while len(edits[i]) == 0: # if empty list go back one
             i -= 1
         return edits[i]
