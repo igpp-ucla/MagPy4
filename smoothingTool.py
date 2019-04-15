@@ -59,15 +59,15 @@ class SmoothingToolUI(object):
 
         layout.addWidget(self.onTopCheckBox, 2, 0, 1, 1)
         layout.addWidget(self.applyBtn, 2, 2, 1, 1)
-        # layout.addWidget(self.undoBtn, 2, 1, 1, 1)
+        layout.addWidget(self.undoBtn, 2, 1, 1, 1)
 
 class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
-    def __init__(self, window, parent=None):
+    def __init__(self, window, editWindow, parent=None):
         super(SmoothingTool, self).__init__(parent)
         self.window = window
         self.regions = []
         self.editCount = 0
-        self.edit = Edit(window)
+        self.edit = editWindow
 
         self.ui = SmoothingToolUI()
         self.ui.setupUI(self, window)
@@ -80,6 +80,7 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
 
     def closeEvent(self, event):
         self.window.endGeneralSelect()
+        self.window.closeSmoothing()
         self.edit.close()
         self.close()
 
@@ -88,7 +89,6 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         if self.editCount <= 0:
             return
 
-        self.edit.ui.history.setCurrentRow(self.window.currentEdit - 1)
         self.edit.removeHistory()
         self.editCount = self.editCount - 1
 
@@ -133,6 +133,7 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         # Reset the general selection process and clear regions
         self.regions = []
         te = TimeEdit(QtGui.QFont())
+        self.window.closeTraceStats()
         self.window.initGeneralSelect('Smooth', '#4286f4', te)
 
     def updatePlots(self):

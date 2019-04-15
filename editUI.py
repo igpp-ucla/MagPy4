@@ -59,6 +59,13 @@ class EditUI(object):
         self.calcBtn.setToolTip('Perform simple calculations on data')
         miscLayout.addWidget(self.calcBtn)
 
+        # Smoothing tool setup
+        self.smoothBtn = QtGui.QPushButton('Correct glitches...')
+        self.smoothBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.smoothBtn.setToolTip('Smooth and shift glitches in Insight data')
+        if window.insightMode:
+            miscLayout.addWidget(self.smoothBtn)
+
         leftLayout.addWidget(builderFrame)
         leftLayout.addWidget(miscFrame)
         

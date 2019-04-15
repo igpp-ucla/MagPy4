@@ -110,8 +110,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
 
-        self.ui.actionSmooth.triggered.connect(self.startSmoothing)
-
         # MMS Tool actions
         self.ui.actionPlaneNormal.triggered.connect(self.openPlaneNormal)
         self.ui.actionCurlometer.triggered.connect(self.openCurlometer)
@@ -473,9 +471,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def startSmoothing(self):
         self.closeSmoothing()
-        self.smoothing = SmoothingTool(self)
-        self.smoothing.restartSelect()
-        self.smoothing.show()
+        if self.edit:
+            self.edit.showMinimized()
+            self.smoothing = SmoothingTool(self, self.edit)
+            self.smoothing.restartSelect()
+            self.smoothing.show()
 
     def closeSmoothing(self):
         if self.smoothing:
@@ -1109,7 +1109,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def getData(self, dstr, editNumber=None):
         edits = self.DATADICT[dstr]
-        i = self.currentEdit if editNumber is None else editNumber
+        i = self.currentEdit if (editNumber is None or len(edits) >= editNumber) else editNumber
         while len(edits[i]) == 0: # if empty list go back one
             i -= 1
         return edits[i]
@@ -1331,7 +1331,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
             j = 0
             while j < len(plotStrs):
-                dstr,editNum = plotStrs[j]
+                dstr, editNum = plotStrs[j]
 
                 edits = self.DATADICT[dstr]
 

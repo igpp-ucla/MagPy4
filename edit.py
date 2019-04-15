@@ -79,6 +79,9 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.filterButton.clicked.connect(self.openFilter)
         self.simpCalc = None
         self.ui.calcBtn.clicked.connect(self.openSimpleCalc)
+        self.smoothTool = None
+        if window.insightMode:
+            self.ui.smoothBtn.clicked.connect(window.startSmoothing)
 
     def closeEvent(self, event):
         # save edit history
