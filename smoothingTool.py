@@ -1,16 +1,10 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel
-from dataDisplay import DataDisplay, UTCQDate
 from edit import Edit
-from FF_Time import FFTIME, leapFile
-
-from scipy import interpolate as scInter
 
 import pyqtgraph as pg
 import numpy as np
-
-import functools
 import bisect
 
 class SmoothingToolUI(object):
@@ -163,31 +157,34 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         rmStart, rmEnd, lftPeak, rghtPeak = self.getRegion(dta, times, rmRegion)
         rmDta, rmTimes, restOfDta, restOfTimes = self.splitDta(dta, times, rmStart, rmEnd)
 
-        interpDta = np.interp(rmTimes, restOfTimes, restOfDta)
+        # Interpolate from rmStart to rmEnd to get lower interp line
+        interpLower = np.interp(times[rmStart:rmEnd+1], restOfTimes, restOfDta)
+        interpLower = interpLower[(lftPeak-rmStart):(rghtPeak-rmStart+1)]
 
+        # Interpolate along the removed times between the value peaks
         shiftTimes = times[lftPeak:rghtPeak+1]
         shiftBoundaries = [times[lftPeak], times[rghtPeak]]
         shiftDtaBnds = [dta[lftPeak], dta[rghtPeak]]
+        interpUpper = np.interp(shiftTimes, shiftBoundaries, shiftDtaBnds)
 
-        # Interpolate along the removed times between the value peaks
-        interpInner = np.interp(shiftTimes, shiftBoundaries, shiftDtaBnds)
+        # Calculate difference between these two
+        diff = interpUpper - interpLower
+        shiftedMiddle = dta[lftPeak:rghtPeak+1] - diff
 
-        # Add back in some points for purposes of finding difference
-        numLftPts = lftPeak-rmStart
-        numRghtPts = rmEnd-rghtPeak
-        interpLeft = interpDta[:numLftPts]
-        interpRight = interpDta[-numRghtPts:]
-        interpInner = np.concatenate([interpLeft, interpInner, interpRight])
+        # Interpolate linearly in gaps between shifted section and original data
+        interpLftTimes = times[rmStart:lftPeak]
+        interpRghtTimes = times[rghtPeak+1:rmEnd+1]
 
-        # Find the difference between the top interp line and the bottom one
-        diff = interpInner - interpDta
+        lftBnds, lftDta = [times[rmStart], times[lftPeak]], [dta[rmStart], shiftedMiddle[0]]
+        rghtBnds, rghtDta = [times[rghtPeak+1], times[rmEnd]], [shiftedMiddle[-1], dta[rmEnd]]
 
-        # Replace the gaps between the rm bounds and peak bounds w/ bottom dta
-        liftedDta = rmDta - diff
-        liftedDta[:len(interpLeft)] = interpLeft
-        liftedDta[-len(interpRight):] = interpRight
+        interpLeft = np.interp(interpLftTimes, lftBnds, lftDta)
+        interpRght = np.interp(interpRghtTimes, rghtBnds, rghtDta)
 
-        # Insert shifted data back into the larger data set
+        # Concatenate the interpolated gaps with the shifted middle section
+        liftedDta = np.concatenate([interpLeft, shiftedMiddle, interpRght])
+
+        # Insert full set of shifted data back into the larger data set
         newDta = np.insert(restOfDta, rmStart, liftedDta)
         return newDta
 
@@ -218,7 +215,15 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         rghtChangePt, rightPeak = self.getRightChangePoint(dta, times, rghtRegion)
 
         # Return slightly extended regions
-        return (lftChangePt - 2, rghtChangePt + 2, lftPeak, rightPeak)
+        return (lftChangePt-1, rghtChangePt+1, lftPeak, rightPeak)
+
+    def getPeak(self, cp, slopes):
+        peakIndex = cp + 1
+        for i in range(peakIndex, len(slopes)-1):
+            if np.sign(slopes[i]) != np.sign(slopes[i+1]):
+                peakIndex = i + 1
+                break
+        return peakIndex
 
     def getLeftChangePoint(self, dta, times, region):
         # Look at region dta/times only
@@ -233,30 +238,30 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         slopes = np.diff(dta) / np.diff(times)
         slopeDiffs = np.diff(slopes)
 
-        # Find the inflection points
+        # Find the inflection points and the nearest peak
         changePoints = []
+        peakIndices = []
         for i in range(0, len(slopeDiffs)-1):
             if np.sign(slopeDiffs[i]) != np.sign(slopeDiffs[i+1]):
                 changePoints.append(i+1)
+                peakIndices.append(self.getPeak(i+1, slopes))
 
         if changePoints == []:
             return start, start
 
         # Find the inflection point with the greatest slope
         mostSignfPt = changePoints[0]
-        for index in changePoints:
-            diff = slopes[index]
-            if abs(diff) > abs(slopes[mostSignfPt]):
+        peakIndex = peakIndices[0]
+        for i in range(0, len(changePoints)):
+            index = changePoints[i]
+            currPeak = peakIndices[i]
+            # Look at the slope between the inflection point and the next slope change
+            diff = self.diffBetweenPts(dta, times, index, currPeak)
+            if abs(diff) > abs(self.diffBetweenPts(dta, times, mostSignfPt, peakIndex)):
                 mostSignfPt = index
+                peakIndex = currPeak
 
-        # Find peak, first point where slope sign changes after inflection point
-        peakIndex = mostSignfPt
-        for i in range(mostSignfPt, len(slopes)-1):
-            if np.sign(slopes[i]) != np.sign(slopes[i+1]):
-                peakIndex = i + 1
-                break
-
-        return start + mostSignfPt - 1, start + peakIndex
+        return start + mostSignfPt, start + peakIndex
 
     def getRightChangePoint(self, dta, times, region):
         # Look at region dta/times only
@@ -271,29 +276,33 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         slopes = np.diff(dta) / np.diff(times)
         slopeDiffs = np.diff(slopes)
 
-        # Find the inflection points
+        # Find the inflection points and the nearest peak
         changePoints = []
+        peakIndices = []
         for i in range(0, len(slopeDiffs)-1):
             if np.sign(slopeDiffs[i]) != np.sign(slopeDiffs[i+1]):
                 changePoints.append(i+1)
+                peakIndices.append(self.getPeak(i+1, slopes))
 
         if changePoints == []:
             return end, end
 
         # Find the inflection point with greatest slope
-        mostSignfPt = changePoints[-1]
-        for index in changePoints:
-            diff = slopes[index]
-            if abs(diff) > abs(slopes[mostSignfPt]):
+        mostSignfPt = changePoints[0]
+        peakIndex = peakIndices[0]
+        for i in range(0, len(changePoints)):
+            index = changePoints[i]
+            currPeak = peakIndices[i]
+            # Look at the slope between the inflection point and the next slope change
+            diff = self.diffBetweenPts(dta, times, index, currPeak)
+            if abs(diff) > abs(self.diffBetweenPts(dta, times, mostSignfPt, peakIndex)):
                 mostSignfPt = index
+                peakIndex = currPeak
 
-        # Find peak, first point where slope sign changes before inflection point
-        peakIndex = mostSignfPt - 1
-        for i in range(mostSignfPt - 1, 0, -1):
-            if np.sign(slopes[i]) != np.sign(slopes[i+1]):
-                peakIndex = i + 1
-                break
+        # Switch order for right edge b/c mostSignfPt is where slope changes
+        return start + peakIndex, start + mostSignfPt
 
-        return start + mostSignfPt + 1, start + peakIndex
-
-
+    def diffBetweenPts(self, dta, times, i1, i2):
+        top = dta[i2] - dta[i1]
+        bot = times[i2] = times[i1]
+        return (top / bot)
