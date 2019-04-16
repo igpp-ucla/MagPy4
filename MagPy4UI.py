@@ -124,6 +124,7 @@ class MagPy4UI(object):
         self.MMSMenu = self.menuBar.addMenu('&MMS Tools')
         self.MMSMenu.addAction(self.actionPlaneNormal)
         self.MMSMenu.addAction(self.actionCurlometer)
+        self.MMSMenu.addAction(self.actionCurvature)
 
         self.optionsMenu = self.menuBar.addMenu('&Options')
         self.optionsMenu.addAction(self.scaleYToCurrentTimeAction)
