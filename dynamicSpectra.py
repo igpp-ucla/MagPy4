@@ -335,7 +335,7 @@ class DynamicSpectraUI(object):
         # Create and set color gradient based on colormap
         colors = colorMap.getColors()
         colors = list(map(pg.mkColor, colors))
-        colorLocs = [0, 0.25, 0.5, 0.75, 1]
+        colorLocs = [0, 1/3, 0.5, 2/3, 1]
         for color, loc in zip(colors, colorLocs):
             gradient.setColorAt(loc, color)
         gradLegend.setGradient(gradient)
@@ -561,7 +561,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
     def mapValueToColor(self, vals, minPower, maxPower):
         rgbBlue = (25, 0, 245)
         rgbBlueGreen = (0, 245, 245)
-        rgbGreen = (143, 245, 38)
+        rgbGreen = (127, 245, 0)
         rgbYellow = (245, 245, 0)
         rgbRed = (245, 0, 25)
 
@@ -574,10 +574,9 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         maxLog = maxLog + abs(maxLog * 0.01)
 
         # Determine the non-log values the color map will use
-        midPoint = (minLog+maxLog) / 2
-        leftMidPoint = (minLog + midPoint) / 2
-        rightMidPoint = (midPoint + maxLog) / 2
-        logLevels = [minLog, leftMidPoint, midPoint, rightMidPoint, maxLog]
+        midPoint = (minLog + maxLog) / 2
+        oneThird = (maxLog - minLog) / 3
+        logLevels = [minLog, minLog+oneThird, midPoint, maxLog-oneThird, maxLog]
         logLevels = [10**level for level in logLevels]
 
         # Generate tick mark values for gradient
