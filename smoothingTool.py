@@ -3,12 +3,15 @@ from PyQt5.QtWidgets import QSizePolicy
 from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel
 from edit import Edit
 
+import functools
 import pyqtgraph as pg
 import numpy as np
 import bisect
+import os
 
 class SmoothingToolUI(object):
     def setupUI(self, Frame, window):
+        self.Frame = Frame
         Frame.setWindowTitle('Smoothing Tool')
         Frame.resize(100, 100)
         layout = QtWidgets.QGridLayout(Frame)
@@ -23,7 +26,7 @@ class SmoothingToolUI(object):
         settingsLt.addWidget(self.smoothMethodBx)
         settingsLt.addStretch()
 
-        layout.addLayout(settingsLt, 0, 0, 1, 3)
+        layout.addLayout(settingsLt, 0, 0, 1, 4)
 
         # Get list of unique data strings in plots, in same order added
         allDstrs = []
@@ -38,28 +41,72 @@ class SmoothingToolUI(object):
         # Set up layout for listing which data vars will be affected
         self.dstrChkBoxes = []
         dstrsFrame = QtWidgets.QGroupBox('Select variables to smooth and press apply:')
+        dstrsFrame.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum))
         dstrsLt = QtWidgets.QHBoxLayout(dstrsFrame)
         for dstr in dstrs:
             chkbx = QtWidgets.QCheckBox(dstr)
             dstrsLt.addWidget(chkbx)
             self.dstrChkBoxes.append(chkbx)
 
-        layout.addWidget(dstrsFrame, 1, 0, 1, 3)
+        layout.addWidget(dstrsFrame, 1, 0, 1, 4)
 
         # Set up apply/undo buttons and 'keep on top' checkbox
         self.onTopCheckBox = QtWidgets.QCheckBox('Stay On Top')
         self.undoBtn = QtWidgets.QPushButton('Undo')
         self.applyBtn = QtWidgets.QPushButton('Apply')
+        self.showLogBtn = QtWidgets.QPushButton('Show Log')
 
         layout.addWidget(self.onTopCheckBox, 2, 0, 1, 1)
-        layout.addWidget(self.applyBtn, 2, 2, 1, 1)
         layout.addWidget(self.undoBtn, 2, 1, 1, 1)
+        layout.addWidget(self.applyBtn, 2, 2, 1, 1)
+        layout.addWidget(self.showLogBtn, 2, 3, 1, 1)
+
+        # Save state info, connect show log button
+        self.showLogBtn.clicked.connect(self.showLog)
+        self.logWidget = None
+        self.layout = layout
+
+    def showLog(self):
+        if self.logWidget is None:
+            self.showLogBtn.setText('Close Log')
+            # Create log and update
+            self.logWidget = self.buildLogView()
+            self.layout.addWidget(self.logWidget, 3, 0, 1, 4)
+            self.Frame.updateLog()
+            # Add in save log button
+            self.saveBtn = QtWidgets.QPushButton('Save Log')
+            self.saveBtn.clicked.connect(self.Frame.saveLog)
+            self.layout.addWidget(self.saveBtn, 4, 3, 1, 1)
+        else:
+            # Close widgets and reset settings
+            self.showLogBtn.setText('Show Log')
+            self.logWidget.close()
+            self.saveBtn.close()
+            self.logWidget = None
+            self.adjustWindowSize()
+
+    def adjustWindowSize(self):
+        # Adjusts window size after closing log widget
+        QtCore.QTimer.singleShot(5, functools.partial(self.Frame.resize, 100, 100))
+
+    def buildLogView(self):
+        # Initializes the log widget
+        textBox = QtWidgets.QTextEdit()
+        textBox.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
+        textBox.setSizePolicy(QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding))
+        textBox.setReadOnly(True)
+        return textBox
+
+    def updateLog(self, txt):
+        if self.logWidget:
+            self.logWidget.setText(txt)
 
 class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
     def __init__(self, window, editWindow, parent=None):
         super(SmoothingTool, self).__init__(parent)
         self.window = window
         self.regions = []
+        self.lastEdits = [] # Stores per-edit lists of dstrs and num changes
         self.editCount = 0
         self.edit = editWindow
 
@@ -86,6 +133,17 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         self.edit.removeHistory()
         self.editCount = self.editCount - 1
 
+        # Get list of last set of edits and update current state
+        lastEdit = self.lastEdits[-1]
+        for dstr, numChanges in lastEdit:
+            # Remove last x elements from dstr's entry in change log
+            for i in range(0, numChanges):
+                self.window.changeLog[dstr].pop()
+        self.lastEdits.pop()
+
+        # Update actual log widget w/ new text
+        self.updateLog()
+
     def toggleWindowOnTop(self, val):
         # Keeps window on top of main window while user updates lines
         self.setParent(self.window if val else None)
@@ -101,12 +159,15 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         if len(self.window.regions) == 0:
             return
 
+        self.lastEdits.append([])
+
         # For every checked datastring, smooth its data
         for chkbx in self.ui.dstrChkBoxes:
             if not chkbx.isChecked():
                 continue
             dstr = chkbx.text()
             en = self.window.currentEdit
+            regTimes = []
             for regNum in range(0, len(self.window.regions)):
                 iO, iE = self.window.calcDataIndicesFromLines(dstr, en, regNum)
                 self.regions.append((iO, iE))
@@ -117,11 +178,16 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
             smoothedDta = self.smoothDta(times, dta, self.regions)
             self.window.DATADICT[dstr].append(smoothedDta)
 
+            # Record timestamps of change region
+            regTimes = [(times[a], times[b]) for a, b in self.regions]
+            self.recordChanges(regTimes, dstr)
+
         # Update num of edits, update plots, and restart general select
         self.editCount = self.editCount + 1
         self.window.endGeneralSelect()
         self.updatePlots()
         self.restartSelect()
+        self.updateLog()
 
     def restartSelect(self):
         # Reset the general selection process and clear regions
@@ -131,7 +197,7 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         self.window.initGeneralSelect('Smooth', '#4286f4', te)
 
     def updatePlots(self):
-        self.edit.addHistory(np.eye(3), 'Smoothing operation', 'S')
+        self.edit.addHistory(np.eye(3), 'Data correction operation', 'S')
         self.editCount = self.editCount + 1
 
     def smoothDta(self, times, dta, rmRegions):
@@ -304,5 +370,85 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
 
     def diffBetweenPts(self, dta, times, i1, i2):
         top = dta[i2] - dta[i1]
-        bot = times[i2] = times[i1]
+        bot = times[i2] - times[i1]
         return (top / bot)
+
+    def recordChanges(self, timeTicks, dstr):
+        # Save changes to change log and update internal edit history state
+        if dstr in self.window.changeLog.keys():
+            self.window.changeLog[dstr].extend(timeTicks)
+        else:
+            self.window.changeLog[dstr] = timeTicks
+        # This edit's entry in lastEdits holds each dstr changed and the
+        # number of regions that were changed
+        self.lastEdits[-1].append((dstr, len(timeTicks)))
+
+    def mergeOverlaps(self, indices):
+        if len(indices) <= 1:
+            return indices
+
+        indices.sort() # Pre-sort indices
+
+        # Check for time regions that overlap
+        newIndexList = [indices[0]]
+        prevA, prevB = newIndexList[0]
+        for a, b in indices[1:]:
+            # Merge time regions into a single time region if they overlap
+            if prevA <= a and a <= prevB:
+                mergedIndices = (prevA, max(b, prevB))
+                newIndexList.pop()
+            else:
+                mergedIndices = (a, b)
+            newIndexList.append(mergedIndices)
+            prevA, prevB = mergedIndices
+
+        return newIndexList
+
+    def updateLog(self):
+        txt = self.buildLogText()
+        self.ui.updateLog(txt)
+
+    def buildLogText(self):
+        # Get list of changed data variables
+        dstrs = list(self.window.changeLog.keys())
+        if dstrs == []:
+            return
+
+        # Map time ticks for each dstr to timestamps
+        timestamps = {}
+        for dstr in dstrs:
+            indices = self.window.changeLog[dstr]
+
+            # Merge any overlapping timestamps and sort them
+            indices = self.mergeOverlaps(indices)
+
+            dstrTmstmps = []
+            for a, b in indices:
+                tmstmpA = self.window.getTimestampFromTick(a)
+                tmstmpB = self.window.getTimestampFromTick(b)
+                dstrTmstmps.append((tmstmpA, tmstmpB))
+
+            timestamps[dstr] = dstrTmstmps
+
+        # Create log text from timestamps dictionary
+        txt = 'Log of Changes:\n'
+        for dstr in dstrs:
+            headerTxt = dstr + '\t' + 'Start, End' + '\n'
+
+            bodyTxt = ''
+            for tmA, tmB in timestamps[dstr]:
+                bodyTxt += '\t' + tmA + ', ' + tmB + '\n'
+
+            if bodyTxt == '':
+                continue
+
+            txt += headerTxt + bodyTxt # Move to new row
+
+        return txt
+
+    def saveLog(self):
+        filename = self.window.saveTxtFileDialog()
+        f = open(filename, 'w')
+        txt = self.buildLogText()
+        f.write(txt)
+        f.close()

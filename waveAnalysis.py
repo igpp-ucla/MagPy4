@@ -261,24 +261,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
     def exportLog(self):
         logInfo, matrices, results = self.getTableData()
 
-        # Save file dialog
-        defaultSfx = '.txt'
-        QQ = QtGui.QFileDialog(self)
-        QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
-        path = os.path.expanduser(".")
-        QQ.setDirectory(path)
-        fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='TXT file (*.txt)')
-        if fullname is None:
-            print('Save failed')
-            return
-        if fullname[0] == '':
-            print('Save cancelled')
-            return
-
-        # If file name doesn't end with default suffix, add it before saving
-        filename = fullname[0]
-        if filename.endswith(defaultSfx) == False:
-            filename += defaultSfx
+        filename = self.window.saveTxtFileDialog()
 
         # Write logInfo, each matrix, and results to file
         f = open(filename, 'w')

@@ -266,6 +266,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeData()
         self.closeTraceStats()
         self.closeSpectra()
+        self.closeSmoothing()
         self.closeAddTickLbls()
         self.closePlaneNormal()
         self.closeDynamicSpectra()
@@ -279,6 +280,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.currentEdit = 0 # current edit number selected
         self.editNames = [] # list of edit names, index into list is edit number
         self.editHistory = []
+        self.changeLog = {}
         self.customPens = []
         self.pltGrd = None
         self.regions = []
@@ -519,6 +521,27 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def runTests(self):
         Tests.runTests()
+
+    def saveTxtFileDialog(self):
+        defaultSfx = '.txt'
+        QQ = QtGui.QFileDialog(self)
+        QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        path = os.path.expanduser(".")
+        QQ.setDirectory(path)
+        fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='TXT file (*.txt)')
+        if fullname is None:
+            print('Save failed')
+            return
+        if fullname[0] == '':
+            print('Save cancelled')
+            return
+
+        # If file name doesn't end with default suffix, add it before saving
+        filename = fullname[0]
+        if filename.endswith(defaultSfx) == False:
+            filename += defaultSfx
+
+        return filename
 
     def openFileDialog(self, isFlatfile, clearCurrent):
         if isFlatfile:
@@ -1552,6 +1575,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             return
         assert(t0 <= t1)
         self.updateLinesPos(region, t0 if x0 < x1 else t1, t1 if x0 < x1 else t0)
+
+    def getTimestampFromTick(self, tick):
+        return FFTIME(tick, Epoch=self.epoch).UTC
 
     def updateTimeEditByLines(self, timeEdit, region):
         x0, x1 = region.getRegion()
