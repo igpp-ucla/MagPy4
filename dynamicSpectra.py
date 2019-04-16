@@ -24,46 +24,28 @@ class SpectraLine(pg.PlotCurveItem):
         yVals = [freq]*len(times)
         pg.PlotCurveItem.__init__(self, x=times, y=yVals, *args, **kargs)
 
-    def getPaths(self):
-        # Creates a separate path for every square in plot
-        if self.paths is None:
-            x, y = self.getData()
-            subPaths = []
-            if x is None or len(x) == 0 or y is None or len(y) == 0:
-                self.paths = [QtGui.QPainterPath()]
-            else:
-                timeLen = len(self.times)
-                xPairs = [(self.times[i], self.times[i+1]) for i in range(0, timeLen-1)]
-                yVal = y[0]
-                for (x0, x1) in xPairs:
-                    currPath = self.generatePath(np.array([x0, x1]), np.array([yVal, yVal]))
-                    subPaths.append(currPath)
-                self.paths = subPaths
-
-        return self.paths
-
-    def mkRGBColor(self, rgbVals):
-        return QtGui.QColor(rgbVals[0], rgbVals[1], rgbVals[2])
+    def mkBrushFrmClr(self, rgbColor):
+        return QtGui.QColor(rgbColor)
 
     def paint(self, p, opt, widget):
         if self.xData is None or len(self.xData) == 0:
             return
 
-        paths = self.getPaths()
         yVal = self.yData[0]
 
         # Draws filled rects for every point using designated colors
         for pairNum in range(0, len(self.colors)):
             x0 = self.times[pairNum]
             x1 = self.times[pairNum+1]
-            path = paths[pairNum]
-            p2 = QtGui.QPainterPath(path)
+            pt1 = QtCore.QPointF(x0, yVal)
+            pt2 = QtCore.QPointF(x1, yVal)
+            p2 = QtGui.QPainterPath(pt2)
             p2.lineTo(x1, self.opts['fillLevel'])
             p2.lineTo(x0, self.opts['fillLevel'])
             p2.lineTo(x0, yVal)
             p2.closeSubpath()
-            color = self.mkRGBColor(self.colors[pairNum])
-            p.fillPath(p2, pg.mkBrush(color))
+            color = self.colors[pairNum]
+            p.fillPath(p2, self.mkBrushFrmClr(color))
 
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
@@ -544,8 +526,10 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
             powerTimeSeries = pixelGrid[freqNum,:]
             timeVals = times
 
+            colors = list(map(self.mkRGBColor, powerTimeSeries))
+
             # Map its powers to colors and add the SpectraLine to the plot
-            pdi = SpectraLine(freqVal, powerTimeSeries, timeVals, self, fillLevel=lastFreq)
+            pdi = SpectraLine(freqVal, colors, timeVals, self, fillLevel=lastFreq)
             self.ui.plotItem.addItem(pdi)
 
             # Update progress in status bar
@@ -557,6 +541,9 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         self.ui.statusBar.showMessage('Adjusting plot...')
         self.adjustPlotItem([times[0], times[-1]], (lowerFreqBnd, freqs[-1]))
         self.ui.statusBar.clearMessage()
+
+    def mkRGBColor(self, rgbVals):
+        return QtGui.QColor(rgbVals[0], rgbVals[1], rgbVals[2])
 
     def mapValueToColor(self, vals, minPower, maxPower):
         rgbBlue = (25, 0, 245)
