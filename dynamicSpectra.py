@@ -323,7 +323,6 @@ class DynamicSpectraUI(object):
         gradLegend.setGradient(gradient)
 
         # Set labels corresponding to color level
-        colorPos = list(map(np.log10, colorPos))
         minLog, maxLog = colorPos[0], colorPos[-1]
         locs = [(i-minLog)/(maxLog-minLog) for i in colorPos[1:-1]]
         labels = list(map(str, list(map(int, colorPos[1:-1]))))
@@ -564,16 +563,15 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         midPoint = (minLog + maxLog) / 2
         oneThird = (maxLog - minLog) / 3
         logLevels = [minLog, minLog+oneThird, midPoint, maxLog-oneThird, maxLog]
-        logLevels = [10**level for level in logLevels]
 
         # Generate tick mark values for gradient
         lwrBnd = int(np.ceil(minLog))
         upperBnd = int(np.floor(maxLog))
         logTicks = [i for i in range(lwrBnd, upperBnd+1)]
         logTicks = [minLog] + logTicks + [maxLog]
-        logTicks = [10**level for level in logTicks]
 
         # Map power values to colors in gradient
+        vals = np.log10(vals) # Map to log 10 first
         colorMap = pg.ColorMap(logLevels, colors)
         colorVals = colorMap.map(vals)
 
