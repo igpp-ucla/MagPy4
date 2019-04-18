@@ -105,7 +105,6 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
     def __init__(self, window, editWindow, parent=None):
         super(SmoothingTool, self).__init__(parent)
         self.window = window
-        self.regions = []
         self.lastEdits = [] # Stores per-edit lists of dstrs and num changes
         self.editCount = 0
         self.edit = editWindow
@@ -168,18 +167,20 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
             dstr = chkbx.text()
             en = self.window.currentEdit
             regTimes = []
+            regions = []
+            # Get region start/end indices
             for regNum in range(0, len(self.window.regions)):
                 iO, iE = self.window.calcDataIndicesFromLines(dstr, en, regNum)
-                self.regions.append((iO, iE))
+                regions.append((iO, iE))
             
             dta = self.window.getData(dstr, en)
             times = self.window.getTimes(dstr, en)[0]
 
-            smoothedDta = self.smoothDta(times, dta, self.regions)
+            smoothedDta = self.smoothDta(times, dta, regions)
             self.window.DATADICT[dstr].append(smoothedDta)
 
             # Record timestamps of change region
-            regTimes = [(times[a], times[b]) for a, b in self.regions]
+            regTimes = [(times[a], times[b]) for a, b in regions]
             self.recordChanges(regTimes, dstr)
 
         # Update num of edits, update plots, and restart general select
@@ -191,14 +192,12 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
 
     def restartSelect(self):
         # Reset the general selection process and clear regions
-        self.regions = []
         te = TimeEdit(QtGui.QFont())
         self.window.closeTraceStats()
         self.window.initGeneralSelect('Smooth', '#4286f4', te)
 
     def updatePlots(self):
         self.edit.addHistory(np.eye(3), 'Data correction operation', 'S')
-        self.editCount = self.editCount + 1
 
     def smoothDta(self, times, dta, rmRegions):
         # Smooth data in every region, updating data used w/ each iteration
