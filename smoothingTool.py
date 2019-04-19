@@ -3,9 +3,10 @@ from PyQt5.QtWidgets import QSizePolicy
 from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel
 from edit import Edit
 
-import functools
+from scipy import interpolate as scInter
 import pyqtgraph as pg
 import numpy as np
+import functools
 import bisect
 import os
 
@@ -20,7 +21,8 @@ class SmoothingToolUI(object):
         settingsLt = QtWidgets.QHBoxLayout()
         self.smoothMethodBx = QtWidgets.QComboBox()
         self.smoothMethodBx.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        smoothOpts = ['Shift', 'Interpolate']
+        smoothOpts = ['Shift', 'Interpolate: Linear', 'Interpolate: Akima',
+            'Interpolate: PCHIP']
         for opt in smoothOpts:
             self.smoothMethodBx.addItem(opt)
         settingsLt.addWidget(self.smoothMethodBx)
@@ -211,10 +213,27 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         return newDta
 
     def smoothByInterpolation(self, times, dta, rmRegion):
-        # Linearly interpolate rmRegion data and insert into rest of data
+        # Interpolate rmRegion data and insert into rest of data
         rmStart, rmEnd = rmRegion
         rmDta, rmTimes, restOfDta, restOfTimes = self.splitDta(dta, times, rmStart, rmEnd)
-        interpDta = np.interp(rmTimes, restOfTimes, restOfDta)
+
+        mode = self.ui.smoothMethodBx.currentText()[len('Interpolate: '):]
+
+        # Interpolate according to specific method
+        if mode == 'Linear':
+            interpDta = np.interp(rmTimes, restOfTimes, restOfDta)
+        elif mode == 'Akima':
+            cs = scInter.Akima1DInterpolator(restOfTimes, restOfDta)
+            interpDta = cs(rmTimes)
+        elif mode == 'PCHIP':
+            # Use subset of data for PCHIP for speed reasons
+            minIndex = max(0, rmStart-200)
+            maxIndex = min(len(restOfDta), rmStart+200)
+            fitTimes = restOfTimes[minIndex:maxIndex]
+            fitDta = restOfDta[minIndex:maxIndex]
+            cs = scInter.PchipInterpolator(fitTimes, fitDta)
+            interpDta = cs(rmTimes)
+
         newDta = np.insert(restOfDta, rmStart, interpDta)
         return newDta
 
