@@ -5,6 +5,314 @@ from PyQt5.QtWidgets import QSizePolicy
 import functools
 from MagPy4UI import PyQtUtils
 
+class DropdownLayout(QtWidgets.QGridLayout):
+    def __init__(self, window, frame):
+        self.grid = self
+        self.window = window
+        self.mainFrame = frame
+        self.dropdowns = []
+        self.plotLabels = []
+
+        QtWidgets.QGridLayout.__init__(self)
+
+    def addPlot(self):
+        en = self.mainFrame.getCurrentEdit()
+
+        # Adds the plot label and empty boxes filled w/ current edit's dstrs
+        pltNum = len(self.dropdowns)
+        lbl = QtWidgets.QLabel('Plot ' + str(pltNum+1) + ':')
+        self.grid.addWidget(lbl, pltNum, 0, 1, 1)
+        dd = self.addEmptyBox(pltNum, 1)
+
+        # Store dropdown and labels for removing later
+        self.dropdowns.append([(dd, en)])
+        self.plotLabels.append(lbl)
+
+    def removePlot(self):
+        # Remove dropdowns and plot label from layout and delete
+        dropRow = self.dropdowns[-1]
+        for dd, en in dropRow:
+            self.grid.removeWidget(dd)
+            dd.deleteLater()
+
+        lbl = self.plotLabels[-1]
+        self.grid.removeWidget(lbl)
+        lbl.deleteLater()
+
+        # Update lists that keep track of dropdowns
+        for lst in [self.dropdowns, self.plotLabels]:
+            lst.pop()
+
+    def initPlots(self, dropList):
+        self.checkBoxes = []
+        # for each dropdown row in all the dropdowns
+        for di, dropRow in enumerate(dropList):
+            # add spacer in first row to take up right space
+            if di == 0:
+                spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+                self.grid.addItem(spacer,0,100,1,1) # just so its always the last column
+
+            pltLbl = QtWidgets.QLabel('Plot ' + str(di+1) + ':')
+            self.grid.addWidget(pltLbl, di, 0, 1, 1)
+            self.plotLabels.append(pltLbl)
+
+            dropRow = dropRow + [('', self.mainFrame.getCurrentEdit())]
+
+            row = []
+            # for each dropdown in row
+            for i,(dstr,en) in enumerate(dropRow):
+                if dstr != '':
+                    dd = self.addBox(di, i+1, en, dstr)
+                else:
+                    dd = self.addEmptyBox(di, i+1)
+                row.append((dd,en))
+
+            self.dropdowns.append(row)
+
+    def clearPlots(self):
+        # Remove all plots and re-add the same number as before
+        numPlts = len(self.dropdowns)
+        self.clearElements()
+        for i in range(0, numPlts):
+            self.addPlot()
+
+    def resetDropdownLsts(self):
+        # Re-organizes plot dropdowns if an empty box is filled or a previously
+        # filled box is emptied
+        rowNum = 0
+        prevDropdowns = self.dropdowns[:]
+        self.dropdowns = []
+        for ddRow in prevDropdowns:
+            # Find the empty and non-empty combo boxes in this row
+            nonEmptyBoxes = []
+            for dd, en in ddRow:
+                dstr = dd.currentText()
+                # Remove all dropdowns from this row
+                self.grid.removeWidget(dd) 
+                if dstr == '':
+                    dd.deleteLater()
+                else:
+                    nonEmptyBoxes.append((dd, en))
+
+            # Add back in all non-empty boxes
+            col = 1
+            for dd, en in nonEmptyBoxes:
+                self.grid.addWidget(dd, rowNum, col, 1, 1)
+                col += 1
+
+            # Add an empty box at the end
+            emptyEndBx = self.addEmptyBox(rowNum, col)
+
+            # Save the new list of dropdowns
+            nonEmptyBoxes.append((emptyEndBx, self.mainFrame.getCurrentEdit()))
+            self.dropdowns.append(nonEmptyBoxes)
+
+            rowNum += 1
+
+    def addBox(self, row, col, en, dstr):
+        # Creates an empty box first
+        box = QtWidgets.QComboBox()
+        self.fillComboBox(box, en)
+        self.grid.addWidget(box, row, col, 1, 1)
+
+        # Finds the index of the dstr it's to be set to
+        ddItems = [box.itemText(itemIndex) for itemIndex in range(0, box.count())]
+        currIndex = ddItems.index(self.window.getLabel(dstr, en))
+        box.setCurrentIndex(currIndex)
+
+        box.currentTextChanged.connect(self.resetDropdownLsts)
+        return box
+
+    def addEmptyBox(self, row, col):
+        # Adds an empty box to grid and fills it
+        emptyEndBx = QtWidgets.QComboBox()
+        self.fillComboBox(emptyEndBx, self.mainFrame.getCurrentEdit())
+        self.grid.addWidget(emptyEndBx, row, col, 1, 1)
+        emptyEndBx.currentTextChanged.connect(self.resetDropdownLsts)
+        return emptyEndBx
+
+    def fillComboBox(self, dd, en):
+        # Fills the combo box w/ dstrs for the given edit number
+        dd.addItem('')
+        for k,v in self.window.DATADICT.items():
+            if len(v[en]) > 0:
+                s = self.window.getLabel(k,en)
+                dd.addItem(s)
+
+    def updtDstrOptions(self):
+        self.resetDropdownLsts()
+
+    def getPltDstrs(self, pltNum):
+        ddRow = self.dropdowns[pltNum]
+        dstrs = []
+        for dd, en in ddRow:
+            dstr = dd.currentText()
+            if dstr not in dstrs:
+                dstrs.append(dstr)
+        return dstrs
+
+    def clearElements(self):
+        numPlts = len(self.dropdowns)
+        while numPlts > 0:
+            self.removePlot()
+            numPlts -= 1
+
+class ListLayout(QtWidgets.QGridLayout):
+    def __init__(self, window, frame):
+        self.window = window
+        self.mainFrame = frame
+        self.pltFrms = []
+        self.pltTbls = []
+        self.editNumbers = []
+
+        QtWidgets.QGridLayout.__init__(self)
+        self.setupLayout()
+
+    def setupLayout(self):
+        # Sets up dstr selector and plot selections layout
+        layout = self
+
+        self.dstrTableFrame, self.dstrTable = self.setupDstrTable(layout)
+        layout.addWidget(self.dstrTableFrame, 0, 0, 1, 1)
+
+        self.pltFrms, self.pltTbls, self.elems = [], [], []
+        self.pltLt = QtWidgets.QGridLayout()
+
+        layout.addLayout(self.pltLt, 0, 1, 1, 1)
+
+    def setupDstrTable(self, layout):
+        frame = QtWidgets.QGroupBox('Data Variables')
+        layout = QtWidgets.QVBoxLayout(frame)
+        table = QtWidgets.QListWidget()
+
+        table.insertItems(0, self.window.DATASTRINGS)
+        table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+
+        layout.addWidget(table)
+        return frame, table
+
+    def addPlot(self):
+        plotNum = len(self.pltFrms) + 1
+
+        # Limit the number of plots per column
+        if (plotNum - 1) > 5:
+            row, col = (plotNum - 1) % 6, int((plotNum - 1)/6) + 1
+        else:
+            row, col = plotNum - 1, 1
+
+        plotTableLt = QtWidgets.QGridLayout()
+        self.pltLt.addLayout(plotTableLt, row, col, 1, 1)
+
+        # Add plot label
+        pltLbl = QtWidgets.QLabel('Plot ' + str(plotNum) + ':')
+        plotTableLt.addWidget(pltLbl, 0, 1, 1, 1)
+
+        # Add plot table
+        table = QtWidgets.QListWidget()
+        table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        plotTableLt.addWidget(table, 1, 1, 1, 1)
+
+        # Set up buttons from adding/removing dstrs from plots
+        pltBtnLt = QtWidgets.QVBoxLayout()
+        plotTableLt.addLayout(pltBtnLt, 1, 0, 1, 1)
+
+        pltBtn = QtWidgets.QPushButton('>>')
+        pltRmvBtn = QtWidgets.QPushButton(' < ')
+
+        pltBtnLt.addStretch()
+        for btn in [pltBtn, pltRmvBtn]:
+            btn.setFixedWidth(50)
+            pltBtnLt.addWidget(btn)
+        pltBtnLt.addStretch()
+
+        # Store this layout and elems for removing + the plot table itself
+        self.pltFrms.append(plotTableLt)
+        self.pltTbls.append(table)
+        self.elems.append([pltLbl, pltBtn, pltRmvBtn])
+
+        # Connect add/remove buttons to functions
+        pltBtn.clicked.connect(functools.partial(self.addDstrsToPlt, plotNum-1))
+        pltRmvBtn.clicked.connect(functools.partial(self.rmvDstrsFrmPlt, plotNum-1))
+        return plotTableLt, table
+
+    def removePlot(self):
+        # Remove plot layout from layout and delete the plot elements
+        self.pltLt.removeItem(self.pltFrms[-1])
+        self.pltTbls[-1].deleteLater()
+        for elem in self.elems[-1]:
+            elem.deleteLater()
+
+        # Update lists that keep track of plot tables and elements
+        for lst in [self.pltFrms, self.pltTbls, self.elems]:
+            lst.pop()
+
+    def initPlots(self, dstrLst):
+        # Creates a table for each dstr sub-list and fills it w/ the given dstrs
+        pltNum = 0
+        for subLst in dstrLst:
+            self.addPlot()
+            dstrs = [self.window.getLabel(dstr, en) for (dstr, en) in subLst]
+            self.addSpecificDstrsToPlt(len(self.pltTbls)-1, dstrs)
+            pltNum += 1
+
+    def clearPlots(self):
+        for plt in self.pltTbls:
+            plt.clear()
+
+    def updtDstrOptions(self):
+        # Update dstr table w/ current edit's dstrs
+        self.dstrTable.clear()
+        editNum = self.mainFrame.getCurrentEdit()
+        newDstrs = []
+        for k,v in self.window.DATADICT.items():
+            if len(v[editNum]) > 0:
+                s = self.window.getLabel(k,editNum)
+                newDstrs.append(s)
+        self.dstrTable.addItems(newDstrs)
+
+    def rmvDstrsFrmPlt(self, plotNum):
+        # Removes the selected datastrings from the given plot table
+        selectedItems = self.pltTbls[plotNum].selectedItems()
+
+        for item in selectedItems:
+            row = self.pltTbls[plotNum].row(item)
+            self.pltTbls[plotNum].takeItem(row)
+
+    def addDstrsToPlt(self, plotNum):
+        # Adds the selected dstrs from the dstr table to the given plot table
+        selectedItems = self.dstrTable.selectedItems()
+        selectedDstrs = [item.text() for item in selectedItems]
+
+        self.addSpecificDstrsToPlt(plotNum, selectedDstrs)
+
+    def addSpecificDstrsToPlt(self, plotNum, selectedDstrs):
+        # Used by addDstrsToPlt and initPlots to update a plot table w/ dstrs
+        prevDstrs = self.getPltDstrs(plotNum)
+        for dstr in selectedDstrs:
+            if dstr not in prevDstrs:
+                self.pltTbls[plotNum].addItem(dstr)
+
+    def getPltDstrs(self, pltNum):
+        pltList = self.pltTbls[pltNum]
+        n = pltList.count()
+        dstrs = []
+        for i in range(0, n):
+            dstrs.append(pltList.item(i).text())
+        return dstrs
+
+    def clearElements(self):
+        numPlts = len(self.pltFrms)
+        if numPlts == 0:
+            return
+        # Removes all plots, then removes the dstr table/frame
+        while numPlts > 0:
+            self.removePlot()
+            numPlts -= 1
+        self.removeWidget(self.dstrTable)
+        self.removeWidget(self.dstrTableFrame)
+        self.dstrTable.deleteLater()
+        self.dstrTableFrame.deleteLater()
+
 class PlotMenuUI(object):
     def setupUI(self, Frame):
         Frame.setWindowTitle('Plot Menu')
@@ -44,14 +352,14 @@ class PlotMenuUI(object):
         errorFlagLayout.addWidget(self.errorFlagEdit)
         
         buttonLayout = QtWidgets.QGridLayout()
-        buttonLayout.addWidget(self.clearButton, 0, 0, 1, 1)
-        buttonLayout.addWidget(self.removePlotButton, 0, 1, 1, 1)
-        buttonLayout.addWidget(self.addPlotButton, 0, 2, 1, 1)
-        buttonLayout.addWidget(self.defaultsButton, 0, 3, 1, 1)
-        buttonLayout.addWidget(self.switchButton, 0, 4, 1, 1)
+        topBtns = [self.clearButton, self.removePlotButton, self.addPlotButton,
+            self.defaultsButton, self.switchButton]
+        btnNum = 0
+        for btn in topBtns:
+            buttonLayout.addWidget(btn, 0, btnNum, 1, 1)
+            btnNum += 1
 
         buttonLayout.addWidget(self.plotButton, 1, 0, 1, 3)
-
         buttonLayout.addLayout(errorFlagLayout, 1, 4, 1, 1)
 
         self.editCombo = QtWidgets.QComboBox()
@@ -61,9 +369,13 @@ class PlotMenuUI(object):
         buttonLayout.addItem(spacer, 0, 10, 1, 1)
         self.layout.addLayout(buttonLayout)
 
-        self.gridFrame = QtWidgets.QGroupBox('Data Selection')
-        self.grid = QtWidgets.QGridLayout(self.gridFrame)
-        self.layout.addWidget(self.gridFrame)
+        # Plot frame and outer grid layout that hold the data selection
+        # layouts that may be dynamically set by the user
+        self.pltLtFrame = QtWidgets.QFrame()
+        self.pltLtContainer = QtWidgets.QGridLayout(self.pltLtFrame)
+        self.plottingLayout = DropdownLayout(Frame.window, Frame)
+        self.pltLtContainer.addLayout(self.plottingLayout, 0, 0, 1, 1)
+        self.layout.addWidget(self.pltLtFrame)
 
         self.fgridFrame = QtWidgets.QGroupBox('Y Axis Link Groups')
         self.fgridFrame.setToolTip('Link the Y axes of each plot in each group to have the same scale with each other')
@@ -79,6 +391,8 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         self.window = window
         self.ui = PlotMenuUI()
+        self.plotCount = 0
+        self.tableMode = self.window.plotMenuTableMode
         self.ui.setupUI(self)
         self.ui.errorFlagEdit.setText(f'{self.window.errorFlag:.0e}')
 
@@ -91,68 +405,64 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.ui.defaultsButton.clicked.connect(self.reloadDefaults)
         self.ui.switchButton.clicked.connect(self.switchModes)
 
-        self.checkBoxMode = self.window.plotMenuCheckBoxMode
-        self.ui.switchButton.setText('Switch to Dropdown Lists' if self.checkBoxMode else 'Switch to Check Boxes')
+        self.ui.switchButton.setText('Switch to Dropdown Lists' if self.tableMode else 'Switch to Table View')
         self.fcheckBoxes = []
 
         # add the edit name options to dropdown
         for editName in self.window.editNames:
             self.ui.editCombo.addItem(editName)
-        self.ui.editCombo.currentTextChanged.connect(self.rebuildDropdowns)
+        self.ui.editCombo.currentTextChanged.connect(self.updtDstrOptions)
 
-        self.shouldResizeWindow = False # gets set when switching modes
         self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)
 
-
     def closeEvent(self, event):
-        self.window.plotMenuCheckBoxMode = self.checkBoxMode
+        self.window.plotMenuTableMode = self.tableMode
 
-    def paintEvent(self, event):
-        if self.shouldResizeWindow:
-            self.shouldResizeWindow = False
-            self.resize(self.ui.layout.sizeHint())
+    def updtDstrOptions(self):
+        self.ui.plottingLayout.updtDstrOptions()
 
     def switchModes(self):
         # todo: save mode in magpy
-        if self.ui.switchButton.text() == 'Switch to Check Boxes':
-            self.checkBoxMode = True
+        if self.ui.switchButton.text() == 'Switch to Table View':
+            self.tableMode = True
             self.ui.switchButton.setText('Switch to Dropdown Lists')
         else:
-            self.checkBoxMode = False
-            self.ui.switchButton.setText('Switch to Check Boxes')
+            self.tableMode = False
+            self.ui.switchButton.setText('Switch to Table View')
 
         self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)
-        self.shouldResizeWindow = True
-        
+        self.ui.pltLtContainer.invalidate() #otherwise gridframe doesnt shrink back down
+        QtCore.QTimer.singleShot(5, functools.partial(self.resize, 100, 100))
+
     def reloadDefaults(self):
         dstrs, links = self.window.getDefaultPlotInfo()
+        self.ui.editCombo.setCurrentIndex(0)
         self.initPlotMenu(dstrs, links)
 
-    def initPlotMenu(self, dstrs, links):
-        self.plotCount = 0
-        self.checkBoxes = []
-        self.dropdowns = [] # list of lists for each row and each element in row is (combobox, editNum)
-        PyQtUtils.clearLayout(self.ui.grid)
+    def getLayout(self):
+        if self.tableMode:
+            layout = ListLayout(self.window, self)
+        else:
+            layout = DropdownLayout(self.window, self)
+        return layout
 
+    def clearPreviousLayout(self):
+        # Removes all elements from previous layout and deletes the layout
+        self.ui.plottingLayout.clearElements()
+        self.ui.pltLtContainer.removeItem(self.ui.plottingLayout)
+        self.ui.plottingLayout.deleteLater()
+
+    def initPlotMenu(self, dstrs, links):
         if dstrs is None:
             print('empty plot matrix!')
             return
 
-        if self.checkBoxMode:
-            self.addLabels()
-            for i,dstrList in enumerate(dstrs):
-                self.addPlot()
-                for dstr,editNum in dstrList:
-                    di = self.window.DATASTRINGS.index(dstr)
-                    self.checkBoxes[i][di].setChecked(True)
-        else:
-            for i,dstrList in enumerate(dstrs):
-                self.plotCount += 1
+        self.clearPreviousLayout()
+        self.ui.plottingLayout = self.getLayout()
+        self.ui.pltLtContainer.addLayout(self.ui.plottingLayout, 0, 0, 1, 1)
+        self.ui.plottingLayout.initPlots(dstrs)
 
-            adstrs = []
-            for dstrList in dstrs:
-                adstrs.append([(dstr,editNum) for dstr,editNum in dstrList])
-            self.rebuildDropdowns(adstrs)
+        self.plotCount = len(dstrs)
 
         if self.window.lastPlotLinks is not None:
             newLinks = []
@@ -167,29 +477,23 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
     # returns list of list of strings (one list for each plot, (dstr, editNumber) for each trace)
     def getPlotInfo(self):
         dstrs = []
-        if self.checkBoxMode:
-            for cbAxis in self.checkBoxes:
-                row = []
-                for i,cb in enumerate(cbAxis):
-                    if cb.isChecked():
-                        # no easy way for current checkbox setup to work with edit number selection, so just use current
-                        row.append((self.window.DATASTRINGS[i],self.window.currentEdit))
-                dstrs.append(row)
-        else:
-            dditems = list(self.window.DATADICT.items())
+        for i in range(0, self.plotCount):
+            # Gets the list of selected datastrings from the layout
+            pltDstrs = self.ui.plottingLayout.getPltDstrs(i)
 
-            for ddRow in self.dropdowns:
-                row = []
-                for dd,en in ddRow: # for each dropdown in row
-                    i = dd.currentIndex()-1
-                    if i == -1: # dont include emptys
-                        continue
-                    for k,v in self.window.DATADICT.items(): # figure out which datastring is selected
-                        editStr = self.window.getLabel(k,en)
-                        if (editStr == dd.currentText() and len(v[en])> 0):
-                            row.append((k,en))
+            # Then it looks through all combinations of edit numbers and
+            # dstrs to find the dstr w/ the matching edit name
+            dstrWithEditNums = []
+            for dstr in pltDstrs:
+                if dstr == '':
+                    continue
+                for k, v in self.window.DATADICT.items():
+                    for en in range(0, len(v)):
+                        editStr = self.window.getLabel(k, en)
+                        if (editStr == dstr and len(v[en]) > 0):
+                            dstrWithEditNums.append((k, en))
                             break
-                dstrs.append(row)
+            dstrs.append(dstrWithEditNums)
         return dstrs
 
     def getLinkLists(self):
@@ -210,86 +514,9 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             links.append((i,)) # append as tuple so can check for this later
         return links
 
-    # rebuild all of the dropdowns whenever one changes because its too complicated to figure out
-    # removing things correctly from qgridlayouts lol
-    # empty dropdowns will have options based on current edit selection
-    # filled dropdowns choices will be remembered and unavailable in subsequent dropdowns of same edit
-        # this part is done in somewhat convoluted way rather than just comparing strings to cover the case where multiple edits have same name
-    def rebuildDropdowns(self, overrideList = None):
-        # first part of this function saves all the current strings selected
-        dropList = []
-        currentEN = max(self.ui.editCombo.currentIndex(),0)
-        if isinstance(overrideList, list): # need this check because could be a single string from change callbacks
-            for dstrs in overrideList:
-                row = []
-                for dstr in dstrs:
-                    row.append(dstr)
-                row.append(('',currentEN))
-                dropList.append(row)
-        else: # check what dropdowns are currently and rebuild (incase too many emptys or need to redo possible strs)
-            for ddRow in self.dropdowns:
-                row = []
-                for dd,en in ddRow:
-                    # get current text and and find matching name
-                    curStr = dd.currentText()
-                    for k,v in self.window.DATADICT.items():
-                        editStr = self.window.getLabel(k,en)
-                        if curStr == editStr:
-                            row.append((k,en))
-                            break
-
-                # always add empty to end of row
-                row.append(('',currentEN))
-                dropList.append(row)
-
-            # ensure same number of rows as number of plots
-            while len(dropList) < self.plotCount:
-                dropList.append([('',currentEN)])
-            if len(dropList) > self.plotCount:
-                dropList = dropList[:(self.plotCount - len(dropList))]
-
-        self.checkBoxes = []
-        self.dropdowns = []
-        PyQtUtils.clearLayout(self.ui.grid)
-
-        # for each dropdown row in all the dropdowns
-        for di,dropRow in enumerate(dropList):
-            # add spacer in first row to take up right space
-            if di == 0:
-                spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-                self.ui.grid.addItem(spacer,0,100,1,1) # just so its always the last column
-            # add plot label for row
-            plotLabel = QtWidgets.QLabel()
-            plotLabel.setText(f'Plot {di+1}:')
-            self.ui.grid.addWidget(plotLabel,di,0,1,1)
-            row = []
-
-            # for each dropdown in row
-            for i,(dstr,en) in enumerate(dropRow):
-                dd = QtWidgets.QComboBox()
-                dd.addItem('')
-
-                # lock other selected options on this row from being available in your list
-                lockedSet = set(dropRow)
-                lockedSet.remove((dstr,en)) # except the one this dropdown had selected
-                for k,v in self.window.DATADICT.items():
-                    if len(v[en]) > 0 and (k,en) not in lockedSet: # if dstr has data for this edit and not locked
-                        s = self.window.getLabel(k,en)
-                        dd.addItem(s)
-                        if k == dstr: # select the one you had selected
-                            dd.setCurrentIndex(dd.count()-1)
-
-                dd.currentTextChanged.connect(self.rebuildDropdowns)
-                self.ui.grid.addWidget(dd,di,i+1,1,1)
-                row.append((dd,en))
-
-            self.dropdowns.append(row)
-
-
     # callback for each checkbox on changed
     # which box, row and col are provided
     def checkPlotLinks(self, checkBox, r, c):
-        #print(f'{r} {c}')
         if checkBox.isChecked(): # make sure ur only one checked in your column
             i = 0 # need to do it like this because setChecked callbacks can cause links to be rebuild mid iteration
             while i < len(self.fcheckBoxes):
@@ -370,17 +597,13 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.window.plotData(dstrs, links)
 
     def clearRows(self):
-        if self.checkBoxMode:
-            for row in self.checkBoxes:
-                for cb in row:
-                    cb.setChecked(False)
-        else:
-            override = []
-            for row in self.dropdowns:
-                override.append([])
-            self.rebuildDropdowns(override)
+        self.ui.plottingLayout.clearPlots()
 
-    # returns bool matrix from checkbox matrix
+    def addPlot(self):
+        self.plotCount += 1
+        self.ui.plottingLayout.addPlot()
+        self.rebuildPlotLinks()
+
     def checksToBools(self, cbMatrix, skipEmpty=False):
         boolMatrix = []
         for cbAxis in cbMatrix:
@@ -394,48 +617,20 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                 boolMatrix.append(boolAxis)
         return boolMatrix
 
-    def addLabels(self):
-        self.labels = []
-        for i,dstr in enumerate(self.ABBRV_DSTRS):
-            label = QtWidgets.QLabel()
-            label.setText(dstr)
-            label.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
-            self.ui.grid.addWidget(label,0,i + 1,1,1)
-
-    def addPlot(self):
-        self.plotCount += 1
-
-        if self.checkBoxMode:
-            plotLabel = QtWidgets.QLabel()
-            plotLabel.setText(f'Plot {self.plotCount}:')
-            checkBoxes = []
-            self.ui.grid.addWidget(plotLabel,self.plotCount + 1,0,1,1)
-            for i,dstr in enumerate(self.ABBRV_DSTRS):
-                checkBox = QtWidgets.QCheckBox()
-                checkBoxes.append(checkBox)
-                self.ui.grid.addWidget(checkBox,self.plotCount + 1,i + 1,1,1) # first +1 because axis labels
-            self.checkBoxes.append(checkBoxes)
-        else:
-            self.rebuildDropdowns()
-
-        self.rebuildPlotLinks()
-
     def removePlot(self):
         if self.plotCount <= 1:
             print('need at least one plot')
             return
+
         self.plotCount-=1
+        self.ui.plottingLayout.removePlot()
+        self.rebuildPlotLinks()
 
-        if self.checkBoxMode:
-            self.checkBoxes = self.checkBoxes[:-1]
-            rowLen = len(self.ABBRV_DSTRS) + 1 # one extra because plot labels row
-            for i in range(rowLen):
-                child = self.ui.grid.takeAt(self.ui.grid.count() - 1) # take items off back
-                if child.widget() is not None:
-                    child.widget().deleteLater()
-        else:
-            self.rebuildDropdowns()
+        # Update window size
+        self.ui.pltLtContainer.invalidate() #otherwise gridframe doesnt shrink back down
+        if self.plotCount < 3:
+            QtCore.QTimer.singleShot(5, functools.partial(self.resize, 100, 100))
 
-        self.ui.grid.invalidate() #otherwise gridframe doesnt shrink back down
-        self.rebuildPlotLinks()        
-
+    def getCurrentEdit(self):
+        editNumber = max(0, self.ui.editCombo.currentIndex())
+        return editNumber

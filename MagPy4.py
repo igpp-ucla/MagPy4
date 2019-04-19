@@ -148,7 +148,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.curvature = None
 
         # these are saves for options for program lifetime
-        self.plotMenuCheckBoxMode = False
+        self.plotMenuTableMode = False
         self.traceStatsOnTop = True
 
         self.initDataStorageStructures()
