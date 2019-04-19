@@ -67,9 +67,9 @@ class Edit(QtWidgets.QFrame, EditUI):
             self.addHistory(Mth.IDENTITY, 'original data', 'Identity')
 
         self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
-        self.ui.history.itemChanged.connect(functools.partial(self.onHistoryChanged, None))
+        self.ui.history.itemChanged.connect(self.onHistoryChanged)
 
-        self.onHistoryChanged(self.ui.history.currentRow())
+        self.onHistoryChanged()
 
         self.minVar = None
         self.ui.minVarButton.clicked.connect(self.openMinVar)
@@ -297,9 +297,8 @@ class Edit(QtWidgets.QFrame, EditUI):
             self.window.pltGrd.setPlotLabel(newLabel, plotNum)
             plotNum += 1
 
-    def onHistoryChanged(self, row=None):
-        if row == None:
-            row = self.ui.history.currentRow()
+    def onHistoryChanged(self):
+        row = self.ui.history.currentRow()
         self.curSelection = self.history[row]
         self.window.currentEdit = row
         self.ui.M.setMatrix(self.curSelection[0])
