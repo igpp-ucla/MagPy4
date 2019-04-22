@@ -12,10 +12,15 @@ class ExprElement():
     def isExpr(self):
         return False
 
+    def __eq__(self, val): 
+        if self.exprStr == val: 
+            return True
+        return False
+
 class Num(ExprElement):
     def __init__(self, num):
         self.num = float(num)
-        self.exprStr = num
+        self.exprStr = str(num)
 
     def isNum(self):
         return True
@@ -80,83 +85,47 @@ class Operand(ExprElement):
         return self.exprStr
 
 class Expr(ExprElement):
-    def __init__(self, exprList, window):
-        self.exprList = exprList
-        self.window = window
+    def __init__(self, stackLst):
+        self.exprStack = stackLst
         self.exprStr = ''
-        for e in exprList:
-            self.exprStr += e
+        for e in stackLst:
+            self.exprStr += e.exprStr
 
     def isExpr(self):
         return True
 
-    def matchParens(self, exprLst, index):
-        # Find the outermost matching ')' and create a subExpr from the expression
-        # inside the parentheses; Also return index just after end of subExpr
-        i = 0
-        listLen = len(exprLst)
-        for i in range(listLen-1, index, -1):
-            if exprLst[i] == ')':
-                subExpr = Expr(exprLst[index+1:i], self.window)
-                return subExpr, i
-        return None, None
+    def evaluate(self):
+        if len(self.exprStack) == 1:
+            return self.exprStack[0]
+        elif len(self.exprStack) == 0 or len(self.exprStack) == 2:
+            return None
 
-    def evaluateStack(self, stack):
-        # Evaluates operands in stack in PEMDAS order
+        # Evaluate the items on the stack in PEMDAS order
         for opType in ['^', '*', '/', '+', '-']:
             index = 0
-            while index < len(stack):
-                e = stack[index]
-                if e.exprStr == opType:
-                    left = stack[index-1]
-                    right = stack[index+1]
-                    # Reduce expressions to vec/num before applying op to it
+            resultsStack = []
+            while index < len(self.exprStack):
+                e = self.exprStack[index]
+                # If op found, calculate the current sub-expr and push onto stack
+                if e == opType:
+                    left = resultsStack.pop()
+                    right = self.exprStack[index+1]
                     if left.isExpr():
                         left = left.evaluate()
                     if right.isExpr():
-                        right = rght.evaluate()
-                    # Update stack to insert newly calculated result in current position
-                    stack = stack[:index-1] + [e.calculate(left, right)] + stack[index+2:]
-                    index = index - 1
-                index += 1
+                        right = right.evaluate()
+                    res = e.calculate(left, right)
+                    resultsStack.append(res)
+                    # Prev element was popped off stack, skip next element too
+                    index += 2
+                # If not an op, just push on to stack
+                else:
+                    resultsStack.append(e)
+                    index += 1
+            # Update the main stack with the resulting stack just calculated
+            self.exprStack = resultsStack
 
-        # Eval any unevaluated expressions (in case stack contains a single Expr)
-        index = 0
-        for e in stack:
-            if e.isExpr():
-                stack[index] = e.evaluate()
-            index += 1
-
-        return stack
-
-    def evaluate(self):
-        # Organize expressions by parantheses and add ops/vars/nums to stack
-        stack = []
-        exprList = self.exprList
-        index = 0
-        while index < len(exprList):
-            e = exprList[index]
-            # If find '(', match w/ outer paranthesis and create a sub-Expr
-            if e == '(':
-                subExpr, i = self.matchParens(exprList, index)
-                stack.append(subExpr)
-                index = i
-                continue
-            # Convert numbers, variable names, and ops to corresp. ExprElem objects
-            elif e.isdecimal():
-                stack.append(Num(e))
-            elif e.isalnum() or '_' in e:
-                stack.append(Var(self.window, e))
-            elif e in ['+', '-', '*', '/', '^']:
-                stack.append(Operand(e))
-            index += 1
-        # Then evaluate items in stack accordingly by operand priority
-        resultingStack = self.evaluateStack(stack)
-        # Should only have one item (Vec/Num) to return in evaluated stack
-        if len(resultingStack) == 1:
-            return resultingStack[0]
-        else:
-            return None
+        return self.exprStack[0]
 
 class simpleCalcUI(object):
     def setupUI(self, Frame, window):
@@ -191,37 +160,96 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
         self.ui.setupUI(self, window)
         self.ui.applyBtn.clicked.connect(self.applyExpression)
 
+    def splitByOp(self, s):
+        # Looks for every operand and splits the previously cleaned expression 
+        # string by the operands into a list
+        lst = []
+        lastIndex = 0
+        opList = ['+', '-', '*', '/', '^', ')', '(']
+        for i in range(0, len(s)):
+            if s[i] in opList:
+                subStr = s[lastIndex:i]
+                if subStr != '':
+                    lst.append(subStr)
+                lst.append(s[i])
+                lastIndex = i + 1
+        # Add in any elements after last operand
+        if s[i] not in opList:
+            lst.append(s[lastIndex:i+1])
+        return lst
+
     def splitString(self, expStr):
         # Split expression into list of strings for each op/parenthesis and variable name or number
-        splitStr = []
-        index = 0
-        while index < len(expStr):
-            c = expStr[index]
-            # If character is an op, append to list
-            if c in ['(', ')', '*', '+', '-', '/', '^', '=']:
-                splitStr.append(c)
-                index += 1
-            # If character is a letter or number
-            elif c.isalnum():
-                numVarStr = ''
-                # Loop through rest of string to get this variable/num's full string
-                while index < len(expStr) and (expStr[index].isalnum() or (expStr[index] == '_')):
-                    numVarStr += expStr[index]
-                    index += 1
-                splitStr.append(numVarStr)
-            else:
-                index += 1
-        # Also identify variable to left of '=' where result will be stored
-        varIndex = None
-        index = 0
-        for e in splitStr:
-            if e == '=':
-                varIndex = index - 1
-            index += 1
-        if varIndex != 0:
-            return '', splitStr
+        cleanExpr = expStr.strip('\n').replace(' ', '')
+
+        # Make sure there is a variable to be set
+        if cleanExpr.count('=') != 1:
+            return None, None
+
+        # Extract the var name from left hand side of eq sign and break
+        # down the expression into operators, numbers, and variable names
+        varName, expStr = cleanExpr.split('=')
+        exprLst = self.splitByOp(expStr)
+
         # Return storage variable, ordered list of ops/nums/vars in main expression
-        return splitStr[0], splitStr[2:]
+        return varName, exprLst
+
+    def isNumber(self, e):
+        cleanElem = e.replace('.', '').replace('-','').replace('+','')
+        counts = [cleanElem.count(c) for c in ['+','-','.']]
+
+        # Checks if no more than one period and only one sign character
+        validCounts = True
+        if max(counts) >= 1 or counts[0] + counts[2] > 1:
+            validCounts = False
+
+        if cleanElem.isnumeric() and validCounts:
+            return True
+        else:
+            return False
+
+    def mapToObj(self, e):
+        # Map string to an ExprElement object
+        obj = None
+        if e in ['+', '-', '*', '/', '^']:
+            obj = Operand(e)
+        elif self.isNumber(e):
+            obj = Num(e)
+        elif e.isalnum() or '_' in e:
+            obj = Var(self.window, e)
+        return obj
+
+    def createStack(self, exprLst):
+        exprStack = []
+        listLen = len(exprLst)
+
+        if exprLst.count('(') != exprLst.count(')'):
+            raise Exception('Unmatched parentheses!')
+
+        # Creates a stack of ExprElem objects from split expression string
+        for i in range(0, listLen):
+            c = exprLst[i]
+            if c == '(':
+                exprStack.append(c)
+            elif c == ')':
+                # If closing parens found, pop eveything off stack until
+                # an open parens is found and create a subExpr from popped items
+                subStack = []
+                for i in range(0, i):
+                    currOp = exprStack.pop()
+                    if currOp == '(':
+                        break
+                    subStack.append(currOp)
+                subStack.reverse()
+
+                subExpr = Expr(subStack)
+                exprStack.append(subExpr)
+            else:
+                # Otherwise, just map the element to an ExprElem object
+                obj = self.mapToObj(c)
+                exprStack.append(obj)
+
+        return Expr(exprStack)
 
     def applyExpression(self):
         exprStr = self.ui.textBox.toPlainText()
@@ -229,7 +257,7 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
             return
         # Break down expression into list of var/num/op strings and create an Expr obj
         self.varName, exprLst = self.splitString(exprStr)
-        exprObj = Expr(exprLst, self.window)
+        exprObj = self.createStack(exprLst)
 
         # Try evaluating exprObj, catch exceptions by printing error message to user
         try:
