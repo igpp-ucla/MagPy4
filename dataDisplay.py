@@ -335,6 +335,12 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             tms.append(list(timeVals))
             hdrs.append(dstr)
 
+        if self.window.insightMode and list(self.window.changeLog.keys()) != []:
+            changeLogDta, changeLogTimes = self.createChangeDta()
+            dta.append(changeLogDta)
+            tms.append(changeLogTimes)
+            hdrs.append('Changes')
+
         # Get the list of time values with the largest range
         timeLine = self.findLargestTimeRng(tms)
         i = 0
@@ -349,6 +355,18 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             dta[i] = ppnd + dta[i] + apnd
             i = i+1
         return (dta, timeLine, hdrs)     
+
+    def createChangeDta(self):
+        changeKeys = list(self.window.changeLog.keys())
+        times = self.window.getTimes(changeKeys[0], self.window.currentEdit)[0]
+        dta = np.zeros(len(times))
+        for dstr in changeKeys:
+            lst = self.window.changeLog[dstr]
+            for strt, end in lst:
+                strt = self.window.calcDataIndexByTime(times, strt)
+                end = self.window.calcDataIndexByTime(times, end)
+                dta[strt:end] = [1]*(end-strt)
+        return list(dta), list(times)
 
     def updtTimeEditAndStats(self, nRows, nCols, epoch):
         # Update time edit parameters with UTC strings

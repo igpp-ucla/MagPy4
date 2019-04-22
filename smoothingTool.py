@@ -183,6 +183,12 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
 
             # Record timestamps of change region
             regTimes = [(times[a], times[b]) for a, b in regions]
+            if self.ui.smoothMethodBx.currentText() == 'Shift':
+                # Use adjusted time region for shifts
+                regTimes = []
+                shiftRegions = [self.getRegion(dta, times, reg) for reg in regions]
+                for a, b, c, d in shiftRegions:
+                    regTimes.append((times[a], times[b+1]))
             self.recordChanges(regTimes, dstr)
 
         # Update num of edits, update plots, and restart general select
