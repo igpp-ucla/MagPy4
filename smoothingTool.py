@@ -471,7 +471,7 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         return txt
 
     def saveLog(self):
-        filename = self.window.saveTxtFileDialog()
+        filename = self.window.saveFileDialog()
         f = open(filename, 'w')
         txt = self.buildLogText()
         f.write(txt)

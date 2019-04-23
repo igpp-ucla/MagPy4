@@ -40,6 +40,7 @@ from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataIt
 from MMSTools import PlaneNormal, Curlometer, Curvature
 from dynamicSpectra import DynamicSpectra
 from smoothingTool import SmoothingTool
+from ffCreator import createFF
 from mth import Mth
 from tests import Tests
 import bisect
@@ -99,6 +100,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True))
         self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False))
         self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False,True))
+        self.ui.actionExportFF.triggered.connect(self.exportFlatFile)
         self.ui.actionExit.triggered.connect(self.close)
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionPlotMenu.triggered.connect(self.openPlotMenu)
@@ -522,13 +524,52 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def runTests(self):
         Tests.runTests()
 
-    def saveTxtFileDialog(self):
-        defaultSfx = '.txt'
+    def exportFlatFile(self):
+        # Get file name from user input
+        filename = self.saveFileDialog('.ffd', 'Flat File', False)
+        if filename is None:
+            return
+
+        # Get one of the loaded flat file IDs (TODO: Support for multiple files?)
+        FID = self.FIDs[0]
+        FID.open()
+
+        # Extract the original flat file's column headers, units, and source info
+        labels = FID.getColumnDescriptor('NAME')[1:]
+        units = FID.getColumnDescriptor('UNITS')[1:]
+        sources = FID.getColumnDescriptor('SOURCE')[1:]
+
+        # Get the epoch used for this flat file
+        epoch = FID.getEpoch()
+
+        # Extract all data for current edit (ignoring added variables for now)
+        dta = []
+        for dstr in self.DATASTRINGS:
+            if dstr in list(self.ORIGDATADICT.keys()):
+                dta.append(self.getData(dstr, self.currentEdit))
+
+        # Verify that the data all have same length
+        dtaLens = list(map(len, dta))
+        if min(dtaLens) != max(dtaLens):
+            print ('Error: Data columns have different lengths')
+            return
+
+        # Transpose data, get times, and create the flat file
+        dta = np.array(dta).T
+        times = self.getTimes(dstr, self.currentEdit)[0]
+        if len(times) != len(dta):
+            print ('Error: Data length != times length')
+            return
+        createFF(filename, times, dta, labels, units, sources, epoch)
+
+    def saveFileDialog(self, defSfx='.txt', defFilter='TXT file', appendSfx=True):
+        defaultSfx = defSfx
+        defFilter = defFilter + '(*'+defSfx+')'
         QQ = QtGui.QFileDialog(self)
         QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
         path = os.path.expanduser(".")
         QQ.setDirectory(path)
-        fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='TXT file (*.txt)')
+        fullname = QQ.getSaveFileName(parent=None, directory=path, caption='Save Data', filter=defFilter)
         if fullname is None:
             print('Save failed')
             return
@@ -538,7 +579,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # If file name doesn't end with default suffix, add it before saving
         filename = fullname[0]
-        if filename.endswith(defaultSfx) == False:
+        if filename.endswith(defaultSfx) == False and appendSfx == True:
             filename += defaultSfx
 
         return filename

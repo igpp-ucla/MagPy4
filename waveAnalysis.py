@@ -261,7 +261,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
     def exportLog(self):
         logInfo, matrices, results = self.getTableData()
 
-        filename = self.window.saveTxtFileDialog()
+        filename = self.window.saveFileDialog()
 
         # Write logInfo, each matrix, and results to file
         f = open(filename, 'w')

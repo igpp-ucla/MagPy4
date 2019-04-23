@@ -38,6 +38,10 @@ class MagPy4UI(object):
         self.actionOpenCDF.setText('Open &CDF File...')
         self.actionOpenCDF.setStatusTip('Opens a CDF file (currently experimental)')
 
+        self.actionExportFF = QtWidgets.QAction(window)
+        self.actionExportFF.setText('Export Flat File...')
+        self.actionExportFF.setStatusTip('Exports current flat file with edited data')
+
         self.actionExit = QtWidgets.QAction(window)
         self.actionExit.setText('E&xit')
         self.actionExit.setStatusTip('Closes the program\'s window and quits the program')
@@ -109,6 +113,7 @@ class MagPy4UI(object):
         self.fileMenu.addAction(self.actionAddFF)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.actionOpenCDF)
+        self.fileMenu.addAction(self.actionExportFF)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.switchMode)
         self.fileMenu.addSeparator()
