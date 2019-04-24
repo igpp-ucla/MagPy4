@@ -179,8 +179,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # setup pens
         self.pens = []
-        # Blue, Green, Red, Yellow, Magenta, Black
-        colors = ['#0000ff','#00ad05','#ea0023','#fc9f00', '#ce0d9e', '#000000']
+        # Blue, Green, Red, Yellow, Magenta, Cyan, Purple, Black
+        colors = ['#0000ff','#00ad05','#ea0023', '#fc9f00', '#ff00e1', '#00ddb1',
+            '#9400ff', '#191919']
         for c in colors:
             self.pens.append(pg.mkPen(c, width=1))# style=QtCore.Qt.DotLine)
         self.trackerPen = pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine)
@@ -1313,9 +1314,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 numPens = len(self.pens)
                 if len(dstrs) == 1: # if just one trace then base it off which plot
                     penIndex = plotIndex % numPens
+                    pen = self.pens[penIndex]
+                elif i >= numPens:
+                    # If past current number of pens, generate a random one and
+                    # add it to the standard pen list for consistency between plots
+                    pen = self.genRandomPen()
+                    self.pens.append(pen)
                 else: # else if base off trace index, capped at pen count
-                    penIndex = min(i,numPens - 1) 
-                pen = self.pens[penIndex]
+                    penIndex = min(i,numPens - 1)
+                    pen = self.pens[penIndex]
 
                 # If user set custom trace pen through plotAppr, use that pen instead,
                 # searching through the customPens list for a match
@@ -1373,6 +1380,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         for pi in self.plotItems:
             for item in pi.items:
                 item.viewRangeChanged()
+
+    def genRandomPen(self):
+        r = np.random.randint(low=0, high=255)
+        g = np.random.randint(low=0, high=255)
+        b = np.random.randint(low=0, high=255)
+        return pg.mkPen([r,g,b])
 
     def replotDataCallback(self):
         # done this way to ignore the additional information ui callbacks will provide
