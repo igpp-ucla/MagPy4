@@ -8,24 +8,53 @@ from FF_Time import FFTIME
 from MagPy4UI import TimeEdit, NumLabel
 from pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, DateAxis, GradientLegend
 import bisect
+import functools
 
 class SpectraLegend(GradientLegend):
     def __init__(self):
         GradientLegend.__init__(self)
 
+    def setRange(self, colorLst, minVal, maxVal, logMode=True):
+        # Initialize gradient bounded by gradLegend's view rect
+        pos = self.boundingRect()
+        gradient = QtGui.QLinearGradient(pos.topLeft(), pos.bottomLeft())
+
+        # Calculate the integers between minVal/maxVal to label on color bar
+        lwrBnd = int(np.ceil(minVal))
+        upperBnd = int(np.floor(maxVal))
+        colorPos = [i for i in range(lwrBnd, upperBnd+1)]
+
+        # Create and set color gradient brush based on colormap
+        colors = list(map(pg.mkColor, colorLst))
+        colorLocs = [0, 1/3, 0.5, 2/3, 1]
+        for color, loc in zip(colors, colorLocs):
+            gradient.setColorAt(loc, color)
+        self.setGradient(gradient)
+
+        # Set labels corresponding to color level
+        locs = [(i-minVal)/(maxVal-minVal) for i in colorPos]
+        labels = []
+        for val in colorPos:
+            if logMode:
+                labels.append(str(val))
+            else:
+                labels.append(NumLabel.formatVal(val, 3))
+        labelsDict = {}
+        for lbl, loc in zip(labels, locs):
+            labelsDict[lbl] = loc
+        self.setLabels(labelsDict)
+
 class SpectraLine(pg.PlotCurveItem):
-    def __init__(self, freq, colors, times, window, *args, **kargs):
+    def __init__(self, freq, colors, times, window=None, *args, **kargs):
+        # Takes the y-values, mapped color values, and time ticks
         self.freq = freq
         self.colors = colors
         self.times = times
+        # Used to update window's status bar w/ the clicked value if passed
         self.window = window
-        self.paths = None
 
         yVals = [freq]*len(times)
         pg.PlotCurveItem.__init__(self, x=times, y=yVals, *args, **kargs)
-
-    def mkBrushFrmClr(self, rgbColor):
-        return QtGui.QColor(rgbColor)
 
     def paint(self, p, opt, widget):
         if self.xData is None or len(self.xData) == 0:
@@ -35,47 +64,32 @@ class SpectraLine(pg.PlotCurveItem):
 
         # Draws filled rects for every point using designated colors
         for pairNum in range(0, len(self.colors)):
+            # Create a rectangle path
             x0 = self.times[pairNum]
             x1 = self.times[pairNum+1]
+            fillLevel = self.opts['fillLevel']
             pt1 = QtCore.QPointF(x0, yVal)
-            pt2 = QtCore.QPointF(x1, yVal)
-            p2 = QtGui.QPainterPath(pt2)
-            p2.lineTo(x1, self.opts['fillLevel'])
-            p2.lineTo(x0, self.opts['fillLevel'])
-            p2.lineTo(x0, yVal)
-            p2.closeSubpath()
+            p2 = QtGui.QPainterPath(pt1)
+            p2.addRect(x0, fillLevel, x1-x0, yVal-fillLevel)
+            # Get the corresponding color for the rectangle and fill w/ color
             color = self.colors[pairNum]
-            p.fillPath(p2, self.mkBrushFrmClr(color))
+            p.fillPath(p2, color)
 
     def mouseClickEvent(self, ev):
+        if self.window is None:
+            return
+
+        # If window argument was passed, show value in its status bar
         if ev.button() == QtCore.Qt.LeftButton:
             time = ev.pos().x()
-            freqVal = ev.pos().y()
-            self.window.showPointValue(freqVal, time)
+            yVal = ev.pos().y()
+            self.window.showPointValue(yVal, time)
             ev.accept()
         else:
             pg.PlotCurveItem.mouseClickEvent(self, ev)
 
-class SpectrogramPlotItem(pg.PlotItem):
-    def addItem(self, item, *args, **kargs):
-        """
-        Add a graphics item to the view box. 
-        If the item has plot data (PlotDataItem, PlotCurveItem, ScatterPlotItem), it may
-        be included in analysis performed by the PlotItem.
-        """
-        self.items.append(item)
-        vbargs = {}
-        self.vb.addItem(item, *args, **vbargs)
-        name = None
-        if hasattr(item, 'implements') and item.implements('plotData'):
-            name = item.name()
-            self.dataItems.append(item)
-
-            params = kargs.get('params', {})
-            self.itemMeta[item] = params
-            self.curves.append(item)
-
 class SpectrogramViewBox(pg.ViewBox):
+    # Optimized viewbox class, removed some steps in addItem/clear methods
     def __init__(self, *args, **kargs):
         pg.ViewBox.__init__(self, *args, **kargs)
         self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
@@ -93,6 +107,160 @@ class SpectrogramViewBox(pg.ViewBox):
         for item in self.addedItems:
             self.scene().removeItem(item)
         self.addedItems = []
+
+class SpectrogramPlotItem(pg.PlotItem):
+    def __init__(self, logMode=False):
+        super(SpectrogramPlotItem, self).__init__(parent=None)
+        self.logMode = logMode # Log scaling for y-axis parameter (Boolean)
+
+        # Initialize colors for color map
+        rgbBlue = (25, 0, 245)
+        rgbBlueGreen = (0, 245, 245)
+        rgbGreen = (127, 245, 0)
+        rgbYellow = (245, 245, 0)
+        rgbRed = (245, 0, 25)
+
+        self.colors = [rgbBlue, rgbBlueGreen, rgbGreen, rgbYellow, rgbRed]
+        self.valLevels = [] # Stores y-values corresp. to colors in self.colors
+
+        # Create viewbox and set up custom axis items
+        vb = SpectrogramViewBox()
+        dateAxis = DateAxis('bottom')
+        if self.logMode:
+            leftAxis = LogAxis(True, True, True, orientation='left')
+        else:
+            leftAxis = MagPyAxisItem(orientation='left')
+        axisItems = {'bottom':dateAxis, 'left':leftAxis}
+
+        # Initialize default pg.PlotItem settings
+        pg.PlotItem.__init__(self, viewBox=vb, axisItems=axisItems)
+
+        # Set log/linear scaling after initialization
+        if self.logMode:
+            self.setLogMode(y=True)
+        else:
+            self.setLogMode(y=False)
+        vb.enableAutoRange(x=False, y=False)
+
+        self.plotSetup() # Additional plot appearance set up
+
+    def plotSetup(self):
+        # Shift axes ticks outwards instead of inwards
+        la = self.getAxis('left')
+        maxTickLength = la.style['tickLength'] - 4
+        la.setStyle(tickLength=maxTickLength*(-1))
+
+        ba = self.getAxis('bottom')
+        maxTickLength = ba.style['tickLength'] - 2
+        ba.setStyle(tickLength=maxTickLength*(-1))
+        ba.autoSIPrefix = False # Disable extra label used in tick offset
+
+        # Hide tick marks on right/top axes
+        self.showAxis('right')
+        self.showAxis('top')
+        ra = self.getAxis('right')
+        ta = self.getAxis('top')
+        ra.setStyle(showValues=False, tickLength=0)
+        ta.setStyle(showValues=False, tickLength=0)
+
+        # Draw axes on top of any plot items (covered by SpectraLines o/w)
+        for ax in [ba, la, ta, ra]:
+            ax.setZValue(1000)
+
+        # Disable mouse panning/scaling
+        self.setMouseEnabled(y=False, x=False)
+        self.setDownsampling(mode='subsample')
+        self.hideButtons()
+
+    def mkRGBColor(self, rgbVals):
+        return QtGui.QColor(rgbVals[0], rgbVals[1], rgbVals[2])
+
+    def mapValueToColor(self, vals, minPower, maxPower, logColorScale):
+        if logColorScale:
+            minLog = np.log10(minPower) if minPower > 0 else -1000
+            maxLog = np.log10(maxPower)
+        else:
+            minLog, maxLog = minPower, maxPower
+
+        # Determine the non-log values the color map will use
+        midPoint = (minLog + maxLog) / 2
+        oneThird = (maxLog - minLog) / 3
+        logLevels = [minLog, minLog+oneThird, midPoint, maxLog-oneThird, maxLog]
+        self.valLevels = logLevels
+
+        # Map power values to colors (RGB values) according to gradient
+        if logColorScale:
+            vals[vals <= 0] = 0.00001
+            vals = np.log10(vals) # Map values to log 10 first
+        colorMap = pg.ColorMap(logLevels, self.colors)
+        mappedVals = colorMap.map(vals)
+
+        return mappedVals
+
+    def getGradLegend(self):
+        # Create color gradient legend based on color map
+        minVal, maxVal = self.valLevels[0], self.valLevels[-1]
+        gradLegend = SpectraLegend()
+        gradLegend.setRange(self.colors, minVal, maxVal)
+
+        return gradLegend
+
+    def updateTimeTicks(self, window, minTime, maxTime, mode):
+        timeAxis = self.getAxis('bottom')
+        timeAxis.window = window
+        timeAxis.timeRange = (minTime, maxTime)
+        timeAxis.updateTicks(window, mode, (minTime, maxTime))
+
+    def addItem(self, item, *args, **kargs):
+        # Optimized from original pg.PlotItem's addItem method
+        """
+        Add a graphics item to the view box. 
+        If the item has plot data (PlotDataItem, PlotCurveItem, ScatterPlotItem), it may
+        be included in analysis performed by the PlotItem.
+        """
+        self.items.append(item)
+        vbargs = {}
+        self.vb.addItem(item, *args, **vbargs)
+        name = None
+        if hasattr(item, 'implements') and item.implements('plotData'):
+            name = item.name()
+            self.dataItems.append(item)
+
+            params = kargs.get('params', {})
+            self.itemMeta[item] = params
+            self.curves.append(item)
+
+    # Takes the y-vals (length m), time ticks (length n), a matrix of values 
+    # (of shape (m-1) x (n-1)), and a tuple of min/max values repres. by color gradient
+    def createPlot(self, yVals, valueGrid, timeVals, colorRng, logColorScale=True, 
+        winFrame=None, statusStrt=0, statusEnd=100):
+        # Map values in grid to RGB colors
+        minPower, maxPower = colorRng
+        mappedGrid = self.mapValueToColor(valueGrid, minPower, maxPower, logColorScale)
+
+        # Frequency/value that serves as lower bound for plot grid
+        lastVal = yVals[0]
+
+        # Convert all frequences to log scale if necessary
+        if self.logMode:
+            yVals = np.log10(yVals)
+            lastVal = np.log10(lastVal)
+
+        stepSize = (statusEnd-statusStrt) / (len(yVals) - 1)
+        currentStep = statusStrt
+
+        # Creates a SpectraLine object for every row in value grid
+        for rowIndex in range(0, len(yVals)-1):
+            yVal = yVals[rowIndex+1]
+            colors = list(map(self.mkRGBColor, mappedGrid[rowIndex,:]))
+            pdi = SpectraLine(yVal, colors, timeVals, winFrame, fillLevel=lastVal)
+            self.addItem(pdi)
+
+            if winFrame: # If winFrame is passed, update progress in status bar
+                currentStep += stepSize
+                winFrame.ui.statusBar.showMessage('Generating plot...' + str(int(currentStep)) + '%')
+
+            lastVal = yVal
 
 class DynamicSpectraUI(object):
     def setupUI(self, Frame, window):
@@ -167,9 +335,12 @@ class DynamicSpectraUI(object):
         layout.addWidget(timeFrame, 9, 0, 1, 1)
 
         # Initialize data values for spinboxes and combo boxes
+        itemSet = set()
         for plt in window.lastPlotStrings:
             for (dstr, en) in plt:
-                self.dstrBox.addItem(dstr)
+                if dstr not in itemSet: # Skip duplicates
+                    self.dstrBox.addItem(dstr)
+                itemSet.add(dstr)
 
         # Set up plot scaling combo box options
         self.scaleModeBox.addItem('Logarithmic')
@@ -241,50 +412,16 @@ class DynamicSpectraUI(object):
         return rangeLt
 
     def initPlot(self):
-        # Sets up plot settings / appearance
+        # Clear previous plot
         self.glw.clear()
-
-        # Create viewbox and custom axis items
-        vb = SpectrogramViewBox()
-        vb.enableAutoRange(x=False, y=False)
-        dateAxis = DateAxis('bottom')
-        if self.scaleModeBox.currentText() == 'Logarithmic':
-            leftAxis = LogAxis(True, True, True, orientation='left')
-        else:
-            leftAxis = MagPyAxisItem(orientation='left')
-        axisItems = {'bottom':dateAxis, 'left':leftAxis}
-
-        self.plotItem = SpectrogramPlotItem(viewBox=vb, axisItems=axisItems)
 
         # Set title and lower downsampling
         dstrTitle = self.dstrBox.currentText()
+
+        logMode = self.scaleModeBox.currentText() == 'Logarithmic'
+        self.plotItem = SpectrogramPlotItem(logMode=logMode)
         self.plotItem.setTitle('Dynamic Spectra Analysis'+' ('+dstrTitle+')', size='13pt')
         self.plotItem.setDownsampling(mode='subsample')
-
-        # Shift axes ticks outwards instead of inwards
-        la = self.plotItem.getAxis('left')
-        maxTickLength = la.style['tickLength'] - 4
-        la.setStyle(tickLength=maxTickLength*(-1))
-
-        ba = self.plotItem.getAxis('bottom')
-        maxTickLength = ba.style['tickLength'] - 2
-        ba.setStyle(tickLength=maxTickLength*(-1))
-        ba.autoSIPrefix = False # Disable extra label used in tick offset
-
-        # Hide tick marks on right/top axes
-        self.plotItem.showAxis('right')
-        self.plotItem.showAxis('top')
-        ra = self.plotItem.getAxis('right')
-        ta = self.plotItem.getAxis('top')
-        ra.setStyle(showValues=False, tickLength=0)
-        ta.setStyle(showValues=False, tickLength=0)
-
-        # Draw axes on top of any plot items (covered by SpectraLines o/w)
-        for ax in [ba, la, ta, ra]:
-            ax.setZValue(1000)
-
-        # Disable mouse panning/scaling
-        self.plotItem.setMouseEnabled(y=False, x=False)
 
         self.glw.addItem(self.plotItem, 0, 0, 6, 4)
 
@@ -304,32 +441,12 @@ class DynamicSpectraUI(object):
         self.timeLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.glw.addItem(self.timeLbl, 6, 0, 1, 1)
 
-    def setupGradient(self, colorMap, colorPos):
+    def setupGradient(self):
         # Create gradient legend and add it to the graphics layout
-        gradLegend = SpectraLegend()
+        # gradLegend = SpectraLegend()
+        gradLegend = self.plotItem.getGradLegend()
         self.glw.addItem(gradLegend, 1, 5, 4, 1)
         gradLegend.setMinimumWidth(75)
-
-        # Initialize gradient bounded by gradLegend's view rect
-        pos = gradLegend.boundingRect()
-        gradient = QtGui.QLinearGradient(pos.topLeft(), pos.bottomLeft())
-
-        # Create and set color gradient based on colormap
-        colors = colorMap.getColors()
-        colors = list(map(pg.mkColor, colors))
-        colorLocs = [0, 1/3, 0.5, 2/3, 1]
-        for color, loc in zip(colors, colorLocs):
-            gradient.setColorAt(loc, color)
-        gradLegend.setGradient(gradient)
-
-        # Set labels corresponding to color level
-        minLog, maxLog = colorPos[0], colorPos[-1]
-        locs = [(i-minLog)/(maxLog-minLog) for i in colorPos[1:-1]]
-        labels = list(map(str, list(map(int, colorPos[1:-1]))))
-        labelsDict = {}
-        for lbl, loc in zip(labels, locs):
-            labelsDict[lbl] = loc
-        gradLegend.setLabels(labelsDict)
 
         # Add in spacers to align gradient legend with plot top/bottom boundaries
         spacer = pg.LabelItem('') # Top spacer
@@ -363,8 +480,8 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         self.window = window
         self.wasClosed = False
 
-        self.gradRange = None
-        self.lastCalc = None
+        self.gradRange = None # Custom color gradient range
+        self.lastCalc = None # Previously calculated values, if any
 
         self.ui.setupUI(self, window)
         self.ui.updateBtn.clicked.connect(self.update)
@@ -483,11 +600,9 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
             minPower, maxPower = self.gradRange # User-set range
         else:
             self.gradRange = None
-        pixelGrid = self.mapValueToColor(pixelGrid, minPower, maxPower)
 
         self.ui.statusBar.showMessage('Generating plot...')
-        self.createPlot(pixelGrid, freqs, timeSeries, shiftAmnt)
-
+        self.createPlot(pixelGrid, freqs, timeSeries, (minPower, maxPower))
 
     def calcSpectra(self, dstr, bw, start, end):
         """
@@ -495,7 +610,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         """
         # Convert time range to indices
         i0, i1 = start, end
-        en = 0
+        en = self.window.currentEdit
         N = abs(i1-i0)
 
         fft = self.getfft(dstr, en, i0, i1)
@@ -503,94 +618,32 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         freqs = self.calculateFreqList(bw, N)
         return freqs, power
 
-    def createPlot(self, pixelGrid, freqs, times, interval):
-        gridHeight, gridWidth, gridColorDepth = pixelGrid.shape
-        currProg = 0
-        progStep = 100/gridHeight
-
+    def createPlot(self, pixelGrid, freqs, times, colorRng):
         # Frequency that serves as lower bound for plot grid
         lowerFreqBnd = freqs[0] - abs(freqs[1]-freqs[0])
-        lastFreq = lowerFreqBnd
+        freqs = np.concatenate([[lowerFreqBnd], freqs])
 
-        # Convert all frequences to log scale if necessary
-        if self.ui.scaleModeBox.currentText() == 'Logarithmic':
-            freqs = np.log10(freqs)
-            lastFreq = np.log10(lastFreq)
-            lowerFreqBnd = lastFreq
+        # Pass calculated values to SpectogramPlotItem to generate plot
+        self.ui.plotItem.createPlot(freqs, pixelGrid, times, colorRng, winFrame=self)
 
-        # Convert every row corresp. to a freq to a SpectraLine object and plot
-        for freqNum in range(len(freqs)):
-            # Get frequency value, its power time series, and the list of times
-            freqVal = freqs[freqNum]
-            powerTimeSeries = pixelGrid[freqNum,:]
-            timeVals = times
-
-            colors = list(map(self.mkRGBColor, powerTimeSeries))
-
-            # Map its powers to colors and add the SpectraLine to the plot
-            pdi = SpectraLine(freqVal, colors, timeVals, self, fillLevel=lastFreq)
-            self.ui.plotItem.addItem(pdi)
-
-            # Update progress in status bar
-            currProg += progStep
-            self.ui.statusBar.showMessage('Generating plot... ' + str(int(currProg)) + '%')
-
-            lastFreq = freqVal
-
+        # Update x/y range and axis labels
         self.ui.statusBar.showMessage('Adjusting plot...')
-        self.adjustPlotItem([times[0], times[-1]], (lowerFreqBnd, freqs[-1]))
+        self.adjustPlotItem([times[0], times[-1]], (freqs[0], freqs[-1]))
         self.ui.statusBar.clearMessage()
-
-    def mkRGBColor(self, rgbVals):
-        return QtGui.QColor(rgbVals[0], rgbVals[1], rgbVals[2])
-
-    def mapValueToColor(self, vals, minPower, maxPower):
-        rgbBlue = (25, 0, 245)
-        rgbBlueGreen = (0, 245, 245)
-        rgbGreen = (127, 245, 0)
-        rgbYellow = (245, 245, 0)
-        rgbRed = (245, 0, 25)
-
-        colors = [rgbBlue, rgbBlueGreen, rgbGreen, rgbYellow, rgbRed]
-        minLog = np.log10(minPower)
-        maxLog = np.log10(maxPower)
-
-        # Add in some padding for gradient range
-        minLog = minLog - abs(minLog * 0.01)
-        maxLog = maxLog + abs(maxLog * 0.01)
-
-        # Determine the non-log values the color map will use
-        midPoint = (minLog + maxLog) / 2
-        oneThird = (maxLog - minLog) / 3
-        logLevels = [minLog, minLog+oneThird, midPoint, maxLog-oneThird, maxLog]
-
-        # Generate tick mark values for gradient
-        lwrBnd = int(np.ceil(minLog))
-        upperBnd = int(np.floor(maxLog))
-        logTicks = [i for i in range(lwrBnd, upperBnd+1)]
-        logTicks = [minLog] + logTicks + [maxLog]
-
-        # Map power values to colors in gradient
-        vals = np.log10(vals) # Map to log 10 first
-        colorMap = pg.ColorMap(logLevels, colors)
-        colorVals = colorMap.map(vals)
-
-        # Set up gradient widget
-        self.ui.setupGradient(colorMap, logTicks)
-
-        return colorVals
 
     def adjustPlotItem(self, xRange, yRange):
         # Set log mode and left axis labels
         if self.ui.scaleModeBox.currentText() == 'Logarithmic':
-            self.ui.plotItem.setLogMode(y=True)
             self.ui.plotItem.getAxis('left').setLabel('Log Frequency (Hz)')
+            yMin, yMax = yRange
+            if yRange[0] <= 0:
+                yMin = 0.0001
+            yRange = (np.log10(yMin), np.log10(yMax))
         else:
             la = self.ui.plotItem.getAxis('left')
-            self.ui.plotItem.setLogMode(y=False)
             self.ui.plotItem.getAxis('left').setLabel('Frequency (Hz)')
 
-        # Disable auto range because setting log mode re-enables it
+        # Disable auto range because setting log mode enables it
         vb = self.ui.plotItem.getViewBox()
         vb.enableAutoRange(x=False, y=False)
 
@@ -598,20 +651,14 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
         rng = xRange[1] - xRange[0]
         mode = self.window.getTimeLabelMode(rng)
         lbl = self.window.getTimeLabel(rng)
-        self.updateTimeTicks(xRange[0], xRange[1], mode)
+        self.ui.plotItem.updateTimeTicks(self.window, xRange[0], xRange[1], mode)
         self.ui.plotItem.getAxis('bottom').setLabel(lbl)
         self.ui.addTimeInfo(xRange, self.window)
 
         # Set axis ranges
         self.ui.plotItem.setXRange(xRange[0], xRange[1], 0.0)
         self.ui.plotItem.setYRange(yRange[0], yRange[1], 0.0)
-        self.ui.plotItem.hideButtons() # Hide autoscale buttons
-
-    def updateTimeTicks(self, minTime, maxTime, mode):
-        timeAxis = self.ui.plotItem.getAxis('bottom')
-        timeAxis.window = self.window
-        timeAxis.timeRange = (minTime, maxTime)
-        timeAxis.updateTicks(self.window, mode, (minTime, maxTime))
+        self.ui.setupGradient()
 
     def getCommonVars(self, bw, N):
         if bw % 2 == 0: # make sure its odd
@@ -668,7 +715,6 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
             return
 
         # Extract the grid's frequency and power values
-        freq = freqs[freqIndex]
         val = powerGrid[freqIndex][timeIndex]
 
         # Create and display the freq/power values in the status bar
