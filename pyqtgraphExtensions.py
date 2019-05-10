@@ -502,7 +502,7 @@ class GradientLegend(pg.GraphicsWidget):
     points along the gradient.
     """
 
-    def __init__(self):
+    def __init__(self, offsets=(0, 2)):
         super().__init__()
         self.setAcceptedMouseButtons(QtCore.Qt.NoButton)
         self.brush = QtGui.QBrush(QtGui.QColor(200,0,0))
@@ -511,6 +511,8 @@ class GradientLegend(pg.GraphicsWidget):
         self.gradient = QtGui.QLinearGradient()
         self.gradient.setColorAt(0, QtGui.QColor(0,0,0))
         self.gradient.setColorAt(1, QtGui.QColor(255,0,0))
+        self.defWidth = None
+        self.offsets = offsets
 
     def setGradient(self, g):
         self.gradient = g
@@ -533,6 +535,10 @@ class GradientLegend(pg.GraphicsWidget):
         self.labels = l
         self.update()
 
+    def updateWidth(self, w):
+        self.defWidth = w
+        self.update()
+
     def paint(self, p, opt, widget):
         pg.GraphicsWidget.paint(self, p, opt, widget)
         rect = self.boundingRect()   ## Boundaries of visible area in scene coords.
@@ -553,11 +559,15 @@ class GradientLegend(pg.GraphicsWidget):
 
         textPadding = 10  # in px
 
+        topOff, botOff = self.offsets
+
         x1 = rect.left() + 5
         x3 = rect.right()
         x2 = x3 - labelWidth - unit[0]*textPadding
-        y1 = rect.bottom() - 2
-        y2 = rect.top()
+        if self.defWidth:
+            x2 = x1 + self.defWidth
+        y1 = rect.bottom() - botOff
+        y2 = rect.top() + topOff
 
         # Draw background
         p.setPen(self.pen)

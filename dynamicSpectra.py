@@ -11,18 +11,51 @@ import bisect
 import functools
 
 class SpectraLegend(GradientLegend):
-    def __init__(self):
-        GradientLegend.__init__(self)
+    def __init__(self, offsets=(0, 2)):
+        GradientLegend.__init__(self, offsets)
 
-    def setRange(self, colorLst, minVal, maxVal, logMode=True):
+    def getTickVals(self, minVal, maxVal, maxTicks=6):
+        # Use an axis item to generate a list of potential tick values
+        ax = pg.AxisItem(orientation='right')
+        ax.setRange(minVal, maxVal)
+        tickLst = ax.tickValues(minVal, maxVal, 1000)
+        # Create a dictionary for each step size / tick subset
+        tickStepDict = {}
+        for step, sublst in tickLst:
+            tickStepDict[step] = sublst
+
+        # Merge tick value lists until at least a certain number are in list
+        count = 0
+        tickVals = []
+        for key, sublst in tickLst:
+            if count >= 6:
+                break
+            count += len(sublst)
+            tickVals = tickVals + sublst
+        tickVals.sort()
+
+        # Select a subset of ticks if too many were selected
+        if len(tickVals) > maxTicks:
+            tickVals = self.limitTicks(tickVals, maxTicks)
+        return tickVals
+
+    def limitTicks(self, ticks, numVals):
+        stepSize = max(int((len(ticks))/numVals) - 1, 2)
+        newTicks = [ticks[i] for i in range(0, len(ticks), stepSize)]
+        return newTicks
+
+    def setRange(self, colorLst, minVal, maxVal, logMode=False):
         # Initialize gradient bounded by gradLegend's view rect
         pos = self.boundingRect()
         gradient = QtGui.QLinearGradient(pos.topLeft(), pos.bottomLeft())
 
         # Calculate the integers between minVal/maxVal to label on color bar
-        lwrBnd = int(np.ceil(minVal))
-        upperBnd = int(np.floor(maxVal))
-        colorPos = [i for i in range(lwrBnd, upperBnd+1)]
+        if logMode:
+            lwrBnd = int(np.ceil(minVal))
+            upperBnd = int(np.floor(maxVal))
+            colorPos = [i for i in range(lwrBnd, upperBnd+1)]
+        else:
+            colorPos = self.getTickVals(minVal, maxVal)
 
         # Create and set color gradient brush based on colormap
         colors = list(map(pg.mkColor, colorLst))
@@ -35,10 +68,15 @@ class SpectraLegend(GradientLegend):
         locs = [(i-minVal)/(maxVal-minVal) for i in colorPos]
         labels = []
         for val in colorPos:
-            if logMode:
-                labels.append(str(val))
+            if val == 0:
+                txt = '0'
+            elif logMode:
+                txt = str(val)
             else:
-                labels.append(NumLabel.formatVal(val, 3))
+                # If in linear mode, use scientific notation string
+                txt = np.format_float_scientific(val, precision=3, trim='0', 
+                    pad_left=False, sign=False, exp_digits=0)
+            labels.append(txt)
         labelsDict = {}
         for lbl, loc in zip(labels, locs):
             labelsDict[lbl] = loc
@@ -65,6 +103,9 @@ class SpectraLine(pg.PlotCurveItem):
         # Draws filled rects for every point using designated colors
         for pairNum in range(0, len(self.colors)):
             # Create a rectangle path
+            color = self.colors[pairNum]
+            if color == [255, 255, 255]:
+                continue
             x0 = self.times[pairNum]
             x1 = self.times[pairNum+1]
             fillLevel = self.opts['fillLevel']
@@ -72,7 +113,6 @@ class SpectraLine(pg.PlotCurveItem):
             p2 = QtGui.QPainterPath(pt1)
             p2.addRect(x0, fillLevel, x1-x0, yVal-fillLevel)
             # Get the corresponding color for the rectangle and fill w/ color
-            color = self.colors[pairNum]
             p.fillPath(p2, color)
 
     def mouseClickEvent(self, ev):
@@ -177,7 +217,7 @@ class SpectrogramPlotItem(pg.PlotItem):
 
     def mapValueToColor(self, vals, minPower, maxPower, logColorScale):
         if logColorScale:
-            minLog = np.log10(minPower) if minPower > 0 else -1000
+            minLog = np.log10(minPower)
             maxLog = np.log10(maxPower)
         else:
             minLog, maxLog = minPower, maxPower
@@ -189,19 +229,27 @@ class SpectrogramPlotItem(pg.PlotItem):
         self.valLevels = logLevels
 
         # Map power values to colors (RGB values) according to gradient
+        prevVals = vals[:]
         if logColorScale:
-            vals[vals <= 0] = 0.00001
-            vals = np.log10(vals) # Map values to log 10 first
+            cleanVals = vals.copy()
+            cleanVals[cleanVals <= 0] = 1
+            vals = np.log10(cleanVals) # Map values to log 10 first
         colorMap = pg.ColorMap(logLevels, self.colors)
         mappedVals = colorMap.map(vals)
+        if logColorScale:
+            mappedVals[prevVals<=0] = [255, 255, 255]
 
         return mappedVals
 
-    def getGradLegend(self):
+    def getGradLegend(self, logMode=True, offsets=None):
         # Create color gradient legend based on color map
         minVal, maxVal = self.valLevels[0], self.valLevels[-1]
-        gradLegend = SpectraLegend()
-        gradLegend.setRange(self.colors, minVal, maxVal)
+        if offsets:
+            gradLegend = SpectraLegend(offsets)
+        else:
+            gradLegend = SpectraLegend()
+        gradLegend.linkedPlot = self
+        gradLegend.setRange(self.colors, minVal, maxVal, logMode)
 
         return gradLegend
 
@@ -230,6 +278,10 @@ class SpectrogramPlotItem(pg.PlotItem):
             self.itemMeta[item] = params
             self.curves.append(item)
 
+    def getSpectraLine(self, yVal, colors, times, winFrame, lastVal):
+        pdi = SpectraLine(yVal, colors, times, winFrame, fillLevel=lastVal)
+        return pdi
+
     # Takes the y-vals (length m), time ticks (length n), a matrix of values 
     # (of shape (m-1) x (n-1)), and a tuple of min/max values repres. by color gradient
     def createPlot(self, yVals, valueGrid, timeVals, colorRng, logColorScale=True, 
@@ -253,7 +305,7 @@ class SpectrogramPlotItem(pg.PlotItem):
         for rowIndex in range(0, len(yVals)-1):
             yVal = yVals[rowIndex+1]
             colors = list(map(self.mkRGBColor, mappedGrid[rowIndex,:]))
-            pdi = SpectraLine(yVal, colors, timeVals, winFrame, fillLevel=lastVal)
+            pdi = self.getSpectraLine(yVal, colors, timeVals, winFrame, lastVal)
             self.addItem(pdi)
 
             if winFrame: # If winFrame is passed, update progress in status bar
@@ -620,7 +672,10 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI):
 
     def createPlot(self, pixelGrid, freqs, times, colorRng):
         # Frequency that serves as lower bound for plot grid
-        lowerFreqBnd = freqs[0] - abs(freqs[1]-freqs[0])
+        diff = abs(freqs[1] - freqs[0])
+        lowerFreqBnd = freqs[0] - diff
+        if lowerFreqBnd == 0 and self.ui.scaleModeBox.currentText() == 'Logarithmic':
+            lowerFreqBnd = freqs[0] - diff/2
         freqs = np.concatenate([[lowerFreqBnd], freqs])
 
         # Pass calculated values to SpectogramPlotItem to generate plot
