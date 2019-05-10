@@ -78,6 +78,10 @@ class MagPy4UI(object):
         self.actionCurvature.setText('Curvature...')
         self.actionCurvature.setStatusTip('Calculates the curvature of the magnetic field at the mesocenter')
 
+        self.actionEPAD = QtWidgets.QAction(window)
+        self.actionEPAD.setText('Plot Electron PAD')
+        self.actionEPAD.setStatusTip('Plots a color-mapped representation of the electron pitch-angle distribution')
+
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
         self.scaleYToCurrentTimeAction.setStatusTip('')
         self.antialiasAction = QtWidgets.QAction('Smooth &Lines (Antialiasing)',checkable=True,checked=True)
@@ -130,6 +134,7 @@ class MagPy4UI(object):
         self.MMSMenu.addAction(self.actionPlaneNormal)
         self.MMSMenu.addAction(self.actionCurlometer)
         self.MMSMenu.addAction(self.actionCurvature)
+        self.MMSMenu.addAction(self.actionEPAD)
 
         self.optionsMenu = self.menuBar.addMenu('&Options')
         self.optionsMenu.addAction(self.scaleYToCurrentTimeAction)

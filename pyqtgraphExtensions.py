@@ -488,6 +488,25 @@ class SpectraPlotItem(pg.PlotItem):
         else:
             pg.PlotItem.resizeEvent(self, event)
 
+class StackedAxisLabel(pg.GraphicsLayout):
+    def __init__(self, lbls, angle=90, *args, **kwargs):
+        self.sublabels = []
+        self.angle = angle
+        pg.GraphicsLayout.__init__(self, *args, **kwargs)
+        self.layout.setVerticalSpacing(-2)
+        self.layout.setHorizontalSpacing(-2)
+        self.layout.setContentsMargins(5, 0, 5, 0)
+        self.setupLabels(lbls)
+
+    def setupLabels(self, lbls):
+        if self.angle > 0:
+            lbls = lbls[::-1]
+        for i in range(0, len(lbls)):
+            lbl = lbls[i]
+            sublbl = pg.LabelItem(lbl, angle=self.angle)
+            self.addItem(sublbl, 0, i, 1, 1)
+            self.sublabels.append(sublbl)
+
 class BLabelItem(pg.LabelItem):
     def setHtml(self, html):
         self.item.setHtml(html)

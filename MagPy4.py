@@ -37,7 +37,7 @@ from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem
-from MMSTools import PlaneNormal, Curlometer, Curvature
+from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle
 from dynamicSpectra import DynamicSpectra
 from smoothingTool import SmoothingTool
 from ffCreator import createFF
@@ -116,6 +116,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionPlaneNormal.triggered.connect(self.openPlaneNormal)
         self.ui.actionCurlometer.triggered.connect(self.openCurlometer)
         self.ui.actionCurvature.triggered.connect(self.openCurvature)
+        self.ui.actionEPAD.triggered.connect(self.startEPAD)
 
         # Content menu action connections
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
@@ -148,6 +149,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.planeNormal = None
         self.curlometer = None
         self.curvature = None
+        self.electronPAD = None
 
         # these are saves for options for program lifetime
         self.plotMenuTableMode = False
@@ -338,6 +340,22 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closePlaneNormal()
         self.closeCurlometer()
         self.closeCurvature()
+        self.closeEPAD()
+
+    def startEPAD(self):
+        self.closeEPAD()
+        self.electronPAD = ElectronPitchAngle(self)
+        self.initGeneralSelect('Electron PAD', '#0a22ff', self.electronPAD.ui.timeEdit)
+
+    def closeEPAD(self):
+        if self.electronPAD:
+            self.electronPAD.close()
+            self.electronPAD = None
+    
+    def showEPAD(self):
+        if self.electronPAD:
+            self.electronPAD.show()
+            self.electronPAD.update()
 
     def openCurlometer(self):
         self.closeMMSTools()
@@ -705,7 +723,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         #info = FID.FFInfo
         # errorFlag is usually 1e34 but sometimes less. still huge though
         self.errorFlag = FID.FFInfo['ERROR_FLAG'].value
-        self.errorFlag = 1e7 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
+        self.errorFlag = 1e16 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
         print(f'error flag: {self.errorFlag:.0e}') # not being used currently
         #self.errorFlag *= 0.9 # based off FFSpectra.py line 829
         
@@ -1713,6 +1731,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 plotInfo.append((self.lastPlotStrings[i], self.plotTracePens[i]))
         return plotInfo
 
+    def autoSelectRange(self):
+        # Automatically select the section currently being viewed
+        t0, t1 = self.tO, self.tE
+        region = LinkedRegion(self, self.plotItems, values=(t0, t1), 
+            mode=self.selectMode, color=self.selectColor)
+        self.regions.append(region)
+
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
@@ -1781,6 +1806,8 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
             if mode == 'Dynamic Spectra' and len(self.window.regions) == 1:
                 QtCore.QTimer.singleShot(100, self.window.showDynamicSpectra)
+            elif mode == 'Electron PAD' and len(self.window.regions) == 1:
+                QtCore.QTimer.singleShot(100, self.window.showEPAD)
 
         # Case where sub-region was previously set to hidden
         elif window.regions[-1].isVisible(self.plotIndex) == False and not singleLineMode:

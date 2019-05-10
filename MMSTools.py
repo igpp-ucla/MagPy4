@@ -1,8 +1,11 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel
-from dataDisplay import DataDisplay, UTCQDate
+from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout
 from FF_Time import FFTIME, leapFile
+from dataDisplay import DataDisplay, UTCQDate
+
+from dynamicSpectra import SpectrogramPlotItem, SpectraLine, SpectraLegend
+from pyqtgraphExtensions import StackedAxisLabel
 
 import scipy
 from scipy import constants
@@ -12,6 +15,7 @@ import numpy as np
 
 import functools
 import bisect
+import re
 
 class MMSTools():
     def __init__(self, window):
@@ -1208,3 +1212,367 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
 
         # Hide progress bar after work is done
         self.ui.progBar.setVisible(False)
+
+class PitchAnglePlotItem(SpectrogramPlotItem):
+    def plotSetup(self):
+        SpectrogramPlotItem.plotSetup(self)
+        # Additional plot appearance adjustments specific to EPAD plots
+        self.getAxis('bottom').setStyle(tickLength=4)
+        self.getAxis('bottom').setStyle(tickTextOffset=2)
+        self.getAxis('left').setStyle(tickLength=4)
+        self.getAxis('left').setCstmTickSpacing(30)
+        self.getViewBox().setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+
+    def getSpectraLine(self, yVal, colors, timeVals, frm, lastVal):
+        # Return spectra line that doesn't call showPointValue when clicked
+        return SpectraLine(yVal, colors, timeVals, fillLevel=lastVal)
+
+class ScientificSpinBox(QtWidgets.QDoubleSpinBox):
+    def validate(self, txt, pos):
+        # Checks if string matches scientific notation format or is a regular num
+        state = 1
+        if re.fullmatch('\d*\.*\d*', txt):
+            state = 2
+        elif re.fullmatch('\d*.*\d*e\+\d+', txt) is not None:
+            state = 2
+        elif re.match('\d+.*\d*e', txt) or re.match('\d+.*\d*e\+', txt):
+            state = 1
+        else:
+            state = 0
+
+        # Case where prefix is set to '10^'
+        if self.prefix() == '10^':
+            if re.match('10\^\d*\.*\d*', txt) or re.match('10\^-\d*\.*\d*', txt):
+                state = 2
+            elif re.match('10\^\d*\.', txt) or re.match('10\^-\d*\.', txt):
+                state = 1
+
+        return (state, txt, pos)
+
+    def textFromValue(self, value):
+        if value >= 10000:
+            return np.format_float_scientific(value, precision=4, trim='-', 
+                pad_left=False, sign=False)
+        else:
+            return str(value)
+
+    def valueFromText(self, text):
+        if '10^' in text:
+            text = text.split('^')[1]
+        return float(text)
+
+class ElectronPitchAngleUI(object):
+    def setupUI(self, Frame, window):
+        maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
+        Frame.setWindowTitle('Electron Pitch-Angle Distribution')
+        Frame.resize(1200, 800)
+        layout = QtWidgets.QGridLayout(Frame)
+
+        # Set up plot grid
+        self.gview = pg.GraphicsView()
+        self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        self.glw = GridGraphicsLayout(window)
+        self.gview.setCentralItem(self.glw)
+        self.glw.layout.setHorizontalSpacing(10)
+        self.glw.layout.setContentsMargins(15, 10, 25, 10)
+
+        # Set up time edits and status bar
+        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
+        self.statusBar = QtWidgets.QStatusBar()
+        timeLt = QtWidgets.QHBoxLayout()
+        timeLt.addWidget(self.timeEdit.start)
+        timeLt.addWidget(self.timeEdit.end)
+        timeLt.addWidget(self.statusBar)
+        timeLt.addStretch()
+
+        self.rangeElems = []
+        settingsLt = self.setupSettingsLt()
+        self.addPltBtn = QtWidgets.QPushButton('Add To Main Grid')
+
+        # Add everything to main layout
+        layout.addLayout(settingsLt, 0, 1, 1, 1)
+        layout.addWidget(self.gview, 0, 0, 1, 1)
+        layout.addLayout(timeLt, 1, 0, 1, 2)
+
+    def getVerticalSpacer(self):
+        spacer = QtWidgets.QSpacerItem(0, 10, QSizePolicy.Maximum, QSizePolicy.Minimum)
+        return spacer
+
+    def setupSettingsLt(self):
+        layout = QtWidgets.QVBoxLayout()
+
+        # Set up color map scaling mode box/layout
+        scaleModeLbl = QtWidgets.QLabel('Color Map Scale:')
+        self.scaleModeBox = QtWidgets.QComboBox()
+        self.scaleModeBox.addItem('Logarithmic')
+        self.scaleModeBox.addItem('Linear')
+        scaleLt = QtWidgets.QVBoxLayout()
+        scaleLt.addWidget(scaleModeLbl)
+        scaleLt.addWidget(self.scaleModeBox)
+        layout.addLayout(scaleLt)
+
+        spacer = self.getVerticalSpacer()
+        layout.addItem(spacer)
+
+        # Set up range settings boxes for each plot
+        num = 0
+        self.rangeToggles = []
+        lbls = ['High Energy', 'Mid Energy', 'Low Energy']
+        for lbl in lbls:
+            # Create groupbox w/ lbl as title
+            frm = QtWidgets.QGroupBox(lbl)
+            frm.setAlignment(QtCore.Qt.AlignCenter)
+            subLt = QtWidgets.QVBoxLayout(frm)
+            subLt.setContentsMargins(5,5,5,5)
+            layout.addWidget(frm)
+            layout.addItem(self.getVerticalSpacer())
+
+            # Set up, store, and add range sublayout/elements to groupbox
+            rngLt, selectToggle, rngElems = self.getRangeLt()
+            selectToggle.toggled.connect(functools.partial(self.valRngSelectToggled, num))
+            self.rangeElems.append(rngElems)
+            self.rangeToggles.append(selectToggle)
+            self.valRngSelectToggled(num, False)
+            subLt.addLayout(rngLt)
+            num += 1
+
+        # Set up default spinbox min/max settings
+        self.colorScaleToggled()
+
+        # Add in update button
+        layout.addItem(self.getVerticalSpacer())
+        self.updtBtn = QtWidgets.QPushButton('Update')
+        layout.addWidget(self.updtBtn)
+        layout.addStretch()
+
+        return layout
+
+    def getRangeLt(self):
+        selectToggle = QtWidgets.QCheckBox(' Set Value Range: ')
+        rangeLt = QtWidgets.QGridLayout()
+
+        rngTip = 'Toggle to set max/min values represented by color gradient'
+        selectToggle.setToolTip(rngTip)
+
+        minTip = 'Minimum value represented by color gradient'
+        maxTip = 'Maximum value represented by color gradient'
+
+        valueMin = ScientificSpinBox()
+        valueMax = ScientificSpinBox()
+
+        # Set spinbox defaults
+        for box in [valueMax, valueMin]:
+            box.setFixedWidth(100)
+            box.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        spc = '       ' # Spaces that keep spinbox lbls aligned w/ chkbx lbl
+
+        rangeLt.addWidget(selectToggle, 0, 0, 1, 2)
+        maxLbl = self.addPair(rangeLt, spc+'Max: ', valueMax, 1, 0, 1, 1, maxTip)
+        minLbl = self.addPair(rangeLt, spc+'Min: ', valueMin, 2, 0, 1, 1, minTip)
+
+        # Connects checkbox to func that enables/disables rangeLt's items
+        return rangeLt, selectToggle, (valueMin, valueMax, minLbl, maxLbl)
+
+    def addPair(self, layout, name, elem, row, col, rowspan, colspan, tooltip=None):
+        # Create a label for given widget and place both into layout
+        lbl = QtWidgets.QLabel(name)
+        lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        if name != '':
+            layout.addWidget(lbl, row, col, 1, 1)
+        layout.addWidget(elem, row, col+1, rowspan, colspan)
+
+        # Set any tooltips if given
+        if tooltip is not None:
+            lbl.setToolTip(tooltip)
+
+        return lbl
+
+    def valRngSelectToggled(self, num, val):
+        # Enables/disables range settings layout if toggled
+        for elem in self.rangeElems[num]:
+            elem.setEnabled(val)
+
+    def colorScaleToggled(self):
+        # Update spinboxes when color map scale is changed
+        logMode = self.isLogColorScale()
+        if logMode:
+            minVal, maxVal = -100, 100
+            prefix = '10^'
+        else:
+            minVal, maxVal = 0, 1e32
+            prefix = ''
+
+        for rngElems in self.rangeElems:
+            for box in rngElems[0:2]:
+                box.setMinimum(minVal)
+                box.setMaximum(maxVal)
+                box.setPrefix(prefix)
+
+    def isLogColorScale(self):
+        if self.scaleModeBox.currentText() == 'Logarithmic':
+            return True
+        else:
+            return False
+
+class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
+    def __init__(self, window, parent=None):
+        super(ElectronPitchAngle, self).__init__(parent)
+        self.ui = ElectronPitchAngleUI()
+        self.window = window
+        self.wasClosed = False
+
+        self.paDstrs = []
+
+        self.ui.setupUI(self, window)
+        self.ui.updtBtn.clicked.connect(self.update)
+        self.ui.scaleModeBox.currentIndexChanged.connect(self.ui.colorScaleToggled)
+
+    def findStrings(self):
+        # Extract the variable names corresponding to each electron pitch-angle
+        # distribution set (each dstr corresponds to one row of data)
+        lowKw, midKw, hiKw = 'PAD_Lo', 'PAD_Mid', 'PAD_Hi'
+        lowDstrs, midDstrs, hiDstrs = [], [], []
+
+        for dstr in self.window.DATASTRINGS:
+            if lowKw in dstr:
+                lowDstrs.append(dstr)
+            elif midKw in dstr:
+                midDstrs.append(dstr)
+            elif hiKw in dstr:
+                hiDstrs.append(dstr)
+
+        return [lowDstrs, midDstrs, hiDstrs]
+
+    def buildValGrids(self, paDstrs, dtaRange):
+        # Builds grids from the data for each pitch-angle set (lo, mid, hi)
+        # and returns a list of these grids
+        valueGrids = []
+        for dstrLst in paDstrs:
+            subGrid = []
+            for dstr in dstrLst:
+                # Extract data only from the selected range
+                rowDta = self.window.getData(dstr)[dtaRange[0]:dtaRange[1]]
+                subGrid.append(rowDta)
+            subGrid = np.array(subGrid)
+            valueGrids.append(subGrid)
+
+        return valueGrids
+
+    def update(self):
+        # Get variable names and selected data range
+        if self.paDstrs == []:
+            self.paDstrs = self.findStrings()
+        dataRng = self.window.calcDataIndicesFromLines(self.paDstrs[0][0], 0)
+
+        # Clear previous plots and add title
+        self.ui.glw.clear()
+        title = pg.LabelItem('Electron Pitch-Angle Distribution')
+        self.ui.glw.addItem(title, 0, 0, 1, 4)
+
+        # Generate the value grids for each plot
+        labels = ['Electron '+lbl+' Energy PAD' for lbl in ['High', 'Mid', 'Low']]
+        pixelGrids = self.buildValGrids(self.paDstrs, dataRng)
+        pixelGrids.reverse() # Plot in reverse order so high energy is top-most plot
+        yVals = [i for i in range(0, 180+1, 6)] # Pitch angle values
+
+        # Extract the selected time ticks and subtract offset
+        times = self.window.getTimes(self.paDstrs[0][0], 0)[0]
+        times = np.array(times[dataRng[0]:dataRng[1]])
+        times = np.append(times, times[-1])
+        tickOffset = times[0]
+        times = times - tickOffset
+
+        self.gradients = []
+        self.plotItems = []
+        logColor = self.ui.isLogColorScale()
+
+        # Create each plot from its value grid and any user parameters
+        pltNum = 0
+        for pixelGrid, lbl in zip(pixelGrids, labels):
+            plt = PitchAnglePlotItem()
+            plt.getAxis('bottom').tickOffset = tickOffset
+
+            # Check if custom value range is set
+            index = labels.index(lbl)
+            selectToggle = self.ui.rangeToggles[index]
+            minBox, maxBox = self.ui.rangeElems[index][0:2]
+            if selectToggle.isChecked(): # User selected range
+                minVal = minBox.value()
+                maxVal = maxBox.value()
+                if logColor: # Map log scale values to non-log values
+                    minVal = 10 ** minVal
+                    maxVal = 10 ** maxVal
+            else:
+                # Otherwise, use min/max values in grid
+                minVal = np.min(pixelGrid)
+                maxVal = np.max(pixelGrid)
+                if logColor: # Ignore zeros if color mapping scale is in log mode
+                    minVal = np.min(pixelGrid[pixelGrid>0])
+                    maxVal = np.max(pixelGrid[pixelGrid>0])
+            colorRng = (minVal, maxVal)
+
+            # Calculate the progress bar info for current plot
+            progStrt, progEnd = 33.3 * (index), 33.3 * (index + 1)
+
+            # Generate the color mapped plot
+            plt.createPlot(yVals, pixelGrid, times, colorRng, logColor, self, 
+                statusStrt=progStrt, statusEnd=progEnd)
+            self.plotItems.append(plt)
+            self.ui.glw.addItem(plt, pltNum + 1, 1, 1, 1)
+
+            # Add in the y axis label
+            lbl = StackedAxisLabel([lbl, '[Degrees]'], angle=-90)
+            lbl.setFixedWidth(40)
+            self.ui.glw.addItem(lbl, pltNum + 1, 0, 1, 1)
+
+            # Update date time axis and set plot view ranges
+            rng = times[-1]-times[0]
+            mode = self.window.getTimeLabelMode(rng)
+            plt.updateTimeTicks(self.window, times[0], times[-1], mode)
+            plt.setXRange(times[0], times[-1], 0.0)
+            plt.setYRange(yVals[0], yVals[-1], 0.0)
+
+            # Add in gradient color bar
+            grad = plt.getGradLegend(logColor, (1, 26))
+            self.ui.glw.addItem(grad, pltNum + 1, 2, 1, 1)
+            gradWidth = 50 if logColor else 85
+            grad.setFixedWidth(gradWidth)
+            self.gradients.append(grad)
+
+            # Add in color bar label
+            unitsLbl = 'Log DEF' if logColor else 'DEF'
+            lbl = StackedAxisLabel([unitsLbl, '[kEv/(cm^2 s sr keV)]'])
+            lbl.setFixedWidth(40)
+            self.ui.glw.addItem(lbl, pltNum + 1, 3, 1, 1)
+
+            pltNum += 1
+
+        # Add in time and file info labels
+        lbl = self.window.getTimeLabel(abs(times[-1]-times[0]))
+        lbl = pg.LabelItem(lbl)
+        self.ui.glw.addItem(lbl, pltNum + 1, 1, 1, 1)
+        lbl = self.getTimeRangeLbl(times[0]+tickOffset, times[-1]+tickOffset)
+        self.ui.glw.addItem(lbl, pltNum + 2, 0, 1, 3)
+
+        # Adjust color bars to all have same width
+        w = 30
+        for grad in self.gradients:
+            grad.updateWidth(w)
+
+        self.ui.statusBar.clearMessage()
+
+    def getTimeRangeLbl(self, t1, t2):
+        t1Str = self.window.getTimestampFromTick(t1)
+        t2Str = self.window.getTimestampFromTick(t2)
+        txt = 'Time Range: ' + t1Str + ' to ' + t2Str
+        lbl = pg.LabelItem(txt)
+        lbl.setAttr('justify', 'left')
+        return lbl
+
+    def closeEvent(self, ev):
+        self.window.endGeneralSelect()
+        self.window.clearStatusMsg()
+        self.wasClosed = True
+        self.close()
