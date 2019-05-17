@@ -62,6 +62,10 @@ class MagPy4UI(object):
         self.actionDynamicSpectra.setText('Dynamic Spectrogram...')
         self.actionDynamicSpectra.setStatusTip('Generates a dynamic spectrogram based on user settings')
 
+        self.actionDynamicCohPha = QtWidgets.QAction(window)
+        self.actionDynamicCohPha.setText('Dynamic Coherence/Phase...')
+        self.actionDynamicCohPha.setStatusTip('Dynamic analysis of coherence and phase between two variables')
+
         self.actionEdit = QtWidgets.QAction(window)
         self.actionEdit.setText('&Edit...')
         self.actionEdit.setStatusTip('Opens edit window that allows you to rotate the data with matrices')
@@ -79,7 +83,7 @@ class MagPy4UI(object):
         self.actionCurvature.setStatusTip('Calculates the curvature of the magnetic field at the mesocenter')
 
         self.actionEPAD = QtWidgets.QAction(window)
-        self.actionEPAD.setText('Plot Electron PAD')
+        self.actionEPAD.setText('Plot Electron Pitch Angle...')
         self.actionEPAD.setStatusTip('Plots a color-mapped representation of the electron pitch-angle distribution')
 
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
@@ -128,6 +132,7 @@ class MagPy4UI(object):
         self.toolsMenu.addAction(self.actionPlotMenu)
         self.toolsMenu.addAction(self.actionSpectra)
         self.toolsMenu.addAction(self.actionDynamicSpectra)
+        self.toolsMenu.addAction(self.actionDynamicCohPha)
         self.toolsMenu.addAction(self.actionEdit)
 
         self.MMSMenu = self.menuBar.addMenu('&MMS Tools')

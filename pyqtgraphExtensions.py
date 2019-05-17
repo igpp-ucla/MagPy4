@@ -147,6 +147,7 @@ class LinkedRegion(pg.LinearRegionItem):
         self.window.updateCurlometer()
         self.window.updateCurvature()
         self.window.updateDynamicSpectra()
+        self.window.updateDynCohPha()
 
 class LinkedSubRegion(pg.LinearRegionItem):
     def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):
@@ -501,11 +502,18 @@ class StackedAxisLabel(pg.GraphicsLayout):
     def setupLabels(self, lbls):
         if self.angle > 0:
             lbls = lbls[::-1]
+        if self.angle == 0 or self.angle == -180:
+            self.layout.setRowStretchFactor(0, 1)
         for i in range(0, len(lbls)):
             lbl = lbls[i]
             sublbl = pg.LabelItem(lbl, angle=self.angle)
-            self.addItem(sublbl, 0, i, 1, 1)
+            if self.angle == 0 or self.angle == -180:
+                self.addItem(sublbl, i+1, 0, 1, 1)
+            else:
+                self.addItem(sublbl, 0, i, 1, 1)
             self.sublabels.append(sublbl)
+        if self.angle == 0 or self.angle == -180:
+            self.layout.setRowStretchFactor(len(lbls)+1, 1)
 
 class BLabelItem(pg.LabelItem):
     def setHtml(self, html):

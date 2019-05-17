@@ -38,7 +38,7 @@ from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem
 from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle
-from dynamicSpectra import DynamicSpectra
+from dynamicSpectra import DynamicSpectra, DynamicCohPha
 from smoothingTool import SmoothingTool
 from ffCreator import createFF
 from mth import Mth
@@ -106,6 +106,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionPlotMenu.triggered.connect(self.openPlotMenu)
         self.ui.actionSpectra.triggered.connect(self.startSpectra)
         self.ui.actionDynamicSpectra.triggered.connect(self.startDynamicSpectra)
+        self.ui.actionDynamicCohPha.triggered.connect(self.startDynamicCohPha)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.actionHelp.triggered.connect(self.openHelp)
         self.ui.actionAbout.triggered.connect(self.openAbout)
@@ -135,6 +136,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotMenu = None
         self.spectra = None
         self.dynSpectra = None
+        self.dynCohPha = None
         self.plotAppr = None
         self.addTickLbls = None
         self.edit = None
@@ -275,6 +277,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeAddTickLbls()
         self.closePlaneNormal()
         self.closeDynamicSpectra()
+        self.closeDynamicCohPha()
         self.closeMMSTools()
 
     def initVariables(self):
@@ -477,6 +480,26 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.clearStatusMsg()
             self.dynSpectra.close()
             self.dynSpectra = None
+
+    def startDynamicCohPha(self):
+        self.closeTraceStats()
+        if not self.dynCohPha or self.dynCohPha.wasClosed:
+            self.dynCohPha = DynamicCohPha(self)
+            self.showStatusMsg('Selecting dynamic coherence/phase range...')
+            self.initGeneralSelect('Dynamic Coh/Pha', '#c551ff', self.dynCohPha.ui.timeEdit)
+
+    def showDynamicCohPha(self):
+        if self.dynCohPha:
+            self.clearStatusMsg()
+            self.dynCohPha.show()
+            self.dynCohPha.updateParameters()
+            self.dynCohPha.update()
+
+    def closeDynamicCohPha(self):
+        if self.dynCohPha:
+            self.clearStatusMsg()
+            self.dynCohPha.close()
+            self.dynCohPha = None
 
     def startSpectra(self):
         self.closeTraceStats()
@@ -1597,6 +1620,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.curlometer:
             self.curlometer.calculate()
 
+    def updateDynCohPha(self):
+        if self.dynCohPha:
+            self.dynCohPha.updateParameters()
+
     def updateDynamicSpectra(self):
         if self.dynSpectra:
             self.dynSpectra.updateParameters()
@@ -1808,6 +1835,8 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
                 QtCore.QTimer.singleShot(100, self.window.showDynamicSpectra)
             elif mode == 'Electron PAD' and len(self.window.regions) == 1:
                 QtCore.QTimer.singleShot(100, self.window.showEPAD)
+            elif mode == 'Dynamic Coh/Pha' and len(self.window.regions) == 1:
+                QtCore.QTimer.singleShot(100, self.window.showDynamicCohPha)
 
         # Case where sub-region was previously set to hidden
         elif window.regions[-1].isVisible(self.plotIndex) == False and not singleLineMode:
