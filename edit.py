@@ -7,6 +7,7 @@ from MagPy4UI import StackedLabel
 import numpy as np
 from FF_Time import FFTIME
 from math import sin, cos, acos, fabs, pi
+from scipy import signal
 
 import functools
 import time
@@ -79,6 +80,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.filterButton.clicked.connect(self.openFilter)
         self.simpCalc = None
         self.ui.calcBtn.clicked.connect(self.openSimpleCalc)
+
         self.smoothTool = None
         if window.insightMode:
             self.ui.smoothBtn.clicked.connect(window.startSmoothing)
@@ -450,7 +452,8 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         self.ui = MinVarUI()
         self.ui.setupUI(self, window)
 
-        self.window.initGeneralSelect('Min Var', '#ffbf51', self.ui.timeEdit)
+        self.window.initGeneralSelect('Min Var', '#ffbf51', self.ui.timeEdit,
+            'Single', startFunc=None, closeFunc=self.close)
 
         self.ui.applyButton.clicked.connect(self.calcMinVar)
 

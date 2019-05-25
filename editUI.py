@@ -60,7 +60,7 @@ class EditUI(object):
         miscLayout.addWidget(self.calcBtn)
 
         # Smoothing tool setup
-        self.smoothBtn = QtGui.QPushButton('Correct glitches...')
+        self.smoothBtn = QtGui.QPushButton('Deglitch...')
         self.smoothBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.smoothBtn.setToolTip('Smooth and shift glitches in Insight data')
         if window.insightMode:
@@ -201,7 +201,7 @@ class MinVarUI(object):
         self.layout.addLayout(vectorLayout)
 
         # setup datetime edits
-        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 14))
+        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 12))
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
 
         # default it to the current time selection

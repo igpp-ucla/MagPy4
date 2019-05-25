@@ -629,11 +629,10 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, SpectraBase):
         self.ui.fftInt.setMaximum(nPoints)
         self.ui.fftShift.setMaximum(nPoints)
 
-        if self.lastCalc is None:
-            interval = max(min(nPoints, 10), int(nPoints*0.025))
-            self.ui.fftInt.setValue(interval)
-            overlap = int(interval/4)
-            self.ui.fftShift.setValue(overlap)
+        interval = max(min(nPoints, 10), int(nPoints*0.025))
+        self.ui.fftInt.setValue(interval)
+        overlap = int(interval/4)
+        self.ui.fftShift.setValue(overlap)
 
     def checkParameters(self, interval, overlap, bw, numPoints):
         if interval <= overlap:
@@ -904,9 +903,15 @@ class DynamicCohPhaUI(object):
 
         # Set up FFT parameters layout
         lbls = ['FFT Interval: ', 'FFT Shift: ', 'Bandwidth: ']
+
+        fftIntTip = 'Number of data points to use per FFT calculation'
+        shiftTip = 'Number of data points to move forward after each FFT calculation'
+        scaleTip = 'Scaling mode that will be used for y-axis (frequencies)'
+
+        tips = [fftIntTip, shiftTip, scaleTip]
         boxes = [self.fftInt, self.fftShift, self.bwBox]
         for i in range(0, 3):
-            self.addPair(layout, lbls[i], boxes[i], i, 0, 1, 1)
+            self.addPair(layout, lbls[i], boxes[i], i, 0, 1, 1, tips[i])
         layout.addItem(self.getSpacerItem(), 0, 2, 3, 1)
 
         # Set up frequency scaling mode box
@@ -933,7 +938,8 @@ class DynamicCohPhaUI(object):
 
         # Set up num points label, bandwidth btn, and update btn
         self.fftPoints = QtWidgets.QLabel()
-        self.addPair(layout, 'Num Points: ', self.fftPoints, 2, 3, 1, 1)
+        ptsTip = 'Total number of data points within selected time range'
+        self.addPair(layout, 'Num Points: ', self.fftPoints, 2, 3, 1, 1, ptsTip)
 
         self.bwBox.setValue(3)
         self.bwBox.setSingleStep(2)
@@ -1056,9 +1062,6 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
         self.ui.statusBar.clearMessage()
 
     def createPlots(self, freqs, times, cohGrid, phaGrid, logMode):
-        self.ui.cohGrid.clear()
-        self.ui.phaGrid.clear()
-
         # Generate the color mapped plots from the value grids
         cohPlt = SpectrogramPlotItem(logMode)
         phaPlt = PhaseSpectrogram(logMode)
@@ -1068,34 +1071,33 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
             logColorScale=False, statusStrt=0, statusEnd=50)
         phaPlt.createPlot(freqs, phaGrid, times, phaRng, winFrame=self, 
             logColorScale=False, statusStrt=50, statusEnd=100)
-        self.ui.cohGrid.addItem(cohPlt)
-        self.ui.phaGrid.addItem(phaPlt)
 
-        # Add in coherence color gradient
+        # Get color gradients
         cohTicks = [0, 0.2, 0.4, 0.6, 0.8, 1.0]
-        grad = cohPlt.getGradLegend(cstmTicks=cohTicks, logMode=False, offsets=(31, 48))
-        self.ui.cohGrid.nextCol()
-        self.ui.cohGrid.addItem(grad)
-        grad.setFixedWidth(65)
-        grad.updateWidth(35)
+        cohGrad = cohPlt.getGradLegend(cstmTicks=cohTicks, logMode=False, 
+            offsets=(31, 48))
+        cohGrad.setFixedWidth(65)
 
-        # Add in phase color gradient
-        grad = phaPlt.getGradLegend()
-        self.ui.phaGrid.nextCol()
-        self.ui.phaGrid.addItem(grad)
-        grad.setFixedWidth(60)
-        grad.updateWidth(35)
+        phaGrad = phaPlt.getGradLegend()
+        phaGrad.setFixedWidth(60)
 
-        # Add in color bar labels
-        self.ui.cohGrid.nextCol()
-        lbl = pg.LabelItem('Coherence')
-        self.ui.cohGrid.addItem(lbl)
-        lbl.setFixedWidth(65)
+        # Get color bar labels
+        cohLbl = pg.LabelItem('Coherence')
+        cohLbl.setFixedWidth(65)
 
-        self.ui.phaGrid.nextCol()
-        lbl = StackedAxisLabel(['Phase', '[Degrees]'], angle=0)
-        self.ui.phaGrid.addItem(lbl)
-        lbl.setFixedWidth(70)
+        phaLbl = StackedAxisLabel(['Phase', '[Degrees]'], angle=0)
+        phaLbl.setFixedWidth(70)
+
+        # Add items into grids
+        for grid, plt, grad, lbl in zip([self.ui.cohGrid, self.ui.phaGrid],
+            [cohPlt, phaPlt], [cohGrad, phaGrad], [cohLbl, phaLbl]):
+            grid.clear()
+            grid.addItem(plt)
+            grid.nextCol()
+            grid.addItem(grad)
+            grad.updateWidth(35)
+            grid.nextCol()
+            grid.addItem(lbl)
 
         return cohPlt, phaPlt
 
@@ -1114,6 +1116,7 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
             b = np.log10(yRng[1])
             yRng = (a, b)
 
+        # Update plot ranges and set axis labels
         for plt in [cohPlt, phaPlt]:
             plt.updateTimeTicks(self.window, xRng[0], xRng[1], mode)
             if logMode:
@@ -1149,11 +1152,10 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
         self.ui.fftShift.setMaximum(nPoints)
 
         # Calculate some parameters to use for first generated plot
-        if self.lastCalc is None:
-            interval = max(min(nPoints, 10), int(nPoints*0.025))
-            overlap = int(interval/4)
-            self.ui.fftInt.setValue(interval)
-            self.ui.fftShift.setValue(overlap)
+        interval = max(min(nPoints, 10), int(nPoints*0.025))
+        overlap = int(interval/4)
+        self.ui.fftInt.setValue(interval)
+        self.ui.fftShift.setValue(overlap)
 
     def getTimeRangeLbl(self, t1, t2):
         t1Str = self.window.getTimestampFromTick(t1)

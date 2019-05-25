@@ -1,5 +1,6 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
+from dataDisplay import UTCQDate
 import pyqtgraph as pg
 import pyqtgraph.exporters
 from FF_Time import FFTIME
@@ -31,18 +32,21 @@ class RegionLabel(pg.InfLineLabel):
         self.setPos(QtCore.QPointF(pt.x(), -diff))
 
 class LinkedRegion(pg.LinearRegionItem):
-    def __init__(self, window, plotItems, values=(0, 1), mode=None, color=None):
+    def __init__(self, window, plotItems, values=(0, 1), mode=None, color=None,
+        updateFunc=None, linkedTE=None):
         pg.LinearRegionItem.__init__(self, values=(0,0))
         self.window = window
         self.plotItems = plotItems
         self.regionItems = []
         self.labelText = mode if mode is not None else ''
         self.fixedLine = False
+        self.updateFunc = updateFunc
+        self.linkedTE = linkedTE
 
         for plt in self.plotItems:
             # Create a LinearRegionItem for each plot with same initialized vals
             regionItem = LinkedSubRegion(self, values=values, color=color)
-            regionItem.setBounds([0, self.window.maxTime-self.window.tickOffset])
+            regionItem.setBounds([self.window.minTime - self.window.tickOffset, self.window.maxTime-self.window.tickOffset])
             plt.addItem(regionItem)
             self.regionItems.append(regionItem)
             # Connect plot's regions/lines to each other
@@ -136,18 +140,21 @@ class LinkedRegion(pg.LinearRegionItem):
             self.setLabel(plotIndex)
 
     def updateWindowInfo(self):
-        if self.window.selectTimeEdit == None:
-            return
+        if self.updateFunc and not self.fixedLine:
+            self.updateFunc()
         # Update trace stats, connect lines to time edit, and update time edit
-        # values, if applicable
-        if self.window.selectMode == 'Stats':
-            self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, self)
-        self.window.updateTimeEditByLines(self.window.selectTimeEdit, self)
-        self.window.updateTraceStats()
-        self.window.updateCurlometer()
-        self.window.updateCurvature()
-        self.window.updateDynamicSpectra()
-        self.window.updateDynCohPha()
+        if self.labelText == 'Stats':
+            self.window.currSelect.connectLinesToTimeEdit(self.linkedTE, self)
+        if self.linkedTE:
+            self.updateTimeEditByLines(self.linkedTE)
+
+    def updateTimeEditByLines(self, timeEdit):
+        x0, x1 = self.getRegion()
+        t0 = UTCQDate.UTC2QDateTime(FFTIME(x0, Epoch=self.window.epoch).UTC)
+        t1 = UTCQDate.UTC2QDateTime(FFTIME(x1, Epoch=self.window.epoch).UTC)
+
+        timeEdit.setStartNoCallback(min(t0,t1))
+        timeEdit.setEndNoCallback(max(t0,t1))
 
 class LinkedSubRegion(pg.LinearRegionItem):
     def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):
@@ -175,6 +182,7 @@ class LinkedSubRegion(pg.LinearRegionItem):
     def mouseDragEvent(self, ev):
         # If this sub-region is dragged, move all other sub-regions accordingly
         self.grp.mouseDragEvent(ev)
+
 class MagPyPlotItem(pg.PlotItem):
     def updateLogMode(self):
         x = self.ctrl.logXCheck.isChecked()
@@ -304,10 +312,11 @@ class DateAxis(pg.AxisItem):
     def fmtTimeStmp(self, window, times):
         splits = times.split(' ')
         t = splits[4]
-        rng = window.getSelectedTimeRange()
 
         if self.timeRange is not None:
             rng = abs(self.timeRange[1] - self.timeRange[0])
+        else:
+            rng = window.getSelectedTimeRange()
 
         if rng > window.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
             return f'{splits[2]} {splits[3]} {t.split(":")[0]}:{t.split(":")[1]}'
@@ -400,11 +409,11 @@ class DateAxis(pg.AxisItem):
 
     def updateTicks(self, window, mode, timeRange=None):
         # In case sliders swapped, just get min/max times
-        minTime = min(window.tO, window.tE)
-        maxTime = max(window.tO, window.tE)
-
         if timeRange is not None:
             minTime, maxTime = timeRange
+        else:
+            minTime = min(window.tO, window.tE)
+            maxTime = max(window.tO, window.tE)
 
         # Convert start/end times to strings
         minTimeStr = str(FFTIME(minTime, Epoch=window.epoch).UTC)

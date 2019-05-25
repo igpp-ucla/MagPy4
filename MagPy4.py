@@ -38,12 +38,15 @@ from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem
 from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle
+from detrendWin import DetrendWindow
 from dynamicSpectra import DynamicSpectra, DynamicCohPha
 from smoothingTool import SmoothingTool
 from ffCreator import createFF
 from mth import Mth
 from tests import Tests
 import bisect
+from timeManager import TimeManager
+from layoutTools import BaseLayout
 
 import time
 import functools
@@ -60,9 +63,10 @@ except Exception as e:
     print(e)
     print(' ')
 
-class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
+class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def __init__(self, app, parent=None):
         super(MagPy4Window, self).__init__(parent)
+        TimeManager.__init__(self, 0, 0, None)
 
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
@@ -107,6 +111,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.ui.actionSpectra.triggered.connect(self.startSpectra)
         self.ui.actionDynamicSpectra.triggered.connect(self.startDynamicSpectra)
         self.ui.actionDynamicCohPha.triggered.connect(self.startDynamicCohPha)
+        self.ui.actionDetrend.triggered.connect(self.startDetrend)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.actionHelp.triggered.connect(self.openHelp)
         self.ui.actionAbout.triggered.connect(self.openAbout)
@@ -146,6 +151,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.FIDs = []
         self.tickOffset = 0 # Smallest tick in data, used when plotting x data
         self.smoothing = None
+        self.detrendWin = None
+        self.currSelect = None
 
         # MMS Tools
         self.planeNormal = None
@@ -279,6 +286,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.closeDynamicSpectra()
         self.closeDynamicCohPha()
         self.closeMMSTools()
+        self.closeDetrend()
+
+    def closePlotTools(self):
+        self.closeDetrend()
+        self.closeSpectra()
+        self.closeDynamicCohPha()
+        self.closeDynamicSpectra()
+        self.closeTraceStats()
 
     def initVariables(self):
         """init variables here that should be reset when file changes"""
@@ -348,7 +363,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def startEPAD(self):
         self.closeEPAD()
         self.electronPAD = ElectronPitchAngle(self)
-        self.initGeneralSelect('Electron PAD', '#0a22ff', self.electronPAD.ui.timeEdit)
+        self.initGeneralSelect('Electron PAD', '#0a22ff', 'Single',
+            self.electronPAD.ui.timeEdit, self.showEPAD, closeFunc=self.closeEPAD)
 
     def closeEPAD(self):
         if self.electronPAD:
@@ -363,7 +379,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def openCurlometer(self):
         self.closeMMSTools()
         self.curlometer = Curlometer(self)
-        self.initGeneralSelect('Curlometer', '#ffa500', self.curlometer.ui.timeEdit)
+        self.initGeneralSelect('Curlometer', '#ffa500', 'Line',
+            self.curlometer.ui.timeEdit, self.showCurlometer, self.updateCurlometer, 
+            closeFunc=self.closeCurlometer)
 
     def showCurlometer(self):
         if self.curlometer:
@@ -378,7 +396,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def openCurvature(self):
         self.closeMMSTools()
         self.curvature = Curvature(self)
-        self.initGeneralSelect('Curvature', '#ff4242', self.curvature.ui.timeEdit)
+        self.initGeneralSelect('Curvature', '#ff4242', 'Line', self.curvature.ui.timeEdit,
+            self.showCurvature, self.updateCurvature, closeFunc=self.closeCurvature)
 
     def showCurvature(self):
         if self.curvature:
@@ -393,7 +412,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def openPlaneNormal(self):
         self.closeMMSTools()
         self.planeNormal = PlaneNormal(self)
-        self.initGeneralSelect('Plane Normal', '#42f495', None)
+        self.initGeneralSelect('Plane Normal', '#42f495', None, 'Single',
+            self.showNormal, closeFunc=self.closePlaneNormal)
 
     def showNormal(self):
         if self.planeNormal:
@@ -454,18 +474,18 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.dataDisplay = DataDisplay(self, self.FIDs, Title='Flatfile Data')
         self.dataDisplay.show()
 
-    def openTraceStats(self, plotIndex):
-        self.closeSpectra()
-        self.closeDynamicSpectra()
-        self.traceStats = TraceStats(self, plotIndex)
+    def openTraceStats(self):
+        self.closePlotTools()
+        self.traceStats = TraceStats(self)
         self.traceStats.show()
 
     def startDynamicSpectra(self):
-        self.closeTraceStats()
-        self.closeDynamicSpectra()
+        self.closePlotTools()
         if not self.dynSpectra or self.dynSpectra.wasClosed:
             self.dynSpectra = DynamicSpectra(self)
-            self.initGeneralSelect('Dynamic Spectra', '#c700ff', self.dynSpectra.ui.timeEdit)
+            self.initGeneralSelect('Dynamic Spectra', '#c700ff', self.dynSpectra.ui.timeEdit,
+                'Single', self.showDynamicSpectra, self.updateDynamicSpectra,
+                closeFunc=self.closeDynamicSpectra)
             self.showStatusMsg('Selecting dynamic spectrogram range...')
 
     def showDynamicSpectra(self):
@@ -482,11 +502,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.dynSpectra = None
 
     def startDynamicCohPha(self):
-        self.closeTraceStats()
+        self.closePlotTools()
         if not self.dynCohPha or self.dynCohPha.wasClosed:
             self.dynCohPha = DynamicCohPha(self)
             self.showStatusMsg('Selecting dynamic coherence/phase range...')
-            self.initGeneralSelect('Dynamic Coh/Pha', '#c551ff', self.dynCohPha.ui.timeEdit)
+            self.initGeneralSelect('Dynamic Coh/Pha', '#c551ff', self.dynCohPha.ui.timeEdit,
+                'Single', self.showDynamicCohPha, self.updateDynCohPha, 
+                closeFunc=self.closeDynamicCohPha)
 
     def showDynamicCohPha(self):
         if self.dynCohPha:
@@ -502,11 +524,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.dynCohPha = None
 
     def startSpectra(self):
-        self.closeTraceStats()
+        self.closePlotTools()
         if not self.spectra or self.spectra.wasClosed:
             self.spectra = Spectra(self)
             self.showStatusMsg('Selecting spectra range...')
-            self.initGeneralSelect('Spectra', '#c551ff', self.spectra.ui.timeEdit, True)
+            self.initGeneralSelect('Spectra', '#c551ff', self.spectra.ui.timeEdit,
+                'Single', self.showSpectra, closeFunc=self.closeSpectra)
 
     def showSpectra(self):
         if self.spectra:
@@ -514,6 +537,24 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.spectra.show()
             self.spectra.initPlots()
             PyQtUtils.moveToFront(self.spectra)
+
+    def startDetrend(self):
+        self.closePlotTools()
+        self.detrendWin = DetrendWindow(self)
+        self.showStatusMsg('Selecting region of data to detrend...')
+        self.initGeneralSelect('Detrend', '#00d122', self.detrendWin.ui.timeEdit,
+            'Single', self.showDetrend, closeFunc=self.closeDetrend)
+
+    def showDetrend(self):
+        if self.detrendWin:
+            self.clearStatusMsg()
+            self.detrendWin.plotDetrendDta()
+            self.detrendWin.show()
+
+    def closeDetrend(self):
+        if self.detrendWin:
+            self.detrendWin.close()
+            self.detrendWin = None
 
     def startSmoothing(self):
         self.closeSmoothing()
@@ -686,6 +727,33 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # Remove data from dictionaries
         for d in [self.ORIGDATADICT, self.DATADICT, self.UNITDICT]:
             d.pop(dstr)
+
+    def setPlotAttrs(self, pi):
+        # add some lines used to show where time series sliders will zoom to
+        # trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=self.trackerPen)
+        # pi.addItem(trackerLine)
+        # self.trackerLines.append(trackerLine)
+
+        # add horizontal zero line
+        zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
+        zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
+        pi.addItem(zeroLine, ignoreBounds=True)
+
+        pi.hideButtons() # hide autoscale button
+
+        # show top and right axis, but hide labels (they are off by default apparently)
+        la = pi.getAxis('left')
+        la.style['textFillLimits'] = [(0,1.1)] # no limits basically to force labels by each tick no matter what
+        #la.setWidth(50) # this also kinda works but a little space wasteful, saving as reminder incase dynamic solution messes up
+
+        ba = pi.getAxis('bottom')
+        #ba.style['textFillLimits'] = [(0,1.1)]
+        ta = pi.getAxis('top')
+        ra = pi.getAxis('right')
+        ta.show()
+        ra.show()
+        ta.setStyle(showValues=False)
+        ra.setStyle(showValues=False)
 
     def initNewVar(self, dstr, dta, units=''):
         # Add new variable name to list of datastrings
@@ -1124,32 +1192,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         assert(tick >= 0 and tick <= self.iiE)
         return self.minTime + (self.maxTime - self.minTime) * tick / self.iiE
 
-    # in seconds, abs for just incase backwards
-    def getSelectedTimeRange(self):
-        return abs(self.tE - self.tO)
-
-    def getTimeLabelMode(self, rng=None):
-        if rng is None:
-            rng = self.getSelectedTimeRange()
-        if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
-            return 'DAY'
-        elif rng > self.hrCutoff: # if over hour show hh:mm:ss
-            return 'HR'
-        elif rng > self.minCutoff: # if over 10 seconds show mm:ss
-            return 'MIN'
-        else: # else show mm:ss.sss
-            return 'MS'
-
-    def getTimeLabel(self, rng):
-        if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
-            return 'HH:MM'
-        elif rng > self.hrCutoff: # if hour show hh:mm:ss
-            return 'HH:MM:SS'
-        elif rng > self.minCutoff: # if over 10 seconds show mm:ss
-            return 'MM:SS'
-        else: # else show mm:ss.sss
-            return 'MM:SS.SSS'
-
     def updateXRange(self):
         self.pltGrd.setTimeLabel('yellow')
 
@@ -1262,14 +1304,28 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             name = self.cdfName
         return name
 
-    def getMaxLabelWidth(self, label, gwin):
-        # Gives the maximum number of characters that should, on average, fit
-        # within the width of the window the label is in
-        lblFont = label.font()
-        fntMet = QtGui.QFontMetrics(lblFont)
-        avgCharWidth = fntMet.averageCharWidth()
-        winWidth = gwin.width()
-        return winWidth / avgCharWidth
+    def getAbbrvDstr(self, dstr):
+        return self.ABBRV_DSTR_DICT[dstr]
+
+    def buildStackedLabel(self, plotStrings, colors):
+        labels = []
+        unitsSet = set()
+        for dstr, en in plotStrings:
+            lbl = self.getLabel(dstr, en)
+            if lbl in self.ABBRV_DSTR_DICT:
+                lbl = self.ABBRV_DSTR_DICT[lbl]
+            labels.append(lbl)
+            units = self.UNITDICT[dstr]
+            unitsSet.add(units)
+
+        unitsString = None
+        if len(unitsSet) == 1:
+            unitsString = unitsSet.pop()
+            if unitsString == '':
+                unitsString = None
+
+        stackLbl = StackedLabel(labels, colors, units=unitsString)
+        return stackLbl
 
     def plotData(self, dataStrings, links):
         self.ui.glw.clear()
@@ -1288,7 +1344,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # add label for file name at top right
         fileNameLabel = BLabelItem()
         fileNameLabel.opts['justify'] = 'right'
-        maxLabelWidth = self.getMaxLabelWidth(fileNameLabel, self.ui.glw)
+        maxLabelWidth = BaseLayout.getMaxLabelWidth(fileNameLabel, self.ui.glw)
         fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.getFileNameString(maxLabelWidth)}</span>")
         self.ui.glw.addItem(fileNameLabel, 0, 0, 1, 1)
 
@@ -1346,7 +1402,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 ba.setStyle(showValues=False)
 
             tracePens = []
-            dstrLabels = []
+            # dstrLabels = []
             dstrList = []
             colorsList = []
             # add traces on this plot for each dstr
@@ -1376,11 +1432,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 #save pens so spectra can stay synced with main plot
                 tracePens.append(pen)
 
-                dstrText = self.getLabel(dstr, editNum)
-                if dstrText in self.ABBRV_DSTR_DICT:
-                    dstrText = self.ABBRV_DSTR_DICT[dstrText]
-                dstrLabels.append(dstrText)
-
                 self.plotTrace(pi, dstr, editNum, pen)
                 dstrList.append(dstr)
                 colorsList.append(pen.color().name())
@@ -1393,20 +1444,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             #todo: needs to be set for current min and max of all time ranges
             pi.setLimits(xMin=self.minTime-self.tickOffset, xMax=self.maxTime-self.tickOffset)
 
-            # Determine units to be placed on label
-            unit = ''
-            for dstr in dstrList:
-                u = self.UNITDICT[dstr]
-                # figure out if each axis trace shares same unit
-                if unit == '':
-                    unit = u
-                elif unit != None and unit != u:
-                    unit = None
-            if unit == '':
-                unit = None
-
             # Create plot label and add to grid
-            stckLbl = StackedLabel(dstrLabels, colorsList, unit)
+            stckLbl = self.buildStackedLabel(dstrs, colorsList)
             self.pltGrd.addPlt(pi, stckLbl)
 
         ## end of main for loop
@@ -1633,80 +1672,26 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             self.curvature.updateCalculations()
 
     # color is hex string ie: '#ff0000' for red
-    def initGeneralSelect(self, name, color, timeEdit, canHide=False):
-        # Initialize all variables used to set up selected regions
-        self.selectMode = name
-        self.selectTimeEdit = timeEdit
-        self.selectColor = color
+    def initGeneralSelect(self, name, color, timeEdit, mode, startFunc, updtFunc=None, 
+        closeFunc=None, canHide=False, maxSteps=1):
+        from selectionManager import GeneralSelect
+        self.endGeneralSelect()
+
         if timeEdit is not None:
             timeEdit.linesConnected = False
-
-    def connectLinesToTimeEdit(self, timeEdit, region, single=False):
-        if timeEdit == None:
-            return
-        elif single:
-            timeEdit.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
-            return
-        if self.selectMode == 'Stats' and timeEdit.linesConnected:
-            # Disconnect from any previously connected regions (only in Stats mode)
-            timeEdit.start.dateTimeChanged.disconnect()
-            timeEdit.end.dateTimeChanged.disconnect()
-        # Connect timeEdit to currently being moved / recently added region
-        timeEdit.start.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
-        timeEdit.end.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
-        timeEdit.linesConnected = True
+        self.currSelect = GeneralSelect(self, mode, name, color, timeEdit,
+            func=startFunc, updtFunc=updtFunc, closeFunc=closeFunc, maxSteps=maxSteps)
 
     def endGeneralSelect(self):
-        # Clear all region selection variables
-        self.selectTimeEdit = None
-        self.selectMode = None
-        self.selectColor = None
-
-        # Remove all selected regions from actual plots
-        for region in self.regions:
-            region.removeRegionItems()
-        self.regions = []
-
-    def updateLinesByTimeEdit(self, timeEdit, region, single=False):
-        x0, x1 = region.getRegion()
-        i0, i1 = self.getTicksFromTimeEdit(timeEdit)
-        t0 = self.getTimeFromTick(i0)
-        t1 = self.getTimeFromTick(i1)
-        if self.selectMode == 'Curlometer' or self.selectMode == 'Curvature':
-            i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick)
-            t0 = self.getTimeFromTick(i0)
-            self.updateLinesPos(region, t0, t0)
-            return
-        assert(t0 <= t1)
-        self.updateLinesPos(region, t0 if x0 < x1 else t1, t1 if x0 < x1 else t0)
-
-    def getTimestampFromTick(self, tick):
-        return FFTIME(tick, Epoch=self.epoch).UTC
-
-    def updateTimeEditByLines(self, timeEdit, region):
-        x0, x1 = region.getRegion()
-        t0 = UTCQDate.UTC2QDateTime(FFTIME(x0, Epoch=self.epoch).UTC)
-        t1 = UTCQDate.UTC2QDateTime(FFTIME(x1, Epoch=self.epoch).UTC)
-
-        timeEdit.setStartNoCallback(min(t0,t1))
-        timeEdit.setEndNoCallback(max(t0,t1))
-
-    def updateLinesPos(self, region, t0, t1):
-        region.setRegion((t0 - self.tickOffset, t1 - self.tickOffset))
-        self.updateTraceStats()
-        self.updateCurlometer()
-        self.updateCurvature()
+        if self.currSelect:
+            self.currSelect.closeAllRegions()
+            self.currSelect = None
 
     # get slider ticks from time edit
     def getTicksFromTimeEdit(self, timeEdit):
         i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick)
         i1 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.end.dateTime()), Epoch=self.epoch)._tick)
         return (i0,i1) if i0 < i1 else (i1,i0) #need parenthesis here, otherwise it will eval like 3 piece tuple with if in the middle lol yikes
-
-    def getTimeTicksFromTimeEdit(self, timeEdit):
-        t0 = FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick
-        t1 = FFTIME(UTCQDate.QDateTime2UTC(timeEdit.end.dateTime()), Epoch=self.epoch)._tick
-        return (t0, t1) if t0 < t1 else (t0, t1)
 
     # tick index refers to slider indices
     # THIS IS NOT ACCURATE when the time resolution is varying (which is usual)
@@ -1716,17 +1701,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         perc = Mth.clamp(perc, 0, 1)
         assert perc >= 0 and perc <= 1
         return int(perc * self.iiE)
-
-    # given the corresponding time array for data (times) and the time (t), calculate index into data array
-    def calcDataIndexByTime(self, times, t):
-        assert(len(times) >= 2)
-        if t <= times[0]:
-            return 0
-        if t >= times[-1]:
-            return len(times)
-        b = bisect.bisect_left(times, t) # can bin search because times are sorted
-        assert(b)
-        return b
 
     # could make combo of above two functions
     # tries to use second function when it can (find correct times file) otherwise uses first
@@ -1744,18 +1718,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         return i0,i1
 
     def getSelectionStartEndTimes(self, regNum=0):
-        if self.regions == []:
+        if self.currSelect is None or self.currSelect.regions == []:
             return self.tO, self.tE
-        t0, t1 = self.regions[regNum].getRegion()
+        t0, t1 = self.currSelect.regions[regNum].getRegion()
         return (t0,t1) if t0 <= t1 else (t1,t0) # need parens here!
 
     def getSelectedPlotInfo(self):
         """based on which plots have active lines, return list for each plot of the datastr and pen for each trace"""
 
+        if self.currSelect is None or self.currSelect.regions == []:
+            return []
+
         plotInfo = []
-        for i,pi in enumerate(self.plotItems):
-            if pi.getViewBox().anyLinesVisible():
-                plotInfo.append((self.lastPlotStrings[i], self.plotTracePens[i]))
+        region = self.currSelect.regions[0]
+        for pltNum in range(0, len(region.regionItems)):
+            if region.isVisible(pltNum):
+                plotInfo.append((self.lastPlotStrings[pltNum], self.plotTracePens[pltNum]))
+
         return plotInfo
 
     def autoSelectRange(self):
@@ -1790,71 +1769,14 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         x = mc.x()
         y = mc.y()
 
-        # if just clicking on the plots with no general select started then open a trace stats window
-        if self.window.regions == [] and self.window.selectMode == None:
-            self.window.openTraceStats(self.plotIndex)
-            self.window.initGeneralSelect('Stats', None, self.window.traceStats.ui.timeEdit)
+        if self.window.currSelect == None:
+            self.window.openTraceStats()
+            self.window.initGeneralSelect('Stats', None, self.window.traceStats.ui.timeEdit,
+                'Adjusting', None, self.window.updateTraceStats, 
+                closeFunc=self.window.closeTraceStats, maxSteps=-1)
 
-        window = self.window
-        plts, mode, color = window.plotItems, window.selectMode, window.selectColor
-
-        # Holding ctrl key in stats mode allows selecting multiple regions
         ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
-        multiSelect = (ctrlPressed and (mode == 'Stats' or mode == 'Smooth'))
-        singleLineMode = (mode == 'Curlometer' or mode == 'Curvature')
-
-        # Case where no regions have been created or just adding a new line
-        if window.regions == [] or (multiSelect and not window.regions[-1].isLine()):
-            region = LinkedRegion(window, plts, values=(x, x), mode=mode, color=color)
-            window.regions.append(region)
-            if mode == 'Curlometer':
-                self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, region)
-                QtCore.QTimer.singleShot(100, self.window.showCurlometer)
-            elif mode == 'Curvature' and len(self.window.regions) == 1:
-                self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, region)
-                QtCore.QTimer.singleShot(100, self.window.showCurvature)
-            else:
-                # Initial connection to time edit
-                self.window.connectLinesToTimeEdit(self.window.selectTimeEdit, region)
-
-        # Case where last region added is still a line
-        elif window.regions[-1].isLine() and not singleLineMode:
-            # Get line's position x0 and create region between x0 and current x
-            prevX = self.window.regions[-1].linePos()
-            window.regions[-1].setRegion((prevX, x))
-
-            if self.window.edit:
-                PyQtUtils.moveToFront(self.window.edit.minVar)
-
-            if mode == 'Spectra' and len(self.window.regions) == 1:
-                QtCore.QTimer.singleShot(100, self.window.showSpectra)
-            elif mode == 'Plane Normal' and len(self.window.regions) == 1:
-                QtCore.QTimer.singleShot(100, self.window.showNormal)
-
-            if mode == 'Dynamic Spectra' and len(self.window.regions) == 1:
-                QtCore.QTimer.singleShot(100, self.window.showDynamicSpectra)
-            elif mode == 'Electron PAD' and len(self.window.regions) == 1:
-                QtCore.QTimer.singleShot(100, self.window.showEPAD)
-            elif mode == 'Dynamic Coh/Pha' and len(self.window.regions) == 1:
-                QtCore.QTimer.singleShot(100, self.window.showDynamicCohPha)
-
-        # Case where sub-region was previously set to hidden
-        elif window.regions[-1].isVisible(self.plotIndex) == False and not singleLineMode:
-            # Make sub-regions visible for this plot again
-            for region in window.regions:
-                region.setVisible(True, self.plotIndex)
-
-        # If this will be the only line in plots, drag shouldn't expand region
-        numRegions = len(window.regions)
-        if numRegions == 1 and window.regions[0].isLine():
-            window.regions[0].fixedLine = True
-        # Once first region is set, allow dragging the edges
-        elif numRegions > 0 and not singleLineMode: 
-            window.regions[0].fixedLine = False
-
-        self.window.updateTraceStats()
-        if mode != 'Plane Normal':
-            self.window.updateTimeEditByLines(self.window.selectTimeEdit, self.window.regions[-1])
+        self.window.currSelect.leftClick(x, self.plotIndex, ctrlPressed)
 
     # check if either of lines are visible for this viewbox
     def anyLinesVisible(self):
@@ -1870,20 +1792,7 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
             region.setVisible(isVisible, self.plotIndex)
 
     def onRightClick(self, ev):
-        if self.anyLinesVisible(): # cancel selection on this plot (if able to)
-            self.setMyLinesVisible(False)
-        else:
-            pg.ViewBox.mouseClickEvent(self,ev) # default right click
-
-        if not self.window.getSelectedPlotInfo(): # no plots then close
-            self.window.closeTraceStats()
-            self.window.closeCurlometer()
-            self.window.closePlaneNormal()
-            for region in self.window.regions:
-                region.removeRegionItems()
-            self.window.regions = []
-        else:
-            self.window.updateTraceStats()
+        self.window.currSelect.rightClick(self.plotIndex)
 
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:

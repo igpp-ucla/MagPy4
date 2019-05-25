@@ -12,6 +12,7 @@ from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxi
 from dataDisplay import UTCQDate
 from MagPy4UI import TimeEdit
 from spectraUI import SpectraUI, SpectraViewBox
+from layoutTools import BaseLayout
 from waveAnalysis import WaveAnalysis
 import functools
 import time
@@ -254,7 +255,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         rightLabel = BLabelItem({'justify':'left'})
 
         leftLabel.setHtml('File:<br>Frequency Bands:<br>Time:')
-        maxLabelWidth = self.window.getMaxLabelWidth(rightLabel, self.ui.grid)
+        maxLabelWidth = BaseLayout.getMaxLabelWidth(rightLabel, self.ui.grid)
         rightLabel.setHtml(f'{self.window.getFileNameString(maxLabelWidth)}<br>{self.maxN}<br>{startDate} to {endDate}')
            
         self.ui.labelLayout.addItem(leftLabel)
@@ -330,8 +331,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
     def updateCohPha(self):
         c0 = self.ui.cohPair0.currentText()
         c1 = self.ui.cohPair1.currentText()
-        abbrv0 = self.window.ABBRV_DSTR_DICT[c0]
-        abbrv1 = self.window.ABBRV_DSTR_DICT[c1]
+        abbrv0 = self.window.getAbbrvDstr(c0)
+        abbrv1 = self.window.getAbbrvDstr(c1)
         freqs = self.getFreqs(c0,0)
 
         datas = [[self.ui.cohGrid, self.coh, 'Coherence', ''],[self.ui.phaGrid, self.pha, 'Phase', ' (&deg;)']]

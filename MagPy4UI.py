@@ -62,6 +62,10 @@ class MagPy4UI(object):
         self.actionDynamicSpectra.setText('Dynamic Spectrogram...')
         self.actionDynamicSpectra.setStatusTip('Generates a dynamic spectrogram based on user settings')
 
+        self.actionDetrend = QtWidgets.QAction(window)
+        self.actionDetrend.setText('Detrend...')
+        self.actionDetrend.setStatusTip('Detrends selected data and allows user to perform additional analysis on it')
+
         self.actionDynamicCohPha = QtWidgets.QAction(window)
         self.actionDynamicCohPha.setText('Dynamic Coherence/Phase...')
         self.actionDynamicCohPha.setStatusTip('Dynamic analysis of coherence and phase between two variables')
@@ -133,6 +137,7 @@ class MagPy4UI(object):
         self.toolsMenu.addAction(self.actionSpectra)
         self.toolsMenu.addAction(self.actionDynamicSpectra)
         self.toolsMenu.addAction(self.actionDynamicCohPha)
+        self.toolsMenu.addAction(self.actionDetrend)
         self.toolsMenu.addAction(self.actionEdit)
 
         self.MMSMenu = self.menuBar.addMenu('&MMS Tools')

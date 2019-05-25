@@ -157,7 +157,7 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         self.show()
 
     def smooth(self):
-        if len(self.window.regions) == 0:
+        if len(self.window.currSelect.regions) == 0:
             return
 
         self.lastEdits.append([])
@@ -171,7 +171,7 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
             regTimes = []
             regions = []
             # Get region start/end indices
-            for regNum in range(0, len(self.window.regions)):
+            for regNum in range(0, len(self.window.currSelect.regions)):
                 iO, iE = self.window.calcDataIndicesFromLines(dstr, en, regNum)
                 regions.append((iO, iE))
             
@@ -202,7 +202,8 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
         # Reset the general selection process and clear regions
         te = TimeEdit(QtGui.QFont())
         self.window.closeTraceStats()
-        self.window.initGeneralSelect('Smooth', '#4286f4', te)
+        self.window.initGeneralSelect('Smooth', '#4286f4', te, 'Single',
+            None, maxSteps=-1)
 
     def updatePlots(self):
         self.edit.addHistory(np.eye(3), 'Data correction operation', 'S')

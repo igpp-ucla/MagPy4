@@ -56,11 +56,10 @@ class TraceStatsUI(object):
         self.layout.addWidget(selectedRngFrame)
 
 class TraceStats(QtWidgets.QFrame, TraceStatsUI):
-    def __init__(self, window, plotIndex, parent=None):
+    def __init__(self, window, parent=None):
         super(TraceStats, self).__init__(parent)
 
         self.window = window
-        self.plotIndex = plotIndex
         self.ui = TraceStatsUI()
         self.ui.setupUI(self, window)
         if self.ui.onTopCheckBox.isChecked():
@@ -80,7 +79,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         stdDev = np.sqrt(results[3])
         median = np.median(dta)
         toStr = lambda val : f'{val:.{prec}f}'
-        row = [toStr(val) for val in [minVal, maxVal, mean, median, stdDev]]
+        row = list(map(toStr, [minVal, maxVal, mean, median, stdDev]))
         return row
 
     def closeEvent(self, event):
@@ -108,7 +107,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
     def update(self):
         plotInfo = self.window.getSelectedPlotInfo()
        
-        singleLine = (len(self.window.regions) == 1 and self.window.regions[0].isLine())
+        singleLine = (len(self.window.currSelect.regions) == 1 and self.window.currSelect.regions[0].isLine())
         colStrs = ['value'] if singleLine else self.funcStrs
         rowStrs = []
 
@@ -118,7 +117,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
             group = []
             for i,(dstr,en) in enumerate(dstrs):
                 indices = []
-                for regNum in range(len(self.window.regions)):
+                for regNum in range(len(self.window.currSelect.regions)):
                     indices.append(self.window.calcDataIndicesFromLines(dstr, en, regNum))
 
                 rowStrs.append([self.window.getLabel(dstr,en), pens[i].color().name()])
