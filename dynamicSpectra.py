@@ -908,7 +908,7 @@ class DynamicCohPhaUI(object):
         shiftTip = 'Number of data points to move forward after each FFT calculation'
         scaleTip = 'Scaling mode that will be used for y-axis (frequencies)'
 
-        tips = [fftIntTip, shiftTip, scaleTip]
+        tips = [fftIntTip, shiftTip, '']
         boxes = [self.fftInt, self.fftShift, self.bwBox]
         for i in range(0, 3):
             self.addPair(layout, lbls[i], boxes[i], i, 0, 1, 1, tips[i])
@@ -918,7 +918,7 @@ class DynamicCohPhaUI(object):
         self.scaleBox = QtWidgets.QComboBox()
         self.scaleBox.addItem('Logarithmic')
         self.scaleBox.addItem('Linear')
-        self.addPair(layout, 'Scaling mode: ', self.scaleBox, 1, 3, 1, 1)
+        self.addPair(layout, 'Scaling mode: ', self.scaleBox, 1, 3, 1, 1, scaleTip)
 
         # Set up pair chooser
         varLt = QtWidgets.QHBoxLayout()

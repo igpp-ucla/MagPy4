@@ -363,8 +363,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def startEPAD(self):
         self.closeEPAD()
         self.electronPAD = ElectronPitchAngle(self)
-        self.initGeneralSelect('Electron PAD', '#0a22ff', 'Single',
-            self.electronPAD.ui.timeEdit, self.showEPAD, closeFunc=self.closeEPAD)
+        self.initGeneralSelect('Electron PAD', '#0a22ff', self.electronPAD.ui.timeEdit, 
+            'Single', self.showEPAD, closeFunc=self.closeEPAD)
 
     def closeEPAD(self):
         if self.electronPAD:
@@ -379,8 +379,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def openCurlometer(self):
         self.closeMMSTools()
         self.curlometer = Curlometer(self)
-        self.initGeneralSelect('Curlometer', '#ffa500', 'Line',
-            self.curlometer.ui.timeEdit, self.showCurlometer, self.updateCurlometer, 
+        self.initGeneralSelect('Curlometer', '#ffa500', self.curlometer.ui.timeEdit, 
+            'Line', self.showCurlometer, self.updateCurlometer, 
             closeFunc=self.closeCurlometer)
 
     def showCurlometer(self):
@@ -396,8 +396,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def openCurvature(self):
         self.closeMMSTools()
         self.curvature = Curvature(self)
-        self.initGeneralSelect('Curvature', '#ff4242', 'Line', self.curvature.ui.timeEdit,
-            self.showCurvature, self.updateCurvature, closeFunc=self.closeCurvature)
+        self.initGeneralSelect('Curvature', '#ff4242', self.curvature.ui.timeEdit,
+            'Line', self.showCurvature, self.updateCurvature, self.closeCurvature)
 
     def showCurvature(self):
         if self.curvature:
@@ -1792,7 +1792,10 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
             region.setVisible(isVisible, self.plotIndex)
 
     def onRightClick(self, ev):
-        self.window.currSelect.rightClick(self.plotIndex)
+        if self.window.currSelect:
+            self.window.currSelect.rightClick(self.plotIndex)
+        else:
+            pg.ViewBox.mouseClickEvent(self, ev)
 
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:

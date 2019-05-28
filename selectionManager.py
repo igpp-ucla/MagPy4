@@ -105,7 +105,8 @@ class GeneralSelect(object):
         linkRegion = LinkedRegion(win, plts, (x, x), mode=self.name, color=self.color,
             updateFunc=self.updtFunc, linkedTE=self.timeEdit)
         linkRegion.fixedLine = True
-        self.connectLinesToTimeEdit(self.timeEdit, linkRegion, self.mode == 'Line')
+        if self.timeEdit:
+            self.connectLinesToTimeEdit(self.timeEdit, linkRegion, self.mode == 'Line')
         self.regions.append(linkRegion)
 
         if self.mode == 'Line' or self.mode == 'Adjusting':
@@ -119,7 +120,7 @@ class GeneralSelect(object):
         if timeEdit == None:
             return
         elif single:
-            timeEdit.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
+            timeEdit.start.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
             return
         if self.name == 'Stats' and timeEdit.linesConnected:
             # Disconnect from any previously connected regions (only in Stats mode)
@@ -156,7 +157,8 @@ class GeneralSelect(object):
         region.setRegion((x0-self.window.tickOffset, x))
         region.fixedLine = False
 
-        region.updateTimeEditByLines(self.timeEdit)
+        if self.timeEdit:
+            region.updateTimeEditByLines(self.timeEdit)
 
         # Calls open/update functions now that full region is selected
         if self.func is not None:

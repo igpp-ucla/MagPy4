@@ -26,7 +26,10 @@ class TimeManager(object):
         if t >= times[-1]:
             return len(times)
         b = bisect.bisect_left(times, t) # can bin search because times are sorted
-        assert(b)
+        if b < 0:
+            return 0
+        elif b >= len(times):
+            return len(times) - 1
         return b
 
     def getTimeLabelMode(self, rng=None):

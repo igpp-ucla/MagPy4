@@ -39,8 +39,8 @@ class DetrendWindowUI(BaseLayout):
         settingsFrame = self.setupSettingsLayout()
 
         topLayout = QtWidgets.QHBoxLayout()
-        topLayout.addWidget(settingsFrame)
         topLayout.addWidget(toolsFrame)
+        topLayout.addWidget(settingsFrame)
         topLayout.addStretch()
         layout.addLayout(topLayout, 0, 0, 1, 1)
 
@@ -52,16 +52,16 @@ class DetrendWindowUI(BaseLayout):
         frame = QtWidgets.QGroupBox('Settings')
         layout = QtWidgets.QHBoxLayout(frame)
 
-        self.linkPlotsChk = QtWidgets.QCheckBox('Link Plots')
+        self.linkPlotsChk = QtWidgets.QCheckBox('Link Plots ')
         self.linkPlotsChk.setChecked(True)
 
         self.updtBtn = QtWidgets.QPushButton('Update')
 
-        for e in [self.linkPlotsChk, None, self.updtBtn]:
+        for e in [self.linkPlotsChk, None, self.updtBtn, None, None]:
             if e:
                 layout.addWidget(e)
             else:
-                spacer = self.getSpacer(10)
+                spacer = self.getSpacer(5)
                 layout.addItem(spacer)
 
         return frame
@@ -223,6 +223,8 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
             plotStrings, pens = pltInfo
             dstrs, ens = [], []
             for dstr, en in plotStrings:
+                if dstr == '':
+                    continue
                 dstrs.append(dstr)
                 ens.append(en)
 

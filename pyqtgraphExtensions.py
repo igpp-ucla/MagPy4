@@ -140,7 +140,8 @@ class LinkedRegion(pg.LinearRegionItem):
             self.setLabel(plotIndex)
 
     def updateWindowInfo(self):
-        if self.updateFunc and not self.fixedLine:
+        if self.updateFunc and ((not self.fixedLine) or self.labelText == 'Curlometer'
+            or self.labelText == 'Curvature'):
             self.updateFunc()
         # Update trace stats, connect lines to time edit, and update time edit
         if self.labelText == 'Stats':
