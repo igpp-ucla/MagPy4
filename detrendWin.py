@@ -7,6 +7,7 @@ from layoutTools import BaseLayout
 from timeManager import TimeManager
 from selectionManager import SelectableViewBox, GeneralSelect
 from pyqtgraphExtensions import LinkedAxis, DateAxis
+from traceStats import TraceStats
 
 from dynamicSpectra import DynamicSpectra, DynamicCohPha
 from spectra import Spectra
@@ -94,6 +95,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         self.tickOffset = self.window.tickOffset
         self.pens = window.pens
         self.edit = None
+        self.traceStatsOnTop = True
 
         # State modified upon plotting
         self.currSelect = None
@@ -108,6 +110,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         self.spectra = None
         self.dynSpectra = None
         self.dynCohPha = None
+        self.traceStats = None
 
         # Connect buttons to functions
         btnFuncs = [self.startSpectra,self.startDynSpectra,self.startDynCohPha]
@@ -130,6 +133,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         self.closeSpectra()
         self.closeDynSpectra()
         self.closeDynCohPha()
+        self.closeTraceStats()
 
     def startSpectra(self):
         self.closeSubWindows()
@@ -189,6 +193,29 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
             self.endGeneralSelect()
             self.dynCohPha.close()
             self.dynCohPha = None
+
+    def openTraceStats(self):
+        self.closeSubWindows()
+        self.traceStats = TraceStats(self)
+
+        # Remove buttons unnecessary for detrend window
+        viewBtn = self.traceStats.ui.dispRangeBtn
+        dtaBtn = self.traceStats.ui.dtaBtn
+        for elem in [viewBtn, dtaBtn]:
+            self.traceStats.ui.layout.removeWidget(elem)
+            elem.deleteLater()
+
+        self.traceStats.show()
+
+    def closeTraceStats(self):
+        if self.traceStats:
+            self.endGeneralSelect()
+            self.traceStats.close()
+            self.traceStats = None
+
+    def updateTraceStats(self):
+        if self.traceStats:
+            self.traceStats.update()
 
     def updateDynCohPha(self):
         if self.dynCohPha:
@@ -348,12 +375,18 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         if en is None:
             en = self.currentEdit
         dstr = self.stripName(dstr)
+
+        a, b = self.window.calcDataIndicesFromLines(dstr, en)
         dta = self.window.getData(dstr, en)
+
         detrendDta = self.dtDatas[dstr+self.modifier]
-        a, b = self.window.calcDataIndicesFromLines(dstr, self.window.currentEdit)
         dta = dta.copy()
         dta[a:b] = detrendDta
         return dta
+
+    def getPrunedData(self, dstr, en, a, b):
+        dta = self.getData(dstr, en)[a:b]
+        return dta[dta < self.window.errorFlag]
 
     def calcDataIndicesFromLines(self, dstr, editNumber, regNum=0):
         # Re-implemented from main window version to use detrend window's

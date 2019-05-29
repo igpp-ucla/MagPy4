@@ -46,6 +46,7 @@ from mth import Mth
 from tests import Tests
 import bisect
 from timeManager import TimeManager
+from selectionManager import GeneralSelect
 from layoutTools import BaseLayout
 
 import time
@@ -1674,7 +1675,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     # color is hex string ie: '#ff0000' for red
     def initGeneralSelect(self, name, color, timeEdit, mode, startFunc, updtFunc=None, 
         closeFunc=None, canHide=False, maxSteps=1):
-        from selectionManager import GeneralSelect
         self.endGeneralSelect()
 
         if timeEdit is not None:

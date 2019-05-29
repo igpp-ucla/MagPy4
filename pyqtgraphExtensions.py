@@ -141,7 +141,7 @@ class LinkedRegion(pg.LinearRegionItem):
 
     def updateWindowInfo(self):
         if self.updateFunc and ((not self.fixedLine) or self.labelText == 'Curlometer'
-            or self.labelText == 'Curvature'):
+            or self.labelText == 'Curvature' or self.labelText == 'Stats'):
             self.updateFunc()
         # Update trace stats, connect lines to time edit, and update time edit
         if self.labelText == 'Stats':

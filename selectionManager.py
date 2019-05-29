@@ -185,7 +185,13 @@ class SelectableViewBox(pg.ViewBox):
         if self.window.currSelect:
             self.window.currSelect.leftClick(x, self.plotIndex, ctrlPressed)
         else:
-            self.defaultLeftClick(x, ctrlPressed)
+            self.window.openTraceStats()
+            self.window.currSelect = GeneralSelect(self.window, 'Adjusting', 
+                'Stats', None, self.window.traceStats.ui.timeEdit,
+                None, self.window.updateTraceStats,
+                closeFunc=self.window.closeTraceStats, maxSteps=-1)
+            self.window.traceStats.ui.timeEdit.linesConnected = False
+            self.window.currSelect.leftClick(x, self.plotIndex, ctrlPressed)
 
     def defaultLeftClick(self, x, ctrlPressed=False):
         return
