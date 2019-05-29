@@ -265,7 +265,11 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
             # Build plot label
             colors = [pen.color().name() for pen in pens]
             stackLbl = self.window.buildStackedLabel(plotStrings, colors)
-            modifiedLabels = [dstr + self.modifier for dstr in stackLbl.dstrs]
+            if stackLbl.units:
+                modifiedLabels = stackLbl.dstrs.copy()[:-1]
+            else:
+                modifiedLabels = stackLbl.dstrs.copy()
+            modifiedLabels[0] += self.modifier
             stackLbl = StackedLabel(modifiedLabels, stackLbl.colors, stackLbl.units)
 
             # Add to grid
@@ -273,7 +277,8 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
             pltStrs = []
             for dstr, pen in zip(dstrs, pens):
                 modifiedStr = dstr + self.modifier
-                startIndex, endIndex = self.window.calcDataIndicesFromLines(dstr, self.window.currentEdit)
+                startIndex, endIndex = self.window.calcDataIndicesFromLines(dstr, 
+                    self.window.currentEdit)
 
                 # Get subset of data/times currently selected
                 dta = self.window.getData(dstr, self.window.currentEdit)
