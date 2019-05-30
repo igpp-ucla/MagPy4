@@ -26,7 +26,7 @@ import pyqtgraph as pg
 import FF_File
 from FF_Time import FFTIME, leapFile
 
-from MagPy4UI import MagPy4UI, PyQtUtils, PlotGrid, StackedLabel, TimeEdit
+from MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit
 from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
@@ -363,9 +363,55 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def startEPAD(self):
         self.closeEPAD()
-        self.electronPAD = ElectronPitchAngle(self)
-        self.initGeneralSelect('Electron PAD', '#0a22ff', self.electronPAD.ui.timeEdit, 
+        if self.electronPAD is None or self.electronPAD.wasClosed:
+            self.electronPAD = ElectronPitchAngle(self)
+            self.initGeneralSelect('Electron PAD', '#0a22ff', self.electronPAD.ui.timeEdit, 
             'Single', self.showEPAD, closeFunc=self.closeEPAD)
+
+    def editEPAD(self):
+        self.endGeneralSelect()
+        self.startEPAD() # Start up actual EPAD object
+        kws = [self.electronPAD.lowKw, self.electronPAD.midKw, 
+            self.electronPAD.hiKw]
+
+        # Find matching color plots
+        matchingPlts = []
+        for kw in kws:
+            kw = 'E' + kw
+            for lbl in self.pltGrd.labels:
+                if kw in lbl.dstrs:
+                    pltIndex = self.pltGrd.labels.index(lbl)
+                    matchingPlts.append(self.plotItems[pltIndex])
+
+        if matchingPlts == []:
+            return
+
+        # Set log mode combo box
+        basePlot = matchingPlts[0]
+        colorPltIndex = self.pltGrd.colorPlts.index(basePlot)
+        logMode = self.pltGrd.colorPltElems[colorPltIndex][0].logMode
+        if not logMode:
+            self.electronPAD.ui.scaleModeBox.setCurrentIndex(1)
+
+        # Get value ranges from each gradient and toggle/set in EPAD plot windw
+        indexDict = { 'E'+kws[0]:2, 'E'+kws[1]:1, 'E'+kws[2]:0 }
+        for plt in matchingPlts:
+            colorPltIndex = self.pltGrd.colorPlts.index(plt)
+            name = self.pltGrd.colorPltNames[colorPltIndex]
+            grad, lbl = self.pltGrd.colorPltElems[colorPltIndex]
+            minVal, maxVal = grad.valueRange
+            layoutIndex = indexDict[name] # EPAD window index
+
+            self.electronPAD.ui.valRngSelectToggled(layoutIndex, True)
+            self.electronPAD.ui.rangeToggles[layoutIndex].setChecked(True)
+            minBox, maxBox = self.electronPAD.ui.rangeElems[layoutIndex][0:2]
+            minBox.setValue(minVal)
+            maxBox.setValue(maxVal)
+
+        # Auto-select first plot's time range
+        plotTimes = basePlot.listDataItems()[1].times
+        self.currSelect.leftClick(plotTimes[0], 0)
+        self.currSelect.leftClick(plotTimes[-1], 0)
 
     def closeEPAD(self):
         if self.electronPAD:
@@ -374,6 +420,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     
     def showEPAD(self):
         if self.electronPAD:
+            self.clearStatusMsg()
             self.electronPAD.show()
             self.electronPAD.update()
 
@@ -1329,8 +1376,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         return stackLbl
 
     def plotData(self, dataStrings, links):
-        self.ui.glw.clear()
         self.closeTraceStats() # Clear any regions
+        self.endGeneralSelect()
 
         # save what the last plotted strings and links are for other modules
         self.lastPlotStrings = dataStrings
@@ -1342,31 +1389,63 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # a list of pens for each trace (saved for consistency with spectra)
         self.plotTracePens = []
 
-        # add label for file name at top right
+        # Store any previous label sets (for current file)
+        prevLabelSets = []
+
+        # Store old plot grid info in case color plts are replotted
+        prevTrackerLines = self.trackerLines.copy()
+        oldPltGrd = None
+        if self.pltGrd is not None:
+            oldPltGrd = self.pltGrd
+            for plt in oldPltGrd.colorPlts:
+                oldPltGrd.removeItem(plt)
+            for cb, cl in oldPltGrd.colorPltElems:
+                if cb is not None:
+                    oldPltGrd.removeItem(cb)
+                if cl is not None:
+                    oldPltGrd.removeItem(cl)
+
+        # Clear previous grid
+        self.ui.glw.clear()
+
+        # Add label for file name at top right
         fileNameLabel = BLabelItem()
         fileNameLabel.opts['justify'] = 'right'
         maxLabelWidth = BaseLayout.getMaxLabelWidth(fileNameLabel, self.ui.glw)
         fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.getFileNameString(maxLabelWidth)}</span>")
         self.ui.glw.addItem(fileNameLabel, 0, 0, 1, 1)
 
-        # Store any previous label sets (for current file)
-        prevLabelSets = []
-        if self.pltGrd is not None and self.pltGrd.labelSetGrd is not None:
-            prevLabelSets = self.pltGrd.labelSetLabel.dstrs
-
         # Create new plot grid
-        self.pltGrd = PlotGrid(self)
+        self.pltGrd = MainPlotGrid(self)
         self.ui.glw.addItem(self.pltGrd, 1, 0, 1, 1)
 
         self.trackerLines = []
 
         for plotIndex, dstrs in enumerate(dataStrings):
+            # Check if special plot
+            colorPlt = False
+            for dstr, en in dstrs:
+                if oldPltGrd and dstr in oldPltGrd.colorPltNames:
+                    colorPlt = True
+            if colorPlt:
+                index = oldPltGrd.colorPltNames.index(dstr)
+                plt = oldPltGrd.colorPlts[index]
+                colorBar, gradLbl = oldPltGrd.colorPltElems[index]
+                if gradLbl:
+                    gradLbl.offsets = (2, 2)
+                self.plotItems.append(plt)
+                for trackerLine in prevTrackerLines:
+                    if trackerLine in plt.items:
+                        plt.removeItem(trackerLine)
+                self.pltGrd.addColorPlt(plt, dstr, colorBar, gradLbl, oldPltGrd.colorPltUnits[index])
+                self.plotTracePens.append([None])
+                continue
+
             axis = DateAxis(orientation='bottom')
             axis.window = self
             vb = MagPyViewBox(self, plotIndex)
             pi = MagPyPlotItem(viewBox = vb, axisItems={'bottom': axis, 'left': LinkedAxis(orientation='left') })
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
-            self.plotItems.append(pi) #save it for ref elsewhere
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
             pi.setDownsampling(ds=1, auto=True, mode='peak')
 
@@ -1403,11 +1482,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 ba.setStyle(showValues=False)
 
             tracePens = []
-            # dstrLabels = []
             dstrList = []
             colorsList = []
+
+            self.plotItems.append(pi) #save it for ref elsewhere
+
             # add traces on this plot for each dstr
-            for i,(dstr,editNum) in enumerate(dstrs):
+            for i, (dstr, editNum) in enumerate(dstrs):
+                if dstr == '':
+                    continue
+
                 # figure out which pen to use
                 numPens = len(self.pens)
                 if len(dstrs) == 1: # if just one trace then base it off which plot
@@ -1481,6 +1565,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             pi = self.plotItems[i]
             plotStrs = self.lastPlotStrings[i]
             pens = self.plotTracePens[i]
+            if pens == [None]:
+                continue
+            if pi in self.pltGrd.colorPlts:
+                continue
             pi.clearPlots()
 
             # keep track of the frequency of strings in each plot (regardless of edit number)
@@ -1495,6 +1583,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             j = 0
             while j < len(plotStrs):
                 dstr, editNum = plotStrs[j]
+                if editNum < 0:
+                    j += 1
+                    continue
 
                 edits = self.DATADICT[dstr]
 
@@ -1512,7 +1603,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 self.plotTrace(pi, dstr, editNum, pens[j])
 
                 j+=1
-
         self.updateYRange()
 
     def getTimes(self, dstr, editNumber):
@@ -1582,6 +1672,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
             # find min and max values out of all traces on this plot
             for (dstr,editNum) in dstrs:
+                if editNum < 0:
+                    skipRangeSet.add(plotIndex)
+                    continue
                 Y = self.getData(dstr,editNum)
 
                 if logPlot: # Use *valid* log values to get range
@@ -1615,14 +1708,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # find largest range in group
             largest = 0
             for i in row:
-                if i in skipRangeSet:
+                if i in skipRangeSet or i >= len(values):
                     continue
                 diff = values[i][1] - values[i][0]
                 largest = max(largest,diff)
 
             # then scale each plot in this row to the range
             for i in row:
-                if i in skipRangeSet:
+                if i in skipRangeSet or i >= len(values):
                     continue
                 diff = values[i][1] - values[i][0]
                 l2 = (largest - diff) / 2.0
@@ -1732,7 +1825,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         plotInfo = []
         region = self.currSelect.regions[0]
         for pltNum in range(0, len(region.regionItems)):
-            if region.isVisible(pltNum):
+            if region.isVisible(pltNum) and not self.plotItems[pltNum].isSpecialPlot():
                 plotInfo.append((self.lastPlotStrings[pltNum], self.plotTracePens[pltNum]))
 
         return plotInfo
@@ -1743,6 +1836,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         region = LinkedRegion(self, self.plotItems, values=(t0, t1), 
             mode=self.selectMode, color=self.selectColor)
         self.regions.append(region)
+
+
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
@@ -1759,9 +1854,6 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         xAction, yAction, mouseAction = actions[1:4]
         for a in [xAction, mouseAction]:
             self.menu.removeAction(a)
-        # Add in custom menu actions
-        self.menu.addAction(self.window.ui.plotApprAction) # Plot appearance
-        self.menu.addAction(self.window.ui.addTickLblsAction) # Additional labels
 
     def onLeftClick(self, ev):
         # map the mouse click to data coordinates
@@ -1831,7 +1923,6 @@ def myexepthook(type, value, tb):
     os.system('pause')
 
 if __name__ == '__main__':
-
     app = QtWidgets.QApplication(sys.argv)
 
     #appName = f'{appName} {version}';

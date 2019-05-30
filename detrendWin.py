@@ -269,7 +269,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
                 modifiedLabels = stackLbl.dstrs.copy()[:-1]
             else:
                 modifiedLabels = stackLbl.dstrs.copy()
-            modifiedLabels[0] += self.modifier
+            modifiedLabels = [lblStr+self.modifier for lblStr in modifiedLabels]
             stackLbl = StackedLabel(modifiedLabels, stackLbl.colors, stackLbl.units)
 
             # Add to grid

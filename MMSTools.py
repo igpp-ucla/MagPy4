@@ -1,11 +1,12 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout
+from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel
 from FF_Time import FFTIME, leapFile
 from dataDisplay import DataDisplay, UTCQDate
 
 from dynamicSpectra import SpectrogramPlotItem, SpectraLine, SpectraLegend
-from pyqtgraphExtensions import StackedAxisLabel
+from pyqtgraphExtensions import StackedAxisLabel, MagPyColorPlot, LinkedAxis, DateAxis
+from selectionManager import SelectableViewBox
 
 import scipy
 from scipy import constants
@@ -1214,6 +1215,9 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         self.ui.progBar.setVisible(False)
 
 class PitchAnglePlotItem(SpectrogramPlotItem):
+    def __init__(self, logMode=False):
+        SpectrogramPlotItem.__init__(self, logMode)
+
     def plotSetup(self):
         SpectrogramPlotItem.plotSetup(self)
         # Additional plot appearance adjustments specific to EPAD plots
@@ -1295,12 +1299,14 @@ class ElectronPitchAngleUI(object):
         layout.addWidget(self.gview, 0, 0, 1, 1)
         layout.addLayout(timeLt, 1, 0, 1, 2)
 
-    def getVerticalSpacer(self):
-        spacer = QtWidgets.QSpacerItem(0, 10, QSizePolicy.Maximum, QSizePolicy.Minimum)
+    def getVerticalSpacer(self, ht=10):
+        spacer = QtWidgets.QSpacerItem(0, ht, QSizePolicy.Maximum, QSizePolicy.Minimum)
         return spacer
 
     def setupSettingsLt(self):
-        layout = QtWidgets.QVBoxLayout()
+        settingsLt = QtWidgets.QVBoxLayout()
+        frame = QtWidgets.QGroupBox(' Plot Settings')
+        layout = QtWidgets.QVBoxLayout(frame)
 
         # Set up color map scaling mode box/layout
         scaleModeLbl = QtWidgets.QLabel('Color Map Scale:')
@@ -1322,7 +1328,6 @@ class ElectronPitchAngleUI(object):
         for lbl in lbls:
             # Create groupbox w/ lbl as title
             frm = QtWidgets.QGroupBox(lbl)
-            frm.setAlignment(QtCore.Qt.AlignCenter)
             subLt = QtWidgets.QVBoxLayout(frm)
             subLt.setContentsMargins(5,5,5,5)
             layout.addWidget(frm)
@@ -1341,12 +1346,38 @@ class ElectronPitchAngleUI(object):
         self.colorScaleToggled()
 
         # Add in update button
-        layout.addItem(self.getVerticalSpacer())
+        settingsLt.addWidget(frame)
+        layout.addItem(self.getVerticalSpacer(2))
         self.updtBtn = QtWidgets.QPushButton('Update')
-        layout.addWidget(self.updtBtn)
-        layout.addStretch()
+        self.updtBtn.setFixedWidth(150)
+        updtLt = QtWidgets.QHBoxLayout()
+        updtLt.addWidget(self.updtBtn)
 
-        return layout
+        layout.addLayout(updtLt)
+        layout.addItem(self.getVerticalSpacer(5))
+
+        settingsLt.addStretch()
+        selectLt, self.addToPlotBtn, self.addCheckboxes = self.setupAddToWinLt()
+        settingsLt.addLayout(selectLt)
+
+        return settingsLt
+
+    def setupAddToWinLt(self):
+        addLt = QtWidgets.QVBoxLayout()
+        btn = QtWidgets.QPushButton('Add to Main Window')
+        selectionBox = QtWidgets.QGroupBox('Selected Plots')
+        selectionBox.setAlignment(QtCore.Qt.AlignCenter)
+        selectionBox.setToolTip('Plots that will be added to main window')
+        selectionLt = QtWidgets.QHBoxLayout(selectionBox)
+        checkBoxes = []
+        for kw in ['High', 'Mid', 'Lo']:
+            checkBox = QtWidgets.QCheckBox(kw)
+            checkBox.setChecked(True)
+            selectionLt.addWidget(checkBox)
+            checkBoxes.append(checkBox)
+        addLt.addWidget(selectionBox)
+        addLt.addWidget(btn)
+        return addLt, btn, checkBoxes
 
     def getRangeLt(self):
         selectToggle = QtWidgets.QCheckBox(' Set Value Range: ')
@@ -1410,6 +1441,9 @@ class ElectronPitchAngleUI(object):
                 box.setMaximum(maxVal)
                 box.setPrefix(prefix)
 
+        for i in range(0, len(self.rangeToggles)):
+            self.rangeToggles[i].setChecked(False)
+
     def isLogColorScale(self):
         if self.scaleModeBox.currentText() == 'Logarithmic':
             return True
@@ -1423,24 +1457,155 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
         self.window = window
         self.wasClosed = False
 
-        self.paDstrs = []
+        self.lowKw, self.midKw, self.hiKw = 'PAD_Lo', 'PAD_Mid', 'PAD_Hi'
+        self.paDstrs = self.findStrings()
 
         self.ui.setupUI(self, window)
         self.ui.updtBtn.clicked.connect(self.update)
         self.ui.scaleModeBox.currentIndexChanged.connect(self.ui.colorScaleToggled)
+        self.ui.addToPlotBtn.clicked.connect(self.addToMainWindow)
+
+    def inMainWindow(self, kw):
+        kwFound = False
+        pltIndex = None
+        for lbl in self.window.pltGrd.labels:
+            if kw in lbl.dstrs:
+                kwFound = True
+                pltIndex = self.window.pltGrd.labels.index(lbl)
+                break
+        return kwFound, pltIndex
+
+    def makeCopy(self, plt, gradBar, gradLbl):
+        # Make a copy of axis elements
+        gradBarCopy = gradBar.getCopy()
+        gradLblCopy = StackedAxisLabel(gradLbl.lblTxt, gradLbl.angle)
+        gradLblCopy.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+
+        # Initialize new plot item
+        vb = SelectableViewBox(self.window, 0)
+        newBA = DateAxis(orientation='bottom')
+        newBA.window = self.window
+        newLA = LinkedAxis(orientation='left')
+        pltCopy = MagPyColorPlot(viewBox=vb, axisItems={'bottom':newBA, 'left':newLA})
+        pltCopy.hideButtons()
+
+        # Copy axis ranges
+        pltCopy.setLogMode(y=plt.logMode)
+        vb.enableAutoRange(x=False, y=False)
+
+        ba = plt.getAxis('bottom')
+        la = plt.getAxis('left')
+
+        xRng = ba.range
+        yRng = la.range
+
+        pltCopy.setXRange(xRng[0], xRng[1], 0)
+        pltCopy.setYRange(yRng[0], yRng[1], 0)
+
+        # Make copies of SpectraLines, but with offsetted times
+        for pdi in plt.listDataItems():
+            pdiTimes = pdi.times - self.window.tickOffset
+            fillLevel = pdi.opts['fillLevel']
+            newPDI = SpectraLine(pdi.freq, pdi.colors, pdiTimes, fillLevel=fillLevel)
+            pltCopy.addItem(newPDI)
+
+        # Update appearance settings for all axes
+        newTA = pltCopy.getAxis('top')
+        newRA = pltCopy.getAxis('right')
+
+        for ax in [newBA, newLA, newRA, newTA]:
+            ax.setZValue(1000) # So plot lines don't cover axes
+            ax.setStyle(showValues=False)
+        newLA.setStyle(showValues=True)
+
+        for kw in ['top', 'right']:
+            pltCopy.showAxis(kw)
+
+        return pltCopy, gradBarCopy, gradLblCopy
+
+    def addToMainWindow(self):
+        self.window.currSelect.closeAllRegions()
+        kws = ['E'+kw for kw in [self.hiKw, self.midKw, self.lowKw]]
+        selectedKws = []
+        windowStatus = []
+        pltLinks = []
+
+        # Find all EPAD plots in main window and remove them + store their index
+        for kw in kws:
+            inWindow, pltIndex = self.inMainWindow(kw)
+            windowStatus.append(inWindow)
+            index = kws.index(kw)
+            if self.ui.addCheckboxes[index].isChecked():
+                selectedKws.append(kw)
+                if inWindow:
+                    self.window.pltGrd.removePlot(pltIndex)
+
+        # Create context menu link to this plot window
+        actionLink = QtWidgets.QAction(self.window)
+        actionLink.setText('Edit EPAD Plots...')
+        actionLink.triggered.connect(self.window.editEPAD)
+
+        for plt, grad, grdLbl, kw in zip(self.plotItems, self.gradients, self.gradLabels, kws):
+            plt, grad, gradLabel = self.makeCopy(plt, grad, grdLbl)
+            if grad.logMode:
+                grad.setMinimumWidth(40)
+            else:
+                grad.setMinimumWidth(85)
+
+            plt.actionLink = actionLink
+            index = kws.index(kw)
+            if not self.ui.addCheckboxes[index].isChecked():
+                continue
+
+            # Add all elements to main window
+            self.window.plotItems.append(plt)
+            self.window.pltGrd.addColorPlt(plt, kw, grad, gradLabel, units='Degrees', 
+                colorLblSpan=1)
+
+            # Update ranges and resize
+            self.window.updateXRange()
+            vb = plt.getViewBox()
+            vb.plotIndex = self.window.pltGrd.numPlots - 1
+            pltLinks.append(self.window.pltGrd.numPlots - 1)
+
+            grad.offsets = (1, 1) if plt != self.plotItems[-1] else (1, 42)
+
+        if len(selectedKws) == 0:
+            return
+
+        lastPlotLinks = self.window.lastPlotLinks.copy()
+        lastPlotStrings = self.window.lastPlotStrings.copy()
+
+        # Remove all plot strings in list that match one of the keywords
+        for subPltLst in lastPlotStrings:
+            for dstr, en in subPltLst:
+                if dstr in selectedKws:
+                    subPltLst.remove((dstr, en))
+            if subPltLst == []:
+                lastPlotStrings.remove(subPltLst)
+
+        self.window.pltGrd.resizeEvent(None)
+
+        # Update plot links for 'plotAppearance' purposes
+        lastPlotStrings = [[(kw, -1)] for kw in selectedKws]
+        self.window.lastPlotStrings.extend(lastPlotStrings)
+        self.window.lastPlotLinks.append(pltLinks)
+        self.window.plotTracePens.extend([None] * len(selectedKws))
+
+        # Close this window after copying plots to main grid
+        self.close()
 
     def findStrings(self):
         # Extract the variable names corresponding to each electron pitch-angle
         # distribution set (each dstr corresponds to one row of data)
-        lowKw, midKw, hiKw = 'PAD_Lo', 'PAD_Mid', 'PAD_Hi'
         lowDstrs, midDstrs, hiDstrs = [], [], []
 
         for dstr in self.window.DATASTRINGS:
-            if lowKw in dstr:
+            if self.lowKw in dstr:
                 lowDstrs.append(dstr)
-            elif midKw in dstr:
+            elif self.midKw in dstr:
                 midDstrs.append(dstr)
-            elif hiKw in dstr:
+            elif self.hiKw in dstr:
                 hiDstrs.append(dstr)
 
         return [lowDstrs, midDstrs, hiDstrs]
@@ -1462,8 +1627,6 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
 
     def update(self):
         # Get variable names and selected data range
-        if self.paDstrs == []:
-            self.paDstrs = self.findStrings()
         dataRng = self.window.calcDataIndicesFromLines(self.paDstrs[0][0], 0)
 
         # Clear previous plots and add title
@@ -1481,18 +1644,16 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
         times = self.window.getTimes(self.paDstrs[0][0], 0)[0]
         times = np.array(times[dataRng[0]:dataRng[1]])
         times = np.append(times, times[-1])
-        tickOffset = times[0]
-        times = times - tickOffset
 
         self.gradients = []
         self.plotItems = []
+        self.gradLabels = []
         logColor = self.ui.isLogColorScale()
 
         # Create each plot from its value grid and any user parameters
         pltNum = 0
         for pixelGrid, lbl in zip(pixelGrids, labels):
             plt = PitchAnglePlotItem()
-            plt.getAxis('bottom').tickOffset = tickOffset
 
             # Check if custom value range is set
             index = labels.index(lbl)
@@ -1511,6 +1672,13 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
                 if logColor: # Ignore zeros if color mapping scale is in log mode
                     minVal = np.min(pixelGrid[pixelGrid>0])
                     maxVal = np.max(pixelGrid[pixelGrid>0])
+
+                # Initialize min/max values for value range spinboxes
+                minBox.setValue(minVal)
+                maxBox.setValue(maxVal)
+                if logColor:
+                    minBox.setValue(np.log10(minVal))
+                    maxBox.setValue(np.log10(maxVal))
             colorRng = (minVal, maxVal)
 
             # Calculate the progress bar info for current plot
@@ -1530,22 +1698,25 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
             # Update date time axis and set plot view ranges
             rng = times[-1]-times[0]
             mode = self.window.getTimeLabelMode(rng)
+            plt.getAxis('bottom').window = self.window
             plt.updateTimeTicks(self.window, times[0], times[-1], mode)
             plt.setXRange(times[0], times[-1], 0.0)
             plt.setYRange(yVals[0], yVals[-1], 0.0)
 
             # Add in gradient color bar
             grad = plt.getGradLegend(logColor, (1, 26))
-            self.ui.glw.addItem(grad, pltNum + 1, 2, 1, 1)
             gradWidth = 50 if logColor else 85
             grad.setFixedWidth(gradWidth)
+            self.ui.glw.addItem(grad, pltNum + 1, 2, 1, 1)
             self.gradients.append(grad)
 
             # Add in color bar label
             unitsLbl = 'Log DEF' if logColor else 'DEF'
-            lbl = StackedAxisLabel([unitsLbl, '[kEv/(cm^2 s sr keV)]'])
+            lbl = StackedAxisLabel([unitsLbl, '[keV/(cm^2 s sr keV)]'])
             lbl.setFixedWidth(40)
             self.ui.glw.addItem(lbl, pltNum + 1, 3, 1, 1)
+            self.gradLabels.append(lbl)
+            plt.getAxis('bottom').setStyle(showValues=True)
 
             pltNum += 1
 
@@ -1553,7 +1724,7 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
         lbl = self.window.getTimeLabel(abs(times[-1]-times[0]))
         lbl = pg.LabelItem(lbl)
         self.ui.glw.addItem(lbl, pltNum + 1, 1, 1, 1)
-        lbl = self.getTimeRangeLbl(times[0]+tickOffset, times[-1]+tickOffset)
+        lbl = self.getTimeRangeLbl(times[0], times[-1])
         self.ui.glw.addItem(lbl, pltNum + 2, 0, 1, 3)
 
         # Adjust color bars to all have same width
@@ -1572,7 +1743,7 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
         return lbl
 
     def closeEvent(self, ev):
+        self.ui.glw.clear()
         self.window.endGeneralSelect()
-        self.window.clearStatusMsg()
         self.wasClosed = True
         self.close()

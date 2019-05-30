@@ -61,7 +61,13 @@ class DropdownLayout(QtWidgets.QGridLayout):
             row = []
             # for each dropdown in row
             for i,(dstr,en) in enumerate(dropRow):
-                if dstr != '':
+                if en < 0:
+                    dd = QtWidgets.QComboBox()
+                    dd.addItem(dstr)
+                    dd.addItem('')
+                    self.grid.addWidget(dd, di, i+1, 1, 1)
+                    dd.currentTextChanged.connect(self.resetDropdownLsts)
+                elif dstr != '':
                     dd = self.addBox(di, i+1, en, dstr)
                 else:
                     dd = self.addEmptyBox(di, i+1)
@@ -251,7 +257,13 @@ class ListLayout(QtWidgets.QGridLayout):
         pltNum = 0
         for subLst in dstrLst:
             self.addPlot()
-            dstrs = [self.window.getLabel(dstr, en) for (dstr, en) in subLst]
+            dstrs = []
+            for (dstr, en) in subLst:
+                if en < 0:
+                    dstrs.append(dstr)
+                else:
+                    lbl = self.window.getLabel(dstr, en)
+                    dstrs.append(lbl)
             self.addSpecificDstrsToPlt(len(self.pltTbls)-1, dstrs)
             pltNum += 1
 
@@ -470,8 +482,12 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                 if not isinstance(l, tuple):
                     newLinks.append(l)
             self.rebuildPlotLinks(len(newLinks))
-            for i,axis in enumerate(newLinks):
+            for i, axis in enumerate(newLinks):
+                if i >= len(self.fcheckBoxes):
+                    continue
                 for j in axis:
+                    if j >= len(self.fcheckBoxes[i]):
+                        continue
                     self.fcheckBoxes[i][j].setChecked(True)
 
     # returns list of list of strings (one list for each plot, (dstr, editNumber) for each trace)
@@ -487,6 +503,9 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             for dstr in pltDstrs:
                 if dstr == '':
                     continue
+                elif dstr not in self.window.DATADICT.keys():
+                    dstrWithEditNums.append((dstr, -1))
+                    continue
                 for k, v in self.window.DATADICT.items():
                     for en in range(0, len(v)):
                         editStr = self.window.getLabel(k, en)
@@ -494,6 +513,8 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                             dstrWithEditNums.append((k, en))
                             break
             dstrs.append(dstrWithEditNums)
+        if dstrs == []:
+            dstrs.append([])
         return dstrs
 
     def getLinkLists(self):
@@ -511,7 +532,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             if len(row) > 0:
                 links.append(row)
         for i in notFound: # for anybody not part of set add them
-            links.append((i,)) # append as tuple so can check for this later
+            links.append([i])
         return links
 
     # callback for each checkbox on changed
@@ -595,6 +616,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         links = self.getLinkLists()
 
         self.window.plotData(dstrs, links)
+        self.window.pltGrd.resizeEvent(None)
 
     def clearRows(self):
         self.ui.plottingLayout.clearPlots()

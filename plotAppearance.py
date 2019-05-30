@@ -62,6 +62,10 @@ class PlotAppearanceUI(object):
             plotFrame = QtWidgets.QGroupBox('Plot '+str(pltNum + 1)+':')
             plotLayout = QtWidgets.QVBoxLayout(plotFrame)
 
+            if trcList == []:
+                pltNum += 1
+                continue
+
             traceNum = 0
             for trcPen in trcList:
                 traceLayout = QtWidgets.QHBoxLayout()
@@ -160,6 +164,9 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         # ex: [ [(pen1, [plotDataItem1...]), (pen2, [..])] , ... , ]
         plotsInfo = []
         for plt in self.plotItems:
+            if plt.isSpecialPlot():
+                plotsInfo.append([])
+                continue
             pltInfo = []
             uniqPltPens = [] # Create list of unique pens in current plot
             for pt in plt.listDataItems():
@@ -430,6 +437,8 @@ class TickIntervalsUI(object):
         # Determine Y val with largest magnitude to set spinbox max for left axes
         yMax = 100
         for plt in plotItems:
+            if plt.isSpecialPlot():
+                continue
             for pdi in plt.listDataItems():
                 yMax = max(yMax, max(np.absolute(pdi.yData)))
 

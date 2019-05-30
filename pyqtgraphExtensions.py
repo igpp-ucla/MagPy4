@@ -185,6 +185,9 @@ class LinkedSubRegion(pg.LinearRegionItem):
         self.grp.mouseDragEvent(ev)
 
 class MagPyPlotItem(pg.PlotItem):
+    def isSpecialPlot(self):
+        return False
+
     def updateLogMode(self):
         x = self.ctrl.logXCheck.isChecked()
         y = self.ctrl.logYCheck.isChecked()
@@ -195,6 +198,21 @@ class MagPyPlotItem(pg.PlotItem):
         self.getAxis('top').setLogMode(x)
         self.getAxis('left').setLogMode(y)
         self.getAxis('right').setLogMode(y)
+
+class MagPyColorPlot(MagPyPlotItem):
+    def __init__(self, *args, **kwargs):
+        MagPyPlotItem.__init__(self, *args, **kwargs)
+        self.actionLink = None
+
+    def isSpecialPlot(self):
+        return True
+
+    def getContextMenus(self, event):
+        if self.actionLink:
+            self.stateGroup.autoAdd(self.actionLink)
+            return [self.ctrlMenu, self.actionLink]
+        else:
+            return self.ctrlMenu
 
 class MagPyAxisItem(pg.AxisItem):
     def __init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True):
@@ -212,6 +230,20 @@ class MagPyAxisItem(pg.AxisItem):
 
     def axisType(self):
         return 'Regular'
+
+    def calcDesiredWidth(self):
+        w = 0
+        if not self.style['showValues']:
+            w = 0
+        elif self.style['autoExpandTextSpace'] is True:
+            w = self.textWidth
+        else:
+            w = self.style['tickTextWidth']
+        w += self.style['tickTextOffset'][0] if self.style['showValues'] else 0
+        w += max(0, self.style['tickLength'])
+        if self.label.isVisible():
+            w += self.label.boundingRect().height() * 0.8  # bounding rect is usually an overestimate
+        return w + 10 # 10 extra to offset if in scientific notation
 
 #todo show minor ticks on left side
 #hide minor tick labels always
@@ -467,7 +499,7 @@ class GridGraphicsLayout(pg.GraphicsLayout):
             self.lastWidth = w
             self.lastHeight = h
 
-class SpectraPlotItem(pg.PlotItem):
+class SpectraPlotItem(MagPyPlotItem):
     # plotItem subclass so we can set Spectra plots to be square
     def __init__(self, window=None, *args, **kargs):
         self.squarePlot = False
@@ -501,6 +533,7 @@ class SpectraPlotItem(pg.PlotItem):
 
 class StackedAxisLabel(pg.GraphicsLayout):
     def __init__(self, lbls, angle=90, *args, **kwargs):
+        self.lblTxt = lbls
         self.sublabels = []
         self.angle = angle
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
@@ -525,6 +558,16 @@ class StackedAxisLabel(pg.GraphicsLayout):
         if self.angle == 0 or self.angle == -180:
             self.layout.setRowStretchFactor(len(lbls)+1, 1)
 
+    def adjustLabelSizes(self, plotHeight):
+        if self.sublabels == []:
+            return
+
+        fontSize = plotHeight * 0.07
+        fontSize = min(12, max(fontSize, 2))
+        for lbl in self.sublabels:
+            txt = lbl.text
+            lbl.setText(txt, size=str(fontSize)+'pt')
+
 class BLabelItem(pg.LabelItem):
     def setHtml(self, html):
         self.item.setHtml(html)
@@ -540,7 +583,8 @@ class GradientLegend(pg.GraphicsWidget):
     """
 
     def __init__(self, offsets=(0, 2)):
-        super().__init__()
+        super(pg.GraphicsWidget).__init__()
+        pg.GraphicsWidget.__init__(self)
         self.setAcceptedMouseButtons(QtCore.Qt.NoButton)
         self.brush = QtGui.QBrush(QtGui.QColor(200,0,0))
         self.pen = QtGui.QPen(QtGui.QColor(0,0,0))
@@ -638,13 +682,9 @@ class GradientLegend(pg.GraphicsWidget):
         ret = GraphicsWidget.setParentItem(self, p)
         return ret
 
-    def updateSize(self):
-        height = 0
-        width = 0
-        for sample, label in self.items:
-            height += max(sample.height(), label.height()) + 3
-            width = max(width, sample.width()+label.width())
-        self.setGeometry(0, 0, width, height)
+    def boundingRect(self):
+        br = self.mapRectFromParent(self.geometry()).normalized()
+        return br
 
 # based off class here, except i wanted a linear version (deleted a lot of stuff i wasnt gonna use to save time)
 #https://github.com/pyqtgraph/pyqtgraph/blob/develop/pyqtgraph/graphicsItems/GraphicsLayout.py
@@ -723,7 +763,6 @@ class LinkedAxis(MagPyAxisItem):
         if self.label.isVisible():
             w += self.label.boundingRect().height() * 0.8  # bounding rect is usually an overestimate
         return w + 10 # 10 extra to offset if in scientific notation
-
 
 # this class is exact copy of pg.PlotCurveItem but with a changed paint function to draw points instead of lines
 # and i removed some random stuff i dont need as well

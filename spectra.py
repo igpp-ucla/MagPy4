@@ -8,7 +8,7 @@ from scipy import fftpack
 import numpy as np
 from FF_Time import FFTIME
 from plotAppearance import PlotAppearance, SpectraPlotApp
-from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis, BLabelItem, SpectraPlotItem, MagPyAxisItem
+from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis, BLabelItem, SpectraPlotItem, MagPyAxisItem, MagPyPlotItem
 from dataDisplay import UTCQDate
 from MagPy4UI import TimeEdit
 from spectraUI import SpectraUI, SpectraViewBox
@@ -346,7 +346,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 ba = MagPyAxisItem(orientation='bottom')
                 la = MagPyAxisItem(orientation='left')
                 self.setAxisAppearance([ba,la])
-            pi = pg.PlotItem(axisItems={'bottom':ba, 'left':la})
+            pi = MagPyPlotItem(axisItems={'bottom':ba, 'left':la})
             pi.setLogMode(True, False)
             if self.linearMode:
                 pi.setLogMode(False, False)

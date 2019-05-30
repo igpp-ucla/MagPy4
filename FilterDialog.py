@@ -442,6 +442,8 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         # later could make a separate dstr selection window (using the axis ones doesn't make sense as filters operate on data independently)
         for plotStrs in self.parent.lastPlotStrings:
             for dstr,en in plotStrs:
+                if en < 0:
+                    continue
                 data = self.filterRawData(self.parent.getData(dstr, en))
                 self.parent.DATADICT[dstr].append(data)
 

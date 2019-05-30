@@ -48,6 +48,16 @@ class SpectraBase(object):
 class SpectraLegend(GradientLegend):
     def __init__(self, offsets=(0, 2)):
         GradientLegend.__init__(self, offsets)
+        self.valueRange = (0, 0)
+        self.logMode = False
+
+    def getCopy(self):
+        newLegend = SpectraLegend(self.offsets)
+        newLegend.setGradient(self.gradient)
+        newLegend.labels = self.labels.copy()
+        newLegend.logMode = self.logMode
+        newLegend.valueRange = self.valueRange
+        return newLegend
 
     def getTickVals(self, minVal, maxVal, maxTicks=6):
         # Use an axis item to generate a list of potential tick values
@@ -81,9 +91,11 @@ class SpectraLegend(GradientLegend):
 
     def setRange(self, colorLst, minVal, maxVal, logMode=False, cstmTicks=None,
         cstmColorPos=None):
+        self.valueRange = (minVal, maxVal)
+        self.logMode = logMode
         # Initialize gradient bounded by gradLegend's view rect
         pos = self.boundingRect()
-        gradient = QtGui.QLinearGradient(pos.topLeft(), pos.bottomLeft())
+        gradient = QtGui.QLinearGradient()
 
         # Calculate the integers between minVal/maxVal to label on color bar
         if cstmTicks is not None:
@@ -130,29 +142,39 @@ class SpectraLine(pg.PlotCurveItem):
         self.times = times
         # Used to update window's status bar w/ the clicked value if passed
         self.window = window
+        self.prevPaths = []
 
         yVals = [freq]*len(times)
         pg.PlotCurveItem.__init__(self, x=times, y=yVals, *args, **kargs)
 
-    def paint(self, p, opt, widget):
-        if self.xData is None or len(self.xData) == 0:
-            return
-
+    def setupPath(self, p):
         yVal = self.yData[0]
-
         # Draws filled rects for every point using designated colors
         for pairNum in range(0, len(self.colors)):
             # Create a rectangle path
             color = self.colors[pairNum]
-            if color == [255, 255, 255]:
-                continue
+
             x0 = self.times[pairNum]
             x1 = self.times[pairNum+1]
             fillLevel = self.opts['fillLevel']
             pt1 = QtCore.QPointF(x0, yVal)
             p2 = QtGui.QPainterPath(pt1)
             p2.addRect(x0, fillLevel, x1-x0, yVal-fillLevel)
-            # Get the corresponding color for the rectangle and fill w/ color
+            self.prevPaths.append(p2)
+
+    def paint(self, p, opt, widget):
+        if self.xData is None or len(self.xData) == 0:
+            return
+
+        if self.prevPaths == []:
+            self.setupPath(p)
+
+        # Draws filled rects for every point using designated colors
+        for pairNum in range(0, len(self.colors)):
+            # Create a rectangle path
+            p2 = self.prevPaths[pairNum]
+            # Find the corresponding color and fill the rectangle
+            color = self.colors[pairNum]
             p.fillPath(p2, color)
 
     def mouseClickEvent(self, ev):
@@ -171,6 +193,7 @@ class SpectraLine(pg.PlotCurveItem):
 class SpectrogramViewBox(pg.ViewBox):
     # Optimized viewbox class, removed some steps in addItem/clear methods
     def __init__(self, *args, **kargs):
+        self.lastScene = None
         pg.ViewBox.__init__(self, *args, **kargs)
         self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
 
@@ -223,6 +246,9 @@ class SpectrogramPlotItem(pg.PlotItem):
         vb.enableAutoRange(x=False, y=False)
 
         self.plotSetup() # Additional plot appearance set up
+
+    def isSpecialPlot(self):
+        return True
 
     def plotSetup(self):
         # Shift axes ticks outwards instead of inwards
@@ -357,7 +383,6 @@ class PhaseSpectrogram(SpectrogramPlotItem):
     def __init__(self, logMode=True):
         super(SpectrogramPlotItem, self).__init__(parent=None)
         SpectrogramPlotItem.__init__(self, logMode)
-        rgbPink = (225, 0, 255)
         self.colors = [(225, 0, 255)] + self.colors + [(225, 0, 255)]
         self.colorPlacements = []
         centerTotal = 5/6
@@ -368,7 +393,6 @@ class PhaseSpectrogram(SpectrogramPlotItem):
             cstmColPos.append(currStop)
         cstmColPos.append(1)
         self.colorPlacements = cstmColPos
-
 
     def mapValueToColor(self, valueGrid, minPower, maxPower, logColorScale):
         minVal, maxVal = -180, 180

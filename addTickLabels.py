@@ -15,6 +15,8 @@ class AddTickLabelsUI(object):
         # tick labels set
         self.chkboxes = []
         maxWidth = 4 # Limit the number of checkboxes per row
+        if len(dstrList) > 30:
+            maxWidth = 9
         dstrNum, rowNum = 0, 0
         for dstr in dstrList:
             chkbx = QtWidgets.QCheckBox(dstr)

@@ -161,7 +161,7 @@ class MagPy4UI(object):
         self.plotApprAction.setText('Change Plot Appearance...')
 
         self.addTickLblsAction = QtWidgets.QAction(window)
-        self.addTickLblsAction.setText('Additional Tick Labels...')
+        self.addTickLblsAction.setText('Extra Tick Labels...')
 
         layout = QtWidgets.QVBoxLayout(self.centralWidget)
 
@@ -522,6 +522,12 @@ class PlotGrid(pg.GraphicsLayout):
         self.plotItems = window.plotItems
         self.labels = []
 
+        # Additional lists for handling color plots
+        self.colorPlts = []
+        self.colorPltElems = []
+        self.colorPltNames = []
+        self.colorPltUnits = []
+
         # Elements used if additional tick labels are added
         self.labelSetGrd = None
         self.labelSetLabel = None
@@ -530,6 +536,12 @@ class PlotGrid(pg.GraphicsLayout):
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
         self.layout.setVerticalSpacing(2)
         self.layout.setContentsMargins(0,0,0,0)
+
+    def menuEnabled(self):
+        return True
+
+    def getContextMenus(self, event):
+        return self.menu.actions() if self.menuEnabled() else []
 
     def setTimeLabel(self, text):
         if self.plotItems == []:
@@ -543,7 +555,7 @@ class PlotGrid(pg.GraphicsLayout):
             return
 
         # Determine new height for each plot
-        botmAxisHeight = max(self.plotItems[-1].getAxis('bottom').height(), 0)
+        botmAxisHeight = 40
         labelSetHeight = 0
         if self.labelSetGrd:
             labelSetHeight = self.labelSetGrd.boundingRect().height()
@@ -556,6 +568,12 @@ class PlotGrid(pg.GraphicsLayout):
         for lbl in self.labels:
             lbl.adjustLabelSizes(plotAreaHeight, self.numPlots)
 
+        for grad, lbl in self.colorPltElems:
+            lbl.setContentsMargins(4, 0, 4, 0)
+            if lbl:
+                lbl.adjustLabelSizes(plotHeight)
+            grad.offsets = (1, 1)
+
         # Set row heights, add in extra space for last plot's dateTime axis
         for row in range(self.startRow, self.startRow+self.numPlots-1):
             self.layout.setRowPreferredHeight(row, plotHeight)
@@ -563,8 +581,14 @@ class PlotGrid(pg.GraphicsLayout):
 
         # Adjust vertical placement of bottom label
         botmLabel = self.labels[-1]
-        lm, rm, tm, bm = botmLabel.layout.getContentsMargins()
-        botmLabel.layout.setContentsMargins(lm, rm, tm, botmAxisHeight)
+        lm, tm, rm, bm = botmLabel.layout.getContentsMargins()
+        botmLabel.layout.setContentsMargins(lm, tm, rm, botmAxisHeight)
+
+        if len(self.colorPlts) > 0 and self.colorPlts[-1] == self.plotItems[-1]:
+            botmGrad, botmLabel = self.colorPltElems[-1]
+            lm, rm, tm, bm = botmLabel.layout.getContentsMargins()
+            botmLabel.layout.setContentsMargins(lm, tm, rm, botmAxisHeight)
+            botmGrad.offsets = (1, botmAxisHeight)
 
         self.adjustPlotWidths()
 
@@ -573,8 +597,98 @@ class PlotGrid(pg.GraphicsLayout):
         lblCol, pltCol = 0, 1
         self.addItem(lbl, self.startRow + self.numPlots, lblCol, 1, 1)
         self.addItem(plt, self.startRow + self.numPlots, pltCol, 1, 1)
+        self.plotItems[self.numPlots-1].getAxis('bottom').setStyle(showValues=False)
+        self.plotItems[self.numPlots-1].getAxis('bottom').showLabel(False)
+        timeText = self.plotItems[self.numPlots-1].getAxis('bottom').labelText
+        plt.getAxis('bottom').setStyle(showValues=True)
+        for axis in ['left','bottom', 'top']:
+            plt.getAxis(axis).setStyle(tickLength=-5)
+
+        self.setTimeLabel(timeText)
         self.labels.append(lbl)
         self.numPlots += 1
+
+    def addColorPlt(self, plt, lblStr, colorBar, colorLbl=None, units=None,
+                    colorLblSpan=1):
+        lbl = StackedLabel([lblStr], ['#000000'], units=units)
+        self.addPlt(plt, lbl)
+        self.addItem(colorBar, self.startRow + self.numPlots - 1, 2, 1, 1)
+        if colorLbl:
+            self.addItem(colorLbl, self.startRow + self.numPlots - 1, 3, colorLblSpan, 1)
+        plt.getAxis('bottom').tickOffset = self.window.tickOffset
+
+        # Add tracker lines to plots
+        trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine))
+        plt.addItem(trackerLine)
+        self.window.trackerLines.append(trackerLine)
+
+        # Update state information
+        self.colorPlts.append(plt)
+        self.colorPltNames.append(lblStr)
+        self.colorPltElems.append((colorBar, colorLbl))
+        self.colorPltUnits.append(units)
+
+    def removePlot(self, pltIndex=None):
+        if self.numPlots < 1:
+            return
+
+        if pltIndex is None:
+            pltIndex = self.numPlots - 1
+        # Get plot items/labels and remove from lists
+        lbl = self.labels.pop(pltIndex)
+        plt = self.plotItems.pop(pltIndex)
+        trackline = self.window.trackerLines.pop(pltIndex)
+        trackline.deleteLater()
+        self.numPlots -= 1
+
+        # Adjust visual settings
+        if pltIndex == self.numPlots:
+            timeLbl = plt.getAxis('bottom').labelText
+            self.plotItems[pltIndex-1].getAxis('bottom').setStyle(showValues=True)
+            self.plotItems[pltIndex-1].getAxis('bottom').showLabel(True)
+            self.setTimeLabel(timeLbl)
+
+        # Additional handling if color plot
+        if plt in self.colorPlts:
+            index = self.colorPlts.index(plt)
+            for elem in self.colorPltElems[index]:
+                if elem is None:
+                    continue
+                self.removeItem(elem)
+                elem.deleteLater()
+            self.colorPltElems.pop(index)
+            self.colorPlts.pop(index)
+            self.colorPltUnits.pop(index)
+
+        # Update window state
+        self.window.lastPlotStrings.pop(pltIndex)
+        lastPlotLinksCopy = self.window.lastPlotLinks.copy()
+        for subLinkLst in lastPlotLinksCopy:
+            subLinkCopy = subLinkLst[:]
+            for pltNum in subLinkCopy:
+                if pltNum == pltIndex: # Remove this pltIndex from any links
+                    subLinkLst.remove(pltNum)
+                elif pltNum > pltIndex: # Decrement all pltIndices > pltIndex
+                    subLinkLst.remove(pltNum)
+                    subLinkLst.append(pltNum-1)
+            if subLinkLst == []:
+                self.window.lastPlotLinks.remove(subLinkLst)
+
+        # Remove elements from layout
+        for item in [lbl, plt]:
+            self.removeItem(item)
+            item.deleteLater()
+
+        # Adjust all other layout elements
+        for pltnum in range(pltIndex, self.numPlots):
+            self.plotItems[pltIndex].getViewBox().plotIndex -= 1
+            row = self.startRow + pltnum + 1
+            for col in range(0, 4):
+                item = self.getItem(row, col)
+                if item is None:
+                    continue
+                self.removeItem(item)
+                self.addItem(item, row-1, col, 1, 1)
 
     def addLabelSet(self, dstr):
         # Initialize label set grid/stacked label if one hasn't been created yet
@@ -657,6 +771,13 @@ class PlotGrid(pg.GraphicsLayout):
 
     def getPlotLabel(self, plotNum):
         return self.labels[plotNum]
+
+class MainPlotGrid(PlotGrid):
+    def __init__(self, window=None, *args, **kwargs):
+        PlotGrid.__init__(self, window, *args, **kwargs)
+        self.menu = QtGui.QMenu()
+        self.menu.addAction(self.window.ui.plotApprAction) # Plot appearance
+        self.menu.addAction(self.window.ui.addTickLblsAction) # Additional labels
 
 class StackedLabel(pg.GraphicsLayout):
     def __init__(self, dstrs, colors, units=None, window=None, *args, **kwargs):

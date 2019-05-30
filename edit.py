@@ -284,11 +284,14 @@ class Edit(QtWidgets.QFrame, EditUI):
     def updateYLabels(self, currentEdit):
         """Updates Y axis label strings for each plot"""
         plotNum = 0
-        for dstrs,pens in zip(self.window.lastPlotStrings,self.window.plotTracePens):
+        for dstrs, pens in zip(self.window.lastPlotStrings,self.window.plotTracePens):
             previousLabel = self.window.pltGrd.getPlotLabel(plotNum)
             labels = []
             colors = previousLabel.colors[:]
             units = previousLabel.units
+            if self.window.plotItems[plotNum] in self.window.pltGrd.colorPlts:
+                plotNum += 1
+                continue
             for (dstr,editNum),pen in zip(dstrs,pens):
                 l = self.window.getLabel(dstr, currentEdit)
                 if l in self.window.ABBRV_DSTR_DICT:

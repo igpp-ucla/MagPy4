@@ -173,6 +173,7 @@ class SelectableViewBox(pg.ViewBox):
         pg.ViewBox.__init__(self, *args, **kwds)
         self.window = window
         self.plotIndex = plotIndex
+        self.setMouseEnabled(x=False, y=False)
 
     def onLeftClick(self, ev):
         # map the mouse click to data coordinates
