@@ -503,7 +503,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             for dstr in pltDstrs:
                 if dstr == '':
                     continue
-                elif dstr not in self.window.DATADICT.keys():
+                elif dstr in self.window.pltGrd.colorPltNames:
                     dstrWithEditNums.append((dstr, -1))
                     continue
                 for k, v in self.window.DATADICT.items():

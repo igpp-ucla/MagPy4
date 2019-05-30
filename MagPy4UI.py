@@ -537,12 +537,6 @@ class PlotGrid(pg.GraphicsLayout):
         self.layout.setVerticalSpacing(2)
         self.layout.setContentsMargins(0,0,0,0)
 
-    def menuEnabled(self):
-        return True
-
-    def getContextMenus(self, event):
-        return self.menu.actions() if self.menuEnabled() else []
-
     def setTimeLabel(self, text):
         if self.plotItems == []:
             return
@@ -778,6 +772,12 @@ class MainPlotGrid(PlotGrid):
         self.menu = QtGui.QMenu()
         self.menu.addAction(self.window.ui.plotApprAction) # Plot appearance
         self.menu.addAction(self.window.ui.addTickLblsAction) # Additional labels
+
+    def menuEnabled(self):
+        return True
+
+    def getContextMenus(self, event):
+        return self.menu.actions() if self.menuEnabled() else []
 
 class StackedLabel(pg.GraphicsLayout):
     def __init__(self, dstrs, colors, units=None, window=None, *args, **kwargs):
