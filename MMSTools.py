@@ -20,26 +20,24 @@ import re
 
 class MMSTools():
     def __init__(self, window):
+        self.mmsState = True
         self.window = window
         # Dicts mapping field/pos kws to datastrings
         self.grps = {} # Internally maps by field axis (bx1, bx2, ...)
         self.scGrps = {} # Internally maps by spacecraft number (bx1, by1, ...)
         self.initGroups()
-        self.initArrays()
 
-        self.mmsState = self.checkValidity()
+        if self.mmsState == False:
+            self.raiseErrorMsg()
+            return
+
+        self.initArrays()
 
     def inValidState(self):
         return self.mmsState
 
-    def checkValidity(self):
-        # Checks if all grps have right number of dstrs in them
-        for grp in ['Pos', 'Field']:
-            for scNum in range(1, 4+1):
-                numDstrs = len(self.scGrps[grp][scNum])
-                if numDstrs < 3 or numDstrs > 4:
-                    return False
-        return True
+    def raiseErrorMsg(self):
+        self.window.ui.statusBar.showMessage('Error: Missing MMS Data')
 
     def getDstrsBySpcrft(self, scNum, grp='Field'):
         return self.scGrps[grp][scNum]
@@ -75,7 +73,7 @@ class MMSTools():
             if dstr in self.window.newVars:
                 continue
             for pk in posKeys:
-                if pk.lower() in dstr.lower() and 'b'+pk.lower() not in dstr.lower():
+                if pk.lower()[0] == dstr.lower()[0] and 'b'+pk.lower() not in dstr.lower():
                     positionDstrs.append(dstr)
             for fk in fieldKeys:
                 if fk.lower() in dstr.lower():
@@ -104,6 +102,15 @@ class MMSTools():
 
         self.grps['Pos'] = posDict
         self.grps['Field'] = fieldDict
+
+        # Check state here before proceeding
+        posLens = [len(v) for k, v in posDict.items()]
+        fieldLens = [len(v) for k, v in fieldDict.items()]
+        minPL, maxPL = min(posLens), max(posLens)
+        minFL, maxFL = min(fieldLens), max(fieldLens)
+        if minPL != 4 or maxPL != 4 or minFL != 4 or maxFL != 4:
+            self.mmsState = False
+            return
 
         # Organize by spacecraft number
         spcrftNums = [1, 2, 3, 4]
@@ -326,10 +333,11 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
     def __init__(self, window, parent=None):
         super(PlaneNormal, self).__init__(parent)
 
+        self.lines = [] # Threshold lines shown on plots
+        self.rangeSelect = None
         MMSTools.__init__(self, window)
         self.ui = PlaneNormalUI()
         self.window = window
-        self.lines = [] # Threshold lines shown on plots
 
         self.ui.setupUI(self, window)
         self.ui.updateBtn.clicked.connect(self.calculate)
@@ -337,7 +345,6 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         self.ui.axisComboBox.currentIndexChanged.connect(self.calculate)
 
         self.state = 0 # Startup state, nothing has been calculated yet
-        self.rangeSelect = None
 
     def openRangeSelect(self):
         # Open window to select a range to computer average over
@@ -1464,6 +1471,12 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
         self.ui.updtBtn.clicked.connect(self.update)
         self.ui.scaleModeBox.currentIndexChanged.connect(self.ui.colorScaleToggled)
         self.ui.addToPlotBtn.clicked.connect(self.addToMainWindow)
+
+        # Valid state checking
+        paDstrsLens = list(map(len, self.paDstrs))
+        if min(paDstrsLens) != 30 and max(paDstrsLens) != 30:
+            self.window.ui.statusBar.showMessage('Error: Missing particle data')
+            return
 
     def inMainWindow(self, kw):
         kwFound = False
