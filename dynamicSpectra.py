@@ -104,6 +104,9 @@ class SpectraLegend(GradientLegend):
             lwrBnd = int(np.ceil(minVal))
             upperBnd = int(np.floor(maxVal))
             colorPos = [i for i in range(lwrBnd, upperBnd+1)]
+            if abs(upperBnd-lwrBnd) < 2:
+                colorPos = np.arange(start=lwrBnd, stop=upperBnd+0.5, step=0.5)
+                colorPos = np.round(colorPos, decimals=1)
         else:
             colorPos = self.getTickVals(minVal, maxVal)
 

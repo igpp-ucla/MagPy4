@@ -560,6 +560,7 @@ class PlotGrid(pg.GraphicsLayout):
 
         # Update label font sizes
         for lbl in self.labels:
+            lbl.layout.setContentsMargins(10, 0, 0, 0)
             lbl.adjustLabelSizes(plotAreaHeight, self.numPlots)
 
         for grad, lbl in self.colorPltElems:

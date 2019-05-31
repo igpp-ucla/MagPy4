@@ -1493,6 +1493,7 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
         gradBarCopy = gradBar.getCopy()
         gradLblCopy = StackedAxisLabel(gradLbl.lblTxt, gradLbl.angle)
         gradLblCopy.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+        gradBarCopy.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
 
         # Initialize new plot item
         vb = SelectableViewBox(self.window, 0)
@@ -1550,8 +1551,8 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
             index = kws.index(kw)
             if self.ui.addCheckboxes[index].isChecked():
                 selectedKws.append(kw)
-                if inWindow:
-                    self.window.pltGrd.removePlot(pltIndex)
+            if inWindow:
+                self.window.pltGrd.removePlot(pltIndex)
 
         # Create context menu link to this plot window
         actionLink = QtWidgets.QAction(self.window)
@@ -1560,10 +1561,9 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
 
         for plt, grad, grdLbl, kw in zip(self.plotItems, self.gradients, self.gradLabels, kws):
             plt, grad, gradLabel = self.makeCopy(plt, grad, grdLbl)
-            if grad.logMode:
-                grad.setMinimumWidth(40)
-            else:
-                grad.setMinimumWidth(85)
+            grad.updateWidth(30)
+            gradWidth = 50 if grad.logMode else 85
+            grad.setFixedWidth(gradWidth)
 
             plt.actionLink = actionLink
             index = kws.index(kw)
