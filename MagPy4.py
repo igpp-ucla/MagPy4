@@ -345,16 +345,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.aboutDialog.close()
             self.aboutDialog = None
 
-    #thoughts on refactor this into using a dictionary, so youd call close with string arg of window name??
-    #def closeSubWindow(key):
-    #    if key not in self.subWindows:
-    #        print('prob bad')
-    #        return
-    #    if not self.subWindows[key]:
-    #        return
-    #    self.subWindows[key].close()
-    #    self.subWindows[key] = None
-
     def closeMMSTools(self):
         self.closePlaneNormal()
         self.closeCurlometer()
@@ -1288,15 +1278,31 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     row.append((dstr,0))
                     if self.insightMode:
                         break # only find one of each keyword
+                    row.sort()
             if row:
                 dstrs.append(row)
-                links.append(ki)
+                links.append(len(dstrs)-1)
 
-        if not links: # if empty then at least show some empty plots so its less confusing
-            dstrs = [[],[],[]]
-            links = [0,1,2] 
+        # MMS trace pen presets
+        lstLens = list(map(len, dstrs))
+        if not self.insightMode and lstLens != [] and min(lstLens) == 4 and max(lstLens) == 4:
+            mmsColors = ['000005', 'd55e00', '009e73', '56b4e9']
+            for dstrLst in dstrs:
+                penLst = []
+                for (currDstr, en), color in zip(dstrLst, mmsColors):
+                    penLst.append((currDstr, en, pg.mkPen(color)))
+                self.customPens.append(penLst)
+        else: # Reset custom pens in case previously set
+            self.customPens = []
 
-        return dstrs, [links]
+        # If num plots <= 1 (non-standard file), try to plot first 3 variables
+        if not links or len(dstrs) == 1:
+            dstrs = [[(dstr, 0)] for dstr in self.DATASTRINGS[0:3]]
+            links = [[i] for i in range(0, len(dstrs))]
+        else:
+            links = [links]
+
+        return dstrs, links
 
     def plotDataDefault(self):
         dstrs,links = self.getDefaultPlotInfo()
