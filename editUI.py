@@ -6,6 +6,66 @@ from mth import Mth
 from MagPy4UI import TimeEdit, MatrixWidget
 import functools
 
+class VectorLayout(QtWidgets.QGridLayout):
+    def __init__(self, window):
+        self.window = window
+        self.dropdowns = []
+        self.axisRows = []
+        QtWidgets.QGridLayout.__init__(self)
+
+    def flattenRows(self):
+        return Mth.flattenLst(self.axisRows, 1)
+
+    def setDefVecs(self, defVecs):
+        self.axisRows = defVecs
+
+    def getAxisVecs(self, row):
+        if len(self.axisRows) == 0:
+            return self.window.DATASTRINGS[:]
+        elif row >= len(self.axisRows):
+            return self.flattenRows()
+        return self.axisRows[row]
+
+    def addEmptyBox(self, row, col):
+        box = QtWidgets.QComboBox()
+        box.addItem('')
+        self.addWidget(box, row, col)
+        return box
+
+    def buildDropdowns(self, vecsToUse):
+        self.dropdowns = []
+        for i in range(0, max(3, len(vecsToUse))):
+            if i >= len(vecsToUse):
+                initVecs = ['','','']
+            else:
+                initVecs = vecsToUse[i]
+            ddRow = []
+            for j in range(0, len(initVecs)):
+                currVec = initVecs[j]
+                box = self.addEmptyBox(i, j)
+                restOfItems = list((set(self.getAxisVecs(i)) - set(initVecs)) | set([currVec]))
+                if '' in restOfItems:
+                    restOfItems.remove('')
+                restOfItems.sort()
+                box.addItems(restOfItems)
+                box.setCurrentText(currVec)
+                box.currentTextChanged.connect(self.rebuildDropdowns)
+                ddRow.append(box)
+            self.dropdowns.append(ddRow)
+
+    def getDropdownVecs(self):
+        vecs = []
+        for ddRow in self.dropdowns:
+            rowLst = []
+            for dd in ddRow:
+                rowLst.append(dd.currentText())
+            vecs.append(rowLst)
+        return vecs
+
+    def rebuildDropdowns(self):
+        prevVecs = self.getDropdownVecs()
+        self.buildDropdowns(prevVecs)
+
 class EditUI(object):
 
     def setupUI(self, Frame, window):
@@ -26,6 +86,8 @@ class EditUI(object):
         vectorFrame = QtWidgets.QGroupBox('Data Vectors')
         vectorFrame.setToolTip('Select x y z vectors of data to be rotated by next matrix')
         self.vectorLayout = QtWidgets.QVBoxLayout(vectorFrame)
+        self.vecLt = VectorLayout(window)
+        self.vectorLayout.addLayout(self.vecLt)
 
         leftLayout.addWidget(vectorFrame)
 
@@ -191,9 +253,14 @@ class MinVarUI(object):
         self.vector = []
         for i,ax in enumerate(Mth.AXES):
             v = QtWidgets.QComboBox()
+            addedItems = []
             for dstr in window.DATASTRINGS:
                 if ax.lower() in dstr.lower():
                     v.addItem(dstr)
+                    addedItems.append(v)
+            if addedItems == []:
+                v.addItems(window.DATASTRINGS)
+                v.setCurrentText(window.DATASTRINGS[i])
             self.vector.append(v)
             vectorLayout.addWidget(v)
         vectorLayout.addStretch()

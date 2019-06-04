@@ -1567,6 +1567,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
            if desiredEdit is defined it will try to plot strings at that edit if they have data there
         """
 
+        newPltStrs = []
         for i in range(len(self.plotItems)):
             pi = self.plotItems[i]
             plotStrs = self.lastPlotStrings[i]
@@ -1586,10 +1587,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     else:
                         seenCount[dstr] = 1
 
+            subPltStrs = []
             j = 0
             while j < len(plotStrs):
                 dstr, editNum = plotStrs[j]
                 if editNum < 0:
+                    subPltStrs.append((dstr, editNum))
                     j += 1
                     continue
 
@@ -1607,8 +1610,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 plotStrs[j] = dstr,editNum #save incase changes were made (so this reflects elsewhere)
 
                 self.plotTrace(pi, dstr, editNum, pens[j])
+                subPltStrs.append((dstr, editNum))
 
                 j+=1
+            newPltStrs.append(subPltStrs)
+        self.lastPlotStrings = newPltStrs
         self.updateYRange()
 
     def getTimes(self, dstr, editNumber):

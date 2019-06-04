@@ -28,9 +28,14 @@ class WaveAnalysisUI(object):
             dlbl = QtWidgets.QLabel(ax)
             self.axLayout.addWidget(dlbl,0,i,1,1)
             # Add elements into comboboxes
+            addedItems = []
             for s in self.window.DATASTRINGS:
                 if ax.lower() in s.lower():
                     dd.addItem(s)
+                    addedItems.append(s)
+            if addedItems == []: # If no valid combination, add all and set
+                dd.addItems(self.window.DATASTRINGS)
+                dd.setCurrentText(self.window.DATASTRINGS[i])
             dd.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
             dlbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 

@@ -41,21 +41,16 @@ class Edit(QtWidgets.QFrame, EditUI):
             found.append(f)
             maxLen = max(maxLen, len(f))
 
-        for i in range(maxLen):
-            self.addAxisRow()
+        vecArrays = np.array(found).T
+        if Mth.flattenLst(found, 1) == []:
+            vecArrays = []
+            self.ui.vecLt.setDefVecs([])
+            self.ui.vecLt.buildDropdowns([self.window.DATASTRINGS[0:3]])
+        else:
+            self.ui.vecLt.setDefVecs(vecArrays)
+            self.ui.vecLt.buildDropdowns(vecArrays)
 
-        self.setVectorDropdownsBlocked(True)
-        for col,dstrs in enumerate(found):
-            for row,dstr in enumerate(dstrs):
-                dd = self.axisDropdowns[row][col]
-                index = dd.findText(dstr)
-                if index >= 0:
-                    dd.setCurrentIndex(index)
-        self.setVectorDropdownsBlocked(False)
-
-        # one run of this so dropdowns are correct
-        self.checkVectorRows()
-        self.updateVectorSelections()
+        self.axisDropdowns = self.ui.vecLt.dropdowns
 
         self.history = [] # lists of edit matrix, and string for extra data (ie eigenvalues)
         if self.window.editHistory:
@@ -145,95 +140,6 @@ class Edit(QtWidgets.QFrame, EditUI):
             self.filter.close()
             self.filter = None
 
-    def setVectorDropdownsBlocked(self, blocked):
-        for row in self.axisDropdowns:
-            for dd in row:
-                dd.blockSignals(blocked)
-
-    def onAxisDropdownChanged(self, r, c, text):
-        #print(f'{r} {c} {text}')
-        self.checkVectorRows()
-        self.updateVectorSelections()
-
-    def checkVectorRows(self):
-        # ensure at least one non full row
-        # only get rid of empty rows
-
-        nonFullRowCount = 0
-        emptyRows = []
-        for r,row in enumerate(self.axisDropdowns):
-            r0 = not row[0].currentText()  
-            r1 = not row[1].currentText()
-            r2 = not row[2].currentText()
-            if r0 or r1 or r2:
-                nonFullRowCount += 1
-            if r0 and r1 and r2:
-                emptyRows.append(r)
-
-        if nonFullRowCount == 0: # and len(self.axisDropdowns) < 4:
-            self.addAxisRow()
-        # if theres more than one non full row then delete empty rows
-        elif nonFullRowCount > 1 and len(emptyRows) >= 1:
-            index = emptyRows[-1]
-            del self.axisDropdowns[index]
-            layout = self.ui.vectorLayout.takeAt(index)
-            PyQtUtils.clearLayout(layout)
-
-    def addAxisRow(self):
-        # init data vector dropdowns
-        r = len(self.axisDropdowns)
-        row = []
-        newLayout = QtWidgets.QHBoxLayout()
-        for i,ax in enumerate(Mth.AXES):
-            dd = QtGui.QComboBox()
-            dd.addItem('')
-            for s in self.window.DATASTRINGS:
-                if ax.lower() in s.lower():
-                    dd.addItem(s)
-            dd.currentTextChanged.connect(functools.partial(self.onAxisDropdownChanged, r, i))
-            newLayout.addWidget(dd)
-            row.append(dd)
-        self.ui.vectorLayout.addLayout(newLayout)
-        self.axisDropdowns.append(row)
-
-    # sets up the vector axis dropdowns
-    # if an item is checked it wont be available for the others in same column
-    def updateVectorSelections(self):
-        self.setVectorDropdownsBlocked(True) # block signals so we dont recursively explode
-
-        colStrs = [] # total option list for each column
-        for i,ax in enumerate(Mth.AXES):
-            col = []
-            for dstr in self.window.DATASTRINGS:
-                if ax.lower() in dstr.lower():
-                    col.append(dstr)
-            colStrs.append(col)
-
-        for r,row in enumerate(self.axisDropdowns):
-            for i,dd in enumerate(row):
-                txt = dd.currentText()
-                col = colStrs[i]
-                if txt in col:
-                    # turn this entry into a list (done to keep the ordering correct)
-                    # this is kinda stupid but just needed a simple way to mark this entry basically for next operation
-                    col[col.index(txt)] = [txt] 
-
-        for r,row in enumerate(self.axisDropdowns):
-            for i,dd in enumerate(row):
-                txt = dd.currentText()
-                dd.clear()
-                dd.addItem('') # empty option is always first
-                for s in colStrs[i]:
-                    # if its a list
-                    if isinstance(s, list):
-                        if txt == s[0]: # only add it and set to current if same as txt
-                            dd.addItem(txt)
-                            dd.setCurrentIndex(dd.count() - 1)
-                    else: # add untaken options to list
-                        dd.addItem(s)
-
-        self.setVectorDropdownsBlocked(False)
-
     # adds an entry to history matrix list and a list item at end of history ui
     def addHistory(self, mat, notes, name):
         self.history.append([Mth.copy(mat), notes])
@@ -292,8 +198,8 @@ class Edit(QtWidgets.QFrame, EditUI):
             if self.window.plotItems[plotNum] in self.window.pltGrd.colorPlts:
                 plotNum += 1
                 continue
-            for (dstr,editNum),pen in zip(dstrs,pens):
-                l = self.window.getLabel(dstr, currentEdit)
+            for (dstr,editNum), pen in zip(dstrs,pens):
+                l = self.window.getLabel(dstr, editNum)
                 if l in self.window.ABBRV_DSTR_DICT:
                     l = self.window.ABBRV_DSTR_DICT[l]
                 labels.append(l)
@@ -317,24 +223,24 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     # takes a matrix, notes for the history, and a name for the history entry
     # axisVecs defines vectors to modify instead of dropdown selections
-    def apply(self, mat, notes, name, multType='R', axisVecs=None):
+    def apply(self, mat, notes, name, multType='R'):
         # shows total matrix from beginning
         if multType == 'R':
             R = Mth.mult(self.curSelection[0], mat)
         else:
             R = Mth.mult(mat, self.curSelection[0])
-        self.generateData(mat, name, multType, axisVecs)
+        self.generateData(mat, name, multType)
         self.addHistory(R, notes, f'{name}')
 
     # given current axis vector selections
     # make sure that all the correct data is calculated with matrix R
-    def generateData(self, R, name, multType='R', axisVecs=None):
-        vectorList = self.axisDropdowns if axisVecs is None else axisVecs
+    def generateData(self, R, name, multType='R'):
+        vectorList = self.ui.vecLt.getDropdownVecs()
         # for each full vector dropdown row 
-        for di, dd in enumerate(vectorList):
-            xstr = dd[0].currentText()
-            ystr = dd[1].currentText()
-            zstr = dd[2].currentText()
+        for di, dstrs in enumerate(vectorList):
+            xstr = dstrs[0]
+            ystr = dstrs[1]
+            zstr = dstrs[2]
 
             if not xstr or not ystr or not zstr: # skip rows with empty selections
                 continue

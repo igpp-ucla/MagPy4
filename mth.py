@@ -177,6 +177,14 @@ class Mth:
 
         return data
 
+    def flattenLst(lst, depth):
+        newLst = []
+        if depth <= 0:
+            return lst
+        for i in range(0, len(lst)):
+            subLst = Mth.flattenLst(lst[i], depth-1)
+            newLst.extend(subLst)
+        return newLst
 
     #def cdfInternal(n):
     #    dt = 32.184   # tai - tt time?
