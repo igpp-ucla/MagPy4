@@ -1221,7 +1221,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         # Hide progress bar after work is done
         self.ui.progBar.setVisible(False)
 
-class PitchAnglePlotItem(SpectrogramPlotItem):
+class ParticlePlotItem(SpectrogramPlotItem):
     def __init__(self, logMode=False):
         SpectrogramPlotItem.__init__(self, logMode)
 
@@ -1231,12 +1231,16 @@ class PitchAnglePlotItem(SpectrogramPlotItem):
         self.getAxis('bottom').setStyle(tickLength=4)
         self.getAxis('bottom').setStyle(tickTextOffset=2)
         self.getAxis('left').setStyle(tickLength=4)
-        self.getAxis('left').setCstmTickSpacing(30)
         self.getViewBox().setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
 
     def getSpectraLine(self, yVal, colors, timeVals, frm, lastVal):
         # Return spectra line that doesn't call showPointValue when clicked
         return SpectraLine(yVal, colors, timeVals, fillLevel=lastVal)
+
+class PitchAnglePlotItem(ParticlePlotItem):
+    def plotSetup(self):
+        ParticlePlotItem.plotSetup(self)
+        self.getAxis('left').setCstmTickSpacing(30)
 
 class ScientificSpinBox(QtWidgets.QDoubleSpinBox):
     def validate(self, txt, pos):
@@ -1272,7 +1276,9 @@ class ScientificSpinBox(QtWidgets.QDoubleSpinBox):
             text = text.split('^')[1]
         return float(text)
 
-class ElectronPitchAngleUI(object):
+from layoutTools import BaseLayout
+
+class ElectronPitchAngleUI(BaseLayout):
     def setupUI(self, Frame, window):
         maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         Frame.setWindowTitle('Electron Pitch-Angle Distribution')
@@ -1457,27 +1463,7 @@ class ElectronPitchAngleUI(object):
         else:
             return False
 
-class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
-    def __init__(self, window, parent=None):
-        super(ElectronPitchAngle, self).__init__(parent)
-        self.ui = ElectronPitchAngleUI()
-        self.window = window
-        self.wasClosed = False
-
-        self.lowKw, self.midKw, self.hiKw = 'PAD_Lo', 'PAD_Mid', 'PAD_Hi'
-        self.paDstrs = self.findStrings()
-
-        self.ui.setupUI(self, window)
-        self.ui.updtBtn.clicked.connect(self.update)
-        self.ui.scaleModeBox.currentIndexChanged.connect(self.ui.colorScaleToggled)
-        self.ui.addToPlotBtn.clicked.connect(self.addToMainWindow)
-
-        # Valid state checking
-        paDstrsLens = list(map(len, self.paDstrs))
-        if min(paDstrsLens) != 30 and max(paDstrsLens) != 30:
-            self.window.ui.statusBar.showMessage('Error: Missing particle data')
-            return
-
+class MMSColorPltTool():
     def inMainWindow(self, kw):
         kwFound = False
         pltIndex = None
@@ -1537,27 +1523,18 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
 
         return pltCopy, gradBarCopy, gradLblCopy
 
-    def addToMainWindow(self):
+    def removePrevPlots(self, kws):
         self.window.currSelect.closeAllRegions()
-        kws = ['E'+kw for kw in [self.hiKw, self.midKw, self.lowKw]]
-        selectedKws = []
-        windowStatus = []
-        pltLinks = []
-
-        # Find all EPAD plots in main window and remove them + store their index
+        # Find all kw plots in main window and remove them + store their index
         for kw in kws:
             inWindow, pltIndex = self.inMainWindow(kw)
-            windowStatus.append(inWindow)
             index = kws.index(kw)
-            if self.ui.addCheckboxes[index].isChecked():
-                selectedKws.append(kw)
             if inWindow:
                 self.window.pltGrd.removePlot(pltIndex)
 
-        # Create context menu link to this plot window
-        actionLink = QtWidgets.QAction(self.window)
-        actionLink.setText('Edit EPAD Plots...')
-        actionLink.triggered.connect(self.window.editEPAD)
+    def addPlotsToMain(self, kws, selectedKws, units, editLink=None):
+        pltLinks = []
+        self.removePrevPlots(kws)
 
         for plt, grad, grdLbl, kw in zip(self.plotItems, self.gradients, self.gradLabels, kws):
             plt, grad, gradLabel = self.makeCopy(plt, grad, grdLbl)
@@ -1565,14 +1542,15 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
             gradWidth = 50 if grad.logMode else 85
             grad.setFixedWidth(gradWidth)
 
-            plt.actionLink = actionLink
+            if editLink:
+                plt.actionLink = editLink
             index = kws.index(kw)
-            if not self.ui.addCheckboxes[index].isChecked():
+            if kw not in selectedKws:
                 continue
 
             # Add all elements to main window
             self.window.plotItems.append(plt)
-            self.window.pltGrd.addColorPlt(plt, kw, grad, gradLabel, units='Degrees', 
+            self.window.pltGrd.addColorPlt(plt, kw, grad, gradLabel, units=units, 
                 colorLblSpan=1)
 
             # Update ranges and resize
@@ -1607,6 +1585,44 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
 
         # Close this window after copying plots to main grid
         self.close()
+
+class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
+    def __init__(self, window, parent=None):
+        super(ElectronPitchAngle, self).__init__(parent)
+        MMSColorPltTool.__init__(self)
+
+        self.ui = ElectronPitchAngleUI()
+        self.window = window
+        self.wasClosed = False
+
+        self.lowKw, self.midKw, self.hiKw = 'PAD_Lo', 'PAD_Mid', 'PAD_Hi'
+        self.paDstrs = self.findStrings()
+
+        self.ui.setupUI(self, window)
+        self.ui.updtBtn.clicked.connect(self.update)
+        self.ui.scaleModeBox.currentIndexChanged.connect(self.ui.colorScaleToggled)
+        self.ui.addToPlotBtn.clicked.connect(self.addToMainWindow)
+
+        # Valid state checking
+        paDstrsLens = list(map(len, self.paDstrs))
+        if min(paDstrsLens) != 30 and max(paDstrsLens) != 30:
+            self.window.ui.statusBar.showMessage('Error: Missing particle data')
+            return
+
+    def addToMainWindow(self):
+        kws = ['E'+kw for kw in [self.hiKw, self.midKw, self.lowKw]]
+        selectedKws = []
+        for kw in kws: # Gather all selected keywords
+            index = kws.index(kw)
+            if self.ui.addCheckboxes[index].isChecked():
+                selectedKws.append(kw)
+
+        # Create context menu link to this plot window
+        actionLink = QtWidgets.QAction(self.window)
+        actionLink.setText('Edit EPAD Plots...')
+        actionLink.triggered.connect(self.window.editEPAD)
+
+        self.addPlotsToMain(kws, selectedKws, 'Degrees', actionLink)
 
     def findStrings(self):
         # Extract the variable names corresponding to each electron pitch-angle
@@ -1757,6 +1773,248 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI):
 
     def closeEvent(self, ev):
         self.ui.glw.clear()
+        self.window.endGeneralSelect()
+        self.wasClosed = True
+        self.close()
+
+class ElectronOmniUI(BaseLayout):
+    def setupUI(self, Frame, window, edta=[], idta=[]):
+        layout = QtWidgets.QGridLayout(Frame)
+        self.glw = self.getGraphicsGrid(window)
+        self.edta = edta
+        self.idta = idta
+
+        # Set window size
+        if edta == [] or idta == []:
+            Frame.resize(1100, 300) # Single plot
+        else:
+            Frame.resize(1100, 600) # Two plots
+
+        if edta == []:
+            Frame.setWindowTitle('Omni-directional Electron Energy Spectrum')
+        elif idta == []:
+            Frame.setWindowTitle('Omni-directional Ion Energy Spectrum')
+        else:
+            Frame.setWindowTitle('Omni-directional Electron/Ion Energy Spectrum')
+
+        settingsLt = self.setupSettingsLt()
+        layout.addLayout(settingsLt, 0, 1, 1, 1)
+
+        layout.addWidget(self.gview, 0, 0, 1, 1) # Graphics/plot grid
+
+        timeLt, self.timeEdit, self.statusBar = self.getTimeStatusBar()
+        layout.addLayout(timeLt, 1, 0, 1, 2)
+
+    def setupSettingsLt(self):
+        sideBarLt = QtWidgets.QVBoxLayout()
+        settingsFrame = QtWidgets.QGroupBox('Settings')
+        layout = QtWidgets.QVBoxLayout(settingsFrame)
+
+        # Set up color scaling settings UI
+        scaleLbl = QtWidgets.QLabel('Color Scaling Mode:')
+        self.scaleBox = QtWidgets.QComboBox()
+        self.scaleBox.addItems(['Logarithmic', 'Linear'])
+        self.scaleBox.currentTextChanged.connect(self.colorScaleToggled)
+        colorLt = QtWidgets.QVBoxLayout()
+        colorLt.addWidget(scaleLbl)
+        colorLt.addWidget(self.scaleBox)
+        layout.addLayout(colorLt)
+
+        # Set up min/max boxes for each item + toggles
+        self.valBoxes = {'Electron':[], 'Ion':[]}
+        self.valToggles = {}
+
+        for dta, name in [(self.edta, 'Electron'), (self.idta, 'Ion')]:
+            if dta == []:
+                continue
+            valueFrame = QtWidgets.QGroupBox(' Set Value Range: ')
+            valueFrame.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+            valueFrame.setCheckable(True)
+            self.valToggles[name] = valueFrame
+            valueLt = QtWidgets.QGridLayout(valueFrame)
+            for lbl, row in [('  Max: ', 0), ('  Min: ', 2)]:
+                box = ScientificSpinBox()
+                box.setFixedWidth(125)
+                self.valBoxes[name].append(box)
+                self.addPair(valueLt, lbl, box, row, 0, 1, 1)
+            layout.addWidget(valueFrame)
+
+        self.colorScaleToggled(self.scaleBox.currentText())
+
+        # Set up update button
+        self.updtBtn = QtWidgets.QPushButton('Update')
+        layout.addWidget(self.updtBtn)
+        sideBarLt.addWidget(settingsFrame)
+
+        # Add 'add to main' btn
+        sideBarLt.addStretch()
+        self.addToMainBtn = QtWidgets.QPushButton('Add To Main Window')
+        sideBarLt.addWidget(self.addToMainBtn)
+        return sideBarLt
+
+    def colorScaleToggled(self, val):
+        # Reset selection boxes
+        for dstr, valToggle in self.valToggles.items():
+            valToggle.setChecked(False)
+
+        # Adjust min/max spinboxes values according to color scaling mode
+        for dstr, boxes in self.valBoxes.items():
+            for box in boxes:
+                if val == 'Logarithmic':
+                    box.setPrefix('10^')
+                    box.setMinimum(-100)
+                    box.setMaximum(100)
+                else:
+                    box.setPrefix('')
+                    box.setMinimum(1e-24)
+                    box.setMaximum(1e24)
+
+class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
+    def __init__(self, window, parent=None):
+        super(ElectronOmni, self).__init__(parent)
+        MMSColorPltTool.__init__(self)
+        self.ui = ElectronOmniUI()
+        self.window = window
+        self.wasClosed = False
+
+        # State and parameter information
+        self.plotItems = []
+        self.kwString = 'En_Omn'
+        self.electronDstrs, self.ionDstrs = self.findStrings()
+
+        # Set up ui and link buttons to actions
+        self.ui.setupUI(self, window, self.electronDstrs, self.ionDstrs)
+        self.ui.updtBtn.clicked.connect(self.update)
+        self.ui.addToMainBtn.clicked.connect(self.addToMain)
+
+    def findStrings(self):
+        electDstrs = []
+        ionDstrs = []
+        for dstr in self.window.DATASTRINGS:
+            if self.kwString in dstr:
+                if '_I' in dstr: # Gather ion spectrum variable names
+                    ionDstrs.append(dstr)
+                else: # Gather electron spectrum variable names
+                    electDstrs.append(dstr)
+        return electDstrs, ionDstrs
+
+    def addToMain(self):
+        kws = ['Electron Spectrum', 'Ion Spectrum']
+        selectedKws = []
+        if self.electronDstrs != []:
+            selectedKws.append(kws[0])
+        if self.ionDstrs != []:
+            selectedKws.append(kws[1])
+
+        # Generate context menu link to edit plots in main window
+        actionLink = QtWidgets.QAction(self.window)
+        actionLink.setText('Edit Energy Spectrum Plots...')
+        actionLink.triggered.connect(self.window.editEOmniPlots)
+
+        self.addPlotsToMain(kws, selectedKws, 'eV', actionLink)
+
+    def update(self):
+        self.plotItems = []
+        self.gradLabels = []
+        self.gradients = []
+        self.ui.glw.clear()
+
+        rowNum = 0
+        for dstrLst, pltName in zip([self.electronDstrs, self.ionDstrs],
+                ['Electron', 'Ion']):
+            if dstrLst == []: # Skip either missing data set
+                continue
+            # Generate color map plot elements, add them to grid, and store
+            plt, grad, lbl = self.plotData(mode=pltName)
+            self.ui.glw.addItem(plt, rowNum, 0, 1, 1)
+            self.ui.glw.addItem(grad, rowNum, 1, 1, 1)
+            self.ui.glw.addItem(lbl, rowNum, 2, 1, 1)
+            self.plotItems.append(plt)
+            self.gradients.append(grad)
+            self.gradLabels.append(lbl)
+            rowNum += 1
+
+    def plotData(self, mode='Electron'):
+        dstrs = self.electronDstrs if mode == 'Electron' else self.ionDstrs
+        i0, i1 = self.window.calcDataIndicesFromLines(dstrs[0], self.window.currentEdit)
+
+        # Default energy bin values
+        arr1 = np.array([1.51000e+00, 1.51000e+00, 2.37000e+00, 2.62000e+00, 3.79000e+00,
+            4.44000e+00, 6.14000e+00, 7.45000e+00, 1.00100e+01, 1.24200e+01,
+            1.63900e+01, 2.06200e+01, 2.69100e+01, 3.41400e+01, 4.42800e+01,
+            5.64400e+01, 7.29300e+01, 9.32500e+01, 1.20210e+02, 1.53970e+02,
+            1.98210e+02, 2.54160e+02, 3.26900e+02, 4.19470e+02, 5.39230e+02,
+            6.92200e+02, 8.89550e+02, 1.14218e+03, 1.46754e+03, 1.88460e+03,
+            2.42117e+03, 3.10952e+03])
+        arr2 = np.array([1.71000e+00, 1.71000e+00, 2.69000e+00, 2.97000e+00, 4.30000e+00,
+            5.04000e+00, 6.96000e+00, 8.45000e+00, 1.13400e+01, 1.40800e+01,
+            1.85700e+01, 2.33600e+01, 3.05000e+01, 3.86900e+01, 5.01800e+01,
+            6.39700e+01, 8.26600e+01, 1.05680e+02, 1.36240e+02, 1.74510e+02,
+            2.24640e+02, 2.88060e+02, 3.70490e+02, 4.75400e+02, 6.11130e+02,
+            7.84500e+02, 1.00817e+03, 1.29449e+03, 1.66324e+03, 2.13591e+03,
+            2.74403e+03, 3.52417e+03])
+
+        yVals = [np.mean([arr1[i], arr2[i]]) for i in range(0, 32)]
+
+        # Build grid from data slices for each variable in list
+        times = self.window.getTimes(dstrs[0], self.window.currentEdit)[0]
+        times = times[i0:i1+1] # Use inclusive endpoint for times
+        valGrid = []
+        for dstr in dstrs:
+            dta = self.window.getData(dstr, self.window.currentEdit)
+            valGrid.append(dta[i0:i1])
+        valGrid = np.array(valGrid)
+
+        # Determine min/max ranges for color scale
+        logColor = True if self.ui.scaleBox.currentText() == 'Logarithmic' else False
+        maxBox, minBox = self.ui.valBoxes[mode]
+        setToggle = self.ui.valToggles[mode]
+        if setToggle.isChecked(): # Use user-set values
+            minVal = minBox.value()
+            maxVal = maxBox.value()
+            if logColor:
+                minVal = 10 ** minVal
+                maxVal = 10 ** maxVal
+        else: # Get min/max from grid and set default values in spinboxes
+            if logColor:
+                # Get valid min/max only for log mode
+                minVal = np.min(valGrid[valGrid>0])
+                maxVal = np.max(valGrid[valGrid>0])
+                minBox.setValue(np.log10(minVal))
+                maxBox.setValue(np.log10(maxVal))
+            else:
+                minVal = np.min(valGrid)
+                maxVal = np.max(valGrid)
+                minBox.setValue(minVal)
+                maxBox.setValue(maxVal)
+
+        # Create color-mapped plot
+        plt = ParticlePlotItem(True)
+        plt.createPlot(yVals, valGrid, times, (minVal, maxVal), logColorScale=logColor)
+        title = 'Omni-directional ' + mode + ' Energy Spectrum'
+
+        # Set plot title and update time ticks/labels
+        plt.setTitle(title)
+        timeMode = self.window.getTimeLabelMode(times[-1]-times[0])
+        timeLabel = self.window.getTimeLabel(times[-1]-times[0])
+        plt.getAxis('bottom').window = self.window
+        plt.getAxis('bottom').updateTicks(self.window, timeMode, timeRange=(times[0], times[-1]))
+        plt.getAxis('bottom').setLabel(timeLabel)
+
+        # Create gradient object
+        grad = plt.getGradLegend(logMode=logColor, offsets=(plt.titleLabel.height()+6, 45))
+        grad.updateWidth(30)
+        gradWidth = 50 if logColor else 85
+        grad.setFixedWidth(gradWidth)
+
+        # Add in units label
+        unitsLbl = 'Log DEF' if logColor else 'DEF'
+        lbl = StackedAxisLabel([unitsLbl, '[keV/(cm^2 s sr keV)]'])
+        lbl.setFixedWidth(40)
+
+        return plt, grad, lbl
+
+    def closeEvent(self, ev):
         self.window.endGeneralSelect()
         self.wasClosed = True
         self.close()

@@ -250,7 +250,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
 
     def updateLineWidth(self, lw, ll, val):
         for pt in ll:
-            pen = pt.opts['pen']
+            pen = pg.mkPen(pt.opts['pen'])
             pen.setWidth(val)
             pt.setPen(pen)
         self.setChangesPersistent(self.getPenList())
@@ -269,7 +269,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
 
         # Update pens for selected plots
         for pt in ll:
-            pen = pt.opts['pen']
+            pen = pg.mkPen(pt.opts['pen'])
             pen.setStyle(style)
             pt.setPen(pen)
         self.setChangesPersistent(self.getPenList())
@@ -283,7 +283,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
     def setLineColor(self, cs, ll, color):
         # Update pen color of every trace item in ll corresp. to the original pen
         for pt in ll:
-            pen = pt.opts['pen']
+            pen = pg.mkPen(pt.opts['pen'])
             pen.setColor(color)
             pt.setPen(pen)
 

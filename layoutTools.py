@@ -1,5 +1,7 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
+from PyQt5.QtWidgets import QSizePolicy
+from pyqtgraphExtensions import GridGraphicsLayout
 import pyqtgraph as pg
 import pyqtgraph as pg
 from scipy import fftpack
@@ -57,3 +59,10 @@ class BaseLayout(object):
     def getSpacer(self, width):
         spacer = QtWidgets.QSpacerItem(width, 1)
         return spacer
+
+    def getGraphicsGrid(self, window):
+        self.gview = pg.GraphicsView()
+        self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        self.glw = GridGraphicsLayout(window)
+        self.gview.setCentralItem(self.glw)
+        return self.glw

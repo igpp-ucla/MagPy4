@@ -365,6 +365,7 @@ class SpectrogramPlotItem(pg.PlotItem):
         if self.logMode:
             yVals = np.log10(yVals)
             lastVal = np.log10(lastVal)
+        lowerBnd = lastVal
 
         stepSize = (statusEnd-statusStrt) / (len(yVals) - 1)
         currentStep = statusStrt
@@ -381,6 +382,9 @@ class SpectrogramPlotItem(pg.PlotItem):
                 winFrame.ui.statusBar.showMessage('Generating plot...' + str(int(currentStep)) + '%')
 
             lastVal = yVal
+
+        self.setXRange(timeVals[0], timeVals[-1], 0)
+        self.setYRange(lowerBnd, yVals[-1], 0)
 
 class PhaseSpectrogram(SpectrogramPlotItem):
     def __init__(self, logMode=True):
@@ -809,9 +813,6 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, SpectraBase):
         self.ui.plotItem.getAxis('bottom').setLabel(lbl)
         self.ui.addTimeInfo(xRange, self.window)
 
-        # Set axis ranges
-        self.ui.plotItem.setXRange(xRange[0], xRange[1], 0.0)
-        self.ui.plotItem.setYRange(yRange[0], yRange[1], 0.0)
         self.ui.setupGradient()
 
     def calculatePower(self, bw, fft, N):
@@ -1150,8 +1151,6 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
                 plt.getAxis('left').setLabel('Log Frequency (Hz)')
             else:
                 plt.getAxis('left').setLabel('Frequency (Hz)')
-            plt.setXRange(xRng[0], xRng[1], 0)
-            plt.setYRange(yRng[0], yRng[1], 0)
             plt.getAxis('bottom').setLabel(lbl)
 
     def getDataRange(self):

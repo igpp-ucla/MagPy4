@@ -37,7 +37,7 @@ from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem
-from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle
+from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
 from detrendWin import DetrendWindow
 from dynamicSpectra import DynamicSpectra, DynamicCohPha
 from smoothingTool import SmoothingTool
@@ -124,6 +124,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionCurlometer.triggered.connect(self.openCurlometer)
         self.ui.actionCurvature.triggered.connect(self.openCurvature)
         self.ui.actionEPAD.triggered.connect(self.startEPAD)
+        self.ui.actionEOmni.triggered.connect(self.startEOMNI)
 
         # Content menu action connections
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
@@ -160,6 +161,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.curlometer = None
         self.curvature = None
         self.electronPAD = None
+        self.electronOMNI = None
 
         # these are saves for options for program lifetime
         self.plotMenuTableMode = False
@@ -350,6 +352,24 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeCurlometer()
         self.closeCurvature()
         self.closeEPAD()
+        self.closeEOMNI()
+
+    def startEOMNI(self):
+        self.closeEOMNI()
+        if self.electronOMNI is None or self.electronOMNI.wasClosed:
+            self.electronOMNI = ElectronOmni(self)
+            self.initGeneralSelect('Electron/Ion Spectrum', None, self.electronOMNI.ui.timeEdit,
+            'Single', self.showEOMNI, closeFunc=self.closeEOMNI)
+
+    def showEOMNI(self):
+        if self.electronOMNI:
+            self.electronOMNI.show()
+            self.electronOMNI.update()
+
+    def closeEOMNI(self):
+        if self.electronOMNI:
+            self.electronOMNI.close()
+            self.electronOMNI = None
 
     def startEPAD(self):
         self.closeEPAD()
@@ -395,6 +415,48 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.electronPAD.ui.valRngSelectToggled(layoutIndex, True)
             self.electronPAD.ui.rangeToggles[layoutIndex].setChecked(True)
             minBox, maxBox = self.electronPAD.ui.rangeElems[layoutIndex][0:2]
+            minBox.setValue(minVal)
+            maxBox.setValue(maxVal)
+
+        # Auto-select first plot's time range
+        plotTimes = basePlot.listDataItems()[1].times
+        self.currSelect.leftClick(plotTimes[0], 0)
+        self.currSelect.leftClick(plotTimes[-1], 0)
+
+    def editEOmniPlots(self):
+        self.endGeneralSelect()
+        self.startEOMNI() # Start up actual EPAD object
+
+        # Find matching color plots
+        matchingPlts = []
+        for lbl in self.pltGrd.labels:
+            if 'Electron Spectrum' in lbl.dstrs or 'Ion Spectrum' in lbl.dstrs:
+                pltIndex = self.pltGrd.labels.index(lbl)
+                matchingPlts.append(self.plotItems[pltIndex])
+
+        if matchingPlts == []:
+            return
+
+        # Set log mode combo box
+        basePlot = matchingPlts[0]
+        colorPltIndex = self.pltGrd.colorPlts.index(basePlot)
+        logMode = self.pltGrd.colorPltElems[colorPltIndex][0].logMode
+        if not logMode:
+            self.electronOMNI.ui.scaleBox.setCurrentIndex(1)
+
+        # Get value ranges from each gradient and toggle/set in EPAD plot windw
+        for plt in matchingPlts:
+            colorPltIndex = self.pltGrd.colorPlts.index(plt)
+            name = self.pltGrd.colorPltNames[colorPltIndex]
+            grad, lbl = self.pltGrd.colorPltElems[colorPltIndex]
+            minVal, maxVal = grad.valueRange
+            if 'Electron' in name:
+                kw = 'Electron'
+            else:
+                kw = 'Ion'
+
+            self.electronOMNI.ui.valToggles[kw].setChecked(True)
+            maxBox, minBox = self.electronOMNI.ui.valBoxes[kw]
             minBox.setValue(minVal)
             maxBox.setValue(maxVal)
 
@@ -1399,12 +1461,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         prevLabelSets = []
 
         # Store old plot grid info in case color plts are replotted
-        prevTrackerLines = self.trackerLines.copy()
         oldPltGrd = None
         if self.pltGrd is not None:
             oldPltGrd = self.pltGrd
             for plt in oldPltGrd.colorPlts:
                 oldPltGrd.removeItem(plt)
+                for trackerLine in self.trackerLines: # Remove old tracker
+                    if trackerLine in plt.items:
+                        plt.removeItem(trackerLine)
+                        trackerLine.deleteLater()
             for cb, cl in oldPltGrd.colorPltElems:
                 if cb is not None:
                     oldPltGrd.removeItem(cb)
@@ -1440,9 +1505,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 if gradLbl:
                     gradLbl.offsets = (2, 2)
                 self.plotItems.append(plt)
-                for trackerLine in prevTrackerLines:
-                    if trackerLine in plt.items:
-                        plt.removeItem(trackerLine)
                 self.pltGrd.addColorPlt(plt, dstr, colorBar, gradLbl, oldPltGrd.colorPltUnits[index])
                 self.plotTracePens.append([None])
                 continue

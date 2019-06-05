@@ -90,6 +90,10 @@ class MagPy4UI(object):
         self.actionEPAD.setText('Plot Electron Pitch Angle...')
         self.actionEPAD.setStatusTip('Plots a color-mapped representation of the electron pitch-angle distribution')
 
+        self.actionEOmni = QtWidgets.QAction(window)
+        self.actionEOmni.setText('Plot Electron/Ion Spectrum...')
+        self.actionEOmni.setStatusTip('Plots a color-mapped representation of omni-directional electron/ion energy spectrum')
+
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
         self.scaleYToCurrentTimeAction.setStatusTip('')
         self.antialiasAction = QtWidgets.QAction('Smooth &Lines (Antialiasing)',checkable=True,checked=True)
@@ -145,6 +149,7 @@ class MagPy4UI(object):
         self.MMSMenu.addAction(self.actionCurlometer)
         self.MMSMenu.addAction(self.actionCurvature)
         self.MMSMenu.addAction(self.actionEPAD)
+        self.MMSMenu.addAction(self.actionEOmni)
 
         self.optionsMenu = self.menuBar.addMenu('&Options')
         self.optionsMenu.addAction(self.scaleYToCurrentTimeAction)
@@ -654,6 +659,7 @@ class PlotGrid(pg.GraphicsLayout):
             self.colorPltElems.pop(index)
             self.colorPlts.pop(index)
             self.colorPltUnits.pop(index)
+            self.colorPltNames.pop(index)
 
         # Update window state
         self.window.lastPlotStrings.pop(pltIndex)
