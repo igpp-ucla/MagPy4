@@ -1537,6 +1537,11 @@ class MMSColorPltTool():
         self.removePrevPlots(kws)
 
         for plt, grad, grdLbl, kw in zip(self.plotItems, self.gradients, self.gradLabels, kws):
+            index = kws.index(kw)
+            if kw not in selectedKws:
+                continue
+
+            # Create copies of color plot elements
             plt, grad, gradLabel = self.makeCopy(plt, grad, grdLbl)
             grad.updateWidth(30)
             gradWidth = 50 if grad.logMode else 85
@@ -1544,9 +1549,6 @@ class MMSColorPltTool():
 
             if editLink:
                 plt.actionLink = editLink
-            index = kws.index(kw)
-            if kw not in selectedKws:
-                continue
 
             # Add all elements to main window
             self.window.plotItems.append(plt)
@@ -1882,6 +1884,25 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
         self.kwString = 'En_Omn'
         self.electronDstrs, self.ionDstrs = self.findStrings()
 
+        # Default energy bin values
+        arr1 = np.array([1.51000e+00, 1.51000e+00, 2.37000e+00, 2.62000e+00, 3.79000e+00,
+            4.44000e+00, 6.14000e+00, 7.45000e+00, 1.00100e+01, 1.24200e+01,
+            1.63900e+01, 2.06200e+01, 2.69100e+01, 3.41400e+01, 4.42800e+01,
+            5.64400e+01, 7.29300e+01, 9.32500e+01, 1.20210e+02, 1.53970e+02,
+            1.98210e+02, 2.54160e+02, 3.26900e+02, 4.19470e+02, 5.39230e+02,
+            6.92200e+02, 8.89550e+02, 1.14218e+03, 1.46754e+03, 1.88460e+03,
+            2.42117e+03, 3.10952e+03])
+        arr2 = np.array([1.71000e+00, 1.71000e+00, 2.69000e+00, 2.97000e+00, 4.30000e+00,
+            5.04000e+00, 6.96000e+00, 8.45000e+00, 1.13400e+01, 1.40800e+01,
+            1.85700e+01, 2.33600e+01, 3.05000e+01, 3.86900e+01, 5.01800e+01,
+            6.39700e+01, 8.26600e+01, 1.05680e+02, 1.36240e+02, 1.74510e+02,
+            2.24640e+02, 2.88060e+02, 3.70490e+02, 4.75400e+02, 6.11130e+02,
+            7.84500e+02, 1.00817e+03, 1.29449e+03, 1.66324e+03, 2.13591e+03,
+            2.74403e+03, 3.52417e+03])
+
+        self.energyBins = [np.mean([arr1[i], arr2[i]]) for i in range(0, 32)]
+        self.energyBins.sort()
+
         # Set up ui and link buttons to actions
         self.ui.setupUI(self, window, self.electronDstrs, self.ionDstrs)
         self.ui.updtBtn.clicked.connect(self.update)
@@ -1911,7 +1932,7 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
         actionLink.setText('Edit Energy Spectrum Plots...')
         actionLink.triggered.connect(self.window.editEOmniPlots)
 
-        self.addPlotsToMain(kws, selectedKws, 'eV', actionLink)
+        self.addPlotsToMain(selectedKws, selectedKws, 'eV', actionLink)
 
     def update(self):
         self.plotItems = []
@@ -1937,24 +1958,7 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
     def plotData(self, mode='Electron'):
         dstrs = self.electronDstrs if mode == 'Electron' else self.ionDstrs
         i0, i1 = self.window.calcDataIndicesFromLines(dstrs[0], self.window.currentEdit)
-
-        # Default energy bin values
-        arr1 = np.array([1.51000e+00, 1.51000e+00, 2.37000e+00, 2.62000e+00, 3.79000e+00,
-            4.44000e+00, 6.14000e+00, 7.45000e+00, 1.00100e+01, 1.24200e+01,
-            1.63900e+01, 2.06200e+01, 2.69100e+01, 3.41400e+01, 4.42800e+01,
-            5.64400e+01, 7.29300e+01, 9.32500e+01, 1.20210e+02, 1.53970e+02,
-            1.98210e+02, 2.54160e+02, 3.26900e+02, 4.19470e+02, 5.39230e+02,
-            6.92200e+02, 8.89550e+02, 1.14218e+03, 1.46754e+03, 1.88460e+03,
-            2.42117e+03, 3.10952e+03])
-        arr2 = np.array([1.71000e+00, 1.71000e+00, 2.69000e+00, 2.97000e+00, 4.30000e+00,
-            5.04000e+00, 6.96000e+00, 8.45000e+00, 1.13400e+01, 1.40800e+01,
-            1.85700e+01, 2.33600e+01, 3.05000e+01, 3.86900e+01, 5.01800e+01,
-            6.39700e+01, 8.26600e+01, 1.05680e+02, 1.36240e+02, 1.74510e+02,
-            2.24640e+02, 2.88060e+02, 3.70490e+02, 4.75400e+02, 6.11130e+02,
-            7.84500e+02, 1.00817e+03, 1.29449e+03, 1.66324e+03, 2.13591e+03,
-            2.74403e+03, 3.52417e+03])
-
-        yVals = [np.mean([arr1[i], arr2[i]]) for i in range(0, 32)]
+        yVals = self.energyBins
 
         # Build grid from data slices for each variable in list
         times = self.window.getTimes(dstrs[0], self.window.currentEdit)[0]

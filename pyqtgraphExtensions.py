@@ -229,7 +229,7 @@ class MagPyAxisItem(pg.AxisItem):
         self.update()
 
     def axisType(self):
-        return 'Regular'
+        return 'Regular' if not self.logMode else 'Log'
 
     def calcDesiredWidth(self):
         w = 0

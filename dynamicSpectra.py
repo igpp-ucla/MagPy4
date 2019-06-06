@@ -496,7 +496,7 @@ class DynamicSpectraUI(object):
         itemSet = set()
         for plt in window.lastPlotStrings:
             for (dstr, en) in plt:
-                if dstr not in itemSet: # Skip duplicates
+                if dstr not in itemSet and en >= 0: # Skip duplicates
                     self.dstrBox.addItem(dstr)
                 itemSet.add(dstr)
 
@@ -996,12 +996,11 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
         self.lastCalc = None # Previously calculated values, if any
 
         # Get full set of dstrs currently plotted and sort them
-        dstrs = set()
+        dstrs = []
         for pltLst in self.window.lastPlotStrings:
             for dstr, en in pltLst:
-                dstrs.add(dstr)
-        dstrs = list(dstrs)
-        dstrs.sort()
+                if dstr not in dstrs and en >= 0:
+                    dstrs.append(dstr)
 
         # Close if nothing is currently being displayed
         if len(dstrs) == 0 or dstrs[0] == '':

@@ -1637,6 +1637,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             if pens == [None]:
                 continue
             if pi in self.pltGrd.colorPlts:
+                newPltStrs.append(plotStrs)
                 continue
             pi.clearPlots()
 

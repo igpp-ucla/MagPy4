@@ -446,7 +446,7 @@ class TickIntervalsUI(object):
         self.intervalBoxes = []
         for name in ['left', 'bottom']:
             # Builds frames / UI elements for corresponding axis side
-            self.buildAxisBoxes(layout, name, btmPlt, yMax, links)
+            self.buildAxisBoxes(layout, name, plotItems, yMax, links)
 
     def getBoxName(self, axOrient, linkGrp):
         # Create name for linked axes if more than one link grp
@@ -478,11 +478,16 @@ class TickIntervalsUI(object):
             else:
                 box.setValue(1)
 
-    def buildAxisBoxes(self, layout, name, btmPlt, yMax, links):
+    def buildAxisBoxes(self, layout, name, plotItems, yMax, links):
         # For every linked axis group
         numLinks = len(links) if (name == 'left' and links is not None) else 1
         for i in range(0, numLinks):
             # Get axis, axis type, and create UI elements as apprp.
+            if links:
+                linkSubset = links[i]
+                btmPlt = plotItems[linkSubset[-1]]
+            else:
+                btmPlt = plotItems[-1]
             ax = btmPlt.getAxis(name)
             axType = ax.axisType()
 
