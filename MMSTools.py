@@ -7,6 +7,7 @@ from dataDisplay import DataDisplay, UTCQDate
 from dynamicSpectra import SpectrogramPlotItem, SpectraLine, SpectraLegend
 from pyqtgraphExtensions import StackedAxisLabel, MagPyColorPlot, LinkedAxis, DateAxis
 from selectionManager import SelectableViewBox
+from layoutTools import BaseLayout
 
 import scipy
 from scipy import constants
@@ -673,8 +674,10 @@ class CurlometerUI(object):
         self.JzChk = QtWidgets.QCheckBox('Jz')
         for i, e in enumerate([self.jMagChk, self.jParaChk, self.jPerpChk]):
             plotLt.addWidget(e)
+            e.setChecked(True)
         for i, e in enumerate([self.JxChk, self.JyChk, self.JzChk]):
             plotLt.addWidget(e)
+            e.setChecked(True)
 
         self.progressBar = QtWidgets.QProgressBar()
         self.applyBtn = QtWidgets.QPushButton('Apply')
@@ -917,7 +920,7 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         # Calculate the magnitude of J_Perp and J_Par
         B = np.zeros(3)
         for scNum in [1,2,3,4]:
-            currB = self.convertToSI(self.getVec(scNum, index))
+            currB = self.convertToSI(np.array(self.getVec(scNum, index)))
             B += currB
         B = B / 4
         B = B / np.linalg.norm(B)
@@ -971,10 +974,11 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
             return
 
         # Calculate |J|, |J_Par|, |J_Perp| and initialize the new varialbes
+        times = self.window.getTimes(self.getDstrsBySpcrft(1)[0], 0)
         resultMat = self.calcRange()
         for dstr in varsToAdd:
             index = list(self.nameDict.values()).index(dstr)
-            self.window.initNewVar(dstr, resultMat[index], 'nA/m^2')
+            self.window.initNewVar(dstr, resultMat[index], 'nA/m^2', times=times)
 
     def setProgressVis(self, b=False):
         # Sets progress bar / label as hidden or visible
@@ -999,11 +1003,16 @@ class CurvatureUI(object):
         # Set up plot frame
         plotFrame = self.setupPlotFrame()
 
+        gyroLt = self.setupGyroLt()
+        avgDistFrame = self.setupAvgDistFrame()
+
         # Add everything to main layout
         layout.addWidget(curvFrame, 0, 0, 2, 1)
         layout.addWidget(radiiFrame, 0, 1, 1, 1)
         layout.addWidget(errFrame, 1, 1, 1, 1)
-        layout.addWidget(plotFrame, 3, 0, 1, 2)
+        layout.addWidget(plotFrame, 3, 0, 1, 3)
+        layout.addLayout(gyroLt, 0, 2, 2, 1)
+        layout.addWidget(avgDistFrame, 0, 3, 1, 1)
 
         # Set up settings layout for time edit, progress bar, and checkbox
         self.timeEdit = TimeEdit(QtGui.QFont())
@@ -1038,14 +1047,45 @@ class CurvatureUI(object):
         plotLt = QtWidgets.QHBoxLayout(plotFrame)
 
         self.checkboxes = []
-        for name in ['Curv_X', 'Curv_Y', 'Curv_Z', 'Radius']:
+        for name in ['Curv_X', 'Curv_Y', 'Curv_Z', 'Radius', 'RE_Gyro', 'RI_Gyro']:
             chkbx = QtWidgets.QCheckBox(name)
+            chkbx.setChecked(True)
             self.checkboxes.append(chkbx)
             plotLt.addWidget(chkbx)
 
         self.applyBtn = QtWidgets.QPushButton('Apply')
         plotLt.addWidget(self.applyBtn)
         return plotFrame
+
+    def setupAvgDistFrame(self):
+        avgDistFrame = QtWidgets.QGroupBox('Avg Distance')
+        avgDistLt = QtWidgets.QGridLayout(avgDistFrame)
+        self.avgDistLbl = NumLabel(prec=4)
+        avgDistLt.addWidget(self.avgDistLbl, 0, 0, 1, 1, QtCore.Qt.AlignCenter)
+        avgDistFrame.setAlignment(QtCore.Qt.AlignCenter)
+        return avgDistFrame
+
+    def setupGyroLt(self):
+        # Set up average distance and gyro radius frames
+        infoLt = QtWidgets.QVBoxLayout()
+        alignCenter = QtCore.Qt.AlignCenter
+
+        electGyroFrame = QtWidgets.QGroupBox('Electron Gyro Radius')
+        gyroRadiusLt = QtWidgets.QGridLayout(electGyroFrame)
+        self.eGyroRadiusLbl = NumLabel(prec=4)
+        gyroRadiusLt.addWidget(self.eGyroRadiusLbl, 0, 0, 1, 1, alignCenter)
+
+        ionGyroFrame = QtWidgets.QGroupBox('Ion Gyro Radius')
+        gyroRadiusLt = QtWidgets.QGridLayout(ionGyroFrame)
+        self.iGyroRadiusLbl = NumLabel(prec=4)
+        gyroRadiusLt.addWidget(self.iGyroRadiusLbl, 0, 0, 1, 1, alignCenter)
+
+        # Center align frames and add to layout
+        for frm in [electGyroFrame, ionGyroFrame]:
+            frm.setAlignment(QtCore.Qt.AlignCenter)
+            infoLt.addWidget(frm)
+
+        return infoLt
 
 class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
     def __init__(self, window, parent=None):
@@ -1054,6 +1094,10 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         self.window = window
         self.ui = CurvatureUI()
         self.ui.setupUI(self, window)
+
+        # Constant used in gyro-radius calculations
+        self.k_b = constants.physical_constants['Boltzmann constant in eV/K'][0]
+        self.eDta, self.iDta = None, None
 
         self.ui.stayOnTopChk.clicked.connect(self.toggleWindowOnTop)
         self.ui.applyBtn.clicked.connect(self.addNewVars)
@@ -1086,6 +1130,16 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         self.ui.radii[0].setText(radius)
         self.ui.errors[0].setText(err)
 
+        # Calculate additional state information
+        avgDist = self.getAvgDist(index)
+        self.ui.avgDistLbl.setText(avgDist)
+
+        eGyroRadius = self.getGyroRadius(index)
+        self.ui.eGyroRadiusLbl.setText(eGyroRadius)
+
+        iGyroRadius = self.getGyroRadius(index, 'Ion')
+        self.ui.iGyroRadiusLbl.setText(iGyroRadius)
+
     def calculate(self, index):
         # Calculates curvature, radius, & error for given spcrft at given index
         vec = self.calcCurv(index)
@@ -1094,8 +1148,63 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         return vec, radius, err
 
     def getCurvRadius(self, curv):
-        radius = 1 / np.linalg.norm(curv)
+        radius = 1 / np.sqrt(np.dot(curv, curv))
         return radius
+
+    def interpParticleDta(self, mode='Electron'):
+        # Determine temperature variable name
+        tempKw = 'TempPer'
+        if mode == 'Ion':
+            tempKw = tempKw + '_I'
+
+        # Create a cubic splines interpolater on ion/electron data
+        # and interpolate along magnetic field data times
+        tempTimes = self.window.getTimes(tempKw, 0)[0]
+        tempDta = self.window.getData(tempKw, 0)
+        cs = scipy.interpolate.CubicSpline(tempTimes, tempDta)
+        magTimes = self.window.getTimes(self.getDstrsBySpcrft(1)[0], 0)[0]
+        if mode == 'Electron': # Fill corresponding array
+            self.eDta = cs(magTimes)
+        else:
+            self.iDta = cs(magTimes)
+
+    def getGyroRadius(self, index, mode='Electron'):
+        # Use electron omni tool to check for ion/electron data dstrs
+        # and interpolate particle data before doing computations
+        if self.eDta is None or self.iDta is None:
+            electOmni = ElectronOmni(self.window)
+            self.iDta = []
+            self.eDta = []
+            if electOmni.electronDstrs != []:
+                self.interpParticleDta()
+            if electOmni.ionDstrs != []:
+                self.interpParticleDta('Ion')
+
+        # Set formula coefficients and which array to get temperature from
+        if mode == 'Electron':
+            coeff = 0.0221
+            interpDta = self.eDta
+        else:
+            coeff = 0.947
+            interpDta = self.iDta
+
+        # Return nan if data not available for given mode
+        if interpDta == []:
+            return np.nan
+
+        # Convert temperature from eV to kelvin
+        temperature = interpDta[index]
+        temperature = temperature / self.k_b
+
+        # Compute the average magnetic field vector
+        avgB = np.array(self.getVec(1, index))
+        for scNum in [2,3,4]:
+            avgB += self.getVec(scNum, index)
+        avgB = avgB / 4
+        normAvgB = np.sqrt(np.dot(avgB, avgB))
+
+        gyroRadius = coeff * np.sqrt(temperature) / normAvgB
+        return gyroRadius
 
     def estimateError(self, index, radius):
         # Error = (sin^(-1)(L/2R) - L/2R)/ (L/2R) --> approx = (1/6)*(L/2R)^2
@@ -1107,11 +1216,16 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
     def getAvgDist(self, index):
         # Finds the average x pos distance between the spacecfraft
         L = 0
-        pairs = [(1, 2), (2, 3), (3, 4)]
+        pairs = []
+        for i in range(1, 4+1):
+            for j in range(1, 4+1):
+                if i != j and (i, j) not in pairs and (j, i) not in pairs:
+                    pairs.append((i, j))
+
         for a, b in pairs:
             vec1 = self.getVec(a, index, grp='Pos')
             vec2 = self.getVec(b, index, grp='Pos')
-            diff = abs(vec1[0] - vec2[0])
+            diff = np.linalg.norm(vec2-vec1)
             L += diff
         L = L / len(pairs)
         return L
@@ -1167,7 +1281,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
 
     def getAvgBUnitVec(self, index):
         # Computes the average b vector and normalizes it
-        bUnit = self.getVec(1, index)
+        bUnit = np.array(self.getVec(1, index))
         for scNum in [2,3,4]:
             bUnit += self.getVec(scNum, index)
         bUnit = bUnit / 4
@@ -1190,6 +1304,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         # Determine the number of data points to use
         arbDstr = self.getDstrsBySpcrft(1)[0]
         dta = self.window.getData(arbDstr)
+        timeInfo = self.window.getTimes(arbDstr, 0)
         dtaLen = len(dta)
 
         # Prepare progress bar for updating
@@ -1197,13 +1312,26 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         stepSize = 100 / dtaLen
         progVal = 0
 
-        # Calculate curvatures
+        plotRadii = self.ui.checkboxes[len(dstrs)].isChecked()
+        plotEGyro = self.ui.checkboxes[len(dstrs)+1].isChecked()
+        plotIGyro = self.ui.checkboxes[len(dstrs)+2].isChecked()
+        plotCurves = True in [self.ui.checkboxes[i].isChecked() for i in [0,1,2]]
+
+        # Calculate curvatures and radii if checked
         curvatures = np.zeros((3, dtaLen))
         radii = np.zeros(dtaLen)
+        eGyroRadii = np.zeros(dtaLen)
+        iGyroRadii = np.zeros(dtaLen)
         for index in range(0, dtaLen):
-            vec, radius, err = self.calculate(index)
-            curvatures[:,index] = vec
-            radii[index] = radius
+            if plotCurves or plotRadii:
+                vec, radius, err = self.calculate(index)
+                curvatures[:,index] = vec
+            if plotRadii:
+                radii[index] = radius
+            if plotEGyro:
+                eGyroRadii[index] = self.getGyroRadius(index, 'Electron')
+            if plotIGyro:
+                iGyroRadii[index] = self.getGyroRadius(index, 'Ion')
 
             # Update progress bar
             progVal += stepSize
@@ -1213,10 +1341,15 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         i = 0
         for dstr in dstrs:
             if self.ui.checkboxes[i].isChecked():
-                self.window.initNewVar(dstr, curvatures[i], '1/km')
+                self.window.initNewVar(dstr, curvatures[i], '1/km', times=timeInfo)
             i += 1
-        if self.ui.checkboxes[i].isChecked():
-            self.window.initNewVar('RC', radii, 'km')
+        if plotRadii:
+            self.window.initNewVar('RC', radii, 'km', times=timeInfo)
+        # Add in gyro radius calculations if valid
+        if plotEGyro and self.eDta != []:
+            self.window.initNewVar('RE_Gyro', eGyroRadii, 'km', times=timeInfo)
+        if plotIGyro and self.iDta != []:
+            self.window.initNewVar('RI_Gyro', iGyroRadii, 'km', times=timeInfo)
 
         # Hide progress bar after work is done
         self.ui.progBar.setVisible(False)
@@ -1275,8 +1408,6 @@ class ScientificSpinBox(QtWidgets.QDoubleSpinBox):
         if '10^' in text:
             text = text.split('^')[1]
         return float(text)
-
-from layoutTools import BaseLayout
 
 class ElectronPitchAngleUI(BaseLayout):
     def setupUI(self, Frame, window):

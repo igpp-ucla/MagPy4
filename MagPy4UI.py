@@ -492,7 +492,7 @@ class NumLabel(QtWidgets.QLabel):
 
     def setText(self, val):
         txt = str(val)
-        if self.prec is not None:
+        if self.prec is not None and not np.isnan(val):
             txt = NumLabel.formatVal(val, self.prec)
         QtWidgets.QLabel.setText(self, txt)
 

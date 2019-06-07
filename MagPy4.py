@@ -855,14 +855,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         ta.setStyle(showValues=False)
         ra.setStyle(showValues=False)
 
-    def initNewVar(self, dstr, dta, units=''):
+    def initNewVar(self, dstr, dta, units='', times=None):
         # Add new variable name to list of datastrings
         self.newVars.append(dstr)
         self.DATASTRINGS.append(dstr)
         self.ABBRV_DSTR_DICT[dstr] = dstr
 
         # Use any datastring's times as base
-        times = self.getTimes(self.DATASTRINGS[0], 0)
+        if times is None:
+            times = self.getTimes(self.DATASTRINGS[0], 0)
         self.TIMES.append(times)
         self.TIMEINDEX[dstr] = len(self.TIMES) - 1
 
