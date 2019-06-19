@@ -566,8 +566,12 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
             plt = self.plotItems[pltNum]
             axis = plt.getAxis(name)
             axis.resetTickSpacing()
+            if name == 'bottom': # Update top time axes to match if applicable
+                ta = plt.getAxis('top')
+                if ta.axisType() == 'DateTime':
+                    ta.resetTickSpacing()
 
-        self.additionalUpdates()
+        self.additionalUpdates(None, name)
 
     def applyChange(self, intBox, name, axType, index):
         # Get spinbox value
@@ -592,11 +596,15 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
             plt = self.plotItems[pltNum]
             axis = plt.getAxis(name)
             axis.setCstmTickSpacing(value)
+            if name == 'bottom': # Match top time axis
+                ta = plt.getAxis('top')
+                if ta.axisType() == 'DateTime':
+                    ta.setCstmTickSpacing(value)
 
-        self.additionalUpdates()
+        self.additionalUpdates(value, name)
 
     # Placeholder function to update plot ticks elsewhere as needed
-    def additionalUpdates(self):
+    def additionalUpdates(self, tickDiff, name):
         pass
 
 class MagPyTickIntervals(TickIntervals):
@@ -604,7 +612,9 @@ class MagPyTickIntervals(TickIntervals):
         links = window.lastPlotLinks
         TickIntervals.__init__(self, window, plotItems, parent, links=links)
 
-    def additionalUpdates(self):
+    def additionalUpdates(self, tickDiff, name):
         # Update plot ranges so tick marks are uniform across axes/plots
+        if name == 'bottom' and self.window.pltGrd and self.window.pltGrd.labelSetGrd:
+            self.window.pltGrd.labelSetGrd.setCstmTickSpacing(tickDiff)
         self.window.updateXRange()
         self.window.updateYRange()

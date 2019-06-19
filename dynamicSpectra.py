@@ -9,6 +9,7 @@ from pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, Date
 import bisect
 import functools
 from mth import Mth
+from layoutTools import BaseLayout
 
 class SpectraBase(object):
     def getCommonVars(self, bw, N):
@@ -44,6 +45,139 @@ class SpectraBase(object):
             print('Proposed spectra plot invalid!\nFrequency list has less than 2 values')
             return None
         return freq
+
+    def splitfft(self, fft):
+        '''
+            Splits FFT results into its real and imaginary parts as separate
+            lists
+        '''
+        fftReal = fft[1::2]
+        fftImag = fft[2::2]
+        return fftReal, fftImag
+
+    def fftToComplex(self, fft):
+        '''
+            Converts fft (cos, sin) pairs into complex numbers
+        '''
+        rfft, ifft = self.splitfft(fft)
+        cfft = np.array(rfft, dtype=np.complex)
+        cfft = cfft[:len(ifft)]
+        cfft.imag = ifft
+        return cfft
+
+    # Spectra calculations
+    def calculatePower(self, bw, fft, N):
+        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
+        C = 2 * self.window.resolution / N
+        fsqr = [ft * ft for ft in fft]
+        power = [0] * nfreq
+        for i in range(nfreq):
+            km = kmo + i
+            kO = int(km - half)
+            kE = int(km + half) + 1
+
+            power[i] = sum(fsqr[kO * 2 - 1:kE * 2 - 1]) / bw * C
+
+        return power
+
+    # Coherence and phase calculations
+    def calculateCoherenceAndPhase(self, bw, fft0, fft1, N):
+        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
+        kStart = kmo - half
+        kSpan = half * 4 + 1
+
+        csA = fft0[:-1] * fft1[:-1] + fft0[1:] * fft1[1:]
+        qsA = fft0[:-1] * fft1[1:] - fft1[:-1] * fft0[1:]
+        pAA = fft0[:-1] * fft0[:-1] + fft0[1:] * fft0[1:]
+        pBA = fft1[:-1] * fft1[:-1] + fft1[1:] * fft1[1:]
+
+        csSum = np.zeros(nfreq)
+        qsSum = np.zeros(nfreq)
+        pASum = np.zeros(nfreq)
+        pBSum = np.zeros(nfreq)
+
+        for n in range(nfreq):
+            KO = (kStart + n) * 2 - 1
+            KE = KO + kSpan
+
+            csSum[n] = sum(csA[KO:KE:2])
+            qsSum[n] = sum(qsA[KO:KE:2])
+            pASum[n] = sum(pAA[KO:KE:2])
+            pBSum[n] = sum(pBA[KO:KE:2])
+
+        coh = (csSum * csSum + qsSum * qsSum) / (pASum * pBSum)
+        pha = np.arctan2(qsSum, csSum) * Mth.R2D
+
+        return coh,pha
+
+    # Wave analysis calculations
+    def computeSpectralMats(self, cffts):
+        # Computes the complex versions of the spectral matrices
+        mats = np.zeros((len(cffts[0]), 3, 3), dtype=np.complex)
+        for r in range(0, 3):
+            for c in range(0, r+1):
+                f0, f1 = cffts[r], cffts[c]
+                res = f0 * np.conj(f1)
+                conjRes = np.conj(res)
+                mats[:,r][:,c] = res
+                if r != c:
+                    mats[:,c][:,r] = conjRes
+
+        return mats
+
+class DynamicAnalysisTool(SpectraBase):
+    def updateParameters(self):
+        # Set num data points
+        self.ui.initVars(self.window)
+        nPoints = int(self.ui.fftDataPts.text())
+
+        # Set interval and overlap max
+        self.ui.fftInt.setMaximum(nPoints)
+        self.ui.fftShift.setMaximum(nPoints)
+
+        interval = max(min(nPoints, 10), int(nPoints*0.025))
+        self.ui.fftInt.setValue(interval)
+        overlap = int(interval/4)
+        self.ui.fftShift.setValue(overlap)
+
+    def checkParameters(self, interval, overlap, bw, numPoints):
+        if interval <= overlap:
+            self.ui.statusBar.showMessage('Error: Interval <= Shift amount')
+            return False
+        elif bw % 2 == 0:
+            self.ui.statusBar.showMessage('Error: Bandwidth must be odd.')
+            return False
+        elif numPoints <= interval:
+            self.ui.statusBar.showMessage('Error: Total num points <= Interval')
+            return False
+        return True
+
+    def showValue(self, freq, time, prefix, lastCalc):
+        # Takes x,y values and uses them to find/display the power value
+        if lastCalc is None:
+            return
+
+        if self.ui.scaleModeBox.currentText() == 'Logarithmic':
+            freq = 10 ** freq
+
+        # Find grid indices corresponding to the point
+        times, freqs, powerGrid = lastCalc
+        numRows, numCols = powerGrid.shape
+        freqIndex = max(bisect.bisect(freqs, freq), 0)
+        timeIndex = max(bisect.bisect(times, time)-1, 0)
+
+        if freq >= freqs[-1] or time <= times[0] or time >= times[-1]:
+            self.ui.statusBar.clearMessage()
+            return
+
+        # Extract the grid's frequency and power values
+        val = powerGrid[freqIndex][timeIndex]
+
+        # Create and display the freq/power values in the status bar
+        freqStr = NumLabel.formatVal(freq, 5)
+        valStr = NumLabel.formatVal(val, 5)
+        msg = prefix +'('+freqStr+', '+valStr+')'
+        self.ui.statusBar.showMessage(msg)
 
 class SpectraLegend(GradientLegend):
     def __init__(self, offsets=(0, 2)):
@@ -104,11 +238,22 @@ class SpectraLegend(GradientLegend):
             lwrBnd = int(np.ceil(minVal))
             upperBnd = int(np.floor(maxVal))
             colorPos = [i for i in range(lwrBnd, upperBnd+1)]
-            if abs(upperBnd-lwrBnd) < 2:
+            if abs(upperBnd-lwrBnd) < 1.3:
+                colorPos = np.arange(start=lwrBnd, stop=upperBnd+0.25, step=0.25)
+                colorPOs = np.round(colorPos, decimals=1)
+            elif abs(upperBnd-lwrBnd) <= 2:
                 colorPos = np.arange(start=lwrBnd, stop=upperBnd+0.5, step=0.5)
                 colorPos = np.round(colorPos, decimals=1)
         else:
             colorPos = self.getTickVals(minVal, maxVal)
+
+        # Map all-integer values to integers
+        intMode = True
+        for val in colorPos:
+            if val != int(val):
+                intMode = False
+        if intMode:
+            colorPos = list(map(int, colorPos))
 
         # Create and set color gradient brush based on colormap
         colors = list(map(pg.mkColor, colorLst))
@@ -131,6 +276,8 @@ class SpectraLegend(GradientLegend):
                 # If in linear mode, use scientific notation string
                 txt = np.format_float_scientific(val, precision=3, trim='0', 
                     pad_left=False, sign=False, exp_digits=0)
+                if max(colorPos) - min(colorPos) <= 1000:
+                    txt = str(np.round(val, decimals=2))
             labels.append(txt)
         labelsDict = {}
         for lbl, loc in zip(labels, locs):
@@ -215,7 +362,7 @@ class SpectrogramViewBox(pg.ViewBox):
         self.addedItems = []
 
 class SpectrogramPlotItem(pg.PlotItem):
-    def __init__(self, logMode=False):
+    def __init__(self, epoch, logMode=False):
         super(SpectrogramPlotItem, self).__init__(parent=None)
         self.logMode = logMode # Log scaling for y-axis parameter (Boolean)
 
@@ -231,7 +378,7 @@ class SpectrogramPlotItem(pg.PlotItem):
 
         # Create viewbox and set up custom axis items
         vb = SpectrogramViewBox()
-        dateAxis = DateAxis('bottom')
+        dateAxis = DateAxis(epoch, orientation='bottom')
         if self.logMode:
             leftAxis = LogAxis(True, True, True, orientation='left')
         else:
@@ -321,12 +468,6 @@ class SpectrogramPlotItem(pg.PlotItem):
 
         return gradLegend
 
-    def updateTimeTicks(self, window, minTime, maxTime, mode):
-        timeAxis = self.getAxis('bottom')
-        timeAxis.window = window
-        timeAxis.timeRange = (minTime, maxTime)
-        timeAxis.updateTicks(window, mode, (minTime, maxTime))
-
     def addItem(self, item, *args, **kargs):
         # Optimized from original pg.PlotItem's addItem method
         """
@@ -383,13 +524,16 @@ class SpectrogramPlotItem(pg.PlotItem):
 
             lastVal = yVal
 
+        # Set axis ranges and update time label
         self.setXRange(timeVals[0], timeVals[-1], 0)
         self.setYRange(lowerBnd, yVals[-1], 0)
+        timeLbl = self.getAxis('bottom').tm.getTimeLabel(timeVals[-1]-timeVals[0])
+        self.getAxis('bottom').setLabel(timeLbl)
 
 class PhaseSpectrogram(SpectrogramPlotItem):
-    def __init__(self, logMode=True):
+    def __init__(self, epoch, logMode=True):
         super(SpectrogramPlotItem, self).__init__(parent=None)
-        SpectrogramPlotItem.__init__(self, logMode)
+        SpectrogramPlotItem.__init__(self, epoch, logMode)
         self.colors = [(225, 0, 255)] + self.colors + [(225, 0, 255)]
         self.colorPlacements = []
         centerTotal = 5/6
@@ -409,8 +553,9 @@ class PhaseSpectrogram(SpectrogramPlotItem):
         mappedGrid = colorMap.map(valueGrid)
         return mappedGrid
 
-    def getGradLegend(self, colors=None, cstmColPos=None, cstmTicks=None):
-        top, bot = (31, 48)
+    def getGradLegend(self, colors=None, cstmColPos=None, cstmTicks=None,
+        offsets=(31, 48)):
+        top, bot = offsets
         # Create color gradient legend based on color map
         minVal, maxVal = -180, 180
         cstmTicks = [i for i in range(minVal, maxVal+1, 60)]
@@ -420,7 +565,7 @@ class PhaseSpectrogram(SpectrogramPlotItem):
 
         return gradLegend
 
-class DynamicSpectraUI(object):
+class DynamicSpectraUI(BaseLayout):
     def setupUI(self, Frame, window):
         maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         Frame.setWindowTitle('Dynamic Spectrogram')
@@ -481,16 +626,11 @@ class DynamicSpectraUI(object):
 
         layout.addWidget(settingsFrame, 0, 0, 1, 2)
 
-        # Set up time edits at bottom of window
-        timeFrame = QtWidgets.QFrame()
-        timeFrame.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        timeLt = QtWidgets.QHBoxLayout(timeFrame)
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        # Set up time edits at bottom of window + status bar
+        timeLt, self.timeEdit, self.statusBar = self.getTimeStatusBar()
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
-        timeLt.addWidget(self.timeEdit.start)
-        timeLt.addWidget(self.timeEdit.end)
 
-        layout.addWidget(timeFrame, 9, 0, 1, 1)
+        layout.addLayout(timeLt, 9, 0, 1, 2)
 
         # Initialize data values for spinboxes and combo boxes
         itemSet = set()
@@ -505,13 +645,8 @@ class DynamicSpectraUI(object):
         self.scaleModeBox.addItem('Linear')
 
         # Plot setup
-        self.initPlot()
+        self.initPlot(window)
         layout.addWidget(self.gview, 1, 0, 8, 2)
-
-        # Status bar
-        self.statusBar = QtWidgets.QStatusBar()
-        self.statusBar.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum))
-        layout.addWidget(self.statusBar, 9, 1, 1, 1)
 
         # Default settings
         self.bwBox.setValue(3)
@@ -524,20 +659,6 @@ class DynamicSpectraUI(object):
         endIndex = window.calcDataIndexByTime(times, maxTime)
         numPoints = abs(endIndex-startIndex)
         self.fftDataPts.setText(str(numPoints))
-
-    def addPair(self, layout, name, elem, row, col, rowspan, colspan, tooltip=None):
-        # Create a label for given widget and place both into layout
-        lbl = QtWidgets.QLabel(name)
-        lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        if name != '':
-            layout.addWidget(lbl, row, col, 1, 1)
-        layout.addWidget(elem, row, col+1, rowspan, colspan)
-
-        # Set any tooltips if given
-        if tooltip is not None:
-            lbl.setToolTip(tooltip)
-
-        return lbl
 
     def setPowerRangeLt(self):
         self.selectToggle = QtWidgets.QCheckBox(' Set Power Range: ')
@@ -569,7 +690,7 @@ class DynamicSpectraUI(object):
         self.selectToggle.toggled.connect(self.powerRngSelectToggled)
         return rangeLt
 
-    def initPlot(self):
+    def initPlot(self, window):
         # Clear previous plot
         self.glw.clear()
 
@@ -577,7 +698,7 @@ class DynamicSpectraUI(object):
         dstrTitle = self.dstrBox.currentText()
 
         logMode = self.scaleModeBox.currentText() == 'Logarithmic'
-        self.plotItem = SpectrogramPlotItem(logMode=logMode)
+        self.plotItem = SpectrogramPlotItem(window.epoch, logMode=logMode)
         self.plotItem.setTitle('Dynamic Spectra Analysis'+' ('+dstrTitle+')', size='13pt')
         self.plotItem.setDownsampling(mode='subsample')
 
@@ -630,7 +751,7 @@ class DynamicSpectraUI(object):
         self.minLbl.setEnabled(val)
         self.maxLbl.setEnabled(val)
 
-class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, SpectraBase):
+class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
     def __init__(self, window, parent=None):
         super(DynamicSpectra, self).__init__(parent)
         SpectraBase.__init__(self)
@@ -650,32 +771,6 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, SpectraBase):
         self.window.endGeneralSelect()
         self.window.clearStatusMsg()
         self.wasClosed = True
-
-    def updateParameters(self):
-        # Set num data points
-        self.ui.initVars(self.window)
-        nPoints = int(self.ui.fftDataPts.text())
-
-        # Set interval and overlap max
-        self.ui.fftInt.setMaximum(nPoints)
-        self.ui.fftShift.setMaximum(nPoints)
-
-        interval = max(min(nPoints, 10), int(nPoints*0.025))
-        self.ui.fftInt.setValue(interval)
-        overlap = int(interval/4)
-        self.ui.fftShift.setValue(overlap)
-
-    def checkParameters(self, interval, overlap, bw, numPoints):
-        if interval <= overlap:
-            self.ui.statusBar.showMessage('Error: Interval <= Shift amount')
-            return False
-        elif bw % 2 == 0:
-            self.ui.statusBar.showMessage('Error: Bandwidth must be odd.')
-            return False
-        elif numPoints <= interval:
-            self.ui.statusBar.showMessage('Error: Total num points <= Interval')
-            return False
-        return True
 
     def getDataRange(self):
         dstr = self.ui.dstrBox.currentText()
@@ -715,7 +810,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, SpectraBase):
 
         # Initialize empty plot
         self.ui.statusBar.showMessage('Clearing previous plot...')
-        self.ui.initPlot()
+        self.ui.initPlot(self.window)
 
         # Generate plot grid and spectrogram from this
         self.calculate(dataRng, interval, shift, bw, dstr)
@@ -806,56 +901,14 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, SpectraBase):
         vb.enableAutoRange(x=False, y=False)
 
         # Set bottom axis time ticks and axis label
-        rng = xRange[1] - xRange[0]
-        mode = self.window.getTimeLabelMode(rng)
-        lbl = self.window.getTimeLabel(rng)
-        self.ui.plotItem.updateTimeTicks(self.window, xRange[0], xRange[1], mode)
-        self.ui.plotItem.getAxis('bottom').setLabel(lbl)
         self.ui.addTimeInfo(xRange, self.window)
 
         self.ui.setupGradient()
 
-    def calculatePower(self, bw, fft, N):
-        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
-        C = 2 * self.window.resolution / N
-        fsqr = [ft * ft for ft in fft]
-        power = [0] * nfreq
-        for i in range(nfreq):
-            km = kmo + i
-            kO = int(km - half)
-            kE = int(km + half) + 1
-
-            power[i] = sum(fsqr[kO * 2 - 1:kE * 2 - 1]) / bw * C
-        return power
-
     def showPointValue(self, freq, time):
-        # Takes x,y values and uses them to find/display the power value
-        if self.lastCalc is None:
-            return
+        self.showValue(freq, time, 'Freq, Power: ', self.lastCalc)
 
-        if self.ui.scaleModeBox.currentText() == 'Logarithmic':
-            freq = 10 ** freq
-
-        # Find grid indices corresponding to the point
-        times, freqs, powerGrid = self.lastCalc
-        numRows, numCols = powerGrid.shape
-        freqIndex = max(bisect.bisect(freqs, freq), 0)
-        timeIndex = max(bisect.bisect(times, time)-1, 0)
-
-        if freq > freqs[-1] or time < times[0] or time > times[-1]:
-            self.ui.statusBar.clearMessage()
-            return
-
-        # Extract the grid's frequency and power values
-        val = powerGrid[freqIndex][timeIndex]
-
-        # Create and display the freq/power values in the status bar
-        freqStr = NumLabel.formatVal(freq, 5)
-        valStr = NumLabel.formatVal(val, 5)
-        msg = 'Freq, Power: '+'('+freqStr+', '+valStr+')'
-        self.ui.statusBar.showMessage(msg)
-
-class DynamicCohPhaUI(object):
+class DynamicCohPhaUI(BaseLayout):
     def setupUI(self, Frame, window, dstrs):
         maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         Frame.setWindowTitle('Dynamic Coherence/Phase Analysis')
@@ -871,35 +924,20 @@ class DynamicCohPhaUI(object):
         layout.addWidget(self.tabWidget, 1, 0, 1, 2)
 
         # Set up status bar and time edits
-        timeLt = QtWidgets.QHBoxLayout()
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        timeLt, self.timeEdit, self.statusBar = self.getTimeStatusBar()
         minDt, maxDt = window.getMinAndMaxDateTime()
         self.timeEdit.setupMinMax((minDt, maxDt))
-        timeLt.addWidget(self.timeEdit.start)
-        timeLt.addWidget(self.timeEdit.end)
-
-        self.statusBar = QtWidgets.QStatusBar()
-        timeLt.addWidget(self.statusBar)
 
         layout.addLayout(timeLt, 2, 0, 1, 2)
 
-    def addPair(self, layout, name, elem, row, col, rowspan, colspan, tooltip=None):
-        # Create a label for given widget and place both into layout
-        lbl = QtWidgets.QLabel(name)
-        lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        if name != '':
-            layout.addWidget(lbl, row, col, 1, 1)
-        layout.addWidget(elem, row, col+1, rowspan, colspan)
-
-        # Set any tooltips if given
-        if tooltip is not None:
-            lbl.setToolTip(tooltip)
-
-        return lbl
-
-    def getSpacerItem(self):
-        spacer = QtWidgets.QSpacerItem(10, 1, QSizePolicy.Minimum, QSizePolicy.Minimum)
-        return spacer
+    def initVars(self, window):
+        # Set num data points
+        minTime, maxTime = window.getTimeTicksFromTimeEdit(self.timeEdit)
+        times = window.getTimes(self.boxA.currentText(), 0)[0]
+        startIndex = window.calcDataIndexByTime(times, minTime)
+        endIndex = window.calcDataIndexByTime(times, maxTime)
+        nPoints = abs(endIndex-startIndex)
+        self.fftDataPts.setText(str(nPoints))
 
     def setupTabs(self, window):
         tabWidget = QtWidgets.QTabWidget()
@@ -940,13 +978,13 @@ class DynamicCohPhaUI(object):
         boxes = [self.fftInt, self.fftShift, self.bwBox]
         for i in range(0, 3):
             self.addPair(layout, lbls[i], boxes[i], i, 0, 1, 1, tips[i])
-        layout.addItem(self.getSpacerItem(), 0, 2, 3, 1)
+        layout.addItem(self.getSpacer(10), 0, 2, 3, 1)
 
         # Set up frequency scaling mode box
-        self.scaleBox = QtWidgets.QComboBox()
-        self.scaleBox.addItem('Logarithmic')
-        self.scaleBox.addItem('Linear')
-        self.addPair(layout, 'Scaling mode: ', self.scaleBox, 1, 3, 1, 1, scaleTip)
+        self.scaleModeBox = QtWidgets.QComboBox()
+        self.scaleModeBox.addItem('Logarithmic')
+        self.scaleModeBox.addItem('Linear')
+        self.addPair(layout, 'Scaling mode: ', self.scaleModeBox, 1, 3, 1, 1, scaleTip)
 
         # Set up pair chooser
         varLt = QtWidgets.QHBoxLayout()
@@ -965,9 +1003,9 @@ class DynamicCohPhaUI(object):
             self.boxB.setCurrentIndex(1)
 
         # Set up num points label, bandwidth btn, and update btn
-        self.fftPoints = QtWidgets.QLabel()
+        self.fftDataPts = QtWidgets.QLabel()
         ptsTip = 'Total number of data points within selected time range'
-        self.addPair(layout, 'Num Points: ', self.fftPoints, 2, 3, 1, 1, ptsTip)
+        self.addPair(layout, 'Num Points: ', self.fftDataPts, 2, 3, 1, 1, ptsTip)
 
         self.bwBox.setValue(3)
         self.bwBox.setSingleStep(2)
@@ -978,13 +1016,13 @@ class DynamicCohPhaUI(object):
 
         # Column of spacers before update button
         for row in range(0, 3):
-            spacer = self.getSpacerItem()
+            spacer = self.getSpacer(10)
             layout.addItem(spacer, row, 6, 1, 1)
 
         layout.addWidget(self.updtBtn, 1, 7, 1, 1)
         return layout
 
-class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
+class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
     def __init__(self, window, parent=None):
         super(DynamicCohPha, self).__init__(parent)
         SpectraBase.__init__(self)
@@ -1021,7 +1059,7 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
     def update(self):
         # Extract parameters from UI elements
         bw = self.ui.bwBox.value()
-        logMode = True if self.ui.scaleBox.currentText() == 'Logarithmic' else False
+        logMode = True if self.ui.scaleModeBox.currentText() == 'Logarithmic' else False
         varA = self.ui.boxA.currentText()
         varB = self.ui.boxB.currentText()
         indexRng = self.getDataRange()
@@ -1090,8 +1128,8 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
 
     def createPlots(self, freqs, times, cohGrid, phaGrid, logMode):
         # Generate the color mapped plots from the value grids
-        cohPlt = SpectrogramPlotItem(logMode)
-        phaPlt = PhaseSpectrogram(logMode)
+        cohPlt = SpectrogramPlotItem(self.window.epoch, logMode)
+        phaPlt = PhaseSpectrogram(self.window.epoch, logMode)
         cohRng = (0, 1.0)
         phaRng = (-180, 180)
         cohPlt.createPlot(freqs, cohGrid, times, cohRng, winFrame=self, 
@@ -1135,9 +1173,6 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
         phaPlt.setTitle('Dynamic Phase Analysis ' + subTitle, size='13pt')
 
         # Set time labels
-        rng = xRng[1] - xRng[0]
-        mode = self.window.getTimeLabelMode(rng)
-        lbl = self.window.getTimeLabel(rng)
         if logMode:
             a = np.log10(yRng[0])
             b = np.log10(yRng[1])
@@ -1145,12 +1180,10 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
 
         # Update plot ranges and set axis labels
         for plt in [cohPlt, phaPlt]:
-            plt.updateTimeTicks(self.window, xRng[0], xRng[1], mode)
             if logMode:
                 plt.getAxis('left').setLabel('Log Frequency (Hz)')
             else:
                 plt.getAxis('left').setLabel('Frequency (Hz)')
-            plt.getAxis('bottom').setLabel(lbl)
 
     def getDataRange(self):
         dstr = self.ui.boxA.currentText()
@@ -1162,25 +1195,6 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
         endIndex = self.window.calcDataIndexByTime(times, maxTime)
 
         return startIndex, endIndex
-
-    def updateParameters(self):
-        # Set num data points
-        minTime, maxTime = self.window.getTimeTicksFromTimeEdit(self.ui.timeEdit)
-        times = self.window.getTimes(self.ui.boxA.currentText(), 0)[0]
-        startIndex = self.window.calcDataIndexByTime(times, minTime)
-        endIndex = self.window.calcDataIndexByTime(times, maxTime)
-        nPoints = abs(endIndex-startIndex)
-        self.ui.fftPoints.setText(str(nPoints))
-
-        # Set interval max and overlap max
-        self.ui.fftInt.setMaximum(nPoints)
-        self.ui.fftShift.setMaximum(nPoints)
-
-        # Calculate some parameters to use for first generated plot
-        interval = max(min(nPoints, 10), int(nPoints*0.025))
-        overlap = int(interval/4)
-        self.ui.fftInt.setValue(interval)
-        self.ui.fftShift.setValue(overlap)
 
     def getTimeRangeLbl(self, t1, t2):
         t1Str = self.window.getTimestampFromTick(t1)
@@ -1196,17 +1210,6 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
 
         freqs, times, cohGrid, phaGrid = self.lastCalc
 
-        if self.ui.scaleBox.currentText() == 'Logarithmic':
-            yVal = 10 ** yVal
-
-        # Find grid indices corresponding to the point
-        freqIndex = max(bisect.bisect(freqs, yVal), 0)
-        timeIndex = max(bisect.bisect(times, tVal)-1, 0)
-
-        if yVal > freqs[-1] or tVal < times[0] or tVal > times[-1]:
-            self.ui.statusBar.clearMessage()
-            return
-
         # Determine which tab is being displayed and adjust the values to be shown
         grid = cohGrid
         valType = 'Coherence'
@@ -1214,48 +1217,7 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, SpectraBase):
             grid = phaGrid
             valType = 'Angle'
 
-        freqStr = NumLabel.formatVal(yVal, 5)
-        mappedVal = str(NumLabel.formatVal(grid[freqIndex][timeIndex], 5))
-        msg = 'Freq, ' + valType + ' = ' + '(' + freqStr + ', ' + mappedVal + ')'
-        self.ui.statusBar.showMessage(msg)
+        prefix = 'Freq, ' + valType + ': '
+        calcToShow = (times, freqs, grid)
 
-    def checkParameters(self, interval, overlap, bw, numPoints):
-        if interval <= overlap:
-            self.ui.statusBar.showMessage('Error: Interval <= Shift amount')
-            return False
-        elif bw % 2 == 0:
-            self.ui.statusBar.showMessage('Error: Bandwidth must be odd.')
-            return False
-        elif numPoints <= interval:
-            self.ui.statusBar.showMessage('Error: Total num points <= Interval')
-            return False
-        return True
-
-    def calculateCoherenceAndPhase(self, bw, fft0, fft1, N):
-        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
-        kStart = kmo - half
-        kSpan = half * 4 + 1
-
-        csA = fft0[:-1] * fft1[:-1] + fft0[1:] * fft1[1:]
-        qsA = fft0[:-1] * fft1[1:] - fft1[:-1] * fft0[1:]
-        pAA = fft0[:-1] * fft0[:-1] + fft0[1:] * fft0[1:]
-        pBA = fft1[:-1] * fft1[:-1] + fft1[1:] * fft1[1:]
-
-        csSum = np.zeros(nfreq)
-        qsSum = np.zeros(nfreq)
-        pASum = np.zeros(nfreq)
-        pBSum = np.zeros(nfreq)
-
-        for n in range(nfreq):
-            KO = (kStart + n) * 2 - 1
-            KE = KO + kSpan
-
-            csSum[n] = sum(csA[KO:KE:2])
-            qsSum[n] = sum(qsA[KO:KE:2])
-            pASum[n] = sum(pAA[KO:KE:2])
-            pBSum[n] = sum(pBA[KO:KE:2])
-
-        coh = (csSum * csSum + qsSum * qsSum) / (pASum * pBSum)
-        pha = np.arctan2(qsSum, csSum) * Mth.R2D
-
-        return coh,pha
+        self.showValue(yVal, tVal, prefix, calcToShow)

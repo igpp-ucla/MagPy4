@@ -5,6 +5,7 @@ import pyqtgraph as pg
 import pyqtgraph.exporters
 from FF_Time import FFTIME
 from datetime import datetime, timedelta
+from timeManager import TimeManager
 from math import ceil
 import functools
 
@@ -325,11 +326,13 @@ class LogAxis(pg.AxisItem):
 # subclass based off example here:
 # https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
 class DateAxis(pg.AxisItem):
-    def __init__(self, orientation, pen=None, linkView=None, parent=None,
+    def __init__(self, epoch, orientation, offset=0, pen=None, linkView=None, parent=None,
                 maxTickLength=-5, showValues=True):
-        self.tickOffset = 0
+        self.tickOffset = offset
         self.timeRange = None
-        pg.AxisItem.__init__(self, orientation, pen, linkView, parent,
+        self.epoch = epoch
+        self.tm = TimeManager(0, 0, self.epoch)
+        pg.AxisItem.__init__(self, orientation, pen, linkView, None,
                             maxTickLength,showValues)
         # Dictionary holding default increment values for ticks
         self.modeToDelta = {}
@@ -342,20 +345,20 @@ class DateAxis(pg.AxisItem):
         self.tickDiff = None
 
     # Format a timestamp according to format underneath axis
-    def fmtTimeStmp(self, window, times):
+    def fmtTimeStmp(self, times):
         splits = times.split(' ')
         t = splits[4]
 
         if self.timeRange is not None:
             rng = abs(self.timeRange[1] - self.timeRange[0])
         else:
-            rng = window.getSelectedTimeRange()
+            rng = self.tm.getSelectedTimeRange()
 
-        if rng > window.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
+        if rng > self.tm.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
             return f'{splits[2]} {splits[3]} {t.split(":")[0]}:{t.split(":")[1]}'
-        elif rng > window.hrCutoff: # if over half hour show hh:mm:ss
+        elif rng > self.tm.hrCutoff: # if over half hour show hh:mm:ss
             return t.rsplit('.',1)[0]
-        elif rng > window.minCutoff: # if over 10 seconds show mm:ss
+        elif rng > self.tm.minCutoff: # if over 10 seconds show mm:ss
             return t.split(':',1)[1].split('.')[0]
         else:
             return t.split(':',1)[1] # else show mm:ss.mmm
@@ -398,79 +401,38 @@ class DateAxis(pg.AxisItem):
 
     # From the list of all potential ticks in a range, uniformly skip over
     # certain ones so there aren't too many on a plot
-    def limitTicks(self, tickList):
-        tickMax = 6 # Maximum number of ticks to show on a plot
-        listLen = len(tickList)
-        if listLen > tickMax:
-            # Only keep entries w/ indices that are multiples of skipNum
-            skipNum = ceil(listLen / tickMax)
-            newList = []
-            for i in range(0, listLen, skipNum):
-                newList.append(tickList[i])
-            return newList
+
+    def tickSpacing(self, minVal, maxVal, size):
+        if self.tickDiff:
+            return [(self.tickDiff.seconds, 0)]
         else:
-            return tickList
+            return pg.AxisItem.tickSpacing(self, minVal, maxVal, size)
 
-    def getTickTimes(self, strtDt, endDt, td, window):
-        # Generate all possible tick times in between start and end times
-        tickTimes = [strtDt]
-        currDt = strtDt + td
-        while currDt <= endDt:
-            tickTimes.append(currDt)
-            currDt = currDt + td
+    def tickValues(self, minVal, maxVal, size):
+        vals = pg.AxisItem.tickValues(self, minVal, maxVal, size)
+        return vals
 
-        # Reduce the number of ticks if there are too many
-        if self.tickDiff is None:
-            tickTimes = self.limitTicks(tickTimes)
-
-        # Creates lists mapping datetime objs to UTC strings and FFTime ticks/values
-        tickStrs = list(map(self.dateTimeToTmstmp, tickTimes))
-        tickVals = list(map(self.tickStrToVal, tickStrs))
-
-        # If ticks start at a given offset, subtract it from all tick values
-        for i in range(0, len(tickVals)):
-            tickVals[i] = tickVals[i] - self.tickOffset
-
-        # Create a list of time value/string tuples to use in setTicks function
-        tickPairs = []
-        numTicks = len(tickStrs)
-        for i in range(0, numTicks):
-            # Format strings according to label format
-            tickStrs[i] = self.fmtTimeStmp(window, tickStrs[i])
-            tickPairs.append((tickVals[i], tickStrs[i]))
-        return [tickPairs,[]] # Second list is for 'minor ticks'
-
-    def updateTicks(self, window, mode, timeRange=None):
-        # In case sliders swapped, just get min/max times
-        if timeRange is not None:
-            minTime, maxTime = timeRange
-        else:
-            minTime = min(window.tO, window.tE)
-            maxTime = max(window.tO, window.tE)
-
+    def tickStrings(self, values, scale, spacing):
         # Convert start/end times to strings
-        minTimeStr = str(FFTIME(minTime, Epoch=window.epoch).UTC)
-        maxTimeStr = str(FFTIME(maxTime, Epoch=window.epoch).UTC)
+        epochStr = str(FFTIME(0, Epoch=self.epoch).UTC)
+        epochDt = self.tmstmpToDateTime(epochStr)
 
-        # Convert start/end times to datetime objects
-        minDt = self.tmstmpToDateTime(minTimeStr)
-        maxDt = self.tmstmpToDateTime(maxTimeStr)
-
-        # Identify first and last times that should appear in range
-        td = self.modeToDelta[mode] if self.tickDiff is None else self.tickDiff
-        strtDt = self.firstTickDt(minDt, td)
-        endDt = self.lastTickDt(maxDt, td)
-
-        # Get all tick labels/values in-between and update on plot
-        tickPairs = self.getTickTimes(strtDt, endDt, td, window)
-        self.setTicks(tickPairs)
+        strings = []
+        for v in values:
+            currDt = epochDt + timedelta(seconds=v)
+            dtStr = self.dateTimeToTmstmp(currDt)
+            s = self.fmtTimeStmp(dtStr)
+            strings.append(s)
+        return strings
 
     def setCstmTickSpacing(self, diff):
         self.tickDiff = diff
+        self.picture = None
         self.update()
 
     def resetTickSpacing(self):
         self.tickDiff = None
+        self.picture = None
         self.update()
 
     def axisType(self):

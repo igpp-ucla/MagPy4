@@ -40,6 +40,7 @@ from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataIt
 from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
 from detrendWin import DetrendWindow
 from dynamicSpectra import DynamicSpectra, DynamicCohPha
+from waveAnalysis import DynamicWave
 from smoothingTool import SmoothingTool
 from ffCreator import createFF
 from mth import Mth
@@ -112,6 +113,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionSpectra.triggered.connect(self.startSpectra)
         self.ui.actionDynamicSpectra.triggered.connect(self.startDynamicSpectra)
         self.ui.actionDynamicCohPha.triggered.connect(self.startDynamicCohPha)
+        self.ui.actionDynWave.triggered.connect(self.startDynWave)
         self.ui.actionDetrend.triggered.connect(self.startDetrend)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.actionHelp.triggered.connect(self.openHelp)
@@ -144,6 +146,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.spectra = None
         self.dynSpectra = None
         self.dynCohPha = None
+        self.dynWave = None
         self.plotAppr = None
         self.addTickLbls = None
         self.edit = None
@@ -288,6 +291,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closePlaneNormal()
         self.closeDynamicSpectra()
         self.closeDynamicCohPha()
+        self.closeDynWave()
         self.closeMMSTools()
         self.closeDetrend()
 
@@ -637,6 +641,25 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.spectra.show()
             self.spectra.initPlots()
             PyQtUtils.moveToFront(self.spectra)
+
+    def startDynWave(self):
+        self.closeDynWave()
+        if not self.dynWave or self.dynWave.wasClosed:
+            self.dynWave = DynamicWave(self)
+            self.initGeneralSelect('Wave Analysis', None, self.dynWave.ui.timeEdit,
+                'Single', self.showDynWave, self.updateDynWave,
+                closeFunc=self.closeDynWave)
+
+    def showDynWave(self):
+        if self.dynWave:
+            self.dynWave.show()
+            self.dynWave.setUserSelections()
+            self.dynWave.update()
+
+    def closeDynWave(self):
+        if self.dynWave:
+            self.dynWave.close()
+            self.dynWave = None
 
     def startDetrend(self):
         self.closePlotTools()
@@ -1294,8 +1317,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         return self.minTime + (self.maxTime - self.minTime) * tick / self.iiE
 
     def updateXRange(self):
-        self.pltGrd.setTimeLabel('yellow')
-
         # Update bottom axis' time label
         rng = self.getSelectedTimeRange()
         timeLbl = self.getTimeLabel(rng)
@@ -1305,22 +1326,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             pi.setXRange(self.tO-self.tickOffset, self.tE-self.tickOffset, 0.0)
 
         # Update ticks/labels on bottom axis, clear top axis
-        labelMode = self.getTimeLabelMode()
-        lastPlotIndex = len(self.plotItems) - 1
-        lastPlot = self.plotItems[lastPlotIndex]
-        tickAxis = lastPlot.getAxis('bottom')
-        tickAxis.updateTicks(self, labelMode)
-        topTicks = [(tv, '') for tv, ts in tickAxis._tickLevels[0]]
-        lastPlot.getAxis('top').setTicks([topTicks,[]])
-
-        # Update the other plot's tick marks to match (w/o labels)
-        for i in range(0, lastPlotIndex):
-            self.plotItems[i].getAxis('bottom').setTicks(tickAxis._tickLevels)
-            self.plotItems[i].getAxis('top').setTicks([topTicks,[]])
-
-        # Update additional tick labels, if there are any
         if self.pltGrd.labelSetGrd:
-            self.pltGrd.labelSetGrd.updateTicks(tickAxis._tickLevels)
+            startTick = self.tO-self.tickOffset
+            endTick = self.tE-self.tickOffset
+            self.pltGrd.labelSetGrd.setXRange(startTick, endTick, 0.0)
 
     # try to find good default plot strings
     def getDefaultPlotInfo(self):
@@ -1510,10 +1519,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 self.plotTracePens.append([None])
                 continue
 
-            axis = DateAxis(orientation='bottom')
-            axis.window = self
+            axis = DateAxis(self.epoch, orientation='bottom')
+            topAxis = DateAxis(self.epoch, orientation='top')
+            topAxis.setStyle(showValues=False)
             vb = MagPyViewBox(self, plotIndex)
-            pi = MagPyPlotItem(viewBox = vb, axisItems={'bottom': axis, 'left': LinkedAxis(orientation='left') })
+            pi = MagPyPlotItem(viewBox = vb, axisItems={'bottom': axis, 
+                'left': LinkedAxis(orientation='left'), 'top': topAxis })
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
             pi.setDownsampling(ds=1, auto=True, mode='peak')
@@ -1836,6 +1847,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def updateDynamicSpectra(self):
         if self.dynSpectra:
             self.dynSpectra.updateParameters()
+
+    def updateDynWave(self):
+        if self.dynWave:
+            self.dynWave.updateParameters()
 
     def updateCurvature(self):
         if self.curvature:

@@ -28,8 +28,14 @@ class BaseLayout(object):
         timeEdit = TimeEdit(QtGui.QFont())
         layout.addWidget(timeEdit.start)
         layout.addWidget(timeEdit.end)
+
+        layout.addItem(self.getSpacer(5))
+
         statusBar = QtWidgets.QStatusBar()
         layout.addWidget(statusBar)
+        timeEdit.start.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        timeEdit.end.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        statusBar.setSizePolicy(self.getSizePolicy('Min', 'Max'))
 
         return layout, timeEdit, statusBar
 

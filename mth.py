@@ -218,12 +218,9 @@ class Mth:
 
     # importing from waveAnalysis.py in magpy
 
-    def flip(a):   # flip and twist
-        return [[a[2][2], a[2][1], a[2][0]], [a[1][2], a[1][1], a[1][0]], [a[0][2], a[0][1], a[0][0]]]
+    def flip(a):   # Inverts row order then inverts column order
+        return a[:, ::-1][::-1, ...]
 
     def arpat(a, b):
         # A * B * A^T
-        A = np.array(a)
-        B = np.array(b)
-        AT = np.transpose(A)
-        return np.matmul(np.matmul(A,B),AT)
+        return np.matmul(np.matmul(a,b),a.T)

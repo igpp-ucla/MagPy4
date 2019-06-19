@@ -1355,8 +1355,8 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         self.ui.progBar.setVisible(False)
 
 class ParticlePlotItem(SpectrogramPlotItem):
-    def __init__(self, logMode=False):
-        SpectrogramPlotItem.__init__(self, logMode)
+    def __init__(self, epoch, logMode=False):
+        SpectrogramPlotItem.__init__(self, epoch, logMode)
 
     def plotSetup(self):
         SpectrogramPlotItem.plotSetup(self)
@@ -1614,7 +1614,7 @@ class MMSColorPltTool():
 
         # Initialize new plot item
         vb = SelectableViewBox(self.window, 0)
-        newBA = DateAxis(orientation='bottom')
+        newBA = DateAxis(self.window.epoch, orientation='bottom')
         newBA.window = self.window
         newLA = LinkedAxis(orientation='left')
         pltCopy = MagPyColorPlot(viewBox=vb, axisItems={'bottom':newBA, 'left':newLA})
@@ -1815,7 +1815,7 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
         # Create each plot from its value grid and any user parameters
         pltNum = 0
         for pixelGrid, lbl in zip(pixelGrids, labels):
-            plt = PitchAnglePlotItem()
+            plt = PitchAnglePlotItem(self.window.epoch)
 
             # Check if custom value range is set
             index = labels.index(lbl)
@@ -1858,10 +1858,6 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
             self.ui.glw.addItem(lbl, pltNum + 1, 0, 1, 1)
 
             # Update date time axis and set plot view ranges
-            rng = times[-1]-times[0]
-            mode = self.window.getTimeLabelMode(rng)
-            plt.getAxis('bottom').window = self.window
-            plt.updateTimeTicks(self.window, times[0], times[-1], mode)
             plt.setXRange(times[0], times[-1], 0.0)
             plt.setYRange(yVals[0], yVals[-1], 0.0)
 
@@ -1878,7 +1874,10 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
             lbl.setFixedWidth(40)
             self.ui.glw.addItem(lbl, pltNum + 1, 3, 1, 1)
             self.gradLabels.append(lbl)
+
+            # Set bottom axis defaults
             plt.getAxis('bottom').setStyle(showValues=True)
+            plt.getAxis('bottom').showLabel(False)
 
             pltNum += 1
 
@@ -2124,17 +2123,12 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
                 maxBox.setValue(maxVal)
 
         # Create color-mapped plot
-        plt = ParticlePlotItem(True)
+        plt = ParticlePlotItem(self.window.epoch, True)
         plt.createPlot(yVals, valGrid, times, (minVal, maxVal), logColorScale=logColor)
         title = 'Omni-directional ' + mode + ' Energy Spectrum'
 
         # Set plot title and update time ticks/labels
         plt.setTitle(title)
-        timeMode = self.window.getTimeLabelMode(times[-1]-times[0])
-        timeLabel = self.window.getTimeLabel(times[-1]-times[0])
-        plt.getAxis('bottom').window = self.window
-        plt.getAxis('bottom').updateTicks(self.window, timeMode, timeRange=(times[0], times[-1]))
-        plt.getAxis('bottom').setLabel(timeLabel)
 
         # Create gradient object
         grad = plt.getGradLegend(logMode=logColor, offsets=(plt.titleLabel.height()+6, 45))

@@ -14,11 +14,12 @@ from MagPy4UI import TimeEdit
 from spectraUI import SpectraUI, SpectraViewBox
 from layoutTools import BaseLayout
 from waveAnalysis import WaveAnalysis
+from dynamicSpectra import SpectraBase
 import functools
 import time
 from mth import Mth
 
-class Spectra(QtWidgets.QFrame, SpectraUI):
+class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
     def __init__(self, window, parent=None):
         super(Spectra, self).__init__(parent)
         self.window = window
@@ -85,17 +86,20 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         i0,i1 = self.getIndices(dstr, en)
         return i1-i0
 
+    def getBw(self):
+        bw = self.ui.bandWidthSpinBox.value()
+        return bw
+
     def getFreqs(self, dstr, en):
         N = self.getPoints(dstr, en)
         if N not in self.freqs:
-            self.freqs[N] = self.calculateFreqList(N)
+            self.freqs[N] = self.calculateFreqList(self.getBw(), N)
         return self.freqs[N]
 
     def getfft(self, dstr, en):
         if dstr not in self.ffts:
             i0,i1 = self.getIndices(dstr, en)
-            data = self.window.getData(dstr, en)[i0:i1]
-            fft = fftpack.rfft(data.tolist())
+            fft = SpectraBase.getfft(self, dstr, en, i0, i1)
             self.ffts[dstr] = fft
         return self.ffts[dstr]
 
@@ -149,13 +153,13 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 fft = self.getfft(dstr,en)
                 N = self.getPoints(dstr,en)
                 self.maxN = max(self.maxN,N)
-                power = self.calculatePower(fft, N)
+                power = self.calculatePower(self.getBw(), fft, N)
                 self.powers[dstr] = power
 
         # calculate coherence and phase from pairs
         c0 = self.ui.cohPair0.currentText()
         c1 = self.ui.cohPair1.currentText()
-        coh,pha = self.calculateCoherenceAndPhase(self.getfft(c0,0), self.getfft(c1,0), self.getPoints(c0,0))
+        coh,pha = self.calculateCoherenceAndPhase(self.getBw(), self.getfft(c0,0), self.getfft(c1,0), self.getPoints(c0,0))
         self.coh = coh
         self.pha = pha
 
@@ -390,78 +394,3 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             maxVal = np.log10(maxVal)
         for item in curRow:
             item[0].setYRange(minVal,maxVal)
-
-    def getCommonVars(self, N):
-        bw = self.ui.bandWidthSpinBox.value()
-        if bw % 2 == 0: # make sure its odd 
-            bw += 1
-            self.ui.bandWidthSpinBox.setValue(bw)
-        kmo = int((bw + 1) * 0.5)
-        nband = (N - 1) / 2
-        half = int(bw / 2)
-        nfreq = int(nband - bw + 1)
-        return bw,kmo,nband,half,nfreq
-
-    def calculateFreqList(self, N):
-        bw,kmo,nband,half,nfreq = self.getCommonVars(N)
-        nfreq = int(nband - half + 1) #try to match power length
-        C = N * self.window.resolution
-        freq = np.arange(kmo, nfreq) / C
-        #return np.log10(freq)
-        if len(freq) < 2:
-            print('Proposed spectra plot invalid!\nFrequency list has lass than 2 values')
-            return None
-        return freq
-
-    def calculatePower(self, fft, N):
-        bw,kmo,nband,half,nfreq = self.getCommonVars(N)
-        C = 2 * self.window.resolution / N
-        fsqr = [ft * ft for ft in fft]
-        power = [0] * nfreq
-        for i in range(nfreq):
-            km = kmo + i
-            kO = int(km - half)
-            kE = int(km + half) + 1
-
-            power[i] = sum(fsqr[kO * 2 - 1:kE * 2 - 1]) / bw * C
-
-        return power
-
-    def calculateCoherenceAndPhase(self, fft0, fft1, N):
-        bw,kmo,nband,half,nfreq = self.getCommonVars(N)
-        kStart = kmo - half
-        kSpan = half * 4 + 1
-
-        csA = fft0[:-1] * fft1[:-1] + fft0[1:] * fft1[1:]
-        qsA = fft0[:-1] * fft1[1:] - fft1[:-1] * fft0[1:]
-        pAA = fft0[:-1] * fft0[:-1] + fft0[1:] * fft0[1:]
-        pBA = fft1[:-1] * fft1[:-1] + fft1[1:] * fft1[1:]
-
-        csSum = np.zeros(nfreq)
-        qsSum = np.zeros(nfreq)
-        pASum = np.zeros(nfreq)
-        pBSum = np.zeros(nfreq)
-
-        for n in range(nfreq):
-            KO = (kStart + n) * 2 - 1
-            KE = KO + kSpan
-
-            csSum[n] = sum(csA[KO:KE:2])
-            qsSum[n] = sum(qsA[KO:KE:2])
-            pASum[n] = sum(pAA[KO:KE:2])
-            pBSum[n] = sum(pBA[KO:KE:2])
-
-        coh = (csSum * csSum + qsSum * qsSum) / (pASum * pBSum)
-        pha = np.arctan2(qsSum, csSum) * Mth.R2D
-
-        # wrap phase
-        n = pha.size
-        for i in range(1,n):
-            pha0 = pha[i-1]
-            pha1 = pha[i]
-            if pha0 > 90 and pha1 < -90:
-                pha[i] += 360
-            elif pha0 < -90 and pha1 > 90:
-                pha[i] -= 360
-
-        return coh,pha

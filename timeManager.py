@@ -3,7 +3,6 @@ from PyQt5.QtWidgets import QSizePolicy
 import FF_File
 from FF_Time import FFTIME, leapFile
 from dataDisplay import UTCQDate
-from MagPy4UI import TimeEdit
 import bisect
 
 class TimeManager(object):

@@ -14,7 +14,6 @@ from spectra import Spectra
 
 import pyqtgraph as pg
 import numpy as np
-
 from scipy import signal
 import functools
 
@@ -257,7 +256,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
             # Build plot item
             la = LinkedAxis(orientation='left')
-            ba = DateAxis(orientation='bottom')
+            ba = DateAxis(self.epoch, orientation='bottom',)
             vb = SelectableViewBox(self, plotNum)
             plt = pg.PlotItem(viewBox=vb, axisItems={'left':la, 'bottom':ba})
             self.plotItems.append(plt)
@@ -318,9 +317,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         self.pltGrd.setTimeLabel(lbl)
 
         # Update time ticks
-        ba.window = self.window
         ba.tickOffset = self.tickOffset
-        ba.updateTicks(self.window, mode, timeRange=(startTime, endTime))
         ba.setStyle(showValues=True)
 
         # Link plots if necessary

@@ -1,11 +1,17 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
+from dynamicSpectra import DynamicAnalysisTool, SpectrogramPlotItem, PhaseSpectrogram
+from layoutTools import BaseLayout
+from pyqtgraphExtensions import StackedAxisLabel
+from scipy import fftpack
+import pyqtgraph as pg
 
 import numpy as np
 from mth import Mth
+import bisect
 import math
-from MagPy4UI import MatrixWidget
+from MagPy4UI import MatrixWidget, NumLabel
 import functools
 import os
 
@@ -21,7 +27,7 @@ class WaveAnalysisUI(object):
         self.axLayout = QtWidgets.QGridLayout()
         self.window = window
         defaultPlots = self.window.getDefaultPlotInfo()[0]
-        axes = ['X','Y','Z','T']
+        axes = ['X','Y','Z']
         self.axesDropdowns = []
         for i,ax in enumerate(axes):
             dd = QtGui.QComboBox()
@@ -298,7 +304,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         return self.spectra.getFreqs(self.ui.axesDropdowns[0].currentText(), 0)
 
     def updateCalculations(self):
-        """ update all wave analysis values and corresponding UI elements """
+        """ Update all wave analysis values and corresponding UI elements """
 
         en = self.window.currentEdit
         dstrs = [dd.currentText() for dd in self.ui.axesDropdowns]
@@ -315,31 +321,31 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.ui.minFreqIndex.setValue(fO)
         self.ui.maxFreqIndex.setValue(fE)
 
-        # Generate the indices (relative to fO*2) in ffts arrays corresponding to a freq num
-        # since each freq corresponds to a (cos, sin) pair in the fast fourier transformed values
-        # Starts at index 1 (see scipy rfft documentation)
-        k = fE - fO - 1
-        counts = np.array(range(int(k))) + 1 
-        steps = 2 * counts - 1
-
+        # Each fft value corresponds to a cos,sin pair (real, imag), so
+        # start at fO*2
         ffts = [fft[fO*2:fE*2] for fft in ffts]
         deltaf = 2.0 / (self.spectra.maxN * self.spectra.maxN)
 
-        # Compute real part of matrix's diagonals
-        sqrs = [fft * fft for fft in ffts]
-        ps = [sum([sq[i] + sq[i + 1] for i in steps]) * deltaf for sq in sqrs]
+        # Complex version of spectral matrix calculations
+        cffts = [self.spectra.fftToComplex(fft) for fft in ffts]
+        numIndices = len(cffts[0]) - 1
 
-        # (x,y), (x,z), (y,z)
-        axisPairs = [(ffts[0],ffts[1]),(ffts[0],ffts[2]),(ffts[1],ffts[2])]
-        # Compute real part of matrix's off-diagonals and the elements in the
-        # imaginary matrix that can be used to compute the wave normal vector
-        cs = [sum([fft0[i] * fft1[i] + fft0[i + 1] * fft1[i + 1] for i in steps]) * deltaf for fft0,fft1 in axisPairs]
-        qs = [sum([fft0[i] * fft1[i + 1] - fft0[i + 1] * fft1[i] for i in steps]) * deltaf for fft0,fft1 in axisPairs]
+        # Compute H * H_star (freq * freq_conjugate)
+        mats = self.spectra.computeSpectralMats(cffts)
 
-        realPower = [[ps[0], cs[0], cs[1]], [cs[0], ps[1], cs[2]], [cs[1], cs[2], ps[2]]]
-        imagPower = [[0.0, -qs[0], -qs[1]], [qs[0], 0.0, -qs[2]], [qs[1], qs[2], 0.0]]
+        # Sum over each matrix
+        sumMat = sum(mats) * deltaf
 
-        prec = 7
+        # Cospectrum matrix is the real part of the matrix
+        # Quadrature matrix is the imaginary part of the matrix
+        realPower = sumMat.real
+        imagPower = sumMat.imag
+        # Extract relavent values from spectral matrix
+        numPairs = [(0, 1), (0, 2), (1, 2)]
+        qs = [imagPower[i][j] for i,j in numPairs]
+        cs = [realPower[i][j] for i,j in numPairs]
+
+        prec = 6
         self.ui.rpMat.setMatrix(np.round(realPower, prec))
         self.ui.ipMat.setMatrix(np.round(imagPower, prec))
 
@@ -351,19 +357,18 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
 
         # Wave propogation direction
         qqq = np.linalg.norm(qs)
-        qkem = np.array([-qs[2] / qqq, qs[1] / qqq, -qs[0] / qqq])
+        qkem = np.array([qs[2] / qqq, -qs[1] / qqq, qs[0] / qqq])
 
-        qqqd = avg[3]
-        qqqp = np.linalg.norm(avg[:-1])
-        qqqn = np.dot(qkem, avg[:-1])
+        qqqp = np.linalg.norm(avg)
+        qqqn = np.dot(qkem, avg)
         if qqqn < 0:
             qkem = qkem * -1
-            qqqn = np.dot(qkem, avg[:-1])
+            qqqn = np.dot(qkem, avg)
         qqq = qqqn / qqqp
         qtem = Mth.R2D * math.acos(qqq) # field angle
         qqq = np.linalg.norm(cs)
         qdlm = np.array(cs[::-1] / qqq)
-        qqqn = np.dot(qdlm, avg[:-1])
+        qqqn = np.dot(qdlm, avg)
         qqq = qqqn / qqqp
         qalm = Mth.R2D * math.acos(qqq)
 
@@ -468,3 +473,729 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         html =  f"{head}{polar}{ellip}{angle}</table></HTML>"
         self.ui.wolfText.setText(html)
 
+class DynamicWaveUI(BaseLayout):
+    def setupUI(self, Frame, window, params):
+        maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
+        Frame.setWindowTitle('Dynamic Wave Analysis')
+        Frame.resize(800, 775)
+        layout = QtWidgets.QGridLayout(Frame)
+
+        # Setup time edits / status bar and the graphics frame
+        lt, self.timeEdit, self.statusBar = self.getTimeStatusBar()
+        self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
+        self.glw = self.getGraphicsGrid(window)
+
+        # Set up user-set parameters interface
+        settingsLt = self.setupSettingsLt(Frame, window, params)
+
+        layout.addLayout(settingsLt, 0, 0, 1, 1)
+        layout.addWidget(self.gview, 1, 0, 1, 1)
+        layout.addLayout(lt, 2, 0, 1, 1)
+
+    def initVars(self, window):
+        # Initialize the number of data points in selected range
+        minTime, maxTime = window.getTimeTicksFromTimeEdit(self.timeEdit)
+        times = window.getTimes(self.vectorBoxes[0].currentText(), 0)[0]
+        startIndex = window.calcDataIndexByTime(times, minTime)
+        endIndex = window.calcDataIndexByTime(times, maxTime)
+        nPoints = abs(endIndex-startIndex)
+        self.fftDataPts.setText(str(nPoints))
+
+    def setupSettingsLt(self, Frame, window, params):
+        layout = QtWidgets.QGridLayout()
+
+        # Set up plot type parameters
+        self.waveParam = QtWidgets.QComboBox()
+        self.waveParam.addItems(params)
+        self.waveParam.currentTextChanged.connect(self.plotTypeToggled)
+        self.addPair(layout, 'Plot Type: ', self.waveParam, 0, 0, 1, 1)
+
+        # Set up axis vector dropdowns
+        vecLt = QtWidgets.QHBoxLayout()
+        self.vectorBoxes = []
+        layout.addWidget(QtWidgets.QLabel('Vector: '), 1, 0, 1, 1)
+        for i in range(0, 3):
+            box = QtWidgets.QComboBox()
+            vecLt.addWidget(box)
+            self.vectorBoxes.append(box)
+        layout.addLayout(vecLt, 1, 1, 1, 1)
+
+        # Get axis vector variables to add to boxes
+        allDstrs = window.DATASTRINGS[:]
+        axisDstrs = Frame.getAxesStrs(allDstrs)
+        # If missing an axis variable, use all dstrs as default
+        lstLens = list(map(len, axisDstrs))
+        if min(lstLens) == 0:
+            defaultDstrs = allDstrs[0:3]
+            for dstr, box in zip(defaultDstrs, self.vectorBoxes):
+                box.addItems(allDstrs)
+                box.setCurrentText(dstr)
+        else: # Otherwise use defaults
+            for dstrLst, box in zip(axisDstrs, self.vectorBoxes):
+                box.addItems(dstrLst)
+
+        # Setup data points indicator
+        self.fftDataPts = QtWidgets.QLabel()
+        ptsTip = 'Total number of data points within selected time range'
+        self.addPair(layout, 'Data Points: ', self.fftDataPts, 2, 0, 1, 1, ptsTip)
+
+        # Set up FFT parameters layout
+        fftLt = self.setupFFTLayout()
+        layout.addLayout(fftLt, 0, 3, 3, 1)
+
+        # Set up y-axis scale mode box above range layout
+        scaleTip = 'Scaling mode that will be used for y-axis (frequencies)'
+        self.scaleModeBox = QtWidgets.QComboBox()
+        self.scaleModeBox.addItems(['Linear', 'Logarithmic'])
+        self.addPair(layout, 'Scaling: ', self.scaleModeBox, 0, 5, 1, 1, scaleTip)
+
+        # Set up toggle/boxes for setting color gradient ranges
+        rangeLt = self.setRangeLt()
+        layout.addLayout(rangeLt, 1, 5, 2, 2)
+
+        # Add in spacers between columns
+        for col in [2, 4]:
+            for row in range(0, 3):
+                spcr = self.getSpacer(5)
+                layout.addItem(spcr, row, col, 1, 1)
+
+        # Initialize default values
+        self.valRngToggled(False)
+        self.plotTypeToggled(self.waveParam.currentText())
+
+        # Add in update button
+        self.updtBtn = QtWidgets.QPushButton('Update')
+        self.updtBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        layout.addWidget(self.updtBtn, 2, 7, 1, 1)
+
+        return layout
+
+    def setupFFTLayout(self):
+        layout = QtWidgets.QGridLayout()
+        row = 0
+        # Set up fft parameter spinboxes
+        self.fftShift = QtWidgets.QSpinBox()
+        self.fftInt = QtWidgets.QSpinBox()
+        self.fftInt.setMaximum(1e10)
+
+        self.fftInt.setValue(256)
+        self.fftShift.setValue(64)
+
+        # Set up bandwidth spinbox
+        self.bwBox = QtWidgets.QSpinBox()
+        self.bwBox.setSingleStep(2)
+        self.bwBox.setValue(3)
+        self.bwBox.setMinimum(1)
+
+        fftIntTip = 'Number of data points to use per FFT calculation'
+        shiftTip = 'Number of data points to move forward after each FFT calculation'
+        scaleTip = 'Scaling mode that will be used for y-axis (frequencies)'
+
+        # Add fft settings boxes and labels to layout
+        self.addPair(layout, 'FFT Interval: ', self.fftInt, row, 0, 1, 1, fftIntTip)
+        self.addPair(layout, 'FFT Shift: ', self.fftShift,  row+1, 0, 1, 1, shiftTip)
+        self.addPair(layout, 'Bandwidth: ', self.bwBox, row+2, 0, 1, 1, scaleTip)
+
+        return layout
+
+    def addTimeInfo(self, timeRng, window):
+        # Convert time ticks to tick strings
+        startTime, endTime = timeRng
+        startStr = window.getTimestampFromTick(startTime)
+        endStr = window.getTimestampFromTick(endTime)
+
+        # Remove day of year
+        startStr = startStr[:4] + startStr[8:]
+        endStr = endStr[:4] + endStr[8:]
+
+        # Create time label widget and add to grid layout
+        timeLblStr = 'Time Range: ' + startStr + ' to ' + endStr
+        self.timeLbl = pg.LabelItem(timeLblStr)
+        self.timeLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.glw.nextRow()
+        self.glw.addItem(self.timeLbl, col=0)
+
+    def setRangeLt(self):
+        self.selectToggle = QtWidgets.QCheckBox('Set Range:')
+        self.selectToggle.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        rangeLt = QtWidgets.QGridLayout()
+
+        rngTip = 'Toggle to set max/min values represented by color gradient'
+        self.selectToggle.setToolTip(rngTip)
+
+        minTip = 'Minimum value represented by color gradient'
+        maxTip = 'Maximum value represented by color gradient'
+
+        self.valueMin = QtWidgets.QDoubleSpinBox()
+        self.valueMax = QtWidgets.QDoubleSpinBox()
+
+        # Set spinbox defaults
+        for box in [self.valueMax, self.valueMin]:
+            box.setMinimum(-100)
+            box.setMaximum(100)
+            box.setFixedWidth(85)
+
+        spc = '       ' # Spaces that keep spinbox lbls aligned w/ chkbx lbl
+
+        rangeLt.addWidget(self.selectToggle, 0, 0, 1, 1, QtCore.Qt.AlignLeft)
+        self.maxLbl = self.addPair(rangeLt, 'Max: ', self.valueMax, 0, 1, 1, 1, maxTip)
+        self.minLbl = self.addPair(rangeLt, 'Min: ', self.valueMin, 1, 1, 1, 1, minTip)
+
+        # Connects checkbox to func that enables/disables rangeLt's items
+        self.selectToggle.toggled.connect(self.valRngToggled)
+        return rangeLt
+
+    def valRngToggled(self, val):
+        self.valueMax.setEnabled(val)
+        self.valueMin.setEnabled(val)
+        self.minLbl.setEnabled(val)
+        self.maxLbl.setEnabled(val)
+    
+    def plotTypeToggled(self, val):
+        # Update value spinbox min/max values and deselect
+        self.valRngToggled(False)
+        self.selectToggle.setChecked(False)
+        minVal, maxVal = (-1, 1)
+        step = 0.1
+        prefix = ''
+        if 'Angle' in val:
+            minVal, maxVal = (-180, 180)
+            step = 10
+        elif 'Power' in val:
+            minVal, maxVal = (-100, 100)
+            step = 1
+            prefix = '10^'
+
+        for box in [self.valueMax, self.valueMin]:
+            box.setMinimum(minVal)
+            box.setMaximum(maxVal)
+            box.setSingleStep(step)
+            box.setPrefix(prefix)
+
+class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
+    def __init__(self, window, parent=None):
+        super(DynamicWave, self).__init__(parent)
+        DynamicAnalysisTool.__init__(self)
+        self.ui = DynamicWaveUI()
+        self.window = window
+        self.wasClosed = False
+
+        # Default settings / labels for each plot type
+        self.defParams = { # Value range, grad label, grad label units
+            'Azimuth Angle' : ((-90, 90), 'Azimuth Angle', 'Degrees'),
+            'Ellipticity (Means)' : ((-1.0, 1.0), 'Ellipticity', None),
+            'Ellipticity (Born-Wolf)' : ((-1.0, 1.0), 'Ellipticity', None),
+            'Propagation Angle (Means)' : ((0, 90), 'Propagation Angle',
+                'Degrees'),
+            'Propagation Angle (Least Var)' : ((0, 180), 'Propagation Angle', 
+                'Degrees'),
+            'Power Spectra Trace' : (None, 'Log Power', 'nT^2/Hz'),
+            'Compressional Power' : (None, 'Log Power', 'nT^2/Hz')
+        }
+
+        # Sorts plot type names into groups
+        self.plotGroups = {'Angle' : [], 'Ellipticity' : [], 'Power' : []}
+        for plotType in self.defParams.keys():
+            for kw in self.plotGroups.keys():
+                if kw in plotType:
+                    self.plotGroups[kw].append(plotType)
+                    break
+
+        self.currIndices = None # Indices to be used for current calculation
+        self.prevIndices = None # Indices used for last calculation
+
+        self.fftDict = {} # Stores dicts for each dstr, second key is indices
+        self.avgDict = {}
+
+        self.lastCalc = None # Stores last calculated times, freqs, values
+
+        self.ui.setupUI(self, window, self.defParams.keys())
+        self.ui.updtBtn.clicked.connect(self.update)
+        self.ui.timeEdit.start.dateTimeChanged.connect(self.updateParameters)
+        self.ui.timeEdit.end.dateTimeChanged.connect(self.updateParameters)
+
+        self.preWindow = None # Window used to pre-select information
+        self.showPreSelectWin()
+
+    def closeEvent(self, ev):
+        self.close()
+        self.closePreSelectWin()
+        self.window.endGeneralSelect()
+
+    def setUserSelections(self):
+        if self.preWindow:
+            # Set UI's values to match those in the preselect window & close it
+            plotType, vectorDstrs, scaling, bw = self.preWindow.getParams()
+            self.ui.waveParam.setCurrentText(plotType)
+            self.ui.scaleModeBox.setCurrentText(scaling)
+            self.ui.bwBox.setValue(bw)
+            for box, axStr in zip(self.ui.vectorBoxes, vectorDstrs):
+                box.setCurrentText(axStr)
+            self.closePreSelectWin()
+
+    def update(self):
+        fftInt = self.ui.fftInt.value()
+        fftShift = self.ui.fftShift.value()
+        plotType = self.ui.waveParam.currentText()
+        dtaRng = self.window.calcDataIndicesFromLines(self.window.DATASTRINGS[0], 0)
+        bw = self.ui.bwBox.value()
+        logScale = False if self.ui.scaleModeBox.currentText() == 'Linear' else True
+
+        # Error checking for user parameters
+        if self.checkParameters(fftInt, fftShift, bw, dtaRng[1]-dtaRng[0]) == False:
+            return
+
+        self.updateCalculations(plotType, fftInt, fftShift, dtaRng, bw, logScale)
+
+    def computeMag(self, dtaRng):
+        # Computes the magnitude of the vector for every index in dtaRng
+        sI, eI = dtaRng
+        numVals = eI - sI
+
+        dstrs = [box.currentText() for box in self.ui.vectorBoxes]
+        dtas = [self.window.getData(dstr, self.window.currentEdit) for dstr in dstrs]
+
+        magDta = [np.sqrt(dtas[0][i] ** 2 + dtas[1][i]**2 + dtas[2][i]**2) for i in range(sI, eI)]
+        fullDta = np.empty(len(dtas[0]))
+        fullDta[dtaRng[0]:dtaRng[1]] = magDta
+        return list(fullDta)
+
+    def updateCalculations(self, plotType, fftInt, fftShift, dtaRng, bw, logScale):
+        self.ui.glw.clear() # Clear any previous grid elements
+
+        # Get selected indices and times
+        self.currIndices = dtaRng
+        minIndex, maxIndex = dtaRng
+        times = self.window.getTimes(self.window.DATASTRINGS[0], 0)[0]
+
+        # Get full list of frequencies to be used when averaging by bandwidth
+        freqs = self.calculateFreqList(1, fftInt)
+        numFreqs = len(freqs)
+
+        # Special vector magnitude pre-calculation for compress power
+        magDta = None
+        if plotType == 'Compressional Power':
+            magDta = self.computeMag(dtaRng)
+
+        # Calculate values in grid
+        self.ui.statusBar.showMessage('Calculating...')
+        timeStops = []
+        valGrid = []
+        startIndex, stopIndex = minIndex, minIndex + fftInt
+        while stopIndex < maxIndex:
+            timeStops.append(times[startIndex])
+            dta = self.calcWaveAveraged(plotType, (startIndex, stopIndex), bw,
+                numFreqs, magDta=magDta)
+            valGrid.append(dta)
+            startIndex += fftShift
+            stopIndex = startIndex + fftInt
+
+        # Add in last bounding time tick
+        timeStops.append(times[startIndex])
+        timeStops = np.array(timeStops)
+
+        # Transpose to turn time result rows into columns
+        valGrid = np.array(valGrid).T
+
+        # Calculate frequencies for plotting and extra frequency for lower bound
+        freqs = self.calculateFreqList(bw, fftInt)
+        self.lastCalc = (timeStops, freqs, valGrid)
+        diff = freqs[1] - freqs[0]
+        if logScale and freqs[0] - diff <= 0:
+            diff = diff * 0.5
+        lowerBnd = freqs[0] - diff
+        freqs = [lowerBnd] + list(freqs)
+
+        defaultRng, gradStr, gradUnits = self.defParams[plotType]
+
+        # Determine color gradient range
+        logColorScale = True if plotType in self.plotGroups['Power'] else False
+        if self.ui.selectToggle.isChecked():
+            minVal, maxVal = self.ui.valueMin.value(), self.ui.valueMax.value()
+            if logColorScale:
+                minVal = 10 ** minVal
+                maxVal = 10 ** maxVal
+            colorRng = (minVal, maxVal)
+        else: # Color range not set by user
+            if logColorScale:
+                colorRng = (np.min(valGrid[valGrid>0]), np.max(valGrid[valGrid>0]))
+            else:
+                colorRng = (np.min(valGrid), np.max(valGrid))
+            colorRng = defaultRng if defaultRng is not None else colorRng
+
+        # Generate spectrogram from set parameters and value grid
+        self.ui.statusBar.showMessage('Generating plot...')
+        plt = SpectrogramPlotItem(self.window.epoch, logScale)
+        if plotType in self.plotGroups['Angle'] and colorRng == (-180, 180):
+            plt = PhaseSpectrogram(self.window.epoch, logScale)
+        plt.createPlot(freqs, valGrid, timeStops, colorRng, logColorScale=logColorScale,
+            winFrame=self)
+
+        # Set axis labels
+        plt.setTitle(plotType, size='13pt')
+        yPrefix = 'Log ' if logScale else ''
+        plt.getAxis('left').setLabel(yPrefix + 'Frequency (Hz)')
+        self.ui.glw.addItem(plt, 0, 0, 1, 1)
+
+        # Add in color gradient
+        grad = plt.getGradLegend(logColorScale, offsets=(31, 47))
+        grad.updateWidth(35)
+        grad.setFixedWidth(65)
+        self.ui.glw.nextCol()
+        self.ui.glw.addItem(grad)
+    
+        # Add in gradient label
+        if gradUnits is None:
+            gradLbl = StackedAxisLabel([gradStr])
+        else:
+            gradLbl = StackedAxisLabel([gradStr, '['+gradUnits+']'])
+        self.ui.glw.nextCol()
+        self.ui.glw.addItem(gradLbl)
+        gradLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+
+        # Add in time information at bottom
+        self.ui.addTimeInfo((timeStops[0], timeStops[-1]), self.window)
+
+        self.ui.statusBar.clearMessage()
+
+    def checkIndices(self):
+        # Reset dictionaries if indices changed
+        if self.currIndices is None or self.currIndices != self.prevIndices:
+            self.prevIndices = self.currIndices
+            self.fftDict = {}
+            self.avgDict = {}
+
+    def getAvg(self, dstr, en, iO, iE):
+        self.checkIndices()
+
+        # Calculate average or get from dictionary
+        if dstr not in self.avgDict.keys():
+            self.avgDict[dstr] = {}
+        if (iO, iE) not in self.avgDict[dstr].keys():
+            dta = self.window.getData(dstr, en)
+            avg = np.mean(dta)
+            self.avgDict[dstr][(iO, iE)] = avg
+            return avg
+        else:
+            return self.avgDict[dstr][(iO, iE)]
+
+    def getfft(self, dstr, en, iO, iE):
+        self.checkIndices()
+
+        # Calculate fft or get data from dictionary
+        if dstr not in self.fftDict.keys():
+            self.fftDict[dstr] = {}
+        if (iO, iE) not in self.fftDict[dstr].keys():
+            res = DynamicAnalysisTool.getfft(self, dstr, en, iO, iE)
+            self.fftDict[dstr][(iO, iE)] = res
+            return res
+        else:
+            return self.fftDict[dstr][(iO, iE)]
+
+    def getNorm(self, v):
+        # Faster than np.linalg.norm
+        return np.sqrt(np.dot(v,v))
+
+    def calcWaveAveraged(self, plotType, dtaRng, bw, numFreqs, magDta=None):
+        halfBw = int((bw-1)/2) # Num of frequencies on either side of freqNum
+
+        # Calculate the bw-averaged wave parameter over the data range
+        sumMats = self.getAvgMats(dtaRng, numFreqs, bw, magDta)
+        averagedDta = self.calcWave(plotType, (halfBw, numFreqs-halfBw), dtaRng, 
+            bw, sumMats)
+
+        return averagedDta
+
+    def getAvgMats(self, dtaRng, numFreqs, bw, magDta=None):
+        # Computes all the bw-averaged spectral mats for every valid freq index
+        minIndex, maxIndex = dtaRng
+        halfBw = int((bw-1)/2)
+
+        en = self.window.currentEdit
+        dstrs = [box.currentText() for box in self.ui.vectorBoxes]
+        ffts = [self.getfft(dstr,en, minIndex, maxIndex) for dstr in dstrs]
+
+        # Also pre-computes the magnitude fft used to calculate compressional
+        # power if needed
+        if magDta is not None:
+            if '_Avg' not in self.fftDict.keys():
+                self.fftDict['_Avg'] = {}
+            subsetDta = magDta[minIndex:maxIndex]
+            fft = fftpack.rfft(subsetDta)
+            self.fftDict['_Avg'][dtaRng] = fft
+
+        # Complex version of calculations
+        cffts = [self.fftToComplex(fft) for fft in ffts]
+        individualMats = self.computeSpectralMats(cffts)
+
+        # Compute first sum up to halfBw
+        currSum = np.zeros((3, 3), dtype=np.complex)
+        for i in range(0, halfBw+halfBw+1):
+            currSum += individualMats[i]
+
+        # Compute a running sum (equiv. to sum(individualMats[i-halfBw:i+halfBw+1]))
+        mats = np.empty((numFreqs, 3, 3), dtype=np.complex)
+        mats[halfBw] = currSum
+        for i in range(halfBw+1, numFreqs-halfBw):
+            currSum = currSum - individualMats[i-halfBw-1] + individualMats[i+halfBw]
+            mats[i] = currSum
+        return mats
+
+    def calcWave(self, plotType, indexRange, dtaRng, bw, sumMats):
+        minIndex, maxIndex = dtaRng
+        numPoints = maxIndex - minIndex
+        valLst = []
+
+        numPairs = [(0, 1), (0, 2), (1, 2)] # Matrix indices used in calculations
+        deltaf = (2.0 * self.window.resolution) / (numPoints * bw)
+
+        if plotType in ['Ellipticity (Means)', 'Azimuth Angle',
+            'Propagation Angle (Means)', 'Propagation Angle (Least Var)']:
+            # Compute the average field for each dstr within the given time range
+            avg = []
+            for dstr in [box.currentText() for box in self.ui.vectorBoxes]:
+                sI, eI = dtaRng
+                dstrAvg = self.getAvg(dstr, self.window.currentEdit, sI, eI)
+                avg.append(dstrAvg)
+        
+        if plotType == 'Compressional Power':
+            # Computes the compressional power all at once
+            halfBw = int((bw-1)/2)
+            fftLst = self.fftDict['_Avg'][dtaRng]
+            fftReal, fftImag = self.splitfft(fftLst)
+            fftDouble = ((fftReal[:len(fftImag)] ** 2) + (fftImag ** 2)) * deltaf
+            powerSum = []
+            for i in range(indexRange[0], indexRange[1]):
+                avgSum = 0
+                for subIndex in range(i-halfBw, i+halfBw+1):
+                    avgSum += fftDouble[subIndex] # fftReal^2 + fftImag^2
+                powerSum.append(np.abs(avgSum))
+            return powerSum
+
+        for index in range(indexRange[0], indexRange[1]):
+            # Get the pre-computed averaged cospectral matrix
+            sumMat = sumMats[index] * deltaf
+
+            # Cospectrum matrix is the real part of the matrix
+            # Quadrature matrix is the imaginary part of the matrix
+            realPower = sumMat.real
+            imagPower = sumMat.imag
+
+            # Extract info needed for wave propagation direction & angle calculations
+            qs = [imagPower[i][j] for i,j in numPairs]
+            cs = [realPower[i][j] for i,j in numPairs]
+
+            prec = 7
+
+            if plotType in self.plotGroups['Power']:
+                pwspectra = np.abs(np.trace(realPower))
+                valLst.append(pwspectra)
+                continue
+
+            if plotType in ['Ellipticity (Means)', 'Azimuth Angle',
+                'Propagation Angle (Means)', 'Propagation Angle (Least Var)']:
+                # Wave propogation direction
+                qqq = self.getNorm(qs)
+                qkem = np.array([qs[2] / qqq, -qs[1] / qqq, qs[0] / qqq])
+
+                qqqp = self.getNorm(avg)
+                qqqn = np.dot(qkem, avg)
+                if qqqn < 0:
+                    qkem = qkem * -1
+                    qqqn = -1 * qqqn
+                qqq = qqqn / qqqp
+                qtem = Mth.R2D * math.acos(qqq) # field angle
+                qqq = self.getNorm(cs)
+                qdlm = np.array(cs[::-1] / qqq)
+                qqqn = np.dot(qdlm, avg)
+                qqq = qqqn / qqqp
+                qalm = Mth.R2D * math.acos(qqq)
+
+                if plotType == 'Propagation Angle (Means)':
+                    valLst.append(qtem)
+                    continue
+                elif plotType == 'Propagation Angle (Least Var)':
+                    valLst.append(qalm)
+                    continue
+
+                # Means transformation matrix
+                yx = qkem[1] * avg[2] - qkem[2] * avg[1]
+                yy = qkem[2] * avg[0] - qkem[0] * avg[2]
+                yz = qkem[0] * avg[1] - qkem[1] * avg[0]
+                qyxyz = self.getNorm([yx, yy, yz])
+                yx = yx / qyxyz
+                yy = yy / qyxyz
+                yz = yz / qyxyz
+                xx = yy * qkem[2] - yz * qkem[1]
+                xy = yz * qkem[0] - yx * qkem[2]
+                xz = yx * qkem[1] - yy * qkem[0]
+
+                bmat = np.array([[xx, xy, xz], [yx, yy, yz], qkem])
+                tmat = Mth.arpat(bmat, sumMat)
+                trm = tmat.real # transformed real matrix
+                tim = tmat.imag # transformed imaginary matrix
+                elip, azim = self.joeMeansElip(trm, tim)
+                if plotType == 'Ellipticity (Means)':
+                    valLst.append(elip)
+                    continue
+                else:
+                    valLst.append(azim)
+                    continue
+            else:
+                duhh, amat = np.linalg.eigh(realPower, UPLO="U")
+                amat = np.transpose(amat)
+                # Transformed Values Spectral Matrices 
+                tmat = Mth.arpat(amat, sumMat)
+                tmat = Mth.flip(tmat)
+                trp = tmat.real
+                tip = tmat.imag
+                elip = self.bornWolfElip(trp, tip)
+                valLst.append(elip)
+                continue
+        return valLst
+
+    def bornWolfElip(self, trp, tip):
+        # Calculate polarization/ellipticity parameters by Born-Wolf
+        trj = trp[0][0] + trp[1][1]
+        detj = trp[0][0] * trp[1][1] - trp[1][0] * trp[1][0] - tip[1][0] * tip[1][0]
+
+        vetm = trj * trj - 4.0 * detj
+        eden = 1 if vetm <= 0 else math.sqrt(vetm)
+        fnum = 2 * tip[0][1] / eden
+        if (trp[0][1] < 0):
+            elip = -1.0*math.tan(0.5*math.asin(fnum))
+        else:
+            elip = math.tan(0.5*math.asin(fnum))
+        return elip
+
+    def joeMeansElip(self, trm, tim):
+        """
+		Given transformed versions of real and imaginary powers and matrices
+		calculate polarization and ellipticity (both with joe means versions), and azimuth angle
+		"""
+        # Calculate polarization/ellipticity parameters by Joe Means method
+        trj = trm[0][0] + trm[1][1]
+        detj=trm[0][0]*trm[1][1]-trm[0][1]*trm[1][0]-tim[1][0]*tim[1][0]
+
+        vetm = trj * trj - 4.0 * detj
+        eden = 1 if vetm <= 0 else math.sqrt(vetm)
+        fnum = 2.0 * tim[0][1] / eden
+        elipm = math.tan(0.5 * math.asin(fnum))
+
+        # Calculate azimuth angle
+        fnum = 2.0 * trm[0][1]
+        difm = trm[0][0] - trm[1][1]
+        angle = fnum / difm
+        azim = 0.5 * math.atan(angle) * Mth.R2D
+        return elipm, azim
+
+    def getAxesStrs(self, dstrs):
+        # Try to find variables matching the 'X Y Z' variable naming convention
+        axisKws = ['X','Y','Z']
+        axisDstrs = [[], [], []]
+
+        kwIndex = 0
+        for kw in axisKws:
+            for dstr in dstrs:
+                if kw.lower() in dstr.lower():
+                    axisDstrs[kwIndex].append(dstr)
+            kwIndex += 1
+        return axisDstrs
+
+    def showPointValue(self, freq, time):
+        plotType = self.ui.waveParam.currentText()
+        rng, gradStr, gradUnits = self.defParams[plotType]
+        if gradStr == 'Log Power':
+            gradStr = 'Power'
+        self.showValue(freq, time, 'Freq, '+gradStr+': ', self.lastCalc)
+
+    def showPreSelectWin(self):
+        self.preWindow = PreDynWave(self)
+        self.preWindow.show()
+    
+    def closePreSelectWin(self):
+        if self.preWindow:
+            self.preWindow.close()
+            self.preWindow = None
+
+class PreDynWaveUI(BaseLayout):
+    def setupUI(self, winFrame, dynWindow):
+        maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
+        winFrame.setWindowTitle('Wave Analysis Parameters')
+        winFrame.resize(100, 100)
+        winFrame.move(0, 0)
+        layout = QtWidgets.QGridLayout(winFrame)
+
+        # Set up help text
+        helpTxt = 'Pre-select the following parameters and then select a time region:'
+        helpLbl = QtWidgets.QLabel(helpTxt)
+        layout.addWidget(helpLbl, 0, 0, 1, 4)
+
+        self.waveParam = QtWidgets.QComboBox()
+        self.waveParam.addItems(dynWindow.defParams.keys())
+        self.waveParam.setCurrentIndex(1)
+
+        # Set up vector combo boxes
+        self.vectorBoxes = []
+        vecLt = QtWidgets.QHBoxLayout()
+        for i in range(0, 3):
+            box = QtWidgets.QComboBox()
+            vecLt.addWidget(box)
+            self.vectorBoxes.append(box)
+
+        # Initialize default vector selection
+        allDstrs = dynWindow.window.DATASTRINGS[:]
+        axesStrs = dynWindow.getAxesStrs(allDstrs)
+        if Mth.flattenLst(axesStrs, 1) == []:
+            axesStrs = [allDstrs, allDstrs, allDstrs]
+
+        for axLst, box in zip(axesStrs, self.vectorBoxes):
+            box.addItems(axLst)
+            if axLst == allDstrs:
+                box.setCurrentIndex(self.vectorBoxes.index(box))
+
+        # Set up frequency scaling and bandwidth boxes
+        self.scaleModeBox = QtWidgets.QComboBox()
+        self.scaleModeBox.addItems(['Linear', 'Logarithmic'])
+
+        self.bwBox = QtWidgets.QSpinBox()
+        self.bwBox.setMinimum(1)
+        self.bwBox.setSingleStep(2)
+        self.bwBox.setValue(3)
+
+        self.addPair(layout, 'Plot Type: ', self.waveParam, 1, 0, 1, 1)
+        self.addPair(layout, 'Frequency Scale: ', self.scaleModeBox, 1, 3, 1, 1)
+
+        for row in range(0, 2):
+            spcr = self.getSpacer(5)
+            layout.addItem(spcr, row, 2)
+
+        vecLbl = QtWidgets.QLabel('Vector: ')
+        layout.addWidget(vecLbl, 2, 0, 1, 1)
+        layout.addLayout(vecLt, 2, 1, 1, 1)
+        self.addPair(layout, 'Bandwidth: ', self.bwBox, 2, 3, 1, 1)
+
+        # Keeps window on top of main window while user updates lines
+        winFrame.setParent(dynWindow.window)
+        dialogFlag = QtCore.Qt.Dialog
+        if dynWindow.window.OS == 'posix':
+            dialogFlag = QtCore.Qt.Tool
+        flags = winFrame.windowFlags()
+        flags = flags | dialogFlag
+        winFrame.setWindowFlags(flags)
+
+        return winFrame
+
+class PreDynWave(QtWidgets.QFrame, PreDynWaveUI):
+    def __init__(self, mainWindow, parent=None):
+        super(PreDynWave, self).__init__(parent)
+        self.ui = PreDynWaveUI()
+        self.ui.setupUI(self, mainWindow)
+
+    def getParams(self):
+        # Extract parameters from user interface
+        plotType = self.ui.waveParam.currentText()
+        vectorDstrs = [box.currentText() for box in self.ui.vectorBoxes]
+        scaling = self.ui.scaleModeBox.currentText()
+        bw = self.ui.bwBox.value()
+        return (plotType, vectorDstrs, scaling, bw)

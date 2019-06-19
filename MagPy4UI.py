@@ -14,7 +14,6 @@ from mth import Mth
 class MagPy4UI(object):
 
     def setupUI(self, window):
-
         self.window = window
         # gives default window options in top right
         window.setWindowFlags(QtCore.Qt.Window)
@@ -74,6 +73,11 @@ class MagPy4UI(object):
         self.actionEdit.setText('&Edit...')
         self.actionEdit.setStatusTip('Opens edit window that allows you to rotate the data with matrices')
 
+        self.actionDynWave = QtWidgets.QAction(window)
+        self.actionDynWave.setText('Dynamic Wave Analysis...')
+        self.actionDynWave.setStatusTip('Dynamic analysis of various wave analysis results')
+
+        # MMS Tools
         self.actionPlaneNormal = QtWidgets.QAction(window)
         self.actionPlaneNormal.setText('Plane Normal...')
         self.actionPlaneNormal.setStatusTip('Calculates the normal to the plane using the timing method')
@@ -138,11 +142,13 @@ class MagPy4UI(object):
         self.toolsMenu = self.menuBar.addMenu('&Tools')
         self.toolsMenu.addAction(self.actionShowData)
         self.toolsMenu.addAction(self.actionPlotMenu)
+        self.toolsMenu.addAction(self.actionEdit)
         self.toolsMenu.addAction(self.actionSpectra)
+        self.toolsMenu.addAction(self.actionDetrend)
+        self.toolsMenu.addSeparator()
         self.toolsMenu.addAction(self.actionDynamicSpectra)
         self.toolsMenu.addAction(self.actionDynamicCohPha)
-        self.toolsMenu.addAction(self.actionDetrend)
-        self.toolsMenu.addAction(self.actionEdit)
+        self.toolsMenu.addAction(self.actionDynWave)
 
         self.MMSMenu = self.menuBar.addMenu('&MMS Tools')
         self.MMSMenu.addAction(self.actionPlaneNormal)
