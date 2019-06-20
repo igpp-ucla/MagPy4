@@ -3,50 +3,26 @@ from PyQt5.QtWidgets import QSizePolicy
 
 from datetime import datetime, timedelta
 import numpy as np
+from layoutTools import BaseLayout
 
 import pyqtgraph as pg
 import functools
 
-class PlotAppearanceUI(object):
-    def setupUI(self, Frame, window, plotsInfo):
+class PlotAppearanceUI(BaseLayout):
+    def setupUI(self, Frame, window, plotsInfo, plotItems, mainWindow=False):
         Frame.setWindowTitle('Plot Appearance')
         Frame.resize(300, 200)
+
+        # Set up tab widget in layout
         layout = QtWidgets.QGridLayout(Frame)
         self.layout = layout
-
-        # Font size label setup
-        self.titleSzLbl = QtWidgets.QLabel('Title size: ')
-        self.axisLblSzLbl = QtWidgets.QLabel('Axis label size: ')
-        self.tickLblSzLbl = QtWidgets.QLabel('  Tick label size: ')
-
-        # Title, axis label, and tick label spinboxes setup
-        self.titleSzBox = QtWidgets.QSpinBox()
-        self.titleSzBox.setMinimum(5)
-        self.titleSzBox.setMaximum(30)
-
-        self.axisLblSzBox = QtWidgets.QSpinBox()
-        self.axisLblSzBox.setMinimum(5)
-        self.axisLblSzBox.setMaximum(25)
-
-        self.tickLblSzBox = QtWidgets.QSpinBox()
-        self.tickLblSzBox.setMinimum(5)
-        self.tickLblSzBox.setMaximum(25)
-
-        layout.addWidget(self.titleSzLbl, 0, 0, 1, 1)
-        layout.addWidget(self.axisLblSzLbl, 1, 0, 1, 1)
-        layout.addWidget(self.tickLblSzLbl, 1, 2, 1, 1)
-
-        layout.addWidget(self.titleSzBox, 0, 1, 1, 1)
-        layout.addWidget(self.axisLblSzBox, 1, 1, 1, 1)
-        layout.addWidget(self.tickLblSzBox, 1, 3, 1, 1)
-
-        for lbl in [self.titleSzLbl, self.axisLblSzLbl, self.tickLblSzLbl]:
-            lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        tw = QtWidgets.QTabWidget()
+        layout.addWidget(tw, 3, 0, 1, 4)
 
         # Set up UI for setting plot trace colors, line style, thickness, etc.
-        tracePropFrame = QtWidgets.QGroupBox('Line Properties')
-        tracePropFrame.setAlignment(QtCore.Qt.AlignCenter)
+        tracePropFrame = QtWidgets.QFrame()
         tracePropLayout = QtWidgets.QGridLayout(tracePropFrame)
+        tracePropFrame.setSizePolicy(self.getSizePolicy('Max', 'Max'))
 
         pltNum = 0 # Lists for storing interactive UI elements
         self.lineWidthBoxes = []
@@ -69,7 +45,7 @@ class PlotAppearanceUI(object):
             traceNum = 0
             for trcPen in trcList:
                 traceLayout = QtWidgets.QHBoxLayout()
-                label = QtWidgets.QLabel('Line '+str(traceNum + 1)+': ')
+                label = QtWidgets.QLabel('L'+str(traceNum + 1)+': ')
 
                 # Create all elements for choosing line style
                 styleLabel = QtWidgets.QLabel('  Style: ')
@@ -112,33 +88,30 @@ class PlotAppearanceUI(object):
                 rowNum = 0
                 colNum += 1
 
-        layout.addWidget(tracePropFrame, 3, 0, 1, 4)
+        tw.addTab(tracePropFrame, 'Trace Properties')
 
-        # Add in button to open tick spacing window
-        self.tickIntBtn = QtWidgets.QPushButton(' Adjust Tick Spacing... ')
-        if colNum >= 1 and rowNum >= 1:
-            layout.addWidget(self.tickIntBtn, 4, 0, 1, 2)
+        # Set up tick intervals widget
+        if mainWindow:
+            tickIntWidget = MagPyTickIntervals(window, plotItems)
         else:
-            layout.addWidget(self.tickIntBtn, 4, 1, 1, 2)
+            tickIntWidget = TickIntervals(window, plotItems)
+        tw.addTab(tickIntWidget, 'Tick Spacing')
+
+        # Set up label properties widget
+        lblPropWidget = LabelAppear(window, plotItems)
+        tw.addTab(lblPropWidget, 'Label Sizes')
 
 class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
-    def __init__(self, window, plotItems, parent=None):
+    def __init__(self, window, plotItems, parent=None, mainWindow=False):
         super(PlotAppearance, self).__init__(parent)
         self.ui = PlotAppearanceUI()
         self.plotItems = plotItems
         self.window = window
-        self.tickIntervals = None
 
         # Get plots' trace/label infos and use to setup/initialize UI elements
         plotsInfo = self.getPlotsInfo()
-        self.ui.setupUI(self, window, plotsInfo)
+        self.ui.setupUI(self, window, plotsInfo, plotItems, mainWindow)
         self.initVars(plotsInfo)
-
-        # Connect buttons to functions
-        self.ui.titleSzBox.valueChanged.connect(self.changeTitleSize)
-        self.ui.axisLblSzBox.valueChanged.connect(self.changeAxisLblSize)
-        self.ui.tickLblSzBox.valueChanged.connect(self.changeTickLblSize)
-        self.ui.tickIntBtn.clicked.connect(self.openTickIntervals)
 
         # Connect line width modifiers to function
         for lw, indices in self.ui.lineWidthBoxes:
@@ -189,39 +162,6 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
             return
         # Get attributes from last plot in set
         plt = self.plotItems[-1]
-
-        # Get title font size to initialize spin box, disable if no title
-        titleSize = plt.titleLabel.opts['size'][:-2] # Strip pts part of string
-        if plt.titleLabel.text == '':
-            self.ui.titleSzLbl.setEnabled(False)
-            self.ui.titleSzBox.setEnabled(False)
-        else:
-            self.ui.titleSzBox.setValue(int(titleSize))
-
-        # Initialize axis label font size, disable if no axis label
-        self.ui.axisLblSzBox.blockSignals(True) # Prevent plot updates temporarily
-        if plt.getAxis('bottom').label.toPlainText() == '':
-            self.ui.axisLblSzBox.setEnabled(False)
-            self.ui.axisLblSzLbl.setEnabled(False)
-        elif 'font-size' in plt.getAxis('bottom').labelStyle:
-            axisLblSize = plt.getAxis('bottom').labelStyle['font-size'][:-2]
-            self.ui.axisLblSzBox.setValue(int(axisLblSize))
-        else:
-            self.ui.axisLblSzBox.setValue(11) # Default axis label font size
-        self.ui.axisLblSzBox.blockSignals(False)
-
-        # Initialize tick label font size
-        self.ui.tickLblSzBox.blockSignals(True)
-        axis = plt.getAxis('bottom')
-        if axis.tickFont == None: # No custom font, use default
-            self.ui.tickLblSzBox.setValue(11)
-        else:
-            tickFont = axis.tickFont
-            tickSize = tickFont.pointSize()
-            if tickSize < 0: # No point size set, use default
-                tickSize = 11
-            self.ui.tickLblSzBox.setValue(int(tickSize))
-        self.ui.tickLblSzBox.blockSignals(False)
 
         traceNum = 0
         for pltGrp in plotsInfo:
@@ -319,66 +259,12 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
             penList.append(pltPens)
         return penList
 
-    def changeTitleSize(self, val):
-        for plt in self.plotItems:
-            plt.titleLabel.setText(plt.titleLabel.text, size=str(val)+'pt')
-
-    def changeAxisLblSize(self, val):
-        # Update every plot's label sizes for every axis
-        for plt in self.plotItems:
-            for ax in [plt.getAxis('bottom'), plt.getAxis('left')]:
-                if ax.label.toPlainText() == '': # Do not change size if no label
-                    continue
-                # Convert new value to apprp string and update label info
-                sizeStr = str(val) + 'pt'
-                ax.labelStyle = {'font-size':sizeStr}
-                ax.label.setHtml(ax.labelString()) # Uses updated HTML string
-
-    def changeTickLblSize(self, val):
-        # Update every axes' tick label sizes
-        for plt in self.plotItems:
-            for axis in [plt.getAxis('left'), plt.getAxis('bottom')]:
-                # Update font-size, using default if not previously set
-                tickFont = axis.style['tickFont']
-                if tickFont == None:
-                    tickFont = QtGui.QFont()
-                tickFont.setPointSize(val)
-                axis.setStyle(tickFont=tickFont)
-                axis.tickFont = tickFont
-
-                # Adjust vert/horz spacing reserved for bottom ticks if necessary
-                self.adjustTickHeights(axis, tickFont)
-
-    def adjustTickHeights(self, axis, tickFont):
-        # Adjust vertical spacing reserved for bottom ticks if necessary
-        mets = QtGui.QFontMetrics(tickFont)
-        ht = mets.boundingRect('AJOW').height() # Tall letters
-        if ht > 18 and axis.orientation == 'bottom':
-            axis.setStyle(tickTextOffset=5)
-        elif axis.orientation == 'bottom':
-            axis.setStyle(tickTextOffset=2)
-
-    def openTickIntervals(self):
-        self.closeTickIntervals()
-        self.tickIntervals = TickIntervals(self.window, self.plotItems)
-        self.tickIntervals.show()
-
-    def closeTickIntervals(self):
-        if self.tickIntervals:
-            self.tickIntervals.close()
-            self.tickIntervals = None
-
     def closeEvent(self, event):
-        self.closeTickIntervals()
         self.close()
 
 class MagPyPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
-        PlotAppearance.__init__(self, window, plotItems, parent)
-        self.ui.layout.removeWidget(self.ui.titleSzBox)
-        self.ui.layout.removeWidget(self.ui.titleSzLbl)
-        self.ui.titleSzBox.deleteLater()
-        self.ui.titleSzLbl.deleteLater()
+        PlotAppearance.__init__(self, window, plotItems, parent, True)
 
     def adjustTitleColors(self, penList):
         self.window.pltGrd.adjustTitleColors(penList)
@@ -397,11 +283,6 @@ class MagPyPlotApp(PlotAppearance):
             customPens.append(pltCstmPens)
         # Stores per-plot lists of (dstr, en, newPen) tuples for every trace
         self.window.customPens = customPens
-
-    def openTickIntervals(self):
-        self.closeTickIntervals()
-        self.tickIntervals = MagPyTickIntervals(self.window, self.plotItems)
-        self.tickIntervals.show()
 
 class SpectraPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
@@ -425,7 +306,6 @@ class SpectraPlotApp(PlotAppearance):
         elif axis.orientation == 'left':
             axis.setStyle(tickTextOffset=2)
 
-### Tick Spacing classes ###
 class TickIntervalsUI(object):
     def setupUI(self, Frame, window, plotItems, links):
         Frame.setWindowTitle('Set Tick Spacing')
@@ -447,6 +327,8 @@ class TickIntervalsUI(object):
         for name in ['left', 'bottom']:
             # Builds frames / UI elements for corresponding axis side
             self.buildAxisBoxes(layout, name, plotItems, yMax, links)
+        spacer = QtWidgets.QSpacerItem(0, 0, QSizePolicy.Maximum, QSizePolicy.MinimumExpanding)
+        layout.addItem(spacer, layout.count(), 0, 1, 1)
 
     def getBoxName(self, axOrient, linkGrp):
         # Create name for linked axes if more than one link grp
@@ -505,7 +387,7 @@ class TickIntervalsUI(object):
 
             # Store this axe's info/UI elements and add frame to layout
             self.intervalBoxes.append((box, name, axType, applyBtn, defBtn))
-            layout.addWidget(axisFrame)
+            layout.addWidget(axisFrame, layout.count(), 0)
 
     def buildIntervalUI(self, name, axType):
         # Initialize common UI elements
@@ -515,15 +397,19 @@ class TickIntervalsUI(object):
 
         if axType == 'DateTime':
             # Create layout w/ timeEdit and label to describe time sections
-            dateTimeLt = QtWidgets.QGridLayout(axisFrame)
+            dateTimeLt = QtWidgets.QVBoxLayout(axisFrame)
             lbl = QtWidgets.QLabel('HH:MM:SS')
             intervalBox = QtWidgets.QTimeEdit()
             intervalBox.setDisplayFormat('HH:mm:ss')
             intervalBox.setMinimumTime(QtCore.QTime(0, 0, 1))
-            dateTimeLt.addWidget(lbl, 0, 0, 1, 2)
-            dateTimeLt.addWidget(intervalBox, 1, 0, 1, 1)
-            dateTimeLt.addWidget(defBtn, 1, 1, 1, 1)
-            dateTimeLt.addWidget(applyBtn, 1, 2, 1, 1)
+
+            for rowLst in [[lbl], [intervalBox, defBtn, applyBtn]]:
+                hlt = QtWidgets.QHBoxLayout()
+                for elem in rowLst:
+                    hlt.addWidget(elem, QtCore.Qt.AlignLeft)
+                spacer = QtWidgets.QSpacerItem(0, 0, QSizePolicy.MinimumExpanding)
+                hlt.addItem(spacer)
+                dateTimeLt.addLayout(hlt)
         else:
             # Create spinbox and add elements to horizontal layout
             intervalLt = QtWidgets.QHBoxLayout(axisFrame)
@@ -535,9 +421,17 @@ class TickIntervalsUI(object):
                 intervalBox.setMinimum(1)
             else:
                 intervalBox.setMinimum(0.01)
-            intervalLt.addWidget(intervalBox)
-            intervalLt.addWidget(defBtn)
-            intervalLt.addWidget(applyBtn)
+            intervalLt.addWidget(intervalBox, QtCore.Qt.AlignLeft)
+            intervalLt.addWidget(defBtn, QtCore.Qt.AlignLeft)
+            intervalLt.addWidget(applyBtn, QtCore.Qt.AlignLeft)
+            spacer = QtWidgets.QSpacerItem(0, 0, QSizePolicy.MinimumExpanding)
+            intervalLt.addItem(spacer)
+
+        # Set maximums to adjust for resizing
+        for elem in [intervalBox, applyBtn, defBtn]:
+            elem.setMaximumWidth(150)
+        # axisFrame.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
         return axisFrame, intervalBox, applyBtn, defBtn
 
 class TickIntervals(QtGui.QFrame, TickIntervalsUI):
@@ -568,7 +462,7 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
             axis.resetTickSpacing()
             if name == 'bottom': # Update top time axes to match if applicable
                 ta = plt.getAxis('top')
-                if ta.axisType() == 'DateTime':
+                if name == 'DateTime' and ta.axisType() == 'DateTime':
                     ta.resetTickSpacing()
 
         self.additionalUpdates(None, name)
@@ -598,7 +492,7 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
             axis.setCstmTickSpacing(value)
             if name == 'bottom': # Match top time axis
                 ta = plt.getAxis('top')
-                if ta.axisType() == 'DateTime':
+                if name == 'DateTime' and ta.axisType() == 'DateTime':
                     ta.setCstmTickSpacing(value)
 
         self.additionalUpdates(value, name)
@@ -618,3 +512,134 @@ class MagPyTickIntervals(TickIntervals):
             self.window.pltGrd.labelSetGrd.setCstmTickSpacing(tickDiff)
         self.window.updateXRange()
         self.window.updateYRange()
+
+class LabelAppearUI(BaseLayout):
+    def setupUI(self, Frame, window):
+        frameLt = QtWidgets.QVBoxLayout(Frame)
+        layout = QtWidgets.QGridLayout()
+        self.layout = layout
+
+        # Font size label setup
+        self.titleSzLbl = QtWidgets.QLabel('Title Size: ')
+        self.axisLblSzLbl = QtWidgets.QLabel('Axis Label Size: ')
+        self.tickLblSzLbl = QtWidgets.QLabel('Tick Label Size: ')
+
+        # Title, axis label, and tick label spinboxes setup
+        self.titleSzBox = QtWidgets.QSpinBox()
+        self.titleSzBox.setMinimum(5)
+        self.titleSzBox.setMaximum(30)
+
+        self.axisLblSzBox = QtWidgets.QSpinBox()
+        self.axisLblSzBox.setMinimum(5)
+        self.axisLblSzBox.setMaximum(25)
+
+        self.tickLblSzBox = QtWidgets.QSpinBox()
+        self.tickLblSzBox.setMinimum(5)
+        self.tickLblSzBox.setMaximum(25)
+
+        lbls = [self.titleSzLbl, self.axisLblSzLbl, self.tickLblSzLbl]
+        boxes = [self.titleSzBox, self.axisLblSzBox, self.tickLblSzBox]
+        row = 0
+        for lbl, box in zip(lbls, boxes):
+            layout.addWidget(lbl, row, 0, 1, 1, QtCore.Qt.AlignLeft)
+            layout.addWidget(box, row, 1, 1, 1, QtCore.Qt.AlignLeft)
+            lbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+            box.setFixedWidth(100)
+            # Fill in empty space to right
+            spacer = QtWidgets.QSpacerItem(0, 0, QSizePolicy.MinimumExpanding)
+            layout.addItem(spacer, row, 2, 1, 1)
+            row += 1
+
+        frameLt.addLayout(layout)
+        frameLt.addStretch()
+
+class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
+    def __init__(self, window, plotItems, parent=None):
+        super(LabelAppear, self).__init__(parent)
+        self.ui = LabelAppearUI()
+        self.plotItems = plotItems
+        self.window = window
+
+        # Get plots' trace/label infos and use to setup/initialize UI elements
+        self.ui.setupUI(self, window)
+        self.initVars()
+
+        # Connect spinbox changes to functions
+        self.ui.titleSzBox.valueChanged.connect(self.changeTitleSize)
+        self.ui.axisLblSzBox.valueChanged.connect(self.changeAxisLblSize)
+        self.ui.tickLblSzBox.valueChanged.connect(self.changeTickLblSize)
+
+    def initVars(self):
+        plt = self.plotItems[-1]
+        # Get title font size to initialize spin box, disable if no title
+        titleSize = plt.titleLabel.opts['size'][:-2] # Strip pts part of string
+        if plt.titleLabel.text == '':
+            for elem in [self.ui.titleSzBox, self.ui.titleSzLbl]:
+                self.ui.layout.removeWidget(elem)
+                elem.deleteLater()
+        else:
+            self.ui.titleSzBox.setValue(int(titleSize))
+
+        # Initialize axis label font size, disable if no axis label
+        self.ui.axisLblSzBox.blockSignals(True) # Prevent plot updates temporarily
+        if plt.getAxis('bottom').label.toPlainText() == '':
+            self.ui.axisLblSzBox.setEnabled(False)
+            self.ui.axisLblSzLbl.setEnabled(False)
+        elif 'font-size' in plt.getAxis('bottom').labelStyle:
+            axisLblSize = plt.getAxis('bottom').labelStyle['font-size'][:-2]
+            self.ui.axisLblSzBox.setValue(int(axisLblSize))
+        else:
+            self.ui.axisLblSzBox.setValue(11) # Default axis label font size
+        self.ui.axisLblSzBox.blockSignals(False)
+
+        # Initialize tick label font size
+        self.ui.tickLblSzBox.blockSignals(True)
+        axis = plt.getAxis('bottom')
+        if axis.tickFont == None: # No custom font, use default
+            self.ui.tickLblSzBox.setValue(11)
+        else:
+            tickFont = axis.tickFont
+            tickSize = tickFont.pointSize()
+            if tickSize < 0: # No point size set, use default
+                tickSize = 11
+            self.ui.tickLblSzBox.setValue(int(tickSize))
+        self.ui.tickLblSzBox.blockSignals(False)
+
+    def changeTitleSize(self, val):
+        for plt in self.plotItems:
+            plt.titleLabel.setText(plt.titleLabel.text, size=str(val)+'pt')
+
+    def changeAxisLblSize(self, val):
+        # Update every plot's label sizes for every axis
+        for plt in self.plotItems:
+            for ax in [plt.getAxis('bottom'), plt.getAxis('left')]:
+                if ax.label.toPlainText() == '': # Do not change size if no label
+                    continue
+                # Convert new value to apprp string and update label info
+                sizeStr = str(val) + 'pt'
+                ax.labelStyle = {'font-size':sizeStr}
+                ax.label.setHtml(ax.labelString()) # Uses updated HTML string
+
+    def changeTickLblSize(self, val):
+        # Update every axes' tick label sizes
+        for plt in self.plotItems:
+            for axis in [plt.getAxis('left'), plt.getAxis('bottom')]:
+                # Update font-size, using default if not previously set
+                tickFont = axis.style['tickFont']
+                if tickFont == None:
+                    tickFont = QtGui.QFont()
+                tickFont.setPointSize(val)
+                axis.setStyle(tickFont=tickFont)
+                axis.tickFont = tickFont
+
+                # Adjust vert/horz spacing reserved for bottom ticks if necessary
+                self.adjustTickHeights(axis, tickFont)
+
+    def adjustTickHeights(self, axis, tickFont):
+        # Adjust vertical spacing reserved for bottom ticks if necessary
+        mets = QtGui.QFontMetrics(tickFont)
+        ht = mets.boundingRect('AJOW').height() # Tall letters
+        if ht > 18 and axis.orientation == 'bottom':
+            axis.setStyle(tickTextOffset=5)
+        elif axis.orientation == 'bottom':
+            axis.setStyle(tickTextOffset=2)
