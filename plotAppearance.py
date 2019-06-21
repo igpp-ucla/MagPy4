@@ -462,7 +462,7 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
             axis.resetTickSpacing()
             if name == 'bottom': # Update top time axes to match if applicable
                 ta = plt.getAxis('top')
-                if name == 'DateTime' and ta.axisType() == 'DateTime':
+                if axis.axisType() == 'DateTime' and ta.axisType() == 'DateTime':
                     ta.resetTickSpacing()
 
         self.additionalUpdates(None, name)
@@ -492,7 +492,7 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
             axis.setCstmTickSpacing(value)
             if name == 'bottom': # Match top time axis
                 ta = plt.getAxis('top')
-                if name == 'DateTime' and ta.axisType() == 'DateTime':
+                if axType == 'DateTime' and ta.axisType() == 'DateTime':
                     ta.setCstmTickSpacing(value)
 
         self.additionalUpdates(value, name)

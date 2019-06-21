@@ -63,3 +63,6 @@ class TimeManager(object):
 
     def getTimestampFromTick(self, tick):
         return FFTIME(tick, Epoch=self.epoch).UTC
+
+    def getDateTimeFromTick(self, tick):
+        return UTCQDate.UTC2QDateTime(self.getTimestampFromTick(tick))

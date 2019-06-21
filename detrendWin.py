@@ -257,8 +257,10 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
             # Build plot item
             la = LinkedAxis(orientation='left')
             ba = DateAxis(self.epoch, orientation='bottom',)
+            ta = DateAxis(self.epoch, orientation='top')
             vb = SelectableViewBox(self, plotNum)
-            plt = pg.PlotItem(viewBox=vb, axisItems={'left':la, 'bottom':ba})
+            plt = pg.PlotItem(viewBox=vb, axisItems={'left':la, 'bottom':ba,
+                'top':ta })
             self.plotItems.append(plt)
 
             # Build plot label
@@ -319,6 +321,9 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         # Update time ticks
         ba.tickOffset = self.tickOffset
         ba.setStyle(showValues=True)
+
+        ta.tickOffset = self.tickOffset
+        ta.setStyle(showValues=False)
 
         # Link plots if necessary
         if self.ui.linkPlotsChk.isChecked():

@@ -137,6 +137,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.antialiasAction.triggered.connect(self.toggleAntialiasing)
         self.ui.bridgeDataGaps.triggered.connect(self.replotDataCallback)
         self.ui.drawPoints.triggered.connect(self.replotDataCallback)
+        self.ui.enableMouseAction.triggered.connect(self.enableMouseDrag)
 
         # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
         self.enableToolsAndOptionsMenus(False)
@@ -169,6 +170,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # these are saves for options for program lifetime
         self.plotMenuTableMode = False
         self.traceStatsOnTop = True
+        self.mouseEnabled = False
 
         self.initDataStorageStructures()
 
@@ -239,6 +241,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Update plots
         self.setTimes()
+
+    def enableMouseDrag(self, val):
+        self.mouseEnabled = val
 
     def shiftWinRgt(self):
         self.shiftWindow('R')
@@ -1718,6 +1723,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.tickOffset = ofst
         pi.tickOffset = ofst
         pi.getAxis('bottom').tickOffset = ofst
+        pi.getAxis('top').tickOffset = ofst
         # Subtract offset value from all times values for plotting
         ofstTimes = times - ofst
 
@@ -1781,8 +1787,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
                     Y = Y[a:b] # get correct slice
 
-                minVal = min(minVal, Y.min())
-                maxVal = max(maxVal, Y.max())
+                minVal = min(minVal, np.min(Y))
+                maxVal = max(maxVal, np.max(Y))
             # if range is bad then dont change this plot
             if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or np.isinf(maxVal):
                 skipRangeSet.add(plotIndex)
@@ -1856,6 +1862,39 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if self.curvature:
             self.curvature.updateCalculations()
 
+    def mouseDragPlots(self, ev):
+        # Allow mouse dragging only in stats mode
+        if self.currSelect is not None and self.currSelect.name != 'Stats':
+            return
+
+        # Check movement direction so plot widths do not shrink when
+        # dragging past edges
+        lastPos = ev.lastPos()
+        currPos = ev.pos()
+        leftMove = True if lastPos.x() - currPos.x() < 0 else False
+        rightMove = True if lastPos.x() - currPos.x() > 0 else False
+        if self.tE >= self.maxTime and rightMove:
+            return
+        elif self.tO <= self.minTime and leftMove:
+            return
+
+        # Signal mouse drag event to all plots' viewboxes
+        for plt in self.plotItems:
+            vb = plt.getViewBox()
+            vb.setMouseEnabled(x=True,y=False)
+            vb.blockSignals(True)
+            pg.ViewBox.mouseDragEvent(vb, ev)
+            vb.blockSignals(False)
+
+        # Get new x value range and update time edits / sliders (indirectly)
+        xMin, xMax = vb.state['targetRange'][0]
+        self.tO = xMin + self.tickOffset
+        self.tE = xMax + self.tickOffset
+        minDate = self.getDateTimeFromTick(self.tO)
+        maxDate = self.getDateTimeFromTick(self.tE)
+        self.ui.timeEdit.start.setDateTime(minDate)
+        self.ui.timeEdit.end.setDateTime(maxDate)
+
     # color is hex string ie: '#ff0000' for red
     def initGeneralSelect(self, name, color, timeEdit, mode, startFunc, updtFunc=None, 
         closeFunc=None, canHide=False, maxSteps=1):
@@ -1928,8 +1967,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             mode=self.selectMode, color=self.selectColor)
         self.regions.append(region)
 
-
-
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
 class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
@@ -1993,20 +2030,19 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
         ev.accept()
 
-    # mouse drags for now just get turned into clicks, like on release basically, feels nicer
-    # technically only need to do this for spectra mode but not being used otherwise so whatever
     def mouseDragEvent(self, ev, axis=None):
-        if ev.isFinish(): # on release
-            if ev.button() == QtCore.Qt.LeftButton:
+        if self.window.mouseEnabled: # If enabled in main window
+            self.window.mouseDragPlots(ev)
+            return
+        else: # Otherwise default to a click event
+            if ev.isFinish() and ev.button() == QtCore.Qt.LeftButton:
                 self.onLeftClick(ev)
             elif ev.button() == QtCore.Qt.RightButton:
                 self.onRightClick(ev)
         ev.accept()
-        #    pg.ViewBox.mouseDragEvent(self, ev)
 
     def wheelEvent(self, ev, axis=None):
         ev.ignore()
-
 
 def myexepthook(type, value, tb):
     print(f'{type} {value}')

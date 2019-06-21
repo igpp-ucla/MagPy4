@@ -1615,9 +1615,10 @@ class MMSColorPltTool():
         # Initialize new plot item
         vb = SelectableViewBox(self.window, 0)
         newBA = DateAxis(self.window.epoch, orientation='bottom')
-        newBA.window = self.window
+        newTA = DateAxis(self.window.epoch, orientation='top')
         newLA = LinkedAxis(orientation='left')
-        pltCopy = MagPyColorPlot(viewBox=vb, axisItems={'bottom':newBA, 'left':newLA})
+        pltCopy = MagPyColorPlot(viewBox=vb, axisItems={'bottom':newBA, 
+            'left':newLA, 'top':newTA })
         pltCopy.hideButtons()
 
         # Copy axis ranges
