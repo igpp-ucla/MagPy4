@@ -2031,7 +2031,8 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         ev.accept()
 
     def mouseDragEvent(self, ev, axis=None):
-        if self.window.mouseEnabled: # If enabled in main window
+        if self.window.mouseEnabled and (self.window.currSelect is None
+            or self.window.currSelect.name == 'Stats'): # If enabled in main window
             self.window.mouseDragPlots(ev)
             return
         else: # Otherwise default to a click event
