@@ -385,32 +385,24 @@ class DateAxis(pg.AxisItem):
             dt = dt.replace(microsecond = 0)
         return dt
 
-    # Edge cases: First tick at rounded up time, last tick at rounded down time
-    def firstTickDt(self, minDt, td):
-        # Increment with timedelta until reach first tick that will be visible
-        startDt = self.zeroLowerVals(minDt, td)
-        while startDt < minDt:
-            startDt = startDt + td
-        return startDt
-    def lastTickDt(self, maxDt, td):
-        # Increment with timedelta until reach tick just past edge
-        endDt = self.zeroLowerVals(maxDt, td)
-        while endDt <= maxDt:
-            endDt = endDt + td
-        return endDt - td
-
-    # From the list of all potential ticks in a range, uniformly skip over
-    # certain ones so there aren't too many on a plot
-
     def tickSpacing(self, minVal, maxVal, size):
         if self.tickDiff:
-            return [(self.tickDiff.seconds, 0)]
+            return [(self.tickDiff.total_seconds(), 0)]
         else:
             return pg.AxisItem.tickSpacing(self, minVal, maxVal, size)
 
     def tickValues(self, minVal, maxVal, size):
+        # Get tick values for standard range and then subtract the offset
+        # (keeps the spacing on neat numbers (i.e. 25 vs 23.435 seconds)
+        # since offset must be added back in when generating strings)
+        minVal = minVal + self.tickOffset
+        maxVal = maxVal + self.tickOffset
         vals = pg.AxisItem.tickValues(self, minVal, maxVal, size)
-        return vals
+        newVals = []
+        for ts, tlst in vals:
+            newtlst = [v - self.tickOffset for v in tlst]
+            newVals.append((ts, newtlst))
+        return newVals
 
     def tickStrings(self, values, scale, spacing):
         # Convert start/end times to strings
