@@ -419,7 +419,7 @@ class DateAxis(pg.AxisItem):
 
         strings = []
         for v in values:
-            currDt = epochDt + timedelta(seconds=v)
+            currDt = epochDt + timedelta(seconds=v+self.tickOffset)
             dtStr = self.dateTimeToTmstmp(currDt)
             s = self.fmtTimeStmp(dtStr)
             strings.append(s)
