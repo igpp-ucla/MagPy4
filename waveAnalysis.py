@@ -685,13 +685,18 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             'Azimuth Angle' : ((-90, 90), 'Azimuth Angle', 'Degrees'),
             'Ellipticity (Means)' : ((-1.0, 1.0), 'Ellipticity', None),
             'Ellipticity (Born-Wolf)' : ((-1.0, 1.0), 'Ellipticity', None),
-            'Propagation Angle (Means)' : ((0, 90), 'Propagation Angle',
-                'Degrees'),
-            'Propagation Angle (BK)' : ((0, 90), 'Minimum Variance Angle', 
-                'Degrees'),
+            'Propagation Angle (Means)' : ((0, 90), 'Angle', 'Degrees'),
+            'Propagation Angle (BK)' : ((0, 90), 'Angle', 'Degrees'),
             'Power Spectra Trace' : (None, 'Log Power', 'nT^2/Hz'),
             'Compressional Power' : (None, 'Log Power', 'nT^2/Hz')
         }
+
+        self.titleDict = {}
+        for key in self.defParams.keys():
+            self.titleDict[key] = key
+        self.titleDict['Power Spectra Trace'] = 'Trace Power Spectral Density'
+        self.titleDict['Propagation Angle (BK)'] = 'Minimum Variance Angle'
+        self.titleDict['Compressional Power'] = 'Compressional Power Spectral Density'
 
         # Sorts plot type names into groups
         self.plotGroups = {'Angle' : [], 'Ellipticity' : [], 'Power' : []}
@@ -832,7 +837,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             winFrame=self)
 
         # Set axis labels
-        plt.setTitle(plotType, size='13pt')
+        plt.setTitle(self.titleDict[plotType], size='13pt')
         yPrefix = 'Log ' if logScale else ''
         plt.getAxis('left').setLabel(yPrefix + 'Frequency (Hz)')
         self.ui.glw.addItem(plt, 0, 0, 1, 1)
