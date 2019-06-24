@@ -684,7 +684,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.defParams = { # Value range, grad label, grad label units
             'Azimuth Angle' : ((-90, 90), 'Azimuth Angle', 'Degrees'),
             'Ellipticity (Means)' : ((-1.0, 1.0), 'Ellipticity', None),
-            'Ellipticity (Born-Wolf)' : ((-1.0, 1.0), 'Ellipticity', None),
+            'Ellipticity (Born-Wolf)' : ((0, 1.0), 'Ellipticity', None),
             'Propagation Angle (Means)' : ((0, 90), 'Angle', 'Degrees'),
             'Propagation Angle (BK)' : ((0, 90), 'Angle', 'Degrees'),
             'Power Spectra Trace' : (None, 'Log Power', 'nT^2/Hz'),
@@ -1109,7 +1109,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             elip = -1.0*math.tan(0.5*math.asin(fnum))
         else:
             elip = math.tan(0.5*math.asin(fnum))
-        return elip
+        return abs(elip)
 
     def joeMeansElip(self, trm, tim):
         """
