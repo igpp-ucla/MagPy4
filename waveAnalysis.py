@@ -323,7 +323,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
 
         # Each fft value corresponds to a cos,sin pair (real, imag), so
         # start at fO*2
-        ffts = [fft[fO*2:fE*2] for fft in ffts]
+        ffts = [fft[fO*2:fE*2+1] for fft in ffts]
         deltaf = 2.0 / (self.spectra.maxN * self.spectra.maxN)
 
         # Complex version of spectral matrix calculations
@@ -687,7 +687,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             'Ellipticity (Born-Wolf)' : ((-1.0, 1.0), 'Ellipticity', None),
             'Propagation Angle (Means)' : ((0, 90), 'Propagation Angle',
                 'Degrees'),
-            'Propagation Angle (Least Var)' : ((0, 180), 'Propagation Angle', 
+            'Propagation Angle (BK)' : ((0, 90), 'Minimum Variance Angle', 
                 'Degrees'),
             'Power Spectra Trace' : (None, 'Log Power', 'nT^2/Hz'),
             'Compressional Power' : (None, 'Log Power', 'nT^2/Hz')
@@ -941,6 +941,42 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             mats[i] = currSum
         return mats
 
+    def computeMinVarAngle(self, amat, avg):
+        # Compute theta BK
+        evn = np.array(amat[:,0])
+        evi = np.array(amat[:,1])
+        evx = np.array(amat[:,2])
+
+        q = np.dot(avg, evn)
+
+        if q < 0:
+            evn = -1*evn
+            evi = -1*evi
+            amat[:,1] = -1*amat[:,1]
+            amat[:,2] = -1*amat[:,2]
+
+        if evx[2] < 0:
+            evx = -1*evx
+            evi = -1*evi
+            amat[:,0] = -1*amat[:,0]
+            amat[:,1] = -1*amat[:,1]
+
+        evc = np.cross(evx, evi)
+        q = np.dot(evc, evn)
+
+        if q < 0:
+            evi = -1*evi
+            amat[:,1] = -1*amat[:,1]
+
+        q = np.dot(evn, avg)
+        vetm = np.dot(avg, avg)
+        if vetm < 0:
+            thbk = 0
+        else:
+            norm = np.sqrt(vetm)
+            thbk = Mth.R2D * math.acos(q/norm)
+        return thbk
+
     def calcWave(self, plotType, indexRange, dtaRng, bw, sumMats):
         minIndex, maxIndex = dtaRng
         numPoints = maxIndex - minIndex
@@ -950,7 +986,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         deltaf = (2.0 * self.window.resolution) / (numPoints * bw)
 
         if plotType in ['Ellipticity (Means)', 'Azimuth Angle',
-            'Propagation Angle (Means)', 'Propagation Angle (Least Var)']:
+            'Propagation Angle (Means)', 'Propagation Angle (BK)']:
             # Compute the average field for each dstr within the given time range
             avg = []
             for dstr in [box.currentText() for box in self.ui.vectorBoxes]:
@@ -993,7 +1029,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
                 continue
 
             if plotType in ['Ellipticity (Means)', 'Azimuth Angle',
-                'Propagation Angle (Means)', 'Propagation Angle (Least Var)']:
+                'Propagation Angle (Means)']:
                 # Wave propogation direction
                 qqq = self.getNorm(qs)
                 qkem = np.array([qs[2] / qqq, -qs[1] / qqq, qs[0] / qqq])
@@ -1013,9 +1049,6 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
                 if plotType == 'Propagation Angle (Means)':
                     valLst.append(qtem)
-                    continue
-                elif plotType == 'Propagation Angle (Least Var)':
-                    valLst.append(qalm)
                     continue
 
                 # Means transformation matrix
@@ -1044,6 +1077,11 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             else:
                 duhh, amat = np.linalg.eigh(realPower, UPLO="U")
                 amat = np.transpose(amat)
+                if plotType == 'Propagation Angle (BK)':
+                    bk = self.computeMinVarAngle(amat, avg)
+                    valLst.append(bk)
+                    continue
+
                 # Transformed Values Spectral Matrices 
                 tmat = Mth.arpat(amat, sumMat)
                 tmat = Mth.flip(tmat)
