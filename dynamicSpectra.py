@@ -5,11 +5,124 @@ import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
 from MagPy4UI import TimeEdit, NumLabel
-from pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, DateAxis, GradientLegend, StackedAxisLabel
+from pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, DateAxis, StackedAxisLabel
 import bisect
 import functools
 from mth import Mth
 from layoutTools import BaseLayout
+
+class ColorBarAxis(pg.AxisItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setStyle(tickLength=-5)
+
+    def tickSpacing(self, minVal, maxVal, size):
+        dif = abs(maxVal - minVal)
+        if dif == 0:
+            return []
+        vals = pg.AxisItem.tickSpacing(self, minVal, maxVal, size)
+
+        # Adjust spacing to use 'neat' numbers as lower bound
+        newVals = []
+        for spacing, ofst in vals:
+            lowerBound = int(minVal/spacing)*spacing + spacing
+            newVals.append((spacing, lowerBound))
+        return newVals
+
+    def tickValues(self, minVal, maxVal, size):
+        # Limit tick values to top level if sufficient, or add in
+        # second level minor ticks and limit the number of ticks
+        tickVals = pg.AxisItem.tickValues(self, minVal, maxVal, size)
+
+        majorSpacing, majorTicks = tickVals[0]
+        if len(majorTicks) >= 4:
+            return [(majorSpacing, majorTicks)]
+        elif len(tickVals) > 1:
+            minorSpacing, minorTicks = tickVals[1]
+            if len(majorTicks+minorTicks) >= 10:
+                allTicks = majorTicks + minorTicks
+                allTicks.sort()
+                return [(majorSpacing*2, allTicks[::2])]
+            else:
+                return tickVals
+        else:
+            return tickVals
+
+class ColorBar(pg.GraphicsLayout):
+    def __init__(self, gradient, parent=None):
+        super().__init__(parent=None)
+        self.gradient = gradient
+        self.setMaximumWidth(50)
+        self.setMinimumWidth(30)
+
+    def setGradient(self, gradient):
+        self.gradient = gradient
+
+    def getGradient(self):
+        return self.gradient
+
+    def paint(self, p, opt, widget):
+        ''' Fill the bounding rect w/ current gradient '''
+        rect = self.boundingRect()
+        self.gradient.setStart(0, rect.bottom())
+        self.gradient.setFinalStop(0, rect.top())
+        p.setPen(pg.mkPen((0, 0, 0)))
+        p.setBrush(self.gradient)
+        p.drawRect(rect)
+        pg.GraphicsWidget.paint(self, p, opt,widget)
+
+class GradLegend(pg.GraphicsLayout):
+    def __init__(self, parent=None, *args, **kwargs):
+        # Initialize state and legend elements
+        self.valueRange = (0, 1)
+        self.colorBar = ColorBar(QtGui.QLinearGradient())
+        self.axisItem = ColorBarAxis(orientation='right')
+
+        # Set default contents spacing/margins
+        super().__init__(parent)
+        self.layout.setVerticalSpacing(0)
+        self.layout.setHorizontalSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+
+        self.addItem(self.colorBar, 0, 0, 1, 1)
+        self.addItem(self.axisItem, 0, 1, 1, 1)
+
+    def getGradient(self):
+        return self.colorBar.getGradient()
+
+    def getValueRange(self):
+        ''' Returns the numerical value range represented by gradient '''
+        return self.valueRange
+
+    def setRange(self, gradient, valRange):
+        ''' Sets the color gradient and numerical value range it represents '''
+        startVal, stopVal = valRange
+        self.axisItem.setRange(startVal, stopVal)
+        self.colorBar.setGradient(gradient)
+        self.valueRange = valRange
+
+    def setOffsets(self, top, bottom, left=None, right=None):
+        ''' Set top/bottom margins and optionally, left and right margins '''
+        if left is None:
+            left = 10
+        if right is None:
+            right = 0
+        self.layout.setContentsMargins(left, top, right, bottom)
+
+    def setEdgeMargins(self, left, right):
+        ''' Set left and right margins '''
+        lm, tm, rm, bm = self.layout.getContentsMargins()
+        self.layout.setContentsMargins(left, tm, right, bm)
+
+    def setBarWidth(self, width):
+        ''' Sets the width of the color bar/gradient to a fixed amount '''
+        self.colorBar.setFixedWidth(width)
+        self.layout.setColumnMaximumWidth(0, width)
+        self.layout.setColumnMinimumWidth(0, width)
+
+    def setTickSpacing(self, major, minor):
+        self.axisItem.setTickSpacing(major, minor)
 
 class SpectraBase(object):
     def getCommonVars(self, bw, N):
@@ -179,110 +292,25 @@ class DynamicAnalysisTool(SpectraBase):
         msg = prefix +'('+freqStr+', '+valStr+')'
         self.ui.statusBar.showMessage(msg)
 
-class SpectraLegend(GradientLegend):
-    def __init__(self, offsets=(0, 2)):
-        GradientLegend.__init__(self, offsets)
-        self.valueRange = (0, 0)
+class SpectraLegend(GradLegend):
+    def __init__(self, offsets=(31, 48)):
+        GradLegend.__init__(self)
+        topOff, botOff = offsets
+        self.setOffsets(topOff, botOff)
         self.logMode = False
 
     def getCopy(self):
-        newLegend = SpectraLegend(self.offsets)
-        newLegend.setGradient(self.gradient)
-        newLegend.labels = self.labels.copy()
-        newLegend.logMode = self.logMode
-        newLegend.valueRange = self.valueRange
+        newLegend = SpectraLegend()
+        newLegend.setRange(self.getGradient(), self.getValueRange())
         return newLegend
 
-    def getTickVals(self, minVal, maxVal, maxTicks=6):
-        # Use an axis item to generate a list of potential tick values
-        ax = pg.AxisItem(orientation='right')
-        ax.setRange(minVal, maxVal)
-        tickLst = ax.tickValues(minVal, maxVal, 1000)
-        # Create a dictionary for each step size / tick subset
-        tickStepDict = {}
-        for step, sublst in tickLst:
-            tickStepDict[step] = sublst
-
-        # Merge tick value lists until at least a certain number are in list
-        count = 0
-        tickVals = []
-        for key, sublst in tickLst:
-            if count >= 6:
-                break
-            count += len(sublst)
-            tickVals = tickVals + sublst
-        tickVals.sort()
-
-        # Select a subset of ticks if too many were selected
-        if len(tickVals) > maxTicks:
-            tickVals = self.limitTicks(tickVals, maxTicks)
-        return tickVals
-
-    def limitTicks(self, ticks, numVals):
-        stepSize = max(int((len(ticks))/numVals) - 1, 2)
-        newTicks = [ticks[i] for i in range(0, len(ticks), stepSize)]
-        return newTicks
-
-    def setRange(self, colorLst, minVal, maxVal, logMode=False, cstmTicks=None,
-        cstmColorPos=None):
-        self.valueRange = (minVal, maxVal)
+    def setLogMode(self, logMode):
         self.logMode = logMode
-        # Initialize gradient bounded by gradLegend's view rect
-        pos = self.boundingRect()
-        gradient = QtGui.QLinearGradient()
+        if logMode:
+            self.setTickSpacing(1, 0.5)
 
-        # Calculate the integers between minVal/maxVal to label on color bar
-        if cstmTicks is not None:
-            colorPos = cstmTicks
-        elif logMode:
-            lwrBnd = int(np.ceil(minVal))
-            upperBnd = int(np.floor(maxVal))
-            colorPos = [i for i in range(lwrBnd, upperBnd+1)]
-            if abs(upperBnd-lwrBnd) < 1.3:
-                colorPos = np.arange(start=lwrBnd, stop=upperBnd+0.25, step=0.25)
-                colorPOs = np.round(colorPos, decimals=1)
-            elif abs(upperBnd-lwrBnd) <= 2:
-                colorPos = np.arange(start=lwrBnd, stop=upperBnd+0.5, step=0.5)
-                colorPos = np.round(colorPos, decimals=1)
-        else:
-            colorPos = self.getTickVals(minVal, maxVal)
-
-        # Map all-integer values to integers
-        intMode = True
-        for val in colorPos:
-            if val != int(val):
-                intMode = False
-        if intMode:
-            colorPos = list(map(int, colorPos))
-
-        # Create and set color gradient brush based on colormap
-        colors = list(map(pg.mkColor, colorLst))
-        colorLocs = [0, 1/3, 0.5, 2/3, 1]
-        if cstmColorPos:
-            colorLocs = cstmColorPos
-        for color, loc in zip(colors, colorLocs):
-            gradient.setColorAt(loc, color)
-        self.setGradient(gradient)
-
-        # Set labels corresponding to color level
-        locs = [(i-minVal)/(maxVal-minVal) for i in colorPos]
-        labels = []
-        for val in colorPos:
-            if val == 0:
-                txt = '0'
-            elif logMode or cstmTicks:
-                txt = str(val)
-            else:
-                # If in linear mode, use scientific notation string
-                txt = np.format_float_scientific(val, precision=3, trim='0', 
-                    pad_left=False, sign=False, exp_digits=0)
-                if max(colorPos) - min(colorPos) <= 1000:
-                    txt = str(np.round(val, decimals=2))
-            labels.append(txt)
-        labelsDict = {}
-        for lbl, loc in zip(labels, locs):
-            labelsDict[lbl] = loc
-        self.setLabels(labelsDict)
+    def logModeSetting(self):
+        return self.logMode
 
 class SpectraLine(pg.PlotCurveItem):
     def __init__(self, freq, colors, times, window=None, *args, **kargs):
@@ -373,8 +401,9 @@ class SpectrogramPlotItem(pg.PlotItem):
         rgbYellow = (245, 245, 0)
         rgbRed = (245, 0, 25)
 
+        self.colorPos = [0, 1/3, 0.5, 2/3, 1]
         self.colors = [rgbBlue, rgbBlueGreen, rgbGreen, rgbYellow, rgbRed]
-        self.valLevels = [] # Stores y-values corresp. to colors in self.colors
+        self.valueRange = (0, 1)
 
         # Create viewbox and set up custom axis items
         vb = SpectrogramViewBox()
@@ -438,11 +467,12 @@ class SpectrogramPlotItem(pg.PlotItem):
         else:
             minLog, maxLog = minPower, maxPower
 
+        self.valueRange = (minLog, maxLog)
+
         # Determine the non-log values the color map will use
         midPoint = (minLog + maxLog) / 2
         oneThird = (maxLog - minLog) / 3
         logLevels = [minLog, minLog+oneThird, midPoint, maxLog-oneThird, maxLog]
-        self.valLevels = logLevels
 
         # Map power values to colors (RGB values) according to gradient
         prevVals = vals[:]
@@ -458,13 +488,20 @@ class SpectrogramPlotItem(pg.PlotItem):
         return mappedVals
 
     def getGradLegend(self, logMode=True, offsets=None, cstmTicks=None):
-        # Create color gradient legend based on color map
-        minVal, maxVal = self.valLevels[0], self.valLevels[-1]
+        # Use default offsets if none passed
         if offsets:
             gradLegend = SpectraLegend(offsets)
         else:
             gradLegend = SpectraLegend()
-        gradLegend.setRange(self.colors, minVal, maxVal, logMode, cstmTicks=cstmTicks)
+
+        # Create color gradient legend based on color map
+        gradient = QtGui.QLinearGradient()
+        for pos, rgb in zip(self.colorPos, self.colors):
+            gradient.setColorAt(pos, pg.mkColor(rgb))
+        gradLegend.setRange(gradient, self.valueRange)
+
+        # Set log mode
+        gradLegend.setLogMode(logMode)
 
         return gradLegend
 
@@ -534,36 +571,23 @@ class PhaseSpectrogram(SpectrogramPlotItem):
     def __init__(self, epoch, logMode=True):
         super(SpectrogramPlotItem, self).__init__(parent=None)
         SpectrogramPlotItem.__init__(self, epoch, logMode)
+        self.valueRange = (-180, 180)
         self.colors = [(225, 0, 255)] + self.colors + [(225, 0, 255)]
-        self.colorPlacements = []
+        self.colorPos = [0]
         centerTotal = 5/6
         startStop = 1/12
-        cstmColPos = [0]
         for pos in [0, 1/3, 1/2, 2/3, 1]:
             currStop = startStop + (centerTotal*pos)
-            cstmColPos.append(currStop)
-        cstmColPos.append(1)
-        self.colorPlacements = cstmColPos
+            self.colorPos.append(currStop)
+        self.colorPos.append(1)
 
     def mapValueToColor(self, valueGrid, minPower, maxPower, logColorScale):
-        minVal, maxVal = -180, 180
+        minVal, maxVal = self.valueRange
         stepSize = 360 / 6
-        colorPos = [(-180 + (360 * pos)) for pos in self.colorPlacements]
-        colorMap = pg.ColorMap(colorPos, self.colors)
+        colorVals = [(minVal + (360 * pos)) for pos in self.colorPos]
+        colorMap = pg.ColorMap(colorVals, self.colors)
         mappedGrid = colorMap.map(valueGrid)
         return mappedGrid
-
-    def getGradLegend(self, colors=None, cstmColPos=None, cstmTicks=None,
-        offsets=(31, 48)):
-        top, bot = offsets
-        # Create color gradient legend based on color map
-        minVal, maxVal = -180, 180
-        cstmTicks = [i for i in range(minVal, maxVal+1, 60)]
-        gradLegend = SpectraLegend((top, bot))
-        gradLegend.setRange(self.colors, minVal, maxVal, cstmColorPos=self.colorPlacements,
-            cstmTicks=cstmTicks, logMode=False)
-
-        return gradLegend
 
 class DynamicSpectraUI(BaseLayout):
     def setupUI(self, Frame, window):
@@ -576,7 +600,7 @@ class DynamicSpectraUI(BaseLayout):
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = GridGraphicsLayout(window)
         self.gview.setCentralItem(self.glw)
-        self.glw.layout.setHorizontalSpacing(15)
+        self.glw.layout.setHorizontalSpacing(5)
 
         # Settings setup
         settingsFrame = QtWidgets.QGroupBox(' Settings')
@@ -702,7 +726,7 @@ class DynamicSpectraUI(BaseLayout):
         self.plotItem.setTitle('Dynamic Spectra Analysis'+' ('+dstrTitle+')', size='13pt')
         self.plotItem.setDownsampling(mode='subsample')
 
-        self.glw.addItem(self.plotItem, 0, 0, 6, 4)
+        self.glw.addItem(self.plotItem, 0, 0, 5, 4)
 
     def addTimeInfo(self, timeRng, window):
         # Convert time ticks to tick strings
@@ -718,32 +742,19 @@ class DynamicSpectraUI(BaseLayout):
         timeLblStr = 'Time Range: ' + startStr + ' to ' + endStr
         self.timeLbl = pg.LabelItem(timeLblStr)
         self.timeLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.glw.addItem(self.timeLbl, 6, 0, 1, 1)
+        self.glw.addItem(self.timeLbl, 5, 0, 1, 1)
 
     def setupGradient(self):
         # Create gradient legend and add it to the graphics layout
         gradLegend = self.plotItem.getGradLegend()
-        self.glw.addItem(gradLegend, 1, 5, 4, 1)
-        gradLegend.setMinimumWidth(75)
-
-        # Add in spacers to align gradient legend with plot top/bottom boundaries
-        spacer = pg.LabelItem('') # Top spacer
-        spacer.setMaximumHeight(self.plotItem.titleLabel.height())
-        self.glw.addItem(spacer, 0, 5, 1, 1)
-
-        spacer = pg.LabelItem('') # Bottom spacer
-        botmAxisHt = self.plotItem.getAxis('bottom').boundingRect().height()
-        spacer.setMaximumHeight(botmAxisHt*2)
-        self.glw.addItem(spacer, 5, 5, 1, 1)
+        gradLegend.setBarWidth(40)
+        self.glw.addItem(gradLegend, 0, 5, 5, 1)
 
         # Add in legend labels and center them
-        gradLabel = pg.LabelItem('Log Power')
-        gradUnitsLbl = pg.LabelItem('(nT^2/Hz)')
-        self.glw.addItem(gradLabel, 2, 6, 1, 1)
-        self.glw.addItem(gradUnitsLbl, 3, 6, 1, 1)
-        for lbl in [gradLabel, gradUnitsLbl]:
-            lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.glw.layout.setColumnAlignment(6, QtCore.Qt.AlignCenter)
+        lbl = StackedAxisLabel(['Log Power', '(nT^2/Hz)'], angle=0)
+        lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+        lbl.layout.setContentsMargins(0,0,0,0)
+        self.glw.addItem(lbl, 0, 6, 5, 1)
 
     def powerRngSelectToggled(self, val):
         self.powerMax.setEnabled(val)
@@ -954,7 +965,7 @@ class DynamicCohPhaUI(BaseLayout):
             gview.setCentralItem(glw)
             grids.append(glw)
             subLt.addWidget(gview)
-            glw.layout.setHorizontalSpacing(15)
+            glw.layout.setHorizontalSpacing(10)
 
             # Create a tab
             tabWidget.addTab(subFrame, name)
@@ -1138,13 +1149,11 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
             logColorScale=False, statusStrt=50, statusEnd=100)
 
         # Get color gradients
-        cohTicks = [0, 0.2, 0.4, 0.6, 0.8, 1.0]
-        cohGrad = cohPlt.getGradLegend(cstmTicks=cohTicks, logMode=False, 
-            offsets=(31, 48))
-        cohGrad.setFixedWidth(65)
+        cohGrad = cohPlt.getGradLegend(logMode=False)
+        cohGrad.setBarWidth(40)
 
-        phaGrad = phaPlt.getGradLegend()
-        phaGrad.setFixedWidth(60)
+        phaGrad = phaPlt.getGradLegend(logMode=False)
+        phaGrad.setBarWidth(40)
 
         # Get color bar labels
         cohLbl = pg.LabelItem('Coherence')
@@ -1153,6 +1162,9 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         phaLbl = StackedAxisLabel(['Phase', '[Degrees]'], angle=0)
         phaLbl.setFixedWidth(70)
 
+        cohGrad.setTickSpacing(0.2, 0.1)
+        phaGrad.setTickSpacing(60, 30)
+
         # Add items into grids
         for grid, plt, grad, lbl in zip([self.ui.cohGrid, self.ui.phaGrid],
             [cohPlt, phaPlt], [cohGrad, phaGrad], [cohLbl, phaLbl]):
@@ -1160,7 +1172,6 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
             grid.addItem(plt)
             grid.nextCol()
             grid.addItem(grad)
-            grad.updateWidth(35)
             grid.nextCol()
             grid.addItem(lbl)
 

@@ -843,17 +843,24 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.ui.glw.addItem(plt, 0, 0, 1, 1)
 
         # Add in color gradient
-        grad = plt.getGradLegend(logColorScale, offsets=(31, 47))
-        grad.updateWidth(35)
-        grad.setFixedWidth(65)
+        grad = plt.getGradLegend(logColorScale)
         self.ui.glw.nextCol()
         self.ui.glw.addItem(grad)
     
         # Add in gradient label
-        if gradUnits is None:
-            gradLbl = StackedAxisLabel([gradStr])
+        lblStrs = [gradStr]
+        if gradUnits:
+            lblStrs.append('['+gradUnits+']')
+        gradLbl = StackedAxisLabel(lblStrs)
+
+        if plotType in self.plotGroups['Angle']:
+            grad.setTickSpacing(60, 30)
+        elif plotType in self.plotGroups['Ellipticity']:
+            grad.setTickSpacing(0.2, 0.1)
         else:
-            gradLbl = StackedAxisLabel([gradStr, '['+gradUnits+']'])
+            grad.setTickSpacing(1, 0.5)
+        grad.setBarWidth(40)
+
         self.ui.glw.nextCol()
         self.ui.glw.addItem(gradLbl)
         gradLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))

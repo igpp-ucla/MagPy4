@@ -1675,9 +1675,6 @@ class MMSColorPltTool():
 
             # Create copies of color plot elements
             plt, grad, gradLabel = self.makeCopy(plt, grad, grdLbl)
-            grad.updateWidth(30)
-            gradWidth = 50 if grad.logMode else 85
-            grad.setFixedWidth(gradWidth)
 
             if editLink:
                 plt.actionLink = editLink
@@ -1693,7 +1690,8 @@ class MMSColorPltTool():
             vb.plotIndex = self.window.pltGrd.numPlots - 1
             pltLinks.append(self.window.pltGrd.numPlots - 1)
 
-            grad.offsets = (1, 1) if plt != self.plotItems[-1] else (1, 42)
+            offsets = (1, 1) if plt != self.plotItems[-1] else (1, 42)
+            grad.setOffsets(offsets[0], offsets[1])
 
         if len(selectedKws) == 0:
             return
@@ -1864,8 +1862,10 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
 
             # Add in gradient color bar
             grad = plt.getGradLegend(logColor, (1, 26))
-            gradWidth = 50 if logColor else 85
+            gradWidth = 45 if logColor else 65
             grad.setFixedWidth(gradWidth)
+            grad.setEdgeMargins(0, 0)
+            grad.setBarWidth(28)
             self.ui.glw.addItem(grad, pltNum + 1, 2, 1, 1)
             self.gradients.append(grad)
 
@@ -1888,11 +1888,6 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
         self.ui.glw.addItem(lbl, pltNum + 1, 1, 1, 1)
         lbl = self.getTimeRangeLbl(times[0], times[-1])
         self.ui.glw.addItem(lbl, pltNum + 2, 0, 1, 3)
-
-        # Adjust color bars to all have same width
-        w = 30
-        for grad in self.gradients:
-            grad.updateWidth(w)
 
         self.ui.statusBar.clearMessage()
 
@@ -2132,15 +2127,14 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
         plt.setTitle(title)
 
         # Create gradient object
-        grad = plt.getGradLegend(logMode=logColor, offsets=(plt.titleLabel.height()+6, 45))
-        grad.updateWidth(30)
-        gradWidth = 50 if logColor else 85
-        grad.setFixedWidth(gradWidth)
+        grad = plt.getGradLegend(logMode=logColor, offsets=(31, 45))
+        grad.setMaximumWidth(50 if logColor else 85)
+        grad.setBarWidth(28)
 
         # Add in units label
         unitsLbl = 'Log DEF' if logColor else 'DEF'
         lbl = StackedAxisLabel([unitsLbl, '[keV/(cm^2 s sr keV)]'])
-        lbl.setFixedWidth(40)
+        lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
 
         return plt, grad, lbl
 

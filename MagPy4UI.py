@@ -577,10 +577,10 @@ class PlotGrid(pg.GraphicsLayout):
             lbl.adjustLabelSizes(plotAreaHeight, self.numPlots)
 
         for grad, lbl in self.colorPltElems:
-            lbl.setContentsMargins(4, 0, 4, 0)
             if lbl:
                 lbl.adjustLabelSizes(plotHeight)
-            grad.offsets = (1, 1)
+                lbl.setContentsMargins(0, 0, 0, 0)
+            grad.setOffsets(1, 1, 2)
 
         # Set row heights, add in extra space for last plot's dateTime axis
         for row in range(self.startRow, self.startRow+self.numPlots-1):
@@ -596,7 +596,7 @@ class PlotGrid(pg.GraphicsLayout):
             botmGrad, botmLabel = self.colorPltElems[-1]
             lm, rm, tm, bm = botmLabel.layout.getContentsMargins()
             botmLabel.layout.setContentsMargins(lm, tm, rm, botmAxisHeight)
-            botmGrad.offsets = (1, botmAxisHeight)
+            botmGrad.setOffsets(1, botmAxisHeight, 2)
 
         self.adjustPlotWidths()
 
@@ -622,8 +622,13 @@ class PlotGrid(pg.GraphicsLayout):
         self.addPlt(plt, lbl)
         self.addItem(colorBar, self.startRow + self.numPlots - 1, 2, 1, 1)
         if colorLbl:
-            self.addItem(colorLbl, self.startRow + self.numPlots - 1, 3, colorLblSpan, 1)
+            self.addItem(colorLbl, self.startRow + self.numPlots - 1, 3, 1, 1)
+
+        # Additional state updates
+        lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+        lbl.setFixedWidth(35)
         plt.getAxis('bottom').tickOffset = self.window.tickOffset
+        colorBar.setBarWidth(28)
 
         # Add tracker lines to plots
         trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine))
