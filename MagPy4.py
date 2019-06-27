@@ -2057,7 +2057,10 @@ if __name__ == '__main__':
     app.setOrganizationName('IGPP UCLA')
     app.setOrganizationDomain('igpp.ucla.edu')
     app.setApplicationName('MagPy4')
-    #app.setApplicationVersion(version)
+
+    keys = QtGui.QStyleFactory().keys()
+    if 'Fusion' in keys:
+        app.setStyle(QtGui.QStyleFactory.create('Fusion'))
 
     main = MagPy4Window(app)
     main.showMaximized()

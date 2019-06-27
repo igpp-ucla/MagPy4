@@ -1,11 +1,13 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
+from MagPy4UI import StackedLabel
 
 from datetime import datetime, timedelta
 import numpy as np
 from layoutTools import BaseLayout
 
 import pyqtgraph as pg
+from bisect import bisect
 import functools
 
 class PlotAppearanceUI(BaseLayout):
@@ -80,15 +82,17 @@ class PlotAppearanceUI(BaseLayout):
             tracePropLayout.addWidget(plotFrame, rowNum, colNum, 1, 1)
             pltNum += 1
 
-            # Move to next column if max num of traces in row
+            # Move to next row and keep track of total number of traces
             rowNum += 1
             totTraces += traceNum
 
-            if totTraces >= maxTracesPerCol*(colNum+1):
-                rowNum = 0
-                colNum += 1
-
-        tw.addTab(tracePropFrame, 'Trace Properties')
+        # If there are a lot of traces, wrap the trace properties frame
+        # inside a scroll area
+        if totTraces > 9:
+            tracePropScroll = self.wrapTracePropFrame(tracePropFrame)
+            tw.addTab(tracePropScroll, 'Trace Properties')
+        else: # Otherwise add it as a tab directly
+            tw.addTab(tracePropFrame, 'Trace Properties')
 
         # Set up tick intervals widget
         if mainWindow:
@@ -98,8 +102,24 @@ class PlotAppearanceUI(BaseLayout):
         tw.addTab(tickIntWidget, 'Tick Spacing')
 
         # Set up label properties widget
-        lblPropWidget = LabelAppear(window, plotItems)
-        tw.addTab(lblPropWidget, 'Label Sizes')
+        self.lblPropWidget = LabelAppear(window, plotItems, mainWindow)
+        tw.addTab(self.lblPropWidget, 'Label Properties')
+
+    def wrapTracePropFrame(self, widgetFrame):
+        # Create a scroll area and set its dimensions
+        scrollArea = QtWidgets.QScrollArea()
+        scrollArea.setWidget(widgetFrame)
+        scrollArea.setMinimumHeight(450)
+        scrollArea.setMinimumWidth(430)
+        scrollArea.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+
+        # Set style properties to match tab widget's background
+        scrollArea.setStyleSheet('QScrollArea {background-color: transparent;}')
+        widgetFrame.setStyleSheet('QFrame {background-color: white;}')
+        # Hide bottom scroll bar
+        scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+
+        return scrollArea
 
 class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
     def __init__(self, window, plotItems, parent=None, mainWindow=False):
@@ -260,6 +280,8 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         return penList
 
     def closeEvent(self, event):
+        if self.ui.lblPropWidget.textEditor:
+            self.ui.lblPropWidget.closeLabelEditor()
         self.close()
 
 class MagPyPlotApp(PlotAppearance):
@@ -551,14 +573,17 @@ class LabelAppearUI(BaseLayout):
             row += 1
 
         frameLt.addLayout(layout)
+        self.labelEditorBtn = QtWidgets.QPushButton('Edit Label Text...')
+        layout.addWidget(self.labelEditorBtn, row, 0, 1, 2)
         frameLt.addStretch()
 
 class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
-    def __init__(self, window, plotItems, parent=None):
+    def __init__(self, window, plotItems, inMainWindow=False, parent=None):
         super(LabelAppear, self).__init__(parent)
         self.ui = LabelAppearUI()
         self.plotItems = plotItems
         self.window = window
+        self.textEditor = None
 
         # Get plots' trace/label infos and use to setup/initialize UI elements
         self.ui.setupUI(self, window)
@@ -568,6 +593,22 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
         self.ui.titleSzBox.valueChanged.connect(self.changeTitleSize)
         self.ui.axisLblSzBox.valueChanged.connect(self.changeAxisLblSize)
         self.ui.tickLblSzBox.valueChanged.connect(self.changeTickLblSize)
+
+        if inMainWindow:
+            self.ui.labelEditorBtn.clicked.connect(self.openLabelEditor)
+        else: # Remove label editor button for non-main-window menus
+            self.ui.layout.removeWidget(self.ui.labelEditorBtn)
+            self.ui.labelEditorBtn.deleteLater()
+
+    def openLabelEditor(self):
+        self.closeLabelEditor()
+        self.textEditor = RenameLabels(self.window)
+        self.textEditor.show()
+        self.textEditor.initVars()
+
+    def closeLabelEditor(self):
+        if self.textEditor:
+            self.textEditor.close()
 
     def initVars(self):
         plt = self.plotItems[-1]
@@ -643,3 +684,254 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
             axis.setStyle(tickTextOffset=5)
         elif axis.orientation == 'bottom':
             axis.setStyle(tickTextOffset=2)
+
+class RenameLabelsUI(BaseLayout):
+    def setupUI(self, Frame, window):
+        self.Frame = Frame
+        Frame.setWindowTitle('Label Editor')
+        Frame.setStyleSheet('QFrame { background-color: white; } \
+            QScrollArea { background-color : white; }')
+        layout = QtWidgets.QVBoxLayout(Frame)
+        self.emptyKw = '_Empty_'
+
+        self.tables = [] # Text list widgets
+        self.colorTables = [] # Corresponding color list widgets
+
+        # Build label editor frame for each stacked label in plot grid
+        plotNum = 0
+        plotFrames = []
+        for lbl in window.pltGrd.labels:
+            plotFrame = QtWidgets.QGroupBox('Plot '+str(plotNum+1) +':')
+            plotLayout = QtWidgets.QGridLayout(plotFrame)
+
+            # Set up tables
+            tableLt, colorTable, columnWidget = self.getTables()
+            self.tables.append(columnWidget)
+            self.colorTables.append(colorTable)
+
+            # Set up add/remove buttons
+            addBtn = QtWidgets.QPushButton('+')
+            rmvBtn = QtWidgets.QPushButton('−')
+
+            plotLayout.addLayout(tableLt, 0, 0, 2, 1)
+            plotLayout.addWidget(addBtn, 0, 1, 1, 1)
+            plotLayout.addWidget(rmvBtn, 1, 1, 1, 1)
+
+            # Connect actions to signals
+            rmvBtn.clicked.connect(functools.partial(self.rmvFrmLst, plotNum))
+            addBtn.clicked.connect(functools.partial(self.addToLst, plotNum))
+
+            for btn in [rmvBtn, addBtn]:
+                btn.setFixedWidth(50)
+
+            plotFrames.append(plotFrame)
+            plotNum += 1
+
+        # Wrap editor sublayouts in a scroll area if there are too many labels
+        if plotNum > 5:
+            scrollFrame = QtWidgets.QFrame()
+            innerLayout = QtWidgets.QVBoxLayout(scrollFrame)
+
+            for frm in plotFrames: # Add in all sub frames
+                innerLayout.addWidget(frm)
+
+            scrollArea = QtWidgets.QScrollArea()
+            scrollArea.setWidget(scrollFrame)
+            scrollArea.setMinimumWidth(400)
+            scrollArea.setMinimumHeight(450)
+            scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+
+            layout.addWidget(scrollArea)
+        else: # Add widget to frame directly
+            for frm in plotFrames:
+                layout.addWidget(frm)
+
+        # Apply/Default buttons setup
+        applyLt = QtWidgets.QHBoxLayout()
+        self.applyBtn = QtWidgets.QPushButton('Apply')
+        self.defaultBtn = QtWidgets.QPushButton('Defaults')
+        applyLt.addWidget(self.defaultBtn)
+        applyLt.addWidget(self.applyBtn)
+        layout.addLayout(applyLt)
+
+    def colorToData(self, color):
+        return QtCore.QVariant(color)
+
+    def iconFromColor(self, color):
+        pix = QtGui.QPixmap(12, 12)
+        pix.fill(pg.mkColor(color))
+        icon = QtGui.QIcon(pix)
+        return icon
+
+    def itemFromColor(self, color):
+        # Creates a listWidgetItem w/ a colored icon from a hex color string
+        icon = self.iconFromColor(color)
+        item = QtWidgets.QListWidgetItem(icon, '')
+        return item
+
+    def scrollTable(self, table, val):
+        # Scroll a list widget without signals
+        table.blockSignals(True)
+        table.verticalScrollBar().setValue(val)
+        table.blockSignals(False)
+
+    def getTables(self):
+        # Set up color table and dstr table in a single layout
+        layout = QtWidgets.QGridLayout()
+        layout.setContentsMargins(0,0,0,0)
+        layout.setHorizontalSpacing(1)
+
+        # Create the text list widget
+        dstrTable = QtWidgets.QListWidget()
+        font = QtGui.QFont('12pt')
+        dstrTable.setFont(font)
+        dstrTable.setStyleSheet('QListWidget::item { border-bottom: 1px solid #bfbfbf; \
+            padding-bottom: 2px ; padding-top: 2px}')
+
+        # Set up color table w/ a fixed width and connect to color select
+        colorTable = QtWidgets.QListWidget()
+        colorTable.setMaximumWidth(20)
+        colorTable.setMinimumWidth(20)
+        colorTable.itemClicked.connect(self.openColorSelect)
+        colorTable.setStyleSheet('QListWidget::item { border: 0px solid black; padding-bottom: 2px ; padding-top: 2px }')
+
+        # Disable selection highlighting and hide scrollbars in colors list
+        colorTable.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        colorTable.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        colorTable.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+
+        # Link scrolling between tables
+        func = colorTable.verticalScrollBar().setValue
+        dstrTable.verticalScrollBar().valueChanged.connect(func)
+        func = functools.partial(self.scrollTable, dstrTable)
+        colorTable.verticalScrollBar().valueChanged.connect(func)
+
+        layout.addWidget(colorTable, 0, 0, 1, 1)
+        layout.addWidget(dstrTable, 0, 1, 1, 1)
+
+        return layout, colorTable, dstrTable
+
+    def rmvFrmLst(self, plotNum):
+        # Removes the bottom text/color from each list for the given plot number
+        if len(self.tables) == 0:
+            return
+        table = self.tables[plotNum]
+        colorTable = self.colorTables[plotNum]
+        row = table.count() - 1
+        table.takeItem(row)
+        colorTable.takeItem(row)
+
+    def addToLst(self, plotNum):
+        # Adds an 'empty' element for each list for the given plot
+        table = self.tables[plotNum]
+        table.addItem(self.emptyKw)
+        colorTable = self.colorTables[plotNum]
+        colorTable.addItem(self.itemFromColor('#000000'))
+        # Get last item in list (just added) and set editable
+        item = table.item(table.count()-1)
+        table.openPersistentEditor(item)
+        item.setFlags(item.flags() | QtCore.Qt.ItemIsEditable)
+
+    def openColorSelect(self, item):
+        # Open color selection dialog and connect to color update function
+        clrDialog = QtWidgets.QColorDialog(self.Frame)
+        clrDialog.show()
+        func = functools.partial(self.setColorForItem, item)
+        clrDialog.colorSelected.connect(func)
+
+    def setColorForItem(self, item, color):
+        # Sets the color of a list widget item
+        icon = self.iconFromColor(color)
+        item.setIcon(icon)
+        item.setData(QtCore.Qt.UserRole, self.colorToData(color.name()))
+
+    def getPlotInfo(self, plotNum):
+        table = self.tables[plotNum]
+        colorTable = self.colorTables[plotNum]
+
+        dstrs, colors = [], []
+        for row in range(0, table.count()):
+            dstr = table.item(row).text()
+            color = colorTable.item(row).data(QtCore.Qt.UserRole)
+            if dstr != self.emptyKw:
+                dstrs.append(dstr)
+                colors.append(color)
+
+        return dstrs, colors
+
+    def clearPlot(self, plotNum):
+        for table in [self.tables[plotNum], self.colorTables[plotNum]]:
+            table.clear()
+
+    def fillPlot(self, plotNum, dstrs, colors):
+        self.clearPlot(plotNum)
+
+        table = self.tables[plotNum]
+        table.addItems(dstrs)
+        for row in range(0, table.count()):
+            item = table.item(row)
+            table.openPersistentEditor(item)
+            item.setFlags(item.flags() | QtCore.Qt.ItemIsEditable)
+
+        colorTable = self.colorTables[plotNum]
+        colorItems = list(map(self.itemFromColor, colors))
+        for item, color in zip(colorItems, colors):
+            item.setData(QtCore.Qt.UserRole, color)
+            colorTable.addItem(item)
+
+class RenameLabels(QtWidgets.QFrame, RenameLabelsUI):
+    def __init__(self, window, parent=None):
+        super(RenameLabels, self).__init__(parent)
+        self.ui = RenameLabelsUI()
+        self.window = window
+        self.plotGrid = window.pltGrd
+        self.defaultPlotStrings = window.lastPlotStrings
+        self.defaultPens = window.plotTracePens
+
+        self.ui.setupUI(self, window)
+        self.ui.applyBtn.clicked.connect(self.rebuildLabels)
+        self.ui.defaultBtn.clicked.connect(self.resetToDefaults)
+
+    def initVars(self):
+        plotNum = 0
+        for lbl in self.plotGrid.labels:
+            self.ui.fillPlot(plotNum, lbl.dstrs, lbl.colors)
+            plotNum += 1
+
+    def resetToDefaults(self):
+        plotNum = 0
+        for pltLst, penLst in zip(self.defaultPlotStrings, self.defaultPens):
+            if penLst == None:
+                # If a color plot, extract the default title and units from
+                # the plot grid's state information
+                index = self.defaultPlotStrings.index(pltLst)
+                plt = self.plotGrid.plotItems[index]
+                cpIndex = self.plotGrid.colorPlts.index(plt)
+                name = self.plotGrid.colorPltNames[cpIndex]
+                units = self.plotGrid.colorPltUnits[cpIndex]
+                dstrs = [name, '['+units+']']
+                colors = ['#000000', '#888888']
+                self.ui.fillPlot(plotNum, dstrs, colors)
+                plotNum += 1
+                continue
+            # Get default colors from pen list and use to initialize a stacked lbl
+            colors = list(map(QtGui.QPen.color, penLst))
+            stackedLbl = self.window.buildStackedLabel(pltLst, colors)
+            dstrs = stackedLbl.dstrs
+            colors = stackedLbl.colors
+            self.ui.fillPlot(plotNum, dstrs, colors)
+            plotNum += 1
+
+    def rebuildLabels(self):
+        # Create new labels and replace labels in plot grid with them
+        for plotNum in range(0, len(self.window.plotItems)):
+            prevLbl = self.plotGrid.labels[plotNum]
+            prevDstrs, prevColors = prevLbl.dstrs, prevLbl.colors
+
+            newDstrs, newColors = self.ui.getPlotInfo(plotNum)
+            # Skip unmodified labels
+            if newDstrs == prevDstrs and newColors == prevColors:
+                continue
+
+            lbl = StackedLabel(newDstrs, newColors)
+            self.plotGrid.setPlotLabel(lbl, plotNum)
