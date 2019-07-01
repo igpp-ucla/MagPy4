@@ -10,6 +10,138 @@ import bisect
 import functools
 from mth import Mth
 from layoutTools import BaseLayout
+from simpleCalculations import ExpressionEvaluator
+
+class SpectraLineEditorUI(BaseLayout):
+    def setupUI(self, Frame, window):
+        Frame.resize(100, 100)
+        Frame.setWindowTitle('Line Tool')
+        layout = QtWidgets.QGridLayout(Frame)
+        self.lineColor = '#000000'
+        self.lineStyles = {'Solid': QtCore.Qt.SolidLine, 'Dashed':QtCore.Qt.DashLine, 
+            'Dotted': QtCore.Qt.DotLine, 'DashDot': QtCore.Qt.DashDotLine}
+
+        helpInfo = 'Please enter an expression to calculate and press \'Plot\':'
+        layout.addWidget(QtWidgets.QLabel(helpInfo), 0, 0, 1, 3)
+
+        # Set up text box for user to input expression
+        self.textBox = QtWidgets.QTextEdit()
+        exampleTxt = 'Examples:\nLine = (Bx^2 + By^2 + Bz^2)^(1/2) - 50 \n' +\
+                'Line = 0.24'
+        self.textBox.setPlaceholderText(exampleTxt)
+        layout.addWidget(self.textBox, 1, 0, 1, 3)
+
+        # Set up line appearance options
+        linePropFrame = self.setupLineProperties()
+        layout.addWidget(linePropFrame, 2, 0, 1, 3)
+
+        # Set up clear/plot buttons and status bar
+        self.clearBtn = QtWidgets.QPushButton('Clear')
+        self.addBtn = QtWidgets.QPushButton('Plot')
+        self.statusBar = QtWidgets.QStatusBar()
+
+        layout.addWidget(self.statusBar, 3, 0, 1, 1)
+        layout.addWidget(self.clearBtn, 3, 1, 1, 1)
+        layout.addWidget(self.addBtn, 3, 2, 1, 1)
+
+    def setupLineProperties(self):
+        frame = QtWidgets.QGroupBox('Line Properties')
+        layout = QtWidgets.QGridLayout(frame)
+
+        self.colorBtn = QtWidgets.QPushButton()
+        styleSheet = "* { background: #000000 }"
+        self.colorBtn.setStyleSheet(styleSheet)
+        self.colorBtn.setFixedWidth(45)
+
+        self.lineStyle = QtWidgets.QComboBox()
+        self.lineStyle.addItems(self.lineStyles.keys())
+
+        self.lineWidth = QtWidgets.QSpinBox()
+        self.lineWidth.setMinimum(1)
+        self.lineWidth.setMaximum(5)
+
+        for col, elem, name in zip([0, 2, 4], [self.colorBtn, self.lineStyle, 
+            self.lineWidth], ['Color: ', ' Style: ', ' Width: ']):
+            self.addPair(layout, name, elem, 0, col, 1, 1)
+        return frame
+
+class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
+    def __init__(self, spectraFrame, window, dataRange, parent=None):
+        super().__init__(parent)
+        self.spectraFrame = spectraFrame
+        self.window = window
+        self.dataRange = dataRange
+        self.ui = SpectraLineEditorUI()
+        self.ui.setupUI(self, window)
+
+        self.ui.colorBtn.clicked.connect(self.openColorSelect)
+        self.ui.clearBtn.clicked.connect(self.clearPlot)
+        self.ui.addBtn.clicked.connect(self.addToPlot)
+
+    def createLine(self, dta, times, color, style, width):
+        # Constructs a plotDataItem object froms given settings and data
+        pen = pg.mkPen(color=color, width=width)
+        pen.setStyle(style)
+        line = pg.PlotDataItem(times, dta, pen=pen)
+        return line
+
+    def addToPlot(self):
+        self.clearPlot()
+        sI, eI = self.dataRange
+        exprStr = self.ui.textBox.toPlainText()
+        if exprStr == '':
+            return
+
+        # Attempt to evaluate expression, print error if an exception occurs
+        try:
+            expEval = ExpressionEvaluator(exprStr, self.window, self.dataRange)
+            name, exprLst = expEval.splitString()
+            stack = expEval.createStack(exprLst)
+            res = stack.evaluate()
+            dta = res.evaluate()
+
+            # Reshape constants to match times length
+            if res.isNum():
+                dta = [dta] * (eI-sI)
+
+            # Adjust values if plot is in log scale
+            if self.isLogMode():
+                dta = np.log10(dta)
+
+        except:
+            self.ui.statusBar.showMessage('Error: Invalid operation')
+            return
+
+        # Extract line settings from UI and times to use for data
+        arbDstr = self.window.DATASTRINGS[0]
+        times = self.window.getTimes(arbDstr, 0)[0][sI:eI]
+        color = self.ui.lineColor
+        width = self.ui.lineWidth.value()
+        lineStyle = self.ui.lineStyles[self.ui.lineStyle.currentText()]
+
+        # Create line from user input and add it to the plot item
+        lineItem = self.createLine(dta, times, color, lineStyle, width)
+        self.spectraFrame.addLineToPlot(lineItem)
+
+    def clearPlot(self):
+        self.spectraFrame.removeLinesFromPlot()
+
+    def isLogMode(self):
+        mode = self.spectraFrame.ui.scaleModeBox.currentText()
+        if mode == 'Linear':
+            return False
+        return True
+
+    def openColorSelect(self):
+        clrDialog = QtWidgets.QColorDialog(self)
+        clrDialog.show()
+        clrDialog.colorSelected.connect(self.setButtonColor)
+
+    def setButtonColor(self, color):
+        styleSheet = "* { background:" + color.name() + " }"
+        self.ui.colorBtn.setStyleSheet(styleSheet)
+        self.ui.colorBtn.show()
+        self.ui.lineColor = color.name()
 
 class ColorBarAxis(pg.AxisItem):
     def __init__(self, *args, **kwargs):
@@ -239,6 +371,10 @@ class SpectraBase(object):
         return mats
 
 class DynamicAnalysisTool(SpectraBase):
+    def __init__(self):
+        self.lineTool = None
+        self.lineHistory = set()
+
     def updateParameters(self):
         # Set num data points
         self.ui.initVars(self.window)
@@ -291,6 +427,17 @@ class DynamicAnalysisTool(SpectraBase):
         valStr = NumLabel.formatVal(val, 5)
         msg = prefix +'('+freqStr+', '+valStr+')'
         self.ui.statusBar.showMessage(msg)
+
+    def openLineTool(self):
+        self.closeLineTool()
+        dtaRange = self.getDataRange()
+        self.lineTool = SpectraLineEditor(self, self.window, dtaRange)
+        self.lineTool.show()
+
+    def closeLineTool(self):
+        if self.lineTool:
+            self.lineTool.close()
+            self.lineTool = None
 
 class SpectraLegend(GradLegend):
     def __init__(self, offsets=(31, 48)):
@@ -627,6 +774,8 @@ class DynamicSpectraUI(BaseLayout):
 
         self.updateBtn = QtWidgets.QPushButton('Update')
         self.updateBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        self.addLineBtn = QtWidgets.QPushButton('Add Line')
+        self.addLineBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 
         # Set up FFT parameter widgets
         self.addPair(settingsLt, lbls[0], self.fftInt, 0, 0, 1, 1, fftIntTip)
@@ -647,6 +796,7 @@ class DynamicSpectraUI(BaseLayout):
         spacer = QtWidgets.QSpacerItem(10, 1)
         settingsLt.addItem(spacer, 2, 6, 1, 1)
         settingsLt.addWidget(self.updateBtn, 2, 7, 1, 1)
+        settingsLt.addWidget(self.addLineBtn, 1, 7, 1, 1)
 
         layout.addWidget(settingsFrame, 0, 0, 1, 2)
 
@@ -766,6 +916,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
     def __init__(self, window, parent=None):
         super(DynamicSpectra, self).__init__(parent)
         SpectraBase.__init__(self)
+        DynamicAnalysisTool.__init__(self)
         self.ui = DynamicSpectraUI()
         self.window = window
         self.wasClosed = False
@@ -775,10 +926,12 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
 
         self.ui.setupUI(self, window)
         self.ui.updateBtn.clicked.connect(self.update)
+        self.ui.addLineBtn.clicked.connect(self.openLineTool)
         self.ui.timeEdit.start.dateTimeChanged.connect(self.updateParameters)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.updateParameters)
 
     def closeEvent(self, ev):
+        self.closeLineTool()
         self.window.endGeneralSelect()
         self.window.clearStatusMsg()
         self.wasClosed = True
@@ -919,6 +1072,17 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
     def showPointValue(self, freq, time):
         self.showValue(freq, time, 'Freq, Power: ', self.lastCalc)
 
+    def addLineToPlot(self, line):
+        self.ui.plotItem.addItem(line)
+        self.lineHistory.add(line)
+
+    def removeLinesFromPlot(self):
+        histCopy = self.lineHistory.copy()
+        for line in histCopy:
+            if line in self.ui.plotItem.listDataItems():
+                self.ui.plotItem.removeItem(line)
+                self.lineHistory.remove(line)
+
 class DynamicCohPhaUI(BaseLayout):
     def setupUI(self, Frame, window, dstrs):
         maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
@@ -1022,6 +1186,8 @@ class DynamicCohPhaUI(BaseLayout):
         self.bwBox.setSingleStep(2)
         self.bwBox.setMinimum(1)
 
+        self.addLineBtn = QtWidgets.QPushButton('Add Line')
+        self.addLineBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.updtBtn = QtWidgets.QPushButton(' Update ')
         self.updtBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 
@@ -1031,12 +1197,14 @@ class DynamicCohPhaUI(BaseLayout):
             layout.addItem(spacer, row, 6, 1, 1)
 
         layout.addWidget(self.updtBtn, 1, 7, 1, 1)
+        layout.addWidget(self.addLineBtn, 0, 7, 1, 1)
         return layout
 
 class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
     def __init__(self, window, parent=None):
         super(DynamicCohPha, self).__init__(parent)
         SpectraBase.__init__(self)
+        DynamicAnalysisTool.__init__(self)
         self.ui = DynamicCohPhaUI()
         self.window = window
         self.wasClosed = False
@@ -1058,10 +1226,12 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
 
         self.ui.setupUI(self, window, dstrs)
         self.ui.updtBtn.clicked.connect(self.update)
+        self.ui.addLineBtn.clicked.connect(self.openLineTool)
         self.ui.timeEdit.start.dateTimeChanged.connect(self.updateParameters)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.updateParameters)
 
     def closeEvent(self, ev):
+        self.closeLineTool()
         self.window.endGeneralSelect()
         self.window.clearStatusMsg()
         self.wasClosed = True
@@ -1124,12 +1294,14 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         freqs = np.concatenate([[lowerBnd], freqs])
 
         # Generate plots
-        cohPlt, phaPlt = self.createPlots(freqs, timeSeries, cohGrid, phaGrid, logMode)
+        self.cohPlt, self.phaPlt = self.createPlots(freqs, timeSeries, cohGrid, 
+            phaGrid, logMode)
 
         # Adjust plot ranges and y axis labels
         timeRng = (timeSeries[0], timeSeries[-1])
         freqRng = (freqs[0], freqs[-1])
-        self.adjustPlots(cohPlt, phaPlt, varA, varB, logMode, timeRng, freqRng)
+        self.adjustPlots(self.cohPlt, self.phaPlt, varA, varB, logMode, timeRng, 
+            freqRng)
 
         # Add in time label info at bottom
         for grid in [self.ui.cohGrid, self.ui.phaGrid]:
@@ -1232,3 +1404,22 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         calcToShow = (times, freqs, grid)
 
         self.showValue(yVal, tVal, prefix, calcToShow)
+
+    def addLineToPlot(self, line):
+        if self.ui.tabWidget.currentIndex() == 1: # Phase mode
+            self.phaPlt.addItem(line)
+        else:
+            self.cohPlt.addItem(line)
+        self.lineHistory.add(line)
+
+    def removeLinesFromPlot(self):
+        if self.ui.tabWidget.currentIndex() == 1: # Phase mode
+            plt = self.phaPlt
+        else: # Coherence mode
+            plt = self.cohPlt
+
+        histCopy = self.lineHistory.copy()
+        for line in histCopy:
+            if line in plt.listDataItems():
+                plt.removeItem(line)
+                self.lineHistory.remove(line)

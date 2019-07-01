@@ -40,17 +40,22 @@ class Vec(ExprElement):
         return self.vec
 
 class Var(ExprElement):
-    def __init__(self, window, varName):
+    def __init__(self, window, varName, dataRange=None):
         self.varName = varName
         self.window = window
         self.exprStr = varName
+        self.dataRange = dataRange # Limits the data range of operations
 
     def isVec(self):
         return True
 
     def evaluate(self):
         if self.varName in self.window.DATASTRINGS:
-            return np.array(self.window.getData(self.varName))
+            if self.dataRange is None: # Operation on full set of data
+                return np.array(self.window.getData(self.varName))
+            else: # Operation on a range of data
+                iO, iE = self.dataRange
+                return np.array(self.window.getData(self.varName)[iO:iE])
         else:
             raise Exception('Variable not in datastrings!')
 
@@ -127,38 +132,14 @@ class Expr(ExprElement):
 
         return self.exprStack[0]
 
-class simpleCalcUI(object):
-    def setupUI(self, Frame, window):
-        Frame.setWindowTitle('Calculate')
-        Frame.resize(400, 150)
-        layout = QtWidgets.QGridLayout(Frame)
-
-        self.instrLbl = QtWidgets.QLabel('Please enter an expression to calculate:\n')
-
-        self.textBox = QtWidgets.QTextEdit()
-        exampleTxt = 'Examples:\nBx_IFG = Bx_IFG * 3 + 5^2\nBx_Avg = (BX_GSM1 + BX_GSM2)/2'
-        self.textBox.setPlaceholderText(exampleTxt)
-
-        self.applyBtn = QtWidgets.QPushButton('Apply')
-        self.applyBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-
-        self.statusBar = QtWidgets.QStatusBar()
-        self.statusBar.setSizeGripEnabled(False)
-
-        layout.addWidget(self.instrLbl, 0, 0, 1, 2)
-        layout.addWidget(self.textBox, 1, 0, 1, 2)
-        layout.addWidget(self.applyBtn, 2, 1, 1, 1)
-        layout.addWidget(self.statusBar, 2, 0, 1, 1)
-
-class simpleCalc(QtGui.QFrame, simpleCalcUI):
-    def __init__(self, editWindow, window, parent=None):
-        super(simpleCalc, self).__init__(parent)
-        self.ui = simpleCalcUI()
+class ExpressionEvaluator():
+    '''  Encapsulates tools used for creating and evaluating an expression
+        from a user-provided string
+    '''
+    def __init__(self, exprStr, window, dataRange=None):
+        self.exprStr = exprStr
         self.window = window
-        self.editWindow = editWindow
-
-        self.ui.setupUI(self, window)
-        self.ui.applyBtn.clicked.connect(self.applyExpression)
+        self.dataRange = dataRange # Optional data range limits Var element data ranges
 
     def splitByOp(self, s):
         # Looks for every operand and splits the previously cleaned expression 
@@ -178,13 +159,15 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
             lst.append(s[lastIndex:i+1])
         return lst
 
-    def splitString(self, expStr):
+    def splitString(self):
+        expStr = self.exprStr
+
         # Split expression into list of strings for each op/parenthesis and variable name or number
         cleanExpr = expStr.strip('\n').replace(' ', '')
 
         # Make sure there is a variable to be set
         if cleanExpr.count('=') != 1:
-            return None, None
+            return None, self.exprStr
 
         # Extract the var name from left hand side of eq sign and break
         # down the expression into operators, numbers, and variable names
@@ -216,7 +199,7 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
         elif self.isNumber(e):
             obj = Num(e)
         elif e.isalnum() or '_' in e:
-            obj = Var(self.window, e)
+            obj = Var(self.window, e, self.dataRange)
         return obj
 
     def createStack(self, exprLst):
@@ -251,13 +234,47 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
 
         return Expr(exprStack)
 
+class simpleCalcUI(object):
+    def setupUI(self, Frame, window):
+        Frame.setWindowTitle('Calculate')
+        Frame.resize(400, 150)
+        layout = QtWidgets.QGridLayout(Frame)
+
+        self.instrLbl = QtWidgets.QLabel('Please enter an expression to calculate:\n')
+
+        self.textBox = QtWidgets.QTextEdit()
+        exampleTxt = 'Examples:\nBx_IFG = Bx_IFG * 3 + 5^2\nBx_Avg = (BX_GSM1 + BX_GSM2)/2'
+        self.textBox.setPlaceholderText(exampleTxt)
+
+        self.applyBtn = QtWidgets.QPushButton('Apply')
+        self.applyBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        self.statusBar = QtWidgets.QStatusBar()
+        self.statusBar.setSizeGripEnabled(False)
+
+        layout.addWidget(self.instrLbl, 0, 0, 1, 2)
+        layout.addWidget(self.textBox, 1, 0, 1, 2)
+        layout.addWidget(self.applyBtn, 2, 1, 1, 1)
+        layout.addWidget(self.statusBar, 2, 0, 1, 1)
+
+class simpleCalc(QtGui.QFrame, simpleCalcUI):
+    def __init__(self, editWindow, window, parent=None):
+        super(simpleCalc, self).__init__(parent)
+        self.ui = simpleCalcUI()
+        self.window = window
+        self.editWindow = editWindow
+
+        self.ui.setupUI(self, window)
+        self.ui.applyBtn.clicked.connect(self.applyExpression)
+
     def applyExpression(self):
         exprStr = self.ui.textBox.toPlainText()
         if exprStr == '':
             return
         # Break down expression into list of var/num/op strings and create an Expr obj
-        self.varName, exprLst = self.splitString(exprStr)
-        exprObj = self.createStack(exprLst)
+        expEval = ExpressionEvaluator(exprStr, self.window)
+        self.varName, exprLst = expEval.splitString()
+        exprObj = expEval.createStack(exprLst)
 
         # Try evaluating exprObj, catch exceptions by printing error message to user
         try:

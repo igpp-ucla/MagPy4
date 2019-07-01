@@ -564,9 +564,12 @@ class DynamicWaveUI(BaseLayout):
         self.plotTypeToggled(self.waveParam.currentText())
 
         # Add in update button
+        self.addLineBtn = QtWidgets.QPushButton('Add Line')
+        self.addLineBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.updtBtn = QtWidgets.QPushButton('Update')
         self.updtBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        layout.addWidget(self.updtBtn, 2, 7, 1, 1)
+        layout.addWidget(self.updtBtn, 1, 7, 1, 1)
+        layout.addWidget(self.addLineBtn, 0, 7, 1, 1)
 
         return layout
 
@@ -576,10 +579,6 @@ class DynamicWaveUI(BaseLayout):
         # Set up fft parameter spinboxes
         self.fftShift = QtWidgets.QSpinBox()
         self.fftInt = QtWidgets.QSpinBox()
-        self.fftInt.setMaximum(1e10)
-
-        self.fftInt.setValue(256)
-        self.fftShift.setValue(64)
 
         # Set up bandwidth spinbox
         self.bwBox = QtWidgets.QSpinBox()
@@ -716,6 +715,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
         self.ui.setupUI(self, window, self.defParams.keys())
         self.ui.updtBtn.clicked.connect(self.update)
+        self.ui.addLineBtn.clicked.connect(self.openLineTool)
         self.ui.timeEdit.start.dateTimeChanged.connect(self.updateParameters)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.updateParameters)
 
@@ -724,6 +724,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
     def closeEvent(self, ev):
         self.close()
+        self.closeLineTool()
         self.closePreSelectWin()
         self.window.endGeneralSelect()
 
@@ -737,6 +738,10 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             for box, axStr in zip(self.ui.vectorBoxes, vectorDstrs):
                 box.setCurrentText(axStr)
             self.closePreSelectWin()
+
+    def getDataRange(self):
+        dstr = self.ui.vectorBoxes[0].currentText()
+        return self.window.calcDataIndicesFromLines(dstr, 0)
 
     def update(self):
         fftInt = self.ui.fftInt.value()
@@ -835,6 +840,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             plt = PhaseSpectrogram(self.window.epoch, logScale)
         plt.createPlot(freqs, valGrid, timeStops, colorRng, logColorScale=logColorScale,
             winFrame=self)
+        self.plotItem = plt
 
         # Set axis labels
         plt.setTitle(self.titleDict[plotType], size='13pt')
@@ -1158,6 +1164,17 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         if gradStr == 'Log Power':
             gradStr = 'Power'
         self.showValue(freq, time, 'Freq, '+gradStr+': ', self.lastCalc)
+
+    def addLineToPlot(self, line):
+        self.plotItem.addItem(line)
+        self.lineHistory.add(line)
+
+    def removeLinesFromPlot(self):
+        histCopy = self.lineHistory.copy()
+        for line in histCopy:
+            if line in self.plotItem.listDataItems():
+                self.plotItem.removeItem(line)
+                self.lineHistory.remove(line)
 
     def showPreSelectWin(self):
         self.preWindow = PreDynWave(self)
