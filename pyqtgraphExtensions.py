@@ -344,6 +344,11 @@ class DateAxis(pg.AxisItem):
         self.fmtStr = '%Y %j %b %d %H:%M:%S.%f'
         self.tickDiff = None
 
+    def setRange(self, mn, mx):
+        pg.AxisItem.setRange(self, mn, mx)
+        self.tm.tO = mn + self.tickOffset
+        self.tm.tE = mx + self.tickOffset
+
     # Format a timestamp according to format underneath axis
     def fmtTimeStmp(self, times):
         splits = times.split(' ')

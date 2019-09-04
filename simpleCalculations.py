@@ -13,9 +13,6 @@ class ExprElement():
     def isExpr(self):
         return False
 
-    def isBracket(self):
-        return False
-
     def __eq__(self, val): 
         if self.exprStr == val: 
             return True
