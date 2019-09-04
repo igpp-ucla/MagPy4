@@ -1,6 +1,7 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import numpy as np
+import re
 
 class ExprElement():
     def isNum(self):
@@ -10,6 +11,9 @@ class ExprElement():
         return False
 
     def isExpr(self):
+        return False
+
+    def isBracket(self):
         return False
 
     def __eq__(self, val): 
@@ -144,20 +148,103 @@ class ExpressionEvaluator():
     def splitByOp(self, s):
         # Looks for every operand and splits the previously cleaned expression 
         # string by the operands into a list
-        lst = []
-        lastIndex = 0
-        opList = ['+', '-', '*', '/', '^', ')', '(']
-        for i in range(0, len(s)):
-            if s[i] in opList:
-                subStr = s[lastIndex:i]
-                if subStr != '':
-                    lst.append(subStr)
-                lst.append(s[i])
-                lastIndex = i + 1
-        # Add in any elements after last operand
-        if s[i] not in opList:
-            lst.append(s[lastIndex:i+1])
-        return lst
+        dstrs = self.window.DATASTRINGS[:]
+
+        # Remove whitespace
+        newStr = ''
+        for c in s:
+            if c != ' ':
+                newStr += c
+        s = newStr
+
+        # Create a new list of strings with variable names replaced by Vec objects
+        currLst = [s]
+        for dstr in dstrs:
+            newLst = []
+            for subStr in currLst:
+                if type(subStr) != str or dstr not in subStr:
+                    newLst.append(subStr)
+                    continue
+
+                subLst = subStr.split(dstr)
+                modSubLst = []
+                for z in range(0, len(subLst)-1):
+                    if subLst[z] != '':
+                        modSubLst.append(subLst[z])
+                    vecObj = Var(self.window, dstr, self.dataRange)
+                    modSubLst.append(vecObj)
+                if subLst[-1] != '':
+                    modSubLst.append(subLst[-1])
+                newLst.extend(modSubLst)
+            currLst = newLst
+
+        # Replace numbers in list with Num objects
+        patterns = ['[0-9]+\.[0-9]+', '\.[0-9]+', '[0-9]+']
+        for p in patterns:
+            newLst = []
+            for subStr in currLst:
+                if type(subStr) != str:
+                    newLst.append(subStr)
+                    continue
+                nums = re.findall(p, subStr)
+                subLst = re.split(p, subStr)
+                if len(nums) == 0:
+                    newLst.append(subStr)
+                    continue
+                for z in range(0, len(nums)):
+                    if subLst[z] != '':
+                        newLst.append(subLst[z])
+                    numObj = Num(float(nums[z]))
+                    newLst.append(numObj)
+                if subLst[-1] != '':                    
+                    newLst.append(subLst[-1])
+            currLst = newLst
+
+        # Find all operands and replace them with Operand objects
+        for opStr in ['+', '-', '*', '/', '^']:
+            newLst = []
+            for subStr in currLst:
+                if type(subStr) != str or opStr not in subStr:
+                    newLst.append(subStr)
+                    continue
+                if subStr == opStr:
+                    newLst.append(Operand(opStr))
+                    continue
+                subLst = subStr.split(opStr)
+                if len(subLst) == 1:
+                    newLst.append(subStr)
+                    continue
+                for z in range(0, len(subLst)-1):
+                    if subLst[z] != '':                    
+                        newLst.append(subLst[z])
+                    newLst.append(Operand(opStr))
+                if subLst[-1] != '':                    
+                    newLst.append(subLst[-1])
+            currLst = newLst
+
+        # Break apart any consecutive brackets
+        for opStr in ['(', ')']:
+            newLst = []
+            for subStr in currLst:
+                if type(subStr) != str or opStr not in subStr:
+                    newLst.append(subStr)
+                    continue
+                if subStr == opStr:
+                    newLst.append(opStr)
+                    continue
+                subLst = subStr.split(opStr)
+                if len(subLst) == 1:
+                    newLst.append(subStr)
+                    continue
+                for z in range(0, len(subLst)-1):
+                    if subLst[z] != '':                    
+                        newLst.append(subLst[z])
+                    newLst.append(opStr)
+                if subLst[-1] != '':                    
+                    newLst.append(subLst[-1])
+            currLst = newLst
+
+        return currLst
 
     def splitString(self):
         expStr = self.exprStr
@@ -177,38 +264,12 @@ class ExpressionEvaluator():
         # Return storage variable, ordered list of ops/nums/vars in main expression
         return varName, exprLst
 
-    def isNumber(self, e):
-        cleanElem = e.replace('.', '').replace('-','').replace('+','')
-        counts = [cleanElem.count(c) for c in ['+','-','.']]
-
-        # Checks if no more than one period and only one sign character
-        validCounts = True
-        if max(counts) >= 1 or counts[0] + counts[2] > 1:
-            validCounts = False
-
-        if cleanElem.isnumeric() and validCounts:
-            return True
-        else:
-            return False
-
-    def mapToObj(self, e):
-        # Map string to an ExprElement object
-        obj = None
-        if e in ['+', '-', '*', '/', '^']:
-            obj = Operand(e)
-        elif self.isNumber(e):
-            obj = Num(e)
-        elif e.isalnum() or '_' in e:
-            obj = Var(self.window, e, self.dataRange)
-        return obj
-
     def createStack(self, exprLst):
         exprStack = []
         listLen = len(exprLst)
 
         if exprLst.count('(') != exprLst.count(')'):
             raise Exception('Unmatched parentheses!')
-
         # Creates a stack of ExprElem objects from split expression string
         for i in range(0, listLen):
             c = exprLst[i]
@@ -218,20 +279,21 @@ class ExpressionEvaluator():
                 # If closing parens found, pop eveything off stack until
                 # an open parens is found and create a subExpr from popped items
                 subStack = []
-                for i in range(0, i):
+                for z in range(i, 0, -1):
                     currOp = exprStack.pop()
                     if currOp == '(':
                         break
                     subStack.append(currOp)
                 subStack.reverse()
 
-                subExpr = Expr(subStack)
-                exprStack.append(subExpr)
+                if len(subStack) == 1:
+                    exprStack.append(subStack[0])
+                else:
+                    subExpr = Expr(subStack)
+                    exprStack.append(subExpr)
             else:
                 # Otherwise, just map the element to an ExprElem object
-                obj = self.mapToObj(c)
-                exprStack.append(obj)
-
+                exprStack.append(c)
         return Expr(exprStack)
 
 class simpleCalcUI(object):
