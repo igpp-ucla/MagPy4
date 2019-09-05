@@ -23,6 +23,18 @@ class SpectraUI(object):
         gmain.addItem(labelLayout)
         return view, grid, labelLayout
 
+    def buildCombinedView(self):
+        view = pg.GraphicsView()
+        view.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
+        gmain = GridGraphicsLayout() # made this based off pg.GraphicsLayout
+        #apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
+        gmain.setContentsMargins(11,0,11,0) # left top right bottom
+        view.setCentralItem(gmain)
+        grid = GridGraphicsLayout()
+        grid.setContentsMargins(0,0,0,0)
+        gmain.addItem(grid)
+        return view, grid
+
     def setupUI(self, Frame, window):
         Frame.setWindowTitle('Spectra')
         Frame.resize(1000,700)
@@ -43,6 +55,9 @@ class SpectraUI(object):
 
         self.phaView, self.phaGrid, self.phaLabelLayout = self.buildSpectraView()
         self.tabs.addTab(self.phaView, 'Phase')
+
+        self.combView, self.sumGrid = self.buildCombinedView()
+        self.tabs.addTab(self.combView, 'Sum of Powers')
 
         # bandwidth label and spinbox
         bottomLayout = QtWidgets.QHBoxLayout()
@@ -80,7 +95,7 @@ class SpectraUI(object):
         timeLayout.addLayout(bwLayout)
 
         # Set up datetime edits
-        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 12))
+        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 11))
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
         timeLayout.addWidget(self.timeEdit.start)
         timeLayout.addWidget(self.timeEdit.end)
@@ -96,7 +111,8 @@ class SpectraUI(object):
         bottomLayout.addWidget(optFrame)
 
         # setup dropdowns for coherence and phase pair selection
-        cohPhaseFrame = QtWidgets.QGroupBox('Coherence/Phase Pair')
+        wrapperLayout = QtWidgets.QVBoxLayout()
+        cohPhaseFrame = QtWidgets.QGroupBox(' Coherence/Phase Pair')
         cohPhaseLayout = QtWidgets.QHBoxLayout(cohPhaseFrame)
         self.cohPair0 = QtWidgets.QComboBox()
         cohPhaseLayout.addWidget(self.cohPair0)
@@ -109,7 +125,11 @@ class SpectraUI(object):
         if self.cohPair1.count() >= 2:
             self.cohPair1.setCurrentIndex(1)
 
-        bottomLayout.addWidget(cohPhaseFrame)
+        wrapperLayout.addWidget(cohPhaseFrame)
+        self.combinedFrame = self.buildCombinedSpecFrame(window)
+        wrapperLayout.addWidget(self.combinedFrame)
+
+        bottomLayout.addLayout(wrapperLayout, 1)
 
         self.waveAnalysisButton = QtWidgets.QPushButton('Open Wave Analysis')
         self.waveAnalysisButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
@@ -125,7 +145,74 @@ class SpectraUI(object):
         bottomLayout.addWidget(btnFrame)
 
         layout.addLayout(bottomLayout)
-        
+    
+    def getVecGrps(self, dstrs):
+        found = []
+        for kw in ['BX','BY','BZ']:
+            f = []
+            for dstr in dstrs:
+                if kw.lower() in dstr.lower():
+                    f.append(dstr)
+            found.append(f)
+        return found
+
+    def buildCombinedSpecFrame(self, window):
+        # Set up UI elements
+        frame = QtWidgets.QGroupBox(' Plot Sum of Powers')
+        frame.setCheckable(True)
+        frame.setChecked(False)
+        frame.clicked.connect(self.greyOutSumOfPowers)
+        self.greyOutSumOfPowers(False)
+        layout = QtWidgets.QHBoxLayout(frame)
+        ddBoxes = [QtWidgets.QComboBox() for i in range(0, 3)]
+        self.axisBoxes = ddBoxes
+
+        # Try to identify x-y-z groups
+        dstrs = window.DATASTRINGS[:]
+        found = self.getVecGrps(dstrs)
+
+        # Check if this is a nonstandard file
+        listLens = list(map(len, found))
+        nonstandardFile = 0 in listLens
+
+        # Add combo boxes to layout and fill accordingly
+        for row in range(0, 3):
+            box = ddBoxes[row]
+            grp = found[row]
+            if nonstandardFile:
+                grp = dstrs
+            
+            for dstr in grp:
+                box.addItem(dstr)
+            
+            if nonstandardFile:
+                box.setCurrentIndex(row)
+
+            layout.addWidget(box)
+
+        # Try to set combo box indices to selected vector
+        if not nonstandardFile:
+            shownDstrs = [] # Get list of plotted dstrs
+            for dstrLst in window.lastPlotStrings:
+                for dstr, en in dstrLst:
+                    shownDstrs.append(dstr)
+            # Find groups in plotted dstrs
+            shownGrps = self.getVecGrps(shownDstrs)
+            listLens = list(map(len, shownGrps))
+            # If at least one full vector is plotted through some combination
+            # then adjust the index of the combo boxes
+            if 0 not in listLens:
+                firstSeen = shownGrps[0][0]
+                index = found[0].index(firstSeen)
+                for row in range(0, 3):
+                    ddBoxes[row].setCurrentIndex(index)
+
+        return frame
+
+    def greyOutSumOfPowers(self, val):
+        if val == False:
+            self.tabs.setTabEnabled(3, False)
+
 class SpectraViewBox(pg.ViewBox): # custom viewbox event handling
     def __init__(self, *args, **kwds):
         pg.ViewBox.__init__(self, *args, **kwds)

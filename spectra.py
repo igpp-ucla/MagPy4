@@ -36,11 +36,13 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui.unitRatioCheckbox.stateChanged.connect(self.squarePlots)
 
         self.plotItems = []
+        self.sumPlots = []
         self.tracePenList = []
         self.wasClosed = False
         self.waveAnalysis = None
         self.plotAppr = None
         self.linearMode = False
+        self.bTotalKw = '-bt'
 
     def closeWaveAnalysis(self):
         if self.waveAnalysis:
@@ -112,18 +114,19 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
     def squarePlots(self):
         # If unit ratio, set plots to be square and axes to have same scaling
         if self.ui.unitRatioCheckbox.isChecked():
-            for plt in self.plotItems:
+            for plt in self.plotItems + self.sumPlots:
                 plt.squarePlot = True
                 plt.getViewBox().setAspectLocked(lock=True, ratio=1.0)
                 # Update plot sizes
                 plt.resizeEvent(None)
         else:
             # Unlock aspect ratio and reset sizes to fill expand w/ grid
-            for plt in self.plotItems:
+            for plt in self.plotItems + self.sumPlots:
                 plt.squarePlot = False
                 plt.getViewBox().setAspectLocked(lock=False)
                 plt.adjustSize()
         self.ui.grid.resizeEvent(None)
+        self.setAspect()
 
     def updateScaling(self):
         self.linearMode = not self.ui.logModeCheckBox.isChecked()
@@ -132,12 +135,12 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
     def setAspect(self):
         if self.ui.aspectLockedCheckBox.isChecked() == True:
             # Setting ratio to None locks in current aspect ratio
-            for pi in self.plotItems:
-                pi.setAspectLocked(True, ratio=None)
+            for pi in self.plotItems + self.sumPlots:
+                ratio = None
+                pi.setAspectLocked(True, ratio=ratio)
         else: # Unlock aspect ratio for each plot and update graphs
-            for pi in self.plotItems:
+            for pi in self.plotItems + self.sumPlots:
                 pi.setAspectLocked(False)
-        self.updateSpectra()
 
     def updateCalculations(self):
         plotInfos = self.window.getSelectedPlotInfo()
@@ -162,6 +165,11 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         coh,pha = self.calculateCoherenceAndPhase(self.getBw(), self.getfft(c0,0), self.getfft(c1,0), self.getPoints(c0,0))
         self.coh = coh
         self.pha = pha
+
+        # Additional updates for sum of powers
+        if self.ui.combinedFrame.isChecked():
+            vecDstrs = self.getVecDstrs()
+            self.powers[self.bTotalKw] = self.calcMagPower(vecDstrs)
 
     # Initialize all plots that will be used with the current scaling
     # Sets up initial plots, label formats, axis types, and plot placement
@@ -190,22 +198,10 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 # If first dstr or there are separate traces, create a new plot
                 if i == 0 or oneTracePerPlot:
                     # Set up axes and viewBox
-                    ba = LogAxis(True,True,True,orientation='bottom')
-                    la = LogAxis(True,True,True,orientation='left')
-                    if self.linearMode:
-                        ba = MagPyAxisItem(orientation='bottom')
-                        la = MagPyAxisItem(orientation='left')
-                        self.setAxisAppearance([ba,la])
-                    pi = SpectraPlotItem(viewBox = SpectraViewBox(), axisItems={'bottom':ba, 'left':la})
-
-                    # Set up range/scaling modes
-                    pi.setLogMode(True, True)
-                    if self.linearMode:
-                        pi.setLogMode(False, False)
+                    pi = self.buildPlotItem()
                     pi.enableAutoRange(y=False) # disable y auto scaling so doesnt interfere with custom range settings
                     if self.linearMode:
                         pi.enableAutoRange(x=True, y=True)
-                    pi.hideButtons() # hide autoscale button
 
                     numberPlots += 1
                     titleString = ''
@@ -267,6 +263,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui.labelLayout.addItem(rightLabel)
 
         self.updateCohPha()
+        self.updateCombined()
 
         # Add plot appearance menu to context menu for each plot:
         for plt in self.plotItems:
@@ -308,6 +305,133 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 plotNum += 1
         # Update coherence and phase graphs
         self.updateCohPha()
+        self.updateCombined()
+
+    def buildPlotItem(self):
+        ba = LogAxis(True,True,True,orientation='bottom')
+        la = LogAxis(True,True,True,orientation='left')
+        if self.linearMode:
+            ba = MagPyAxisItem(orientation='bottom')
+            la = MagPyAxisItem(orientation='left')
+            self.setAxisAppearance([ba,la])
+        pi = SpectraPlotItem(viewBox = SpectraViewBox(), axisItems={'bottom':ba, 'left':la})
+
+        # Set up range/scaling modes
+        pi.setLogMode(True, True)
+        if self.linearMode:
+            pi.setLogMode(False, False)
+        pi.hideButtons() # hide autoscale button
+
+        return pi
+
+    def getPower(self, dstr, en):
+        # Return power for a dstr, calculating it if its not in the dictionary
+        if dstr not in self.powers:
+            bw = self.getBw()
+            fft = self.getfft(dstr, en)
+            a, b = self.getIndices(dstr, en)
+            self.powers[dstr] = self.calculatePower(bw, fft, b-a)
+        return self.powers[dstr]
+
+    def calcSumOfPowers(self, vecDstrs):
+        powerLst = []
+        for dstr, en in vecDstrs:
+            powerLst.append(np.array(self.getPower(dstr, en)))
+        sumOfPowers = powerLst[0] + powerLst[1] + powerLst[2]
+        return sumOfPowers
+
+    def calcMagPower(self, vecDstrs):
+        # Calculates the magnitude and then gets its power spectra
+        bw = self.getBw()
+        a, b = self.getIndices(vecDstrs[0][0], vecDstrs[0][1])
+        dtaLst = [self.window.DATADICT[dstr][en][a:b] for dstr, en in vecDstrs]
+        b_tot = sum([dtaLst[i] ** 2 for i in range(0, 3)])
+        b_tot = np.sqrt(b_tot)
+        fft = fftpack.rfft(b_tot.tolist())
+        power = self.calculatePower(bw, fft, b-a)
+        return power
+
+    def getVecDstrs(self):
+        # Get list of dstrs from vector combo boxes
+        dstrs = [box.currentText() for box in self.ui.axisBoxes]
+
+        # Make a dictionary of the plotted dstrs and the maximum edit number shown
+        enDict = {}
+        plotInfo = self.window.lastPlotStrings
+        for dstrLst in plotInfo:
+            for dstr, en in dstrLst:
+                if dstr in enDict:
+                    enDict[dstr] = max(enDict[dstr], en)
+                else:
+                    enDict[dstr] = en
+
+        # Return a list of tuples of the selected dstrs and their edit numbers
+        vecDstrs = []
+        for dstr in dstrs:
+            if dstr in enDict:
+                vecDstrs.append((dstr, enDict[dstr]))
+            else:
+                vecDstrs.append((dstr, self.window.currentEdit))
+
+        return vecDstrs
+
+    def updateCombined(self):
+        if not self.ui.combinedFrame.isChecked():
+            return
+        elif not self.ui.tabs.isTabEnabled(3):
+            self.ui.tabs.setTabEnabled(3, True)
+
+        # Reset grid and add spacer
+        self.ui.sumGrid.clear()
+        spacer = pg.LabelItem('')
+        spacer.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum))
+        self.ui.sumGrid.addItem(spacer, 2, 0, 1, 2)
+
+        # Get default plot info
+        self.sumPlots = []
+        pltNames = ['Px + Py + Pz', 'Pt', '|Px + Py + Pz - Pt|']
+        pens = [pg.mkPen(pen) for pen in self.window.pens]
+
+        # Calculate/fetch sum of powers and related data
+        vecDstrs = self.getVecDstrs()
+        freq = self.getFreqs(vecDstrs[0][0], self.window.currentEdit)
+        sumOfPowers = self.calcSumOfPowers(vecDstrs)
+        magPower = self.powers[self.bTotalKw]
+        absSumMinusPt = abs(sumOfPowers - magPower)
+
+        # Create plots and set titles for plots w/ only one trace
+        dta = [sumOfPowers, magPower, absSumMinusPt]
+        coords = [(0, 0), (0, 1), (1, 0)]
+        for dta, (x, y), pen, title in zip(dta, coords, pens[0:3], pltNames[0:3]):
+            pi = self.buildPlotItem()
+            self.ui.sumGrid.addItem(pi, x, y)
+            self.sumPlots.append(pi)
+            pi.plot(freq, dta, pen=pen)
+            title = f"<span style='color:{pen.color().name()};'>{title}</span>"
+            pi.setTitle(title)
+
+        # Build bottom right plot with |Px + Py + Pz - Pt| & Pt traces
+        pi = self.buildPlotItem()
+        self.ui.sumGrid.addItem(pi, 1, 1, 1, 1)
+        pi.plot(freq, absSumMinusPt, pen=pens[2])
+        pi.plot(freq, magPower, pen=pens[1])
+        # Custom title string
+        titleString = self.formatPltTitle(pltNames[2], pens[2].color().name())
+        titleString = f"{titleString} & "
+        titleString = f"{titleString}{self.formatPltTitle(pltNames[1], pens[1].color().name())}"
+        pi.setTitle(titleString)
+        self.sumPlots.append(pi)
+
+        # Set axis labels for all plots
+        for pi in self.sumPlots:
+            btmLabel = 'Log Frequency (Hz)'
+            if self.linearMode:
+                btmLabel = 'Frequency (Hz)'
+            pi.titleLabel.setAttr('size', '12pt')
+            pi.setLabels(left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)', bottom=btmLabel)
+
+        # Adjust aspect ratio settings w/ delay in case plots haven't been shown yet
+        QtCore.QTimer.singleShot(100, self.setAspect)
 
     def updateTitleColors(self, penList):
         # Update title colors to match colors from a list of pens
@@ -326,6 +450,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 pstr = self.window.getLabel(dstr,en)
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
                 pi.setTitle(titleString)
+
+    def formatPltTitle(self, titleStr, color):
+        return f"<span style='color:{color};'>{titleStr}</span>"
 
     # remove limits later incase they want to type in directly
     def removeLimits(self):

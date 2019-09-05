@@ -646,6 +646,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.spectra.show()
             self.spectra.initPlots()
             PyQtUtils.moveToFront(self.spectra)
+            QtCore.QTimer.singleShot(100, self.spectra.setAspect)
 
     def startDynWave(self):
         self.closeDynWave()
