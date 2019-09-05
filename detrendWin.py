@@ -437,3 +437,9 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
     def getDefaultPlotInfo(self):
         return self.window.getDefaultPlotInfo()
+
+    def findVecGroups(self):
+        return self.window.findVecGroups()
+
+    def findPlottedVecGroups(self):
+        return self.window.findPlottedVecGroups()

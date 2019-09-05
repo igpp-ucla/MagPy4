@@ -344,7 +344,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         # Calculates the magnitude and then gets its power spectra
         bw = self.getBw()
         a, b = self.getIndices(vecDstrs[0][0], vecDstrs[0][1])
-        dtaLst = [self.window.DATADICT[dstr][en][a:b] for dstr, en in vecDstrs]
+        dtaLst = [self.window.getData(dstr, en)[a:b] for dstr, en in vecDstrs]
         b_tot = sum([dtaLst[i] ** 2 for i in range(0, 3)])
         b_tot = np.sqrt(b_tot)
         fft = fftpack.rfft(b_tot.tolist())
@@ -408,6 +408,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
             self.sumPlots.append(pi)
             pi.plot(freq, dta, pen=pen)
             title = f"<span style='color:{pen.color().name()};'>{title}</span>"
+            pi.titleLabel.setAttr('size', '12pt')
             pi.setTitle(title)
 
         # Build bottom right plot with |Px + Py + Pz - Pt| & Pt traces
@@ -419,6 +420,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         titleString = self.formatPltTitle(pltNames[2], pens[2].color().name())
         titleString = f"{titleString} & "
         titleString = f"{titleString}{self.formatPltTitle(pltNames[1], pens[1].color().name())}"
+        pi.titleLabel.setAttr('size', '12pt')
+
         pi.setTitle(titleString)
         self.sumPlots.append(pi)
 
@@ -427,7 +430,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
             btmLabel = 'Log Frequency (Hz)'
             if self.linearMode:
                 btmLabel = 'Frequency (Hz)'
-            pi.titleLabel.setAttr('size', '12pt')
             pi.setLabels(left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)', bottom=btmLabel)
 
         # Adjust aspect ratio settings w/ delay in case plots haven't been shown yet

@@ -2005,7 +2005,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         return plottedGrps
 
-
     def autoSelectRange(self):
         # Automatically select the section currently being viewed
         t0, t1 = self.tO, self.tE
