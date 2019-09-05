@@ -1961,6 +1961,51 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         return plotInfo
 
+    def findVecGroups(self):
+        # Find groups of dstrs that match x,y,z pattern and organize them
+        # by axis
+        dstrs = self.DATASTRINGS[:]
+        found = []
+        for kw in ['BX','BY','BZ']:
+            f = []
+            for dstr in dstrs:
+                if kw.lower() in dstr.lower():
+                    f.append(dstr)
+            found.append(f)
+        return found
+
+    def findPlottedVecGroups(self):
+        # Try to identify fully plotted vectors by looking at the
+        # identified axis groups and comparing them to the plotted strings
+        plottedGrps = []
+
+        # Get flattened list of currently plotted variables
+        plottedDstrs = []
+        for dstrLst in self.lastPlotStrings:
+            for dstr, en in dstrLst:
+                plottedDstrs.append(dstr)
+
+        # Remove 'Bx' kw from list of 'x' axis dstrs and try to see if there
+        # are other plotted dstrs w/ the same ending in the other axis groups
+        grps = self.findVecGroups()
+        firstRow = grps[0]
+        for dstr in firstRow:
+            if dstr not in plottedDstrs:
+                continue
+
+            matchingGrp = [dstr]
+            strpDstr = dstr.strip('Bx').strip('BX').strip('bx')
+            for rowGrp in grps[1:3]:
+                for otherDstr in rowGrp:
+                    if strpDstr in otherDstr and otherDstr in plottedDstrs:
+                        matchingGrp.append(otherDstr)
+
+            if len(matchingGrp) == 3: # Fully plotted vector
+                plottedGrps.append(matchingGrp)
+
+        return plottedGrps
+
+
     def autoSelectRange(self):
         # Automatically select the section currently being viewed
         t0, t1 = self.tO, self.tE

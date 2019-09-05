@@ -738,6 +738,7 @@ class PhaseSpectrogram(SpectrogramPlotItem):
 
 class DynamicSpectraUI(BaseLayout):
     def setupUI(self, Frame, window):
+        self.Frame = Frame
         maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
         Frame.setWindowTitle('Dynamic Spectrogram')
         Frame.resize(1100, 900)
@@ -813,6 +814,8 @@ class DynamicSpectraUI(BaseLayout):
                 if dstr not in itemSet and en >= 0: # Skip duplicates
                     self.dstrBox.addItem(dstr)
                 itemSet.add(dstr)
+        self.dstrBox.insertSeparator(len(itemSet))
+        self.dstrBox.addItems(Frame.sumPowersPlotTypes)
 
         # Set up plot scaling combo box options
         self.scaleModeBox.addItem('Logarithmic')
@@ -828,7 +831,10 @@ class DynamicSpectraUI(BaseLayout):
     def initVars(self, window):
         # Initializes the max/min times
         minTime, maxTime = window.getTimeTicksFromTimeEdit(self.timeEdit)
-        times = window.getTimes(self.dstrBox.currentText(), 0)[0]
+        dstr = self.dstrBox.currentText()
+        if dstr in self.Frame.spStateKws:
+            dstr = self.Frame.getVecDstrs(dstr)[0]
+        times = window.getTimes(dstr, 0)[0]
         startIndex = window.calcDataIndexByTime(times, minTime)
         endIndex = window.calcDataIndexByTime(times, maxTime)
         numPoints = abs(endIndex-startIndex)
@@ -917,6 +923,18 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         super(DynamicSpectra, self).__init__(parent)
         SpectraBase.__init__(self)
         DynamicAnalysisTool.__init__(self)
+
+        # Set up sum of powers plot titles and simple keywords that they map
+        # to elsewhere in the DynamicSpectra class
+        self.sumPowersPlotTypes = ['|Px + Py + Pz - Pt|', 'Px + Py + Pz', 'Pt']
+        stateKws = ['AbsSumPowers', 'SumPowers', 'MagPower']
+        self.spStateKws = {}
+        for kw, stateKw in zip(self.sumPowersPlotTypes, stateKws):
+            self.spStateKws[kw] = stateKw
+        self.bMagDta = [] # Stores any pre-computed b_mag data
+        # Find any plotted vector groups beforehand
+        self.vecGrps = window.findPlottedVecGroups()
+
         self.ui = DynamicSpectraUI()
         self.window = window
         self.wasClosed = False
@@ -938,6 +956,8 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
 
     def getDataRange(self):
         dstr = self.ui.dstrBox.currentText()
+        if dstr in self.spStateKws:
+            dstr = self.getVecDstrs(dstr)[0]
 
         # Get selection times and convert to corresponding data indices for dstr
         minTime, maxTime = self.window.getSelectionStartEndTimes()
@@ -979,12 +999,59 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         # Generate plot grid and spectrogram from this
         self.calculate(dataRng, interval, shift, bw, dstr)
 
+    def getVecDstrs(self, dstr):
+        if len(self.vecGrps) == 0: # Nonstandard file
+            return self.window.DATASTRINGS[0:3]
+        return self.vecGrps[0] # TODO: Currently uses first vector identified
+
+    def calcSumOfPowers(self, vecDstrs, bw, startIndex, endIndex):
+        # Calculates the spectra for each variable separately and returns the sum
+        powers = []
+        for dstr in vecDstrs:
+            freqs, power = self.calcSpectra(dstr, bw, startIndex, endIndex)
+            powers.append(np.array(power))
+
+        sumOfPowers = powers[0] + powers[1] + powers[2]
+        return freqs, sumOfPowers
+
+    def calcMag(self, vecDstrs, startIndex, endIndex):
+        # Computes the magnitude of the vector over the selected interval
+        en = self.window.currentEdit
+        datas = [self.window.getData(dstr, en) ** 2 for dstr in vecDstrs]
+        mag = np.sqrt(sum([dta ** 2 for dta in datas]))
+        # Fill start so calculations aren't affected by offset
+        mag = np.concatenate([np.empty(startIndex), mag])
+        return mag
+
+    def calcMagPower(self, bw, start, end):
+        # Similar to calcSpectra but using pre-computed magnitude data
+        en = self.window.currentEdit
+        N = abs(end-start)
+        data = self.bMagDta[start:end]
+        fft = fftpack.rfft(data.tolist())
+        power = self.calculatePower(bw, fft, N)
+        freqs = self.calculateFreqList(bw, N)
+        return freqs, power
+
     def calculate(self, dataRng, interval, shift, bw, dstr):
         shiftAmnt = shift
         minIndex, maxIndex = dataRng
         startIndex, endIndex = minIndex, minIndex + interval
 
         self.ui.statusBar.showMessage('Calculating...')
+
+        # Check if this is a special sum-of-powers plot
+        spPlot = self.spStateKws[dstr] if dstr in self.spStateKws else None
+
+        # Get vector var names and computer magnitude of vector if necessary
+        if spPlot is not None:
+            vecDstrs = self.getVecDstrs(dstr)
+            if spPlot == 'MagPower' or spPlot == 'AbsSumPowers':
+                a, b = self.getDataRange()
+                self.bMagDta = self.calcMag(vecDstrs, a, b)
+            dstr = vecDstrs[0] # Adjusted for future call to getTimes()
+        else:
+            self.bMagDta = [] # Clear unused magnitude calculation
 
         # Generate the list of powers and times associated w/ each FFT interval
         powerLst = []
@@ -994,7 +1061,17 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
             # Save start time
             timeSeries.append(times[startIndex])
             # Calculate freqs and powers
-            freqs, powers = self.calcSpectra(dstr, bw, startIndex, endIndex)
+            if spPlot is not None:
+                if spPlot == 'SumPowers':
+                    freqs, powers = self.calcSumOfPowers(vecDstrs, bw, startIndex, endIndex)
+                elif spPlot == 'MagPower':
+                    freqs, powers = self.calcMagPower(bw, startIndex, endIndex)
+                else:
+                    freqs, sumPowers = self.calcSumOfPowers(vecDstrs, bw, startIndex, endIndex)
+                    freqs, magPower = self.calcMagPower(bw, startIndex, endIndex)
+                    powers = np.abs(sumPowers - magPower)
+            else:
+                freqs, powers = self.calcSpectra(dstr, bw, startIndex, endIndex)
             powerLst.append(np.array(powers))
             # Move to next interval
             startIndex += shiftAmnt
