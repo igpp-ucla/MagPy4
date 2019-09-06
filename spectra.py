@@ -345,8 +345,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         bw = self.getBw()
         a, b = self.getIndices(vecDstrs[0][0], vecDstrs[0][1])
         dtaLst = [self.window.getData(dstr, en)[a:b] for dstr, en in vecDstrs]
-        b_tot = sum([dtaLst[i] ** 2 for i in range(0, 3)])
-        b_tot = np.sqrt(b_tot)
+        dtaLst = [dta ** 2 for dta in dtaLst]
+        b_tot = np.sqrt(dtaLst[0] + dtaLst[1] + dtaLst[2])
         fft = fftpack.rfft(b_tot.tolist())
         power = self.calculatePower(bw, fft, b-a)
         return power

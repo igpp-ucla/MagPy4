@@ -1015,10 +1015,11 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         return freqs, sumOfPowers
 
     def calcMag(self, vecDstrs, startIndex, endIndex):
+        a, b = startIndex, endIndex
         # Computes the magnitude of the vector over the selected interval
         en = self.window.currentEdit
-        datas = [self.window.getData(dstr, en) ** 2 for dstr in vecDstrs]
-        mag = np.sqrt(sum([dta ** 2 for dta in datas]))
+        datas = [self.window.getData(dstr, en)[a:b] ** 2 for dstr in vecDstrs]
+        mag = np.sqrt(datas[0] + datas[1] + datas[2])
         # Fill start so calculations aren't affected by offset
         mag = np.concatenate([np.empty(startIndex), mag])
         return mag
@@ -1047,7 +1048,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         if spPlot is not None:
             vecDstrs = self.getVecDstrs(dstr)
             if spPlot == 'MagPower' or spPlot == 'AbsSumPowers':
-                a, b = self.getDataRange()
+                a, b = minIndex, maxIndex
                 self.bMagDta = self.calcMag(vecDstrs, a, b)
             dstr = vecDstrs[0] # Adjusted for future call to getTimes()
         else:
