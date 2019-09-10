@@ -374,6 +374,8 @@ class DynamicAnalysisTool(SpectraBase):
     def __init__(self):
         self.lineTool = None
         self.lineHistory = set()
+        self.fftBins = [32, 64, 128, 256, 512]
+        self.fftBinBound = 4096
 
     def updateParameters(self):
         # Set num data points
@@ -385,6 +387,11 @@ class DynamicAnalysisTool(SpectraBase):
         self.ui.fftShift.setMaximum(nPoints)
 
         interval = max(min(nPoints, 10), int(nPoints*0.025))
+        if nPoints > self.fftBins[-2] and nPoints < self.fftBinBound:
+            index = bisect.bisect(self.fftBins, interval)
+            if index < len(self.fftBins):
+                interval = self.fftBins[index]
+
         self.ui.fftInt.setValue(interval)
         overlap = int(interval/4)
         self.ui.fftShift.setValue(overlap)
