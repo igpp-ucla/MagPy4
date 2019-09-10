@@ -147,13 +147,6 @@ class ExpressionEvaluator():
         # string by the operands into a list
         dstrs = self.window.DATASTRINGS[:]
 
-        # Remove whitespace
-        newStr = ''
-        for c in s:
-            if c != ' ':
-                newStr += c
-        s = newStr
-
         # Create a new list of strings with variable names replaced by Vec objects
         currLst = [s]
         for dstr in dstrs:
@@ -174,6 +167,17 @@ class ExpressionEvaluator():
                     modSubLst.append(subLst[-1])
                 newLst.extend(modSubLst)
             currLst = newLst
+
+        # Remove whitespace
+        newLst = []
+        for subStr in currLst:
+            if type(subStr) == str and subStr.strip(' ') == '':
+                continue
+            elif type(subStr) == str:
+                newLst.append(subStr.replace(' ', ''))
+            else:
+                newLst.append(subStr)
+        currLst = newLst
 
         # Replace numbers in list with Num objects
         patterns = ['[0-9]+\.[0-9]+', '\.[0-9]+', '[0-9]+']
@@ -240,14 +244,13 @@ class ExpressionEvaluator():
                 if subLst[-1] != '':                    
                     newLst.append(subLst[-1])
             currLst = newLst
-
         return currLst
 
     def splitString(self):
         expStr = self.exprStr
 
         # Split expression into list of strings for each op/parenthesis and variable name or number
-        cleanExpr = expStr.strip('\n').replace(' ', '')
+        cleanExpr = expStr.strip('\n')
 
         # Make sure there is a variable to be set
         if cleanExpr.count('=') != 1:

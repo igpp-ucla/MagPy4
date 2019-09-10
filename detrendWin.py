@@ -429,7 +429,10 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         return self.window.getFileNameString(width)
 
     def stripName(self, dstr):
-        return dstr.strip(self.modifier)
+        newName = dstr
+        if self.modifier in newName:
+            newName = newName[:-len(self.modifier)]
+        return newName
 
     def getAbbrvDstr(self, dstr):
         dstr = self.stripName(dstr)
