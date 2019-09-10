@@ -815,7 +815,8 @@ class DynamicSpectraUI(BaseLayout):
                     self.dstrBox.addItem(dstr)
                 itemSet.add(dstr)
         self.dstrBox.insertSeparator(len(itemSet))
-        self.dstrBox.addItems(Frame.sumPowersPlotTypes)
+        if len(itemSet) >= 3:
+            self.dstrBox.addItems(Frame.sumPowersPlotTypes)
 
         # Set up plot scaling combo box options
         self.scaleModeBox.addItem('Logarithmic')
@@ -934,6 +935,17 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.bMagDta = [] # Stores any pre-computed b_mag data
         # Find any plotted vector groups beforehand
         self.vecGrps = window.findPlottedVecGroups()
+        self.vecIdentifiers = self.getVecIdentifiers(self.vecGrps)
+        # If multiple vectors are plotted, add identifiers to the sum of 
+        # powers plot titles/strings and add them to the state dictionary
+        if len(self.vecIdentifiers) != 0:
+            newPlotTypes = []
+            for substr in self.vecIdentifiers:
+                for kw, stateKw in zip(self.sumPowersPlotTypes, stateKws):
+                    newKw = kw + ' (' + substr + ')'
+                    self.spStateKws[newKw] = stateKw
+                    newPlotTypes.append(newKw)
+            self.sumPowersPlotTypes = newPlotTypes
 
         self.ui = DynamicSpectraUI()
         self.window = window
@@ -999,10 +1011,34 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         # Generate plot grid and spectrogram from this
         self.calculate(dataRng, interval, shift, bw, dstr)
 
+    def getVecIdentifiers(self, vecGrps):
+        if len(vecGrps) == 1:
+            return []
+
+        # Attempts to get suffix corresponding to each unique vector
+        substrs = []
+        for grp in vecGrps:
+            firstDstr = grp[0]
+            substr = firstDstr.strip('Bx').strip('bx').strip('BX')
+            if substr[0] == '_' or substr[0] == ' ':
+                substr = substr[1:]
+            substrs.append(substr)
+        return substrs
+
     def getVecDstrs(self, dstr):
-        if len(self.vecGrps) == 0: # Nonstandard file
-            return self.window.DATASTRINGS[0:3]
-        return self.vecGrps[0] # TODO: Currently uses first vector identified
+        if len(self.vecGrps) == 0: # Nonstandard file, use first 3 dstrs
+            return [self.ui.dstrBox.itemText(i) for i in range(0, 3)]
+        # Use index corresponding to vec's identifier or the first vec
+        # if only one vector is plotted
+        if len(self.vecIdentifiers) != 0:
+            index = 0
+            while index < len(self.vecIdentifiers):
+                if self.vecIdentifiers[index] in dstr:
+                    break
+                index += 1
+        else:
+            index = 0
+        return self.vecGrps[index]
 
     def calcSumOfPowers(self, vecDstrs, bw, startIndex, endIndex):
         # Calculates the spectra for each variable separately and returns the sum
