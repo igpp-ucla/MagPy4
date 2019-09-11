@@ -96,14 +96,14 @@ class EditUI(object):
         builderLayout = QtWidgets.QVBoxLayout(builderFrame)
 
         self.customRotButton = QtGui.QPushButton('Custom Rotation...')
-        self.customRotButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.customRotButton.setToolTip('Enter a custom matrix, or build one with simple builders')
         builderLayout.addWidget(self.customRotButton)
 
         self.minVarButton = QtGui.QPushButton('Minimum Variance...')
-        self.minVarButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.minVarButton.setToolTip('Build a rotation matrix by selecting a minimum variance window')
         builderLayout.addWidget(self.minVarButton)
+        for btn in [self.customRotButton, self.minVarButton]:
+            btn.setFixedWidth(175)
 
         miscFrame = QtWidgets.QGroupBox('Other Edits')
         miscLayout = QtWidgets.QVBoxLayout(miscFrame)
@@ -111,22 +111,22 @@ class EditUI(object):
 
         # Filter button setup
         self.filterButton = QtGui.QPushButton('Filter...')
-        self.filterButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.filterButton.setToolTip('Apply various filters to smooth data')
         miscLayout.addWidget(self.filterButton)
 
         # Simple calculations setup
         self.calcBtn = QtGui.QPushButton('Calculate...')
-        self.calcBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.calcBtn.setToolTip('Perform simple calculations on data')
         miscLayout.addWidget(self.calcBtn)
 
         # Smoothing tool setup
         self.smoothBtn = QtGui.QPushButton('Deglitch...')
-        self.smoothBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.smoothBtn.setToolTip('Smooth and shift glitches in Insight data')
         if window.insightMode:
             miscLayout.addWidget(self.smoothBtn)
+
+        for btn in [self.filterButton, self.calcBtn, self.smoothBtn]:
+            btn.setFixedWidth(100)
 
         leftLayout.addWidget(builderFrame)
         leftLayout.addWidget(miscFrame)

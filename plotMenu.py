@@ -332,7 +332,7 @@ class PlotMenuUI(object):
 
         checkBoxStyle = """
             QCheckBox{spacing: 0px;}
-            QCheckBox::indicator{width:32px;height:32px}
+            QCheckBox::indicator{width:28px;height:28px}
             QCheckBox::indicator:unchecked {            image: url(images/checkbox_unchecked.png);}
             QCheckBox::indicator:unchecked:hover {      image: url(images/checkbox_unchecked_hover.png);}
             QCheckBox::indicator:unchecked:pressed {    image: url(images/checkbox_unchecked_pressed.png);}
@@ -389,7 +389,7 @@ class PlotMenuUI(object):
         self.pltLtContainer.addLayout(self.plottingLayout, 0, 0, 1, 1)
         self.layout.addWidget(self.pltLtFrame)
 
-        self.fgridFrame = QtWidgets.QGroupBox('Y Axis Link Groups')
+        self.fgridFrame = QtWidgets.QGroupBox('Link Groups')
         self.fgridFrame.setToolTip('Link the Y axes of each plot in each group to have the same scale with each other')
         self.fgrid = QtWidgets.QGridLayout(self.fgridFrame)
         self.layout.addWidget(self.fgridFrame)

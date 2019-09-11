@@ -60,7 +60,7 @@ class Edit(QtWidgets.QFrame, EditUI):
                 else:
                     self.ui.history.setCurrentRow(name)
         else:
-            self.addHistory(Mth.IDENTITY, 'original data', 'Identity')
+            self.addHistory(Mth.IDENTITY, 'Original Data', 'Identity')
 
         self.ui.history.currentRowChanged.connect(self.onHistoryChanged)
         self.ui.history.itemChanged.connect(self.onHistoryChanged)

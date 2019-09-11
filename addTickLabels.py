@@ -124,6 +124,7 @@ class LabelSet(pg.PlotItem):
 
         # Initialize axisItems to be used to show labels and for resizing
         topAxis = invisAxis(window, dstr, 'top')
+        topAxis.tickOffset = window.tickOffset
         rightAxis = LinkedAxis(orientation='right')
         axisDict = {'top': topAxis, 'right': rightAxis}
         pg.PlotItem.__init__(self, parent, name, labels, title, viewBox, enableMenu=False, axisItems=axisDict, **kargs)

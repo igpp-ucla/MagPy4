@@ -168,7 +168,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.electronOMNI = None
 
         # these are saves for options for program lifetime
-        self.plotMenuTableMode = False
+        self.plotMenuTableMode = True
         self.traceStatsOnTop = True
         self.mouseEnabled = False
 
