@@ -693,7 +693,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         else:
             self.numThreads = 1
 
-        self.mpPointBound = 10000 # Number of points needed to use multiprocessing
+        self.mpPointBound = 5000 # Number of points needed to use multiprocessing
 
         # Default settings / labels for each plot type
         self.defParams = { # Value range, grad label, grad label units
@@ -831,11 +831,13 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         # Add in last bounding time tick
         timeStops.append(times[startIndex])
         timeStops = np.array(timeStops)
-        # Use multiprocessing to calulate grid values if appropriate
-        if maxIndex - minIndex >= self.mpPointBound and self.numThreads > 1:
+
+        # Use multiprocessing to calculate grid values if appropriate
+        nPoints = maxIndex - minIndex
+        nPairs = len(indexPairs)
+        if nPoints >= self.mpPointBound and self.numThreads > 1 and nPairs > self.numThreads:
             # Split the column indices into chunks for each process
-            numPairs = len(indexPairs)
-            grpSize = int(numPairs/self.numThreads) # Num cols per process
+            grpSize = int(nPairs/self.numThreads) # Num cols per process
             grps = []
             for t in range(0, self.numThreads):
                 startPairIndex = t * grpSize
