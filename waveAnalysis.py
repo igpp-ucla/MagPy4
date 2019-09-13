@@ -7,6 +7,8 @@ from pyqtgraphExtensions import StackedAxisLabel
 from scipy import fftpack
 import pyqtgraph as pg
 
+import multiprocessing
+from multiprocessing import Process, Queue
 import numpy as np
 from mth import Mth
 import bisect
@@ -351,7 +353,7 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
 
         # Compute the average field for each dstr within the given time range
         avg = []
-        for dstr in dstrs:
+        for dstr in dstrs[0:3]:
             sI, eI = self.spectra.getIndices(dstr, en)
             avg.append(np.mean(self.window.getData(dstr)[sI:eI]))
 
@@ -679,6 +681,20 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.window = window
         self.wasClosed = False
 
+        # Multiprocessing parameters
+        try:
+            numProcs = multiprocessing.cpu_count()
+        except:
+            numProcs = 1
+        if numProcs >= 4:
+            self.numThreads = 4
+        elif numProces >= 2:
+            self.numThreads = 2
+        else:
+            self.numThreads = 1
+
+        self.mpPointBound = 10000 # Number of points needed to use multiprocessing
+
         # Default settings / labels for each plot type
         self.defParams = { # Value range, grad label, grad label units
             'Azimuth Angle' : ((-90, 90), 'Azimuth Angle', 'Degrees'),
@@ -747,7 +763,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         fftInt = self.ui.fftInt.value()
         fftShift = self.ui.fftShift.value()
         plotType = self.ui.waveParam.currentText()
-        dtaRng = self.window.calcDataIndicesFromLines(self.window.DATASTRINGS[0], 0)
+        dtaRng = self.getDataRange()
         bw = self.ui.bwBox.value()
         logScale = False if self.ui.scaleModeBox.currentText() == 'Linear' else True
 
@@ -770,6 +786,16 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         fullDta[dtaRng[0]:dtaRng[1]] = magDta
         return list(fullDta)
 
+    def processGrp(self, grp, plotType, bw, numFreqs, magDta, prcNum, resQueue):
+        # Calculates each column in a section of the plot grid and
+        # places it in the result queue
+        valGrid = []
+        for startIndex, stopIndex in grp:
+            dta = self.calcWaveAveraged(plotType, (startIndex, stopIndex), bw,
+                numFreqs, magDta=magDta)
+            valGrid.append(dta)
+        resQueue.put((prcNum, valGrid))
+
     def updateCalculations(self, plotType, fftInt, fftShift, dtaRng, bw, logScale):
         self.ui.glw.clear() # Clear any previous grid elements
 
@@ -791,21 +817,73 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.ui.statusBar.showMessage('Calculating...')
         timeStops = []
         valGrid = []
+
+        # Assemble the pairs of indices for which fft will be generated
+        # (corresponding to each 'column' in the plot)
         startIndex, stopIndex = minIndex, minIndex + fftInt
+        indexPairs = []
         while stopIndex < maxIndex:
             timeStops.append(times[startIndex])
-            dta = self.calcWaveAveraged(plotType, (startIndex, stopIndex), bw,
-                numFreqs, magDta=magDta)
-            valGrid.append(dta)
+            indexPairs.append((startIndex, stopIndex))
             startIndex += fftShift
             stopIndex = startIndex + fftInt
 
         # Add in last bounding time tick
         timeStops.append(times[startIndex])
         timeStops = np.array(timeStops)
+        # Use multiprocessing to calulate grid values if appropriate
+        if maxIndex - minIndex >= self.mpPointBound and self.numThreads > 1:
+            # Split the column indices into chunks for each process
+            numPairs = len(indexPairs)
+            grpSize = int(numPairs/self.numThreads) # Num cols per process
+            grps = []
+            for t in range(0, self.numThreads):
+                startPairIndex = t * grpSize
+                if t == self.numThreads - 1: # Last grp should be up to last column
+                    grps.append(indexPairs[startPairIndex:])
+                else:
+                    endPairIndex = (t+1) * grpSize
+                    grps.append(indexPairs[startPairIndex:endPairIndex])
+
+            # Create each process and have it calculate a section of the plot
+            prcLst = []
+            mpQueue = Queue()
+            for prcNum in range(0, self.numThreads):
+                grp = grps[prcNum]
+                args = (grp, plotType, bw, numFreqs, magDta, prcNum, mpQueue)
+                p = Process(target=self.processGrp, args=args)
+                prcLst.append(p)
+                p.start()
+
+            # Get the calculated values from each process
+            procResults = [mpQueue.get() for p in prcLst]
+
+            # Join and destroy each process
+            for p in prcLst:
+                p.join()
+                p.terminate()
+
+            # Extract the process numbers and corresponding arrays from each result
+            processNums = []
+            subGrids = []
+            for prcNum, valGrid in procResults:
+                processNums.append(prcNum)
+                subGrids.append(valGrid)
+
+            # Re-arrange the arrays so they are in order and concatenate them
+            # into a single 2D array
+            gridOrder = np.argsort(processNums)
+            valGrid = [subGrids[i] for i in gridOrder]
+            valGrid = np.concatenate(valGrid)
+        else: # Otherwise entire grid sequentially
+            for startIndex, stopIndex in indexPairs:
+                dta = self.calcWaveAveraged(plotType, (startIndex, stopIndex), bw,
+                    numFreqs, magDta=magDta)
+                valGrid.append(dta)
+            valGrid = np.array(valGrid)
 
         # Transpose to turn time result rows into columns
-        valGrid = np.array(valGrid).T
+        valGrid = valGrid.T
 
         # Calculate frequencies for plotting and extra frequency for lower bound
         freqs = self.calculateFreqList(bw, fftInt)
@@ -876,39 +954,15 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
         self.ui.statusBar.clearMessage()
 
-    def checkIndices(self):
-        # Reset dictionaries if indices changed
-        if self.currIndices is None or self.currIndices != self.prevIndices:
-            self.prevIndices = self.currIndices
-            self.fftDict = {}
-            self.avgDict = {}
-
     def getAvg(self, dstr, en, iO, iE):
-        self.checkIndices()
-
         # Calculate average or get from dictionary
-        if dstr not in self.avgDict.keys():
-            self.avgDict[dstr] = {}
-        if (iO, iE) not in self.avgDict[dstr].keys():
-            dta = self.window.getData(dstr, en)
-            avg = np.mean(dta)
-            self.avgDict[dstr][(iO, iE)] = avg
-            return avg
-        else:
-            return self.avgDict[dstr][(iO, iE)]
+        dta = self.window.getData(dstr, en)
+        avg = np.mean(dta[iO:iE])
+        return avg
 
     def getfft(self, dstr, en, iO, iE):
-        self.checkIndices()
-
-        # Calculate fft or get data from dictionary
-        if dstr not in self.fftDict.keys():
-            self.fftDict[dstr] = {}
-        if (iO, iE) not in self.fftDict[dstr].keys():
-            res = DynamicAnalysisTool.getfft(self, dstr, en, iO, iE)
-            self.fftDict[dstr][(iO, iE)] = res
-            return res
-        else:
-            return self.fftDict[dstr][(iO, iE)]
+        res = DynamicAnalysisTool.getfft(self, dstr, en, iO, iE)
+        return res
 
     def getNorm(self, v):
         # Faster than np.linalg.norm
@@ -918,9 +972,9 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         halfBw = int((bw-1)/2) # Num of frequencies on either side of freqNum
 
         # Calculate the bw-averaged wave parameter over the data range
-        sumMats = self.getAvgMats(dtaRng, numFreqs, bw, magDta)
+        sumMats, magfft = self.getAvgMats(dtaRng, numFreqs, bw, magDta)
         averagedDta = self.calcWave(plotType, (halfBw, numFreqs-halfBw), dtaRng, 
-            bw, sumMats)
+            bw, sumMats, magfft)
 
         return averagedDta
 
@@ -931,16 +985,14 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
         en = self.window.currentEdit
         dstrs = [box.currentText() for box in self.ui.vectorBoxes]
-        ffts = [self.getfft(dstr,en, minIndex, maxIndex) for dstr in dstrs]
+        ffts = [self.getfft(dstr, en, minIndex, maxIndex) for dstr in dstrs]
 
         # Also pre-computes the magnitude fft used to calculate compressional
         # power if needed
+        magfft = None
         if magDta is not None:
-            if '_Avg' not in self.fftDict.keys():
-                self.fftDict['_Avg'] = {}
             subsetDta = magDta[minIndex:maxIndex]
-            fft = fftpack.rfft(subsetDta)
-            self.fftDict['_Avg'][dtaRng] = fft
+            magfft = fftpack.rfft(subsetDta)
 
         # Complex version of calculations
         cffts = [self.fftToComplex(fft) for fft in ffts]
@@ -957,7 +1009,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         for i in range(halfBw+1, numFreqs-halfBw):
             currSum = currSum - individualMats[i-halfBw-1] + individualMats[i+halfBw]
             mats[i] = currSum
-        return mats
+        return mats, magfft
 
     def computeMinVarAngle(self, amat, avg):
         # Compute theta BK
@@ -995,7 +1047,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             thbk = Mth.R2D * math.acos(q/norm)
         return thbk
 
-    def calcWave(self, plotType, indexRange, dtaRng, bw, sumMats):
+    def calcWave(self, plotType, indexRange, dtaRng, bw, sumMats, magfft=None):
         minIndex, maxIndex = dtaRng
         numPoints = maxIndex - minIndex
         valLst = []
@@ -1015,8 +1067,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         if plotType == 'Compressional Power':
             # Computes the compressional power all at once
             halfBw = int((bw-1)/2)
-            fftLst = self.fftDict['_Avg'][dtaRng]
-            fftReal, fftImag = self.splitfft(fftLst)
+            fftReal, fftImag = self.splitfft(magfft)
             fftDouble = ((fftReal[:len(fftImag)] ** 2) + (fftImag ** 2)) * deltaf
             powerSum = []
             for i in range(indexRange[0], indexRange[1]):
