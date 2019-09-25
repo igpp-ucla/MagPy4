@@ -97,6 +97,10 @@ class MagPy4UI(object):
         self.actionEOmni.setText('Plot Electron/Ion Spectrum...')
         self.actionEOmni.setStatusTip('Plots a color-mapped representation of omni-directional electron/ion energy spectrum')
 
+        self.actionFixSelection = QtWidgets.QAction(window)
+        self.actionFixSelection.setText('Fix Selection...')
+        self.actionFixSelection.setStatusTip('Saves currently selected region to use with other tools')
+
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
         self.scaleYToCurrentTimeAction.setStatusTip('')
         self.antialiasAction = QtWidgets.QAction('Smooth &Lines (Antialiasing)',checkable=True,checked=True)
@@ -157,6 +161,10 @@ class MagPy4UI(object):
         self.MMSMenu.addAction(self.actionCurvature)
         self.MMSMenu.addAction(self.actionEPAD)
         self.MMSMenu.addAction(self.actionEOmni)
+
+        self.selectMenu = self.menuBar.addMenu('Selection Tools')
+        self.selectMenu.addAction(self.actionFixSelection)
+        self.showSelectionMenu(False) # Hidden by default
 
         self.optionsMenu = self.menuBar.addMenu('&Options')
         self.optionsMenu.addAction(self.scaleYToCurrentTimeAction)
@@ -260,6 +268,9 @@ class MagPy4UI(object):
 
     def showMMSMenu(self, visible):
         self.MMSMenu.menuAction().setVisible(visible)
+
+    def showSelectionMenu(self, visible):
+        self.selectMenu.menuAction().setVisible(visible)
 
     def startUp(self, window):
         # Create frame and insert it into main layout
@@ -858,3 +869,51 @@ class StackedLabel(pg.GraphicsLayout):
             fontSize -= (traceCount - numPlots) * (1.0 / min(4, numPlots) + 0.35)
         fontSize = min(18, max(fontSize,4))
         return fontSize
+
+class FixedSelectionUI():
+    def setupUI(self, Frame, window):
+        Frame.resize(200, 50)
+        Frame.setWindowTitle('Saved Region')
+        Frame.move(1200, 0)
+
+        # UI elements
+        instr = 'Selected Time Range:'
+        lbl = QtWidgets.QLabel(instr)
+        self.timeEdit = TimeEdit(QtGui.QFont())
+
+        # Layout setup
+        layout = QtWidgets.QGridLayout(Frame)
+        layout.addWidget(lbl, 0, 0, 1, 2)
+        layout.addWidget(self.timeEdit.start, 1, 0, 1, 1)
+        layout.addWidget(self.timeEdit.end, 1, 1, 1, 1)
+
+class FixedSelection(QtWidgets.QFrame, FixedSelectionUI):
+    def __init__(self, window, parent=None):
+        super(FixedSelection, self).__init__(parent)
+        self.window = window
+        self.ui = FixedSelectionUI()
+        self.ui.setupUI(self, window)
+        self.ui.timeEdit.setupMinMax(self.window.getMinAndMaxDateTime())
+        self.toggleWindowOnTop(True) # Keeps window on top of main MagPy window
+
+    def toggleWindowOnTop(self, val):
+        self.setParent(self.window if val else None)
+        dialogFlag = QtCore.Qt.Dialog
+        if self.window.OS == 'posix':
+            dialogFlag = QtCore.Qt.Tool
+        flags = self.windowFlags()
+        flags = flags | dialogFlag if val else flags & ~dialogFlag
+        self.setWindowFlags(flags)
+
+    def setTimeEdit(self, strt, end):
+        self.ui.timeEdit.start.setDateTime(strt)
+        self.ui.timeEdit.end.setDateTime(end)
+
+    def getTimeEditValues(self):
+        strt = self.ui.timeEdit.start.dateTime()
+        end = self.ui.timeEdit.end.dateTime()
+        return strt, end
+
+    def closeEvent(self, ev):
+        self.close()
+        self.window.closeFixSelection()

@@ -36,6 +36,14 @@ class GeneralSelect(object):
             maxSteps parameter determines how many regions can be created
         '''
         self.regions = []
+        self.lblPos = 'top'
+    
+    def setLabelPos(self, pos):
+        self.lblPos = pos
+
+    def autoSetRegion(self, a, b):
+        self.leftClick(a, 0)
+        self.leftClick(b, 0)
 
     def setSubRegionsVisible(self, pltNum, visible=True):
         for region in self.regions:
@@ -103,7 +111,7 @@ class GeneralSelect(object):
         win = self.window
         plts = win.plotItems
         linkRegion = LinkedRegion(win, plts, (x, x), mode=self.name, color=self.color,
-            updateFunc=self.updtFunc, linkedTE=self.timeEdit)
+            updateFunc=self.updtFunc, linkedTE=self.timeEdit, lblPos=self.lblPos)
         linkRegion.fixedLine = True
         if self.timeEdit:
             self.connectLinesToTimeEdit(self.timeEdit, linkRegion, self.mode == 'Line')

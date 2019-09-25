@@ -13,7 +13,6 @@ import functools
 class RegionLabel(pg.InfLineLabel):
     def __init__(self, lines, text="", movable=False, position=0.5, anchors=None, **kwds):
         self.lines = lines
-        position = 0.975
         pg.InfLineLabel.__init__(self, lines[0], text=text, movable=False, position=position, anchors=None, **kwds)
         self.lines[1].sigPositionChanged.connect(self.valueChanged)
         self.setAnchor((0.5, 0))
@@ -34,7 +33,7 @@ class RegionLabel(pg.InfLineLabel):
 
 class LinkedRegion(pg.LinearRegionItem):
     def __init__(self, window, plotItems, values=(0, 1), mode=None, color=None,
-        updateFunc=None, linkedTE=None):
+        updateFunc=None, linkedTE=None, lblPos='top'):
         pg.LinearRegionItem.__init__(self, values=(0,0))
         self.window = window
         self.plotItems = plotItems
@@ -43,6 +42,7 @@ class LinkedRegion(pg.LinearRegionItem):
         self.fixedLine = False
         self.updateFunc = updateFunc
         self.linkedTE = linkedTE
+        self.lblPos = lblPos
 
         for plt in self.plotItems:
             # Create a LinearRegionItem for each plot with same initialized vals
@@ -56,14 +56,16 @@ class LinkedRegion(pg.LinearRegionItem):
             line1.sigDragged.connect(functools.partial(self.linesChanged, line1, 1))
 
         # Initialize region label at top-most plot
-        self.labelPltIndex = 0
+        self.labelPltIndex = 0 if lblPos == 'top' else len(self.plotItems) - 1
         self.setLabel(self.labelPltIndex)
 
-    def setLabel(self, plotNum):
+    def setLabel(self, plotNum, pos=0.95):
         # Create new label for line
+        if self.lblPos == 'bottom':
+            pos = 0.25
         fillColor = pg.mkColor('#212121') # Dark grey background color
         fillColor.setAlpha(200)
-        opts = {'movable': False, 'position':1.0, 'color': pg.mkColor('#FFFFFF'),
+        opts = {'movable': False, 'position':pos, 'color': pg.mkColor('#FFFFFF'),
             'fill': fillColor}
         label = RegionLabel(self.regionItems[plotNum].lines, text=self.labelText, **opts)
         # Update line's label and store the plot index where it's currently located
@@ -127,16 +129,29 @@ class LinkedRegion(pg.LinearRegionItem):
         # If removing sub-region with label
         if self.labelPltIndex == plotIndex and not visible:
             label.setVisible(False)
-            plotIndex += 1
-            # Find the next visible sub-region and place the label there
-            while plotIndex < len(self.regionItems):
-                if self.regionItems[plotIndex].isVisible():
-                    self.setLabel(plotIndex)
-                    return
+            if self.lblPos == 'top':
                 plotIndex += 1
+                # Find the next visible sub-region and place the label there
+                while plotIndex < len(self.regionItems):
+                    if self.regionItems[plotIndex].isVisible():
+                        self.setLabel(plotIndex)
+                        return
+                    plotIndex += 1
+            else: # Look for last visible sub-region
+                plotIndex -= 1
+                while plotIndex > 0:
+                    if self.regionItems[plotIndex].isVisible():
+                        self.setLabel(plotIndex)
+                        return
+                    plotIndex -= 1
         # If adding in a sub-region at plot index higher than the one
         # with the region label, move the label to this plot
-        elif plotIndex < self.labelPltIndex and visible:
+        elif self.lblPos == 'top' and plotIndex < self.labelPltIndex and visible:
+            label.setVisible(False)
+            self.setLabel(plotIndex)
+        # In case of linked region w/ label at bottom, set label on
+        # the lowest visible sub-region
+        elif self.lblPos == 'bottom' and plotIndex > self.labelPltIndex and visible:
             label.setVisible(False)
             self.setLabel(plotIndex)
 

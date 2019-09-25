@@ -26,7 +26,7 @@ import pyqtgraph as pg
 import FF_File
 from FF_Time import FFTIME, leapFile
 
-from MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit
+from MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, FixedSelection
 from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
@@ -128,6 +128,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionEPAD.triggered.connect(self.startEPAD)
         self.ui.actionEOmni.triggered.connect(self.startEOMNI)
 
+        # Selection menu actions
+        self.ui.actionFixSelection.triggered.connect(self.fixSelection)
+
         # Content menu action connections
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
         self.ui.addTickLblsAction.triggered.connect(self.openAddTickLbls)
@@ -159,6 +162,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.smoothing = None
         self.detrendWin = None
         self.currSelect = None
+        self.savedRegion = None
+        self.fixedSelect = None
 
         # MMS Tools
         self.planeNormal = None
@@ -299,12 +304,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeDynWave()
         self.closeMMSTools()
         self.closeDetrend()
+        self.closeFixSelection()
 
     def closePlotTools(self):
         self.closeDetrend()
         self.closeSpectra()
         self.closeDynamicCohPha()
         self.closeDynamicSpectra()
+        self.closeDynWave()
         self.closeTraceStats()
 
     def initVariables(self):
@@ -568,7 +575,40 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeEdit()
         self.edit = Edit(self)
         self.edit.show()
-        
+
+    def fixSelection(self):
+        if self.currSelect is None or self.currSelect.regions == []:
+            return
+
+        # Initialize interface
+        self.closeFixSelection()
+        self.fixedSelect = FixedSelection(self)
+
+        # Create a linked region object
+        self.savedRegion = GeneralSelect(self, 'Single', 'Saved Selection', '#595959', 
+            self.fixedSelect.ui.timeEdit, None, closeFunc=self.closeFixSelection)
+        self.savedRegion.setLabelPos('bottom')
+        self.savedRegion.autoSetRegion(0,0)
+
+        # Adjust the time/lines to match current selection
+        strt = self.currSelect.timeEdit.start.dateTime()
+        end = self.currSelect.timeEdit.end.dateTime()
+        self.fixedSelect.setTimeEdit(strt, end)
+
+        self.fixedSelect.show()
+
+    def closeSavedRegion(self):
+        if self.savedRegion:
+            self.savedRegion.closeAllRegions()
+            self.savedRegion = None
+
+    def closeFixSelection(self):
+        if self.fixedSelect:
+            # Clear saved linked region and interface
+            self.closeSavedRegion()
+            self.fixedSelect.close()
+            self.fixedSelect = None
+
     def showData(self):
         # show error message for when loading cdfs because not ported yet
         if not self.FIDs:
@@ -1897,7 +1937,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.timeEdit.end.setDateTime(maxDate)
 
     # color is hex string ie: '#ff0000' for red
-    def initGeneralSelect(self, name, color, timeEdit, mode, startFunc, updtFunc=None, 
+    def initGeneralSelect(self, name, color, timeEdit, mode, startFunc=None, updtFunc=None, 
         closeFunc=None, canHide=False, maxSteps=1):
         self.endGeneralSelect()
 
@@ -1906,10 +1946,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.currSelect = GeneralSelect(self, mode, name, color, timeEdit,
             func=startFunc, updtFunc=updtFunc, closeFunc=closeFunc, maxSteps=maxSteps)
 
+        # Enable selection menu
+        self.ui.showSelectionMenu(True)
+
+        # Apply a saved region if there is one
+        if self.savedRegion:
+            a, b = self.savedRegion.regions[0].getRegion()
+            self.currSelect.autoSetRegion(a-self.tickOffset,b-self.tickOffset)
+
     def endGeneralSelect(self):
         if self.currSelect:
             self.currSelect.closeAllRegions()
             self.currSelect = None
+            self.ui.showSelectionMenu(False)
 
     # get slider ticks from time edit
     def getTicksFromTimeEdit(self, timeEdit):
@@ -2043,6 +2092,9 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
         self.window.currSelect.leftClick(x, self.plotIndex, ctrlPressed)
 
+        if self.window.savedRegion:
+            self.window.savedRegion.leftClick(x, self.plotIndex, ctrlPressed)
+
     # check if either of lines are visible for this viewbox
     def anyLinesVisible(self):
         isVisible = False
@@ -2059,6 +2111,10 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     def onRightClick(self, ev):
         if self.window.currSelect:
             self.window.currSelect.rightClick(self.plotIndex)
+            if self.window.savedRegion:
+                self.window.savedRegion.rightClick(self.plotIndex)
+        elif self.window.savedRegion:
+            self.window.savedRegion.rightClick(self.plotIndex)
         else:
             pg.ViewBox.mouseClickEvent(self, ev)
 

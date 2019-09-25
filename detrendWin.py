@@ -98,6 +98,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
         # State modified upon plotting
         self.currSelect = None
+        self.savedRegion = None
         self.lastPlotStrings = []
         self.plotItems = []
         self.dtDatas = {}
