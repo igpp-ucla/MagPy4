@@ -688,7 +688,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             numProcs = 1
         if numProcs >= 4:
             self.numThreads = 4
-        elif numProces >= 2:
+        elif numProcs >= 2:
             self.numThreads = 2
         else:
             self.numThreads = 1
