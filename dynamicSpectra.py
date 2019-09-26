@@ -22,27 +22,30 @@ class SpectraLineEditorUI(BaseLayout):
             'Dotted': QtCore.Qt.DotLine, 'DashDot': QtCore.Qt.DashDotLine}
 
         helpInfo = 'Please enter an expression to calculate and press \'Plot\':'
-        layout.addWidget(QtWidgets.QLabel(helpInfo), 0, 0, 1, 3)
+        layout.addWidget(QtWidgets.QLabel(helpInfo), 0, 0, 1, 4)
 
         # Set up text box for user to input expression
         self.textBox = QtWidgets.QTextEdit()
         exampleTxt = 'Examples:\nLine = (Bx^2 + By^2 + Bz^2)^(1/2) - 50 \n' +\
                 'Line = 0.24'
         self.textBox.setPlaceholderText(exampleTxt)
-        layout.addWidget(self.textBox, 1, 0, 1, 3)
+        layout.addWidget(self.textBox, 1, 0, 1, 4)
 
         # Set up line appearance options
         linePropFrame = self.setupLineProperties()
-        layout.addWidget(linePropFrame, 2, 0, 1, 3)
+        layout.addWidget(linePropFrame, 2, 0, 1, 4)
 
         # Set up clear/plot buttons and status bar
+        self.fixLine = QtWidgets.QCheckBox('Fix Line')
+        self.fixLine.setToolTip('Replot line after plot is updated')
         self.clearBtn = QtWidgets.QPushButton('Clear')
         self.addBtn = QtWidgets.QPushButton('Plot')
         self.statusBar = QtWidgets.QStatusBar()
 
         layout.addWidget(self.statusBar, 3, 0, 1, 1)
-        layout.addWidget(self.clearBtn, 3, 1, 1, 1)
-        layout.addWidget(self.addBtn, 3, 2, 1, 1)
+        layout.addWidget(self.fixLine, 3, 1, 1, 1)
+        layout.addWidget(self.clearBtn, 3, 2, 1, 1)
+        layout.addWidget(self.addBtn, 3, 3, 1, 1)
 
     def setupLineProperties(self):
         frame = QtWidgets.QGroupBox('Line Properties')
@@ -71,12 +74,16 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         self.spectraFrame = spectraFrame
         self.window = window
         self.dataRange = dataRange
+        self.plottedLine = None
         self.ui = SpectraLineEditorUI()
         self.ui.setupUI(self, window)
 
         self.ui.colorBtn.clicked.connect(self.openColorSelect)
         self.ui.clearBtn.clicked.connect(self.clearPlot)
         self.ui.addBtn.clicked.connect(self.addToPlot)
+        if self.spectraFrame.savedLineInfo:
+            self.ui.fixLine.setChecked(True)
+        self.ui.fixLine.toggled.connect(self.fixedLineToggled)
 
     def createLine(self, dta, times, color, style, width):
         # Constructs a plotDataItem object froms given settings and data
@@ -85,13 +92,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         line = pg.PlotDataItem(times, dta, pen=pen)
         return line
 
-    def addToPlot(self):
-        self.clearPlot()
-        sI, eI = self.dataRange
-        exprStr = self.ui.textBox.toPlainText()
-        if exprStr == '':
-            return
-
+    def evalExpr(self, exprStr, sI, eI):
         # Attempt to evaluate expression, print error if an exception occurs
         try:
             expEval = ExpressionEvaluator(exprStr, self.window, self.dataRange)
@@ -108,7 +109,20 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
             if self.isLogMode():
                 dta = np.log10(dta)
 
+            return dta
+
         except:
+            return None
+
+    def addToPlot(self):
+        self.clearPlot()
+        sI, eI = self.dataRange
+        exprStr = self.ui.textBox.toPlainText()
+        if exprStr == '':
+            return
+
+        dta = self.evalExpr(exprStr, sI, eI)
+        if dta is None: # Return + print error message for invalid expression
             self.ui.statusBar.showMessage('Error: Invalid operation')
             return
 
@@ -122,9 +136,11 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         # Create line from user input and add it to the plot item
         lineItem = self.createLine(dta, times, color, lineStyle, width)
         self.spectraFrame.addLineToPlot(lineItem)
+        self.saveLineInfo()
 
     def clearPlot(self):
         self.spectraFrame.removeLinesFromPlot()
+        self.clearLineInfo()
 
     def isLogMode(self):
         mode = self.spectraFrame.ui.scaleModeBox.currentText()
@@ -142,6 +158,27 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         self.ui.colorBtn.setStyleSheet(styleSheet)
         self.ui.colorBtn.show()
         self.ui.lineColor = color.name()
+
+    def saveLineInfo(self):
+        # Extract parameters used to plot current line
+        expr = self.ui.textBox.toPlainText()
+        color = self.ui.lineColor
+        width = self.ui.lineWidth.value()
+        style = self.ui.lineStyles[self.ui.lineStyle.currentText()]
+
+        self.plottedLine = (expr, color, width, style)
+
+        if self.ui.fixLine.isChecked(): # Save in outer frame if fixLine box is checked
+            self.fixedLineToggled(True)
+
+    def clearLineInfo(self):
+        self.plottedLine = None
+
+    def fixedLineToggled(self, val):
+        if val:
+            self.spectraFrame.setSavedLine(self.plottedLine)
+        else:
+            self.spectraFrame.clearSavedLine()
 
 class ColorBarAxis(pg.AxisItem):
     def __init__(self, *args, **kwargs):
@@ -373,6 +410,7 @@ class SpectraBase(object):
 class DynamicAnalysisTool(SpectraBase):
     def __init__(self):
         self.lineTool = None
+        self.savedLineInfo = None
         self.lineHistory = set()
         self.fftBins = [32, 64, 128, 256, 512, 1024, 2048, 4096]
         self.fftBinBound = 131072
@@ -445,6 +483,27 @@ class DynamicAnalysisTool(SpectraBase):
         if self.lineTool:
             self.lineTool.close()
             self.lineTool = None
+
+    def setSavedLine(self, lineInfo):
+        self.savedLineInfo = lineInfo
+
+    def clearSavedLine(self):
+        self.savedLineInfo = None
+
+    def addSavedLine(self):
+        if self.savedLineInfo:
+            # Get state info
+            a, b = self.getDataRange()
+            arbDstr = self.window.DATASTRINGS[0]
+            times = self.window.getTimes(arbDstr, 0)[0][a:b]
+
+            # Extract line info + generate the new line and add it to the plot
+            expr, color, width, style = self.savedLineInfo
+            lineEditor = SpectraLineEditor(self, self.window, (a,b))
+            dta = lineEditor.evalExpr(expr, a, b)
+            lineItem = lineEditor.createLine(dta, times, color, style, width)
+            self.addLineToPlot(lineItem)
+        return None
 
 class SpectraLegend(GradLegend):
     def __init__(self, offsets=(31, 48)):
@@ -1018,6 +1077,9 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         # Generate plot grid and spectrogram from this
         self.calculate(dataRng, interval, shift, bw, dstr)
 
+        if self.savedLineInfo:
+            self.addSavedLine()
+
     def getVecIdentifiers(self, vecGrps):
         if len(vecGrps) == 1:
             return []
@@ -1373,6 +1435,9 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
             return
 
         self.calculate(varA, varB, bw, logMode, indexRng, shiftAmnt, interval)
+
+        if self.savedLineInfo: # Add any saved lines
+            self.addSavedLine()
 
     def calculate(self, varA, varB, bw, logMode, indexRng, shiftAmt, interval):
         cohLst, phaLst = [], []

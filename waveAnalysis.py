@@ -773,6 +773,9 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
         self.updateCalculations(plotType, fftInt, fftShift, dtaRng, bw, logScale)
 
+        if self.savedLineInfo: # Add any saved lines
+            self.addSavedLine()
+
     def computeMag(self, dtaRng):
         # Computes the magnitude of the vector for every index in dtaRng
         sI, eI = dtaRng
