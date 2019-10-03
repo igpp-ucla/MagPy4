@@ -1574,10 +1574,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
 
-            try: # Try to set downsampling mode, TODO: Only a temporary fix
-                pi.setDownsampling(ds=1, auto=True, mode='peak')
-            except:
-                pass
+            pi.setDownsampling(ds=1, auto=True, mode='peak')
 
             pi.ctrl.logYCheck.toggled.connect(functools.partial(self.updateLogScaling, plotIndex))
 
@@ -1779,6 +1776,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # Split data into segments so points with large time gaps are not connected
             segs = Mth.getSegmentsFromTimeGaps(resolutions, avgRes*2)
             for a, b in segs:
+                if b-a < 2:
+                    pi.setDownsampling(False)
                 if self.ui.drawPoints.isChecked():
                     pi.addItem(PlotPointsItem(ofstTimes[a:b], YWithNan[a:b], pen=pen, connect='finite'))
                 else:
