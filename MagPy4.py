@@ -1573,7 +1573,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 'left': LinkedAxis(orientation='left'), 'top': topAxis })
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
-            pi.setDownsampling(ds=1, auto=True, mode='peak')
+
+            try: # Try to set downsampling mode, TODO: Only a temporary fix
+                pi.setDownsampling(ds=1, auto=True, mode='peak')
+            except:
+                pass
 
             pi.ctrl.logYCheck.toggled.connect(functools.partial(self.updateLogScaling, plotIndex))
 
