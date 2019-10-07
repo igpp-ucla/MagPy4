@@ -1229,7 +1229,6 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.ui.plotItem.createPlot(freqs, pixelGrid, times, colorRng, winFrame=self)
 
         # Update x/y range and axis labels
-        self.ui.statusBar.showMessage('Adjusting plot...')
         self.adjustPlotItem([times[0], times[-1]], (freqs[0], freqs[-1]))
         self.ui.statusBar.clearMessage()
 

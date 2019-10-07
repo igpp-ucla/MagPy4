@@ -76,6 +76,10 @@ class MagPy4UI(object):
         self.actionDynWave.setText('Dynamic Wave Analysis...')
         self.actionDynWave.setStatusTip('Dynamic analysis of various wave analysis results')
 
+        self.actionTraj = QtWidgets.QAction(window)
+        self.actionTraj.setText('Trajectory Analysis...')
+        self.actionTraj.setStatusTip('Opens trajectory analysis window')
+
         # MMS Tools
         self.actionPlaneNormal = QtWidgets.QAction(window)
         self.actionPlaneNormal.setText('Plane Normal...')
@@ -150,6 +154,7 @@ class MagPy4UI(object):
         self.toolsMenu.addAction(self.actionEdit)
         self.toolsMenu.addAction(self.actionSpectra)
         self.toolsMenu.addAction(self.actionDetrend)
+        self.toolsMenu.addAction(self.actionTraj)
         self.toolsMenu.addSeparator()
         self.toolsMenu.addAction(self.actionDynamicSpectra)
         self.toolsMenu.addAction(self.actionDynamicCohPha)

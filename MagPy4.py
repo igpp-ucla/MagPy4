@@ -41,6 +41,7 @@ from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, Ele
 from detrendWin import DetrendWindow
 from dynamicSpectra import DynamicSpectra, DynamicCohPha
 from waveAnalysis import DynamicWave
+from trajectory import TrajectoryAnalysis
 from smoothingTool import SmoothingTool
 from ffCreator import createFF
 from mth import Mth
@@ -114,6 +115,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionDynamicSpectra.triggered.connect(self.startDynamicSpectra)
         self.ui.actionDynamicCohPha.triggered.connect(self.startDynamicCohPha)
         self.ui.actionDynWave.triggered.connect(self.startDynWave)
+        self.ui.actionTraj.triggered.connect(self.openTraj)
         self.ui.actionDetrend.triggered.connect(self.startDetrend)
         self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.actionHelp.triggered.connect(self.openHelp)
@@ -143,6 +145,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.enableMouseAction.triggered.connect(self.enableMouseDrag)
 
         # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
+        self.DATASTRINGS = []
         self.enableToolsAndOptionsMenus(False)
 
         self.dataDisplay = None
@@ -151,6 +154,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.dynSpectra = None
         self.dynCohPha = None
         self.dynWave = None
+        self.traj = None
         self.plotAppr = None
         self.addTickLbls = None
         self.edit = None
@@ -283,6 +287,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         """
         self.ui.toolsMenu.setEnabled(bool)
         self.ui.optionsMenu.setEnabled(bool)
+        self.checkForPosDta()
+
+    def checkForPosDta(self):
+        traj = TrajectoryAnalysis(self)
+        if not traj.validState():
+            self.ui.actionTraj.setVisible(False)
+        else:
+            self.ui.actionTraj.setVisible(True)
 
     # close any subwindows if main window is closed
     # this should also get called if flatfile changes
@@ -304,6 +316,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeDynWave()
         self.closeMMSTools()
         self.closeDetrend()
+        self.closeTraj()
         self.closeFixSelection()
 
     def closePlotTools(self):
@@ -575,6 +588,32 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeEdit()
         self.edit = Edit(self)
         self.edit.show()
+
+    def openTraj(self):
+        self.closeTraceStats()
+        self.closeTraj()
+        self.traj = TrajectoryAnalysis(self)
+
+        if not self.traj.validState():
+            self.traj.close()
+            self.traj = None
+            errMsg = 'Error: Cannot open trajectory analysis window without position data'
+            self.ui.statusBar.showMessage(errMsg)
+            return
+
+        self.initGeneralSelect('Trajectory Analysis', '#34ebdc', self.traj.ui.timeEdit, 'Single',
+            self.startTraj, closeFunc=self.closeTraj)
+
+    def startTraj(self):
+        if self.traj:
+            self.traj.show()
+            self.traj.ui.altFrame.updatePlot()
+            self.traj.ui.orbitFrame.updatePlot()
+    
+    def closeTraj(self):
+        if self.traj is not None:
+            self.traj.close()
+            self.traj = None
 
     def fixSelection(self):
         if self.currSelect is None or self.currSelect.regions == []:
@@ -2059,7 +2098,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def autoSelectRange(self):
         # Automatically select the section currently being viewed
-        t0, t1 = self.tO, self.tE
+        t0, t1 = self.tO-self.tickOffset, self.tE-self.tickOffset
         region = LinkedRegion(self, self.plotItems, values=(t0, t1), 
             mode=self.selectMode, color=self.selectColor)
         self.regions.append(region)

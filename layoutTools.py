@@ -13,13 +13,25 @@ class BaseLayout(object):
     def getSizePolicy(self, horz, vert):
         if horz == 'Min':
             horz = QSizePolicy.Minimum
-        else:
+        elif horz == 'Max':
             horz = QSizePolicy.Maximum
+        elif horz == 'Exp':
+            horz = QSizePolicy.Expanding
+        elif horz == 'MinExp':
+            horz = QSizePolicy.MinimumExpanding
+        else:
+            horz = QSizePolicy.Preferred
 
         if vert == 'Min':
             vert = QSizePolicy.Minimum
-        else:
+        elif vert == 'Max':
             vert = QSizePolicy.Maximum
+        elif vert == 'Exp':
+            vert = QSizePolicy.Expanding
+        elif vert == 'MinExp':
+            vert = QSizePolicy.MinimumExpanding
+        else:
+            vert = QSizePolicy.Preferred
 
         return QSizePolicy(horz, vert)
 
@@ -66,7 +78,12 @@ class BaseLayout(object):
         spacer = QtWidgets.QSpacerItem(width, 1)
         return spacer
 
-    def getGraphicsGrid(self, window):
+    def getGraphicSpacer(self, horz='Exp', vert='Exp'):
+        spacer = pg.LabelItem('')
+        spacer.setSizePolicy(self.getSizePolicy(horz, vert))
+        return spacer
+
+    def getGraphicsGrid(self, window=None):
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = GridGraphicsLayout(window)
