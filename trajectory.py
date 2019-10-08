@@ -827,11 +827,14 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         # Anchor text to the left of point if the orbit is close to
         # the origin and on its left side
+        magDta = np.sqrt((xDta ** 2) + (yDta ** 2))
         startStr, endStr = ' ', ''
         anchor = (0, 0.5)
-        minX = min(xDta)
+        minIndex = np.argmin(magDta)
+        minDist = magDta[minIndex]
+        minX = xDta[minIndex]
         originRadius = self.getOriginRadius(self.outerFrame.getPosVec())
-        if (minX > -originRadius * 8 and minX < 0 and max) and angle == 0:
+        if (minDist < originRadius * 4 and minX < 0 and max) and angle == 0:
             anchor = (1, 0.5)
             endStr = ' '
 
