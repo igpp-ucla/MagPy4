@@ -805,12 +805,6 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         # Add in scale bar item
         scaleBar = plt.addScaleBar(scaleFactor)
 
-        # Set scalebar to be about 1/8th of plot length
-        maxLen = self.getMaxWidth(xDta, yDta)
-        lineLen = maxLen
-        scaleBase = (lineLen/8)*scaleFactor
-        scaleBar.adjustScaleBase(scaleBase)
-
     def plotTimeTicks(self, plt, pen, xDta, yDta, times, tickWidth):
         # Add round points at given orbit positions
         brush = pg.mkBrush(pen.color())
@@ -1142,13 +1136,15 @@ class OriginGraphic(pg.PlotCurveItem):
 class FieldScaleBar(pg.ScaleBar):
     def __init__(self, vb, size, width=1, brush=None, pen=None, suffix='m', offset=None):
         # Set up scale bins
-        self.scaleRatio = 1/size
+        self.scaleRatio = 1 / size
+        self.invScale = size
         self.baseVals = [1,2,5]
         self.midPts = [2, 4.5, 8]
         self.baseLevel = 1 # Fraction to multiply baseVal by
         self.currVal = self.baseVals[0]*self.baseLevel
         self.size = self.currVal * self.scaleRatio
         self.valIndex = 0 # Which base val is being used
+        self.pltVb = vb
 
         # Set default pen/brush info
         pen = pg.mkPen('#000000')
@@ -1186,6 +1182,14 @@ class FieldScaleBar(pg.ScaleBar):
         view.sigRangeChanged.connect(self._updateBar)
         self._updateBar()
 
+    def getWidth(self):
+        # Returns 1/9th of Y range and then scales it by the nT/(pos units) ratio
+        xRng, yRng = self.pltVb.viewRange()
+        a, b = yRng
+        diff = abs(b-a)
+        return (diff / 9)*(self.invScale)
+
     def _updateBar(self):
         QtCore.QTimer.singleShot(50, self.updateBar)
+        self.adjustScaleBase(self.getWidth()) # Adjust scale bar when view changes
         self.text.setPlainText(str(self.currVal)+' nT')
