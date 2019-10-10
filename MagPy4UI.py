@@ -101,10 +101,18 @@ class MagPy4UI(object):
         self.actionEOmni.setText('Plot Electron/Ion Spectrum...')
         self.actionEOmni.setStatusTip('Plots a color-mapped representation of omni-directional electron/ion energy spectrum')
 
+        # Selection menu actions
         self.actionFixSelection = QtWidgets.QAction(window)
         self.actionFixSelection.setText('Fix Selection...')
         self.actionFixSelection.setStatusTip('Saves currently selected region to use with other tools')
+        self.actionFixSelection.setVisible(False)
 
+        self.actionSelectByTime = QtWidgets.QAction(window)
+        self.actionSelectByTime.setText('Select By Time...')
+        self.actionSelectByTime.setStatusTip('Select a time region to apply the currently selected tool to')
+        self.actionSelectByTime.setVisible(True)
+
+        # Options menu actions
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
         self.scaleYToCurrentTimeAction.setStatusTip('')
         self.antialiasAction = QtWidgets.QAction('Smooth &Lines (Antialiasing)',checkable=True,checked=True)
@@ -169,6 +177,7 @@ class MagPy4UI(object):
 
         self.selectMenu = self.menuBar.addMenu('Selection Tools')
         self.selectMenu.addAction(self.actionFixSelection)
+        self.selectMenu.addAction(self.actionSelectByTime)
         self.showSelectionMenu(False) # Hidden by default
 
         self.optionsMenu = self.menuBar.addMenu('&Options')
@@ -922,3 +931,28 @@ class FixedSelection(QtWidgets.QFrame, FixedSelectionUI):
     def closeEvent(self, ev):
         self.close()
         self.window.closeFixSelection()
+
+class TimeRegionSelector(QtWidgets.QFrame):
+    def __init__(self, window, parent=None):
+        QtWidgets.QFrame.__init__(self, parent)
+        self.window = window
+        self.setupLayout()
+        self.updateBtn.clicked.connect(self.applySelection)
+
+    def setupLayout(self):
+        self.resize(300, 50)
+        layout = QtWidgets.QGridLayout(self)
+        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit.setupMinMax(self.window.getMinAndMaxDateTime())
+        self.updateBtn = QtWidgets.QPushButton('Apply')
+        layout.addWidget(self.timeEdit.start, 0, 0, 1, 1)
+        layout.addWidget(self.timeEdit.end, 0, 1, 1, 1)
+        layout.addWidget(self.updateBtn, 0, 2, 1, 1)
+
+    def getTimes(self):
+        return self.timeEdit.start.dateTime(), self.timeEdit.end.dateTime()
+
+    def applySelection(self):
+        t0, t1 = self.window.getTimeTicksFromTimeEdit(self.timeEdit)
+        self.window.selectTimeRegion(t0, t1)
+        self.window.closeTimeSelect()

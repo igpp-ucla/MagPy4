@@ -37,7 +37,26 @@ class GeneralSelect(object):
         '''
         self.regions = []
         self.lblPos = 'top'
+
+        # Additional functions to call once user has started selection and
+        # after a region is fully selected
+        self.stepFunc = None
+        self.fullStepFunc = None
+
+    def setStepTrigger(self, func):
+        self.stepFunc = func
+
+    def stepTrigger(self):
+        if self.stepFunc:
+            self.stepFunc()
+
+    def setFullSelectionTrigger(self, func):
+        self.fullStepFunc = func
     
+    def fullStepTrigger(self):
+        if self.fullStepFunc:
+            self.fullStepFunc()
+
     def setLabelPos(self, pos):
         self.lblPos = pos
 
@@ -64,6 +83,7 @@ class GeneralSelect(object):
 
         # First region
         if self.regions == []:
+            self.stepTrigger()
             self.addRegion(x)
             return
 
@@ -155,6 +175,7 @@ class GeneralSelect(object):
 
     def openFunc(self):
         if self.func:
+            self.fullStepTrigger()
             QtCore.QTimer.singleShot(100, self.func)
 
     def extendRegion(self, x, region):
