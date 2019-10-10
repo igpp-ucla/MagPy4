@@ -440,7 +440,12 @@ class OrbitUI(BaseLayout):
         layout = QtWidgets.QGridLayout(frame)
         frame.setSizePolicy(self.getSizePolicy('Max', 'Max'))
 
+        pltFrm = QtWidgets.QGroupBox('Plot Type:')
+        pltLt = QtWidgets.QGridLayout(pltFrm)
+
         # Plane of view
+        self.viewPlaneBtn = QtWidgets.QRadioButton('View Plane: ')
+        self.viewPlaneBtn.setChecked(True)
         self.axesList = ['X','Y','Z']
         self.planeBox1 = QtWidgets.QComboBox()
         self.planeBox2 = QtWidgets.QComboBox()
@@ -450,8 +455,14 @@ class OrbitUI(BaseLayout):
         self.planeBox1.addItem('YZ')
         self.planeBox1.setCurrentIndex(1)
         self.planeBox1.currentTextChanged.connect(self.updateBoxItems)
-        self.addPair(layout, 'View Plane: ', self.planeBox1, 0, 0, 1, 1)
-        self.addPair(layout, ' by ', self.planeBox2, 0, 2, 1, 1)
+        pltLt.addWidget(self.viewPlaneBtn, 0, 0, 1, 1)
+        pltLt.addWidget(self.planeBox1, 0, 1, 1, 1)
+        self.addPair(pltLt, ' by ', self.planeBox2, 0, 2, 1, 1)
+
+        self.projBtn = QtWidgets.QRadioButton('Projection onto Terminator Plane')
+        self.projBtn.setToolTip('Projection of field lines onto the terminator plane')
+        pltLt.addWidget(self.projBtn, 1, 0, 1, 4)
+        layout.addWidget(pltFrm, 0, 0, 1, 5)
 
         separator = self.getWidgetSeparator()
         layout.addWidget(separator, 1, 0, 1, 5)
@@ -516,16 +527,16 @@ class OrbitUI(BaseLayout):
         layout = QtWidgets.QGridLayout()
 
         # Plot tick types
-        btnBox = QtWidgets.QGroupBox('Marker Type:')
+        self.btnBox = QtWidgets.QGroupBox('Marker Type:')
         self.markerBtns = []
-        btnLt = QtWidgets.QHBoxLayout(btnBox)
+        btnLt = QtWidgets.QHBoxLayout(self.btnBox)
         btnLbls = ['Field Lines', 'Time Ticks', 'None']
         for lbl in btnLbls:
             btn = QtWidgets.QRadioButton(lbl)
             self.markerBtns.append(btn)
             btnLt.addWidget(btn)
         self.markerBtns[0].setChecked(True)
-        layout.addWidget(btnBox, 0, 0, 1, 3)
+        layout.addWidget(self.btnBox, 0, 0, 1, 3)
 
         # Tick interval box
         intLt = QtWidgets.QGridLayout()
@@ -604,8 +615,12 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         # Initialize the units label for mag line scaling
         self.updtUnits(self.outerFrame.getRadiusUnits())
 
+        # Enable/disable relavent plot options when tick and plot types are changed
         for btn in self.ui.markerBtns:
             btn.toggled.connect(self.tickTypeChanged)
+
+        for btn in [self.ui.projBtn, self.ui.viewPlaneBtn]:
+            btn.toggled.connect(self.plotTypeChanged)
 
     def initValues(self):
         a, b = self.outerFrame.getIndices()
@@ -668,17 +683,36 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
                 self.currPlot.setAspectLocked(False)
             self.currPlot.hideScaleBar(not val)
 
+    def inProjMode(self):
+        return self.ui.projBtn.isChecked()
+
+    def plotTypeChanged(self):
+        # Disable all tick options except for tick interval if plotting a
+        # projection of the field lines
+        projMode = self.inProjMode()
+        if projMode:
+            self.enableLineOptions(False)
+            # Update interval box value
+            a, b = self.outerFrame.getIndices()
+            self.ui.intervalBox.setValue(max(1, int((b-a)*.002)))
+        else:
+            self.tickTypeChanged()
+
+        self.ui.btnBox.setEnabled(not projMode)
+
+    def enableLineOptions(self, val=True):
+        self.ui.centerLinesBox.setEnabled(val)
+        self.ui.magLineScaleBox.setEnabled(val)
+        self.ui.magLineLbl.setEnabled(val)
+
     def tickTypeChanged(self):
         # Enable/disable UI elements according to tick type chosen
         tickType = self.getTickType()
 
-        centerEnabled = True if tickType == 'Field Lines' else False
         magScaleEnabled = True if tickType == 'Field Lines' else False
         tickInterval = False if tickType == 'None' else True
 
-        self.ui.centerLinesBox.setEnabled(centerEnabled)
-        self.ui.magLineScaleBox.setEnabled(magScaleEnabled)
-        self.ui.magLineLbl.setEnabled(magScaleEnabled)
+        self.enableLineOptions(magScaleEnabled)
         self.ui.intervalBox.setEnabled(tickInterval)
         self.ui.timeLbl.setEnabled(tickInterval)
         self.ui.intLbl.setEnabled(tickInterval)
@@ -731,6 +765,18 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         return xDta, posYZ, xField, fieldYZ
 
+    def getProjTermDta(self, posDstrs, vecDstrs, sI, eI, en):
+        fieldDta = [self.outerFrame.getData(dstr, en)[sI:eI] for dstr in vecDstrs]
+        posDta = [self.outerFrame.getData(dstr, en)[sI:eI] for dstr in posDstrs]
+
+        xField, yField, zField = fieldDta
+        xDta, yDta, zDta = posDta
+
+        xVals = yDta - (xDta*yField/xField)
+        yVals = zDta - (xDta*zField/xField)
+
+        return xVals, yVals
+
     def getPosAndField(self, posDstrs, vecDstrs, sI, eI):
         # Get the plot's x,y coordinates in the plane chosen by user
         en = self.outerFrame.getEditNum()
@@ -780,6 +826,10 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         self.ui.glw.addItem(lbl, 1, 0, 1, 1)
         lbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
         self.ui.glw.layout.setAlignment(lbl, QtCore.Qt.AlignLeft)
+
+    def plotTermProj(self, plt, pen, xDta, yDta, tickWidth):
+        brush = pg.mkBrush(pen.color())
+        plt.scatterPlot(xDta, yDta, size=2, pen=pen, brush=brush)
 
     def plotMagLines(self, plt, pen, xField, yField, xDta, yDta, tickWidth):
         # Scale magnetic field data
@@ -877,8 +927,12 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             self.currPlot.removeOriginItem()
 
     def updatePlot(self):
+        # Initialize plot parameters/scales if first plot
         if not self.scaleSet:
             self.initValues()
+
+        # Get user-set parameters and
+        projMode = self.ui.projBtn.isChecked()
         en = self.outerFrame.getEditNum()
         sI, eI = self.outerFrame.getIndices()
         vecDstrs = self.outerFrame.getFieldVec()
@@ -889,27 +943,25 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         t0, t1 = times[0], times[-1] # Save start/end times for time label
 
         # Get position data corresponding to plane chosen by user
-        xDta, yDta, xField, yField = self.getPosAndField(posDstrs, vecDstrs, sI, eI)
+        if projMode:
+            xDta, yDta = self.getProjTermDta(posDstrs, vecDstrs, sI, eI, en)
+            xField, yField = [], []
+        else:
+            xDta, yDta, xField, yField = self.getPosAndField(posDstrs, vecDstrs, sI, eI)
 
         # Scale if necessary
         xDta = xDta * radius
         yDta = yDta * radius
+        xFull = xDta[:]
+        yFull = yDta[:]
 
         # Create plot and add orbit line first
         pen = self.outerFrame.getPens()[0]
         orbitPen = pg.mkPen(pen.color())
         plt = OrbitPlotItem()
-        gaps = self.outerFrame.getSegments(sI, eI) # Find gap indices as well
-        plt.plot(xDta, yDta, pen=orbitPen, connect=gaps)
-        self.currPlot = plt
 
-        # Save end points for plotting dir arrow (still need tickwidth)
-        xEnd = [xDta[-3], xDta[-1]] 
-        yEnd = [yDta[-3], yDta[-1]]
-        fullTimes = times[:]
-
-        tickType = self.getTickType()
         # Limit data/times by the user's sample rate if plotting markers
+        tickType = self.getTickType() if not projMode else 'Time Ticks'
         if tickType != 'None':
             rate = self.ui.intervalBox.value()
             xDta = self.sampleData(xDta, times, rate)
@@ -917,16 +969,24 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             xField = self.sampleData(xField, times, rate)
             yField = self.sampleData(yField, times, rate)
             times = self.sampleData(times, times, rate)
+
+        # Get tick marker width
         tickWidth = self.getTickWidth(xDta, yDta, tickType != 'None')
 
+        # Plot orbit and its arrow to indicate direction
+        if not projMode:
+            gaps = self.outerFrame.getSegments(sI, eI) # Find gap indices as well
+            plt.plot(xFull, yFull, pen=orbitPen, connect=gaps)
+            arrowPen = pg.mkPen('#0a004a') if tickType == 'Field Lines' else orbitPen
+            plt.plotArrowLine(xFull[-2:], yFull[-2:], tickWidth, arrowPen)
+
         # Add additional markers onto plot
-        if tickType == 'Field Lines':
+        if projMode:
+            self.plotTermProj(plt, pen, xDta, yDta, tickWidth)
+        elif tickType == 'Field Lines':
             self.plotMagLines(plt, pen, xField, yField, xDta, yDta, tickWidth)
         elif tickType == 'Time Ticks':
             self.plotTimeTicks(plt, pen, xDta, yDta, times, tickWidth)
-
-        # Plot *orbit's* arrow to indicate direction
-        plt.plotArrowLine(xEnd, yEnd, tickWidth, orbitPen)
 
         # Origin item
         if self.ui.pltOriginBox.isChecked():
@@ -936,8 +996,8 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         # Set plot labels
         unitLbl = self.outerFrame.getRadiusUnits()
         unitLbl = ' (' + unitLbl + ')' if unitLbl != '' else ''
-        ax_y = self.ui.planeBox1.currentText()
-        ax_x = self.ui.planeBox2.currentText()
+        ax_y = self.ui.planeBox1.currentText() if not projMode else 'Z'
+        ax_x = self.ui.planeBox2.currentText() if not projMode else 'Y'
         xLbl = ax_x + unitLbl
         yLbl = ax_y + unitLbl
         plt.getAxis('bottom').setLabel(xLbl)
@@ -948,6 +1008,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         self.ui.glw.clear()
         self.ui.glw.addItem(plt, 0, 0, 1, 1)
         self.addTimeInfo(t0, t1)
+        self.currPlot = plt
         self.lockAspect(self.ui.aspectBox.isChecked())
 
 class OrbitPlotItem(MagPyPlotItem):
