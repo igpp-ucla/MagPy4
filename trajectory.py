@@ -692,6 +692,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         projMode = self.inProjMode()
         if projMode:
             self.enableLineOptions(False)
+            self.enableIntervalOptions(True)
             # Update interval box value
             a, b = self.outerFrame.getIndices()
             self.ui.intervalBox.setValue(max(1, int((b-a)*.002)))
@@ -705,6 +706,11 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         self.ui.magLineScaleBox.setEnabled(val)
         self.ui.magLineLbl.setEnabled(val)
 
+    def enableIntervalOptions(self, val=True):
+        self.ui.intervalBox.setEnabled(val)
+        self.ui.timeLbl.setEnabled(val)
+        self.ui.intLbl.setEnabled(val)
+
     def tickTypeChanged(self):
         # Enable/disable UI elements according to tick type chosen
         tickType = self.getTickType()
@@ -713,9 +719,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         tickInterval = False if tickType == 'None' else True
 
         self.enableLineOptions(magScaleEnabled)
-        self.ui.intervalBox.setEnabled(tickInterval)
-        self.ui.timeLbl.setEnabled(tickInterval)
-        self.ui.intLbl.setEnabled(tickInterval)
+        self.enableIntervalOptions(tickInterval)
 
         # Update tick spacing if switching between marker types
         val = None
