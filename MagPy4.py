@@ -1815,6 +1815,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             resolutions = np.diff(times)
         return times,resolutions,avgRes
 
+    def getConnectionList(self, resolutions, avgRes):
+        mask = resolutions > (avgRes * 2)
+        segments = np.array(np.logical_not(mask), dtype=np.int32)
+        return segments
+
     # both plotData and replot use this function internally
     def plotTrace(self, pi, dstr, editNumber, pen):
         Y = self.getData(dstr, editNumber)
@@ -1835,17 +1840,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Determine data segments/type and plot
         if not self.ui.bridgeDataGaps.isChecked():
-            # Replace error flags with NaN so those points will not be plotted
-            YWithNan = Mth.replaceErrorsWithNaN(Y, self.ORIGDATADICT[dstr], self.errorFlag)
-            # Split data into segments so points with large time gaps are not connected
-            segs = Mth.getSegmentsFromTimeGaps(resolutions, avgRes*2)
-            for a, b in segs:
-                if b-a < 2:
-                    pi.setDownsampling(False)
-                if self.ui.drawPoints.isChecked():
-                    pi.addItem(PlotPointsItem(ofstTimes[a:b], YWithNan[a:b], pen=pen, connect='finite'))
-                else:
-                    pi.addItem(PlotDataItemBDS(ofstTimes[a:b], YWithNan[a:b], pen=pen, connect='finite'))
+            # Find segments of data that should not be connected due to time gaps
+            segs = self.getConnectionList(resolutions, avgRes)
+            if self.ui.drawPoints.isChecked():
+                pdi = PlotPointsItem(ofstTimes, Y, pen=pen, connect=segs)
+            else:
+                pdi = pg.PlotCurveItem(ofstTimes, Y, pen=pen, connect=segs)
+            pi.addItem(pdi)
         else:
             if self.ui.drawPoints.isChecked():
                 pi.addItem(PlotPointsItem(ofstTimes, Y, pen=pen))
