@@ -11,6 +11,7 @@ import sys
 # maybe make this into actual modules in future
 sys.path.insert(0, 'ffPy')
 sys.path.insert(0, 'cdfPy')
+sys.path.insert(0, 'geopack')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'

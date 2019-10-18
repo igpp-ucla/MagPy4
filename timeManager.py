@@ -4,6 +4,7 @@ import FF_File
 from FF_Time import FFTIME, leapFile
 from dataDisplay import UTCQDate
 import bisect
+from datetime import datetime
 
 class TimeManager(object):
     # Class that handles and initializes general time-related functions / states
@@ -66,3 +67,10 @@ class TimeManager(object):
 
     def getDateTimeFromTick(self, tick):
         return UTCQDate.UTC2QDateTime(self.getTimestampFromTick(tick))
+    
+    def getDateTimeObjFromTick(self, tick):
+        dt = UTCQDate.UTC2QDateTime(self.getTimestampFromTick(tick))
+        date = dt.date()
+        timeObj = dt.time()
+        dt = datetime(date.year(), date.month(), date.day(), timeObj.hour(), timeObj.minute(), timeObj.second(), timeObj.msec())
+        return dt

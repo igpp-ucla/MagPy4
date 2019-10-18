@@ -10,6 +10,12 @@ from FF_Time import FFTIME
 from MagPy4UI import TimeEdit, NumLabel
 
 class BaseLayout(object):
+    def __init__(self):
+        self.app = QtCore.QCoreApplication.instance()
+
+    def processEvents(self):
+        self.app.processEvents()
+
     def getSizePolicy(self, horz, vert):
         if horz == 'Min':
             horz = QSizePolicy.Minimum

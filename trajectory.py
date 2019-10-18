@@ -1,4 +1,5 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
+from MagPy4UI import TimeEdit
 from PyQt5.QtWidgets import QSizePolicy
 from layoutTools import BaseLayout
 from pyqtgraphExtensions import LinkedAxis, DateAxis, MagPyPlotItem
@@ -6,6 +7,12 @@ import pyqtgraph as pg
 import numpy as np
 from mth import Mth
 from datetime import timedelta
+import sys
+sys.path.insert(0, 'geopack')
+from geopack import geopack
+from datetime import datetime, timedelta
+import multiprocessing
+from multiprocessing import Pool
 import time
 
 class TrajectoryUI(BaseLayout):
@@ -145,6 +152,12 @@ class TrajectoryAnalysis(QtGui.QFrame, TrajectoryUI):
     def getRadius(self):
         return self.ui.radiusBox.value()
 
+    def getEarthRadius(self):
+        if self.getRadiusUnits().lower() == 'km':
+            return 6371.2
+        else:
+            return 1
+
     def getRadiusUnits(self):
         return self.ui.radUnitBox.text()
 
@@ -199,6 +212,8 @@ class TrajectoryAnalysis(QtGui.QFrame, TrajectoryUI):
     def closeEvent(self, event):
         self.window.endGeneralSelect()
         self.close()
+        if self.validState():
+            self.ui.orbitFrame.closeMagTool()
 
 class AltitudeUI(BaseLayout):
     def setupUI(self, Frame, outerFrame):
@@ -428,6 +443,7 @@ class OrbitUI(BaseLayout):
         layout = QtWidgets.QGridLayout(Frame)
         settingsFrame = self.setupSettingsFrame(Frame, outerFrame)
         self.glw = self.getGraphicsGrid()
+        self.glw.setContentsMargins(5, 0, 5, 0)
         layout.addWidget(settingsFrame, 0, 0, 1, 1)
 
         spacer = QtWidgets.QSpacerItem(1, 1, QSizePolicy.Maximum, QSizePolicy.Expanding)
@@ -440,6 +456,7 @@ class OrbitUI(BaseLayout):
         layout = QtWidgets.QGridLayout(frame)
         frame.setSizePolicy(self.getSizePolicy('Max', 'Max'))
 
+        # Plot type frame
         pltFrm = QtWidgets.QGroupBox('Plot Type:')
         pltLt = QtWidgets.QGridLayout(pltFrm)
 
@@ -459,29 +476,36 @@ class OrbitUI(BaseLayout):
         pltLt.addWidget(self.planeBox1, 0, 1, 1, 1)
         self.addPair(pltLt, ' by ', self.planeBox2, 0, 2, 1, 1)
 
+        # Projection onto the terminator plane radio button
         self.projBtn = QtWidgets.QRadioButton('Projection onto Terminator Plane')
         self.projBtn.setToolTip('Projection of field lines onto the terminator plane')
         pltLt.addWidget(self.projBtn, 1, 0, 1, 4)
-        layout.addWidget(pltFrm, 0, 0, 1, 5)
 
+        layout.addWidget(pltFrm, 0, 0, 1, 5)
         separator = self.getWidgetSeparator()
         layout.addWidget(separator, 1, 0, 1, 5)
 
-        # Add tick settings and plot settings layouts
+        # Add tick settings, plot settings, and magnetosphere model layouts
         tickLt = self.setupTickLt(outerFrame, Frame)
         pltLt = self.setupPlotSettingsLt(outerFrame, Frame)
-        row = 2
-        for lt in [tickLt, pltLt]:
-            layout.addLayout(lt, row, 0, 1, 5)
-            separator = self.getWidgetSeparator()
-            layout.addWidget(separator, row+1, 0, 1, 5)
-            row += 2
+        modelFrm = self.setupModelLt(outerFrame, Frame)
+        layout.addLayout(tickLt, 2, 0, 1, 5)
+        layout.addWidget(modelFrm, 4, 0, 1, 5)
+        layout.addLayout(pltLt, 6, 0, 1, 5)
+
+        # Add in cosmetic separators
+        for row in [3,5,7]:
+            self.addSeparator(layout, row, 5)
 
         # Update button
         self.updtBtn = QtWidgets.QPushButton('Update')
-        layout.addWidget(self.updtBtn, 6, 4, 1, 1)
+        layout.addWidget(self.updtBtn, 8, 4, 1, 1)
         return frame
-    
+
+    def addSeparator(self, layout, row, span):
+        separator = self.getWidgetSeparator()
+        layout.addWidget(separator, row, 0, 1, span)
+
     def updateBoxItems(self):
         # Makes sure if 'YZ' is selected, than the other axis must be 'X'
         txt = self.planeBox1.currentText()
@@ -580,6 +604,18 @@ class OrbitUI(BaseLayout):
 
         return layout
 
+    def setupModelLt(self, outerFrame, Frame):
+        self.modelBox = QtWidgets.QGroupBox(' Plot Model of Earth\'s Magnetosphere')
+        layout = QtWidgets.QHBoxLayout(self.modelBox)
+        self.modelBox.setCheckable(True)
+        self.modelBox.setChecked(False)
+        self.modelBox.toggled.connect(self.modelChecked)
+        self.modelBtn = QtWidgets.QPushButton('Set Model Parameters')
+        self.modelBtn.setFixedWidth(235)
+
+        layout.addWidget(self.modelBtn, QtCore.Qt.AlignCenter)
+        return self.modelBox
+
     def adjustTimeLabel(self, val):
         vecDstrs = self.outerFrame.getFieldVec()
         dstr = vecDstrs[0]
@@ -590,20 +626,38 @@ class OrbitUI(BaseLayout):
         td = timedelta(seconds=val*res)
         self.timeLbl.setText(str(td))
 
+    def modelChecked(self, val):
+        # Toggle 'Plot Origin' if model is to be plotted
+        # and remove 'YZ' from the view axes options if val is True
+        numItems = self.planeBox1.count()
+        boxItems = [self.planeBox1.itemText(index) for index in range(numItems)]
+        if val:
+            self.pltOriginBox.blockSignals(True)
+            self.pltOriginBox.setChecked(True)
+            self.pltOriginBox.blockSignals(False)
+            if 'YZ' in boxItems:
+                index = boxItems.index('YZ')
+                self.planeBox1.removeItem(index)
+        elif 'YZ' not in boxItems:
+            self.planeBox1.addItem('YZ')
+
 class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
     def __init__(self, outerFrame, parent=None):
         super().__init__(parent)
         self.outerFrame = outerFrame
         self.ui = OrbitUI()
 
+        self.magTool = None
         self.currPlot = None
         self.originItem = None
         self.scaleSet = None
         self.axisKwNum = {'X':0, 'Y':1, 'Z':2, 'YZ':-1}
         self.prevScale = None
+        self.earthRadius = 1
 
         self.ui.setupUI(self, outerFrame)
 
+        # UI connections
         self.ui.updtBtn.clicked.connect(self.updatePlot)
         self.ui.aspectBox.clicked.connect(self.lockAspect)
         self.ui.plotTitleBox.textChanged.connect(self.setPltTitle)
@@ -611,6 +665,8 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         self.outerFrame.ui.radUnitBox.textChanged.connect(self.updtUnits)
         self.outerFrame.ui.radiusBox.valueChanged.connect(self.adjustScale)
         self.ui.magLineScaleBox.valueChanged.connect(self.saveScale)
+
+        self.ui.modelBtn.clicked.connect(self.openMagTool)
 
         # Initialize the units label for mag line scaling
         self.updtUnits(self.outerFrame.getRadiusUnits())
@@ -621,6 +677,21 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         for btn in [self.ui.projBtn, self.ui.viewPlaneBtn]:
             btn.toggled.connect(self.plotTypeChanged)
+
+    def openMagTool(self):
+        if self.magTool:
+            self.magTool.show()
+        else:
+            self.initMagTool()
+            self.magTool.show()
+        self.magTool.updtTime()
+
+    def closeMagTool(self):
+        if self.magTool:
+            self.magTool.close()
+
+    def initMagTool(self):
+        self.magTool = MagnetosphereTool(self)
 
     def initValues(self):
         a, b = self.outerFrame.getIndices()
@@ -648,7 +719,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
                 break
 
         if gsmGseFound and self.outerFrame.getRadiusUnits().lower() == 'km':
-            return 6356 / self.outerFrame.getRadius() # Radius of earth in km
+            return 6371.2 / self.outerFrame.getRadius() # Radius of earth in km
         else:
             return self.outerFrame.getRadius()
 
@@ -674,6 +745,11 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             self.ui.magLineScaleBox.setSuffix('')
         else:
             self.ui.magLineScaleBox.setSuffix(' (nT / ' + valStr +'^2)')
+
+        if valStr.lower() == 'km':
+            self.earthRadius = 6371.2
+        else:
+            self.earthRadius = 1
 
     def lockAspect(self, val):
         if self.currPlot:
@@ -930,6 +1006,27 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         else:
             self.currPlot.removeOriginItem()
 
+    def plotMagnetosphere(self, plt, t0, xDta, yDta):
+        if not self.magTool:
+            self.initMagTool()
+
+        # Show status message during delay        
+        self.outerFrame.ui.statusBar.showMessage('Calculating model field line coordinates...')
+        self.outerFrame.ui.processEvents()
+
+        # Get the axis numbers to plot and pass them to the magnetosphere tool
+        # to calculate the field line coordinates
+        aAxisNum = self.getAxisNum(1)
+        bAxisNum = self.getAxisNum(2)
+        xcoords, ycoords, coords, tiltAngle = self.magTool.getFieldLines(aAxisNum, bAxisNum)
+
+        # Plot each trace and print out the dipole tilt angle
+        pen = pg.mkPen('#d47f00')
+        pen.setWidthF(1.1)
+        for x, y in zip(xcoords, ycoords):
+            plt.plot(x,y, pen=pen)
+        self.outerFrame.ui.statusBar.showMessage('Dipole Tilt Angle: '+str(tiltAngle))
+
     def updatePlot(self):
         # Initialize plot parameters/scales if first plot
         if not self.scaleSet:
@@ -959,10 +1056,14 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         xFull = xDta[:]
         yFull = yDta[:]
 
-        # Create plot and add orbit line first
+        # Create plot item and initialize pens
         pen = self.outerFrame.getPens()[0]
         orbitPen = pg.mkPen(pen.color())
         plt = OrbitPlotItem()
+
+        # Plot optional magnetosphere model field lines first (lowest level)
+        if self.ui.modelBox.isChecked():
+            self.plotMagnetosphere(plt, t0, xDta, yDta)
 
         # Limit data/times by the user's sample rate if plotting markers
         tickType = self.getTickType() if not projMode else 'Time Ticks'
@@ -1014,6 +1115,331 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         self.addTimeInfo(t0, t1)
         self.currPlot = plt
         self.lockAspect(self.ui.aspectBox.isChecked())
+
+class MagnetosphereToolUI(BaseLayout):
+    def setupUI(self, frame, outerFrame):
+        frame.resize(400, 150)
+        frame.setWindowTitle('Magnetosphere Model Settings')
+        layout = QtWidgets.QGridLayout(frame)
+
+        self.closeBtn = QtWidgets.QPushButton('Close')
+        self.closeBtn.setSizePolicy(self.getSizePolicy('Max','Max'))
+        parmFrm = self.setupParmFrame(frame, outerFrame)
+        settingsFrm = self.setupSettingsFrame(frame, outerFrame)
+        layout.addWidget(parmFrm, 0, 0, 1, 2)
+        layout.addWidget(settingsFrm, 1, 0, 1, 2)
+        layout.addWidget(self.closeBtn, 2, 1, 1, 1, QtCore.Qt.AlignRight)
+
+        self.fixedTime = False
+        self.refTimeBox.dateTimeChanged.connect(self.setFixedTime)
+
+    def setupParmFrame(self, frame, outerFrame):
+        parmFrame = QtWidgets.QGroupBox('Tsyganenko (T96) Model Parameters')
+        layout = QtWidgets.QGridLayout(parmFrame)
+
+        boxLbls = ['Solar Wind Ram Pressure:', 'DST Index:', 'IMF By:', 'IMF Bz:']
+        boxTips = ['', 'Disturbance Storm-Time Index', 
+            'Interplanetary Magnetic Field By Component',
+            'Interplanetary Magnetic Field Bz Component']
+        boxUnits = ['nPa', 'nT', 'nT', 'nT']
+
+        # Create the spinboxes
+        self.swrPressureBox = QtWidgets.QDoubleSpinBox()
+        self.dstIndexBox = QtWidgets.QDoubleSpinBox()
+        self.imfByBox = QtWidgets.QDoubleSpinBox()
+        self.imfBzBox = QtWidgets.QDoubleSpinBox()
+        boxes = [self.swrPressureBox, self.dstIndexBox, self.imfByBox, self.imfBzBox]
+
+        # Set the upper/lower bounds for the model parameters
+        boxRanges = [(-100, 20), (-10, 10), (-10, 10)]
+        for box, (minVal, maxVal) in zip(boxes[1:], boxRanges):
+            box.setMinimum(minVal)
+            box.setMaximum(maxVal)
+
+        # Add each parameter to its own row and set the labels/tooltips and units
+        row = 0
+        for box, lbl, units, tt in zip(boxes, boxLbls, boxUnits, boxTips):
+            box.setSuffix(' '+units)
+            self.addPair(layout, lbl, box, row, 0, 1, 1, tooltip=tt)
+            row += 1
+
+        return parmFrame
+
+    def setupSettingsFrame(self, frame, outerFrame):
+        # Time edit used for reference time
+        settingsFrm = QtWidgets.QGroupBox('Other Settings')
+        layout = QtWidgets.QGridLayout(settingsFrm)
+        te = TimeEdit(QtGui.QFont())
+        self.refTimeBox = te.start
+        te.setupMinMax(outerFrame.outerFrame.window.getMinAndMaxDateTime())
+
+        # Coordinate system box
+        self.coordBox = QtWidgets.QComboBox()
+        self.coordBox.addItems(['GSM', 'GSE'])
+        self.coordBox.setCurrentIndex(0)
+
+        # Boundary radius / rLim parameter box
+        self.rlimBox = QtWidgets.QDoubleSpinBox()
+        self.rlimBox.setMinimum(1)
+        self.rlimBox.setMaximum(50)
+        self.rlimBox.setValue(10)
+        self.rlimBox.setSuffix(' RE')
+
+        timeTip = 'Time used to calculate the dipole tilt angle'
+        coordTip = 'Coordinate system of the model field lines'
+        radiusTip = 'Outer boundary that field lines stop at relative to the origin, RE = 6731.2 km'
+        boxes = [self.refTimeBox, self.coordBox, self.rlimBox]
+        boxLbls = ['Reference Time: ', 'Coordinate System:', 'Boundary Radius:']
+        boxTips = [timeTip, coordTip, radiusTip]
+        row = 0
+        for box, lbl, tt in zip(boxes, boxLbls, boxTips):
+            self.addPair(layout, lbl, box, row, 1, 1, 1, tooltip=tt)
+            row += 1
+
+        return settingsFrm
+
+    def setFixedTime(self):
+        self.fixedTime = True
+
+class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
+    def __init__(self, outerFrame, parent=None):
+        super().__init__(parent)
+        self.ui = MagnetosphereToolUI()
+        self.outerFrame = outerFrame
+        self.ui.setupUI(self, outerFrame)
+
+        # Constants
+        self.earthRadius = self.outerFrame.outerFrame.getEarthRadius()
+        self.unitCoords = self.getUnitCoords()
+
+        # Determine number of threads available
+        self.numThreads = 1
+        try:
+            numProcs = multiprocessing.cpu_count()
+        except:
+            numProcs = 1
+        if numProcs >= 8:
+            self.numThreads = 8
+        elif numProcs >= 4:
+            self.numThreads = 4
+        elif numProcs >= 2:
+            self.numThreads = 2
+        else:
+            self.numThreads = 1
+
+        # Set default box values
+        self.ui.swrPressureBox.setValue(0.5)
+        self.ui.imfByBox.setValue(6)
+        self.ui.imfBzBox.setValue(-5)
+        self.ui.dstIndexBox.setValue(-30)
+
+        # Connect close button to closeWindow event
+        self.ui.closeBtn.clicked.connect(self.close)
+
+    def updtTime(self):
+        # Update time if it hasn't been set or if the set time is out of
+        # the selected time range
+        frameTime = self.outerFrame.outerFrame.ui.timeEdit.start.dateTime()
+        frameEnd = self.outerFrame.outerFrame.ui.timeEdit.end.dateTime()
+        currTime = self.ui.refTimeBox.dateTime()
+        outOfRange = (self.ui.fixedTime and (frameTime > currTime) or (frameEnd < currTime))
+        if not self.ui.fixedTime or outOfRange:
+            self.ui.refTimeBox.blockSignals(True)
+            self.ui.refTimeBox.setDateTime(frameTime)
+            self.ui.refTimeBox.blockSignals(False)
+            self.ui.fixedTime = False
+
+    def getUnitCoords(self):
+        # Points around the unit circle and an additional set of points
+        # beyond each side of the dipole (at 180 and 0 degrees)
+        angles = list(np.arange(0, 360, 15))
+        for angle in [0, 180, 195, 345]:
+            angles.remove(angle)
+        baseCoords = [(np.cos(np.radians(angle)), np.sin(np.radians(angle))) for angle in angles]
+        for scale in [1.5, 2.5, 3]:
+            for angle in [0, 180]:
+                coord = (scale*np.cos(np.radians(angle)), scale*np.sin(np.radians(angle)))
+                baseCoords.append(coord)
+
+        return baseCoords
+
+    def getUniversalTime(self, dt):
+        # Seconds since 1970
+        baseTime = datetime(1970, 1, 1)
+        diff = dt - baseTime
+        return diff.total_seconds()
+
+    def getModelParameters(self):
+        swrp = self.ui.swrPressureBox.value()
+        dstIndex = self.ui.dstIndexBox.value()
+        imfBy = self.ui.imfByBox.value()
+        imfBz = self.ui.imfBzBox.value()
+        return swrp, dstIndex, imfBy, imfBz
+
+    def getOtherParameters(self):
+        dt = self.ui.refTimeBox.dateTime().toPyDateTime()
+        gsmSystem = self.ui.coordBox.currentText() == 'GSM'
+        rLim = self.ui.rlimBox.value()
+        return dt, gsmSystem, rLim
+
+    def getFieldLines(self, axisNum1, axisNum2):
+        # Update time if selection is out of plot time range
+        self.updtTime() 
+
+        # Extract parameters and other plot settings
+        self.earthRadius = self.outerFrame.outerFrame.getEarthRadius()
+        dt, gsmSystem, rLim = self.getOtherParameters()
+        swrp, dstIndex, imfBy, imfBz = self.getModelParameters()
+
+        r0 = 1 # All lines stop on surface of earth (1 RE)
+
+        # Create a parmod object to pass to the geopack trace function
+        parmod = np.zeros(10)
+        parmod[0:4] = [swrp, dstIndex, imfBy, imfBz]
+
+        # Call recalc from geopack to initialize its trace function variables and
+        # calculate the dipole tilt angle
+        univTime = self.getUniversalTime(dt)
+        dipoleTilt = geopack.recalc(univTime)
+
+        # Get the coordinates to plot for the given pair of axes,
+        # rotated by dipole tilt angle to make sure the dipole is
+        # aligned w/ the 'unit circle' the points were derived from
+        plotCoords = self.getCoords(axisNum1, axisNum2, dipoleTilt)
+
+        # Calculate the field line values from the model and store the results,
+        # using multiple processes if appropriate
+        xCoords, yCoords, zCoords = [], [], []
+        coordLists = [xCoords, yCoords, zCoords]
+        if self.numThreads == 1 or len(plotCoords) < self.numThreads:
+            for vecDir in [1, -1]:
+                for p in plotCoords:
+                    line = MagnetosphereTool.calcFieldLine(p, parmod, vecDir, rLim, r0)
+                    for lst, axisLine in zip(coordLists, line):
+                        lst.append(line)
+        else:
+            coordLists = self.multiProcFieldLines(plotCoords, parmod, r0, rLim)
+
+        # Scale the coordinates if the plot units are in kilometers instead of RE
+        self.scaleCoords(coordLists[0], coordLists[1], coordLists[2])
+        plotCoords = [(x*self.earthRadius, y*self.earthRadius, z*self.earthRadius) for x,y,z in plotCoords]
+
+        # Change coordinates if output is GSE
+        if not gsmSystem:
+            coordLists = self.coordsToGSE(coordLists[0], coordLists[1], coordLists[2])
+
+        # Dipole tilt angle returned should be in degrees
+        dipoleTilt = np.degrees(dipoleTilt)
+        return coordLists[axisNum2], coordLists[axisNum1], plotCoords, dipoleTilt
+
+    def multiProcFieldLines(self, plotCoords, parmod, r0, rLim):
+        # Multiprocessed calculation of the field lines
+        # Get number of lines to calculate per process and split coords into groups
+        grpSize = int(len(plotCoords) / self.numThreads)
+        grps = []
+        lastIndex = 0
+        for startIndex in range(0, len(plotCoords), grpSize):
+            parmList = (parmod[:], rLim, r0)
+            grps.append((plotCoords[startIndex:startIndex+grpSize], parmList))
+            lastIndex = startIndex + grpSize
+
+        if lastIndex < len(plotCoords) - 1:
+            grps.append((plotCoords[lastIndex:len(plotCoords)], parmList))
+
+        # Create a process pool and run the geopack trace function for each
+        # of them with a subset of the plot coordinates
+        pool = Pool(processes=self.numThreads)
+        res = pool.map(MagnetosphereTool.calcFieldLinesForCoords, grps)
+
+        # Extract coordinates from pool result
+        xCoords, yCoords, zCoords = [], [], []
+        for procRes in res:
+            for lineList in procRes:
+                lineX, lineY, lineZ = lineList
+                xCoords.append(lineX)
+                yCoords.append(lineY)
+                zCoords.append(lineZ)
+
+        return [xCoords, yCoords, zCoords]
+
+    def scaleCoords(self, xCoords, yCoords, zCoords):
+        # Scale coordinates by the earth radius if units are kilometers
+        for xLine, yLine, zLine in zip(xCoords, yCoords, zCoords):
+            xLine *= self.earthRadius
+            yLine *= self.earthRadius
+            zLine *= self.earthRadius
+
+    def coordsToGSE(self, xCoords, yCoords, zCoords):
+        # Convert coordinates from GSM to GSE
+        xGSE, yGSE, zGSE = [], [], []
+        for lineX, lineY, lineZ in zip(xCoords, yCoords, zCoords):
+            newX, newY, newZ = [], [], []
+            for x, y, z in zip(lineX, lineY, lineZ):
+                xgse, ygse, zgse = geopack.gsmgse(x,y,z,100)
+                newX.append(xgse)
+                newY.append(ygse)
+                newZ.append(zgse)
+            xGSE.append(newX)
+            yGSE.append(newY)
+            zGSE.append(newZ)
+        return [xGSE, yGSE, zGSE]
+
+    def getCoords(self, axis1, axis2, tiltAngle, rScale=3.5):
+        otherAxis = (set([0,1,2]) - set([axis1, axis2])).pop()
+        baseCoords = self.unitCoords[:]
+        if otherAxis == 2: # If plotting the XY plane, do not use scaled unit points
+            baseCoords = self.unitCoords[:-6]
+            baseCoords.append((1,0))
+            baseCoords.append((-1,0))
+
+        # Use points around the unit circle to set the coordinates for the
+        # given axes, and set the third axis (pointing away from the plot)
+        # to zero
+        coords = []
+        fillVal = 0
+        for (x, y) in baseCoords:
+            t = (x, y, fillVal)
+            if otherAxis == 0:
+                t = (fillVal, x, y)
+            elif otherAxis == 1:
+                t = (x, fillVal, y)
+
+            coords.append(t)
+
+        # Scale the points by 3.5 RE for now
+        coords = [(x*rScale, y*rScale, z*rScale) for x,y,z in coords]
+
+        # Rotate each coordinate by the tilt angle about the y axis
+        rotMat = [[np.cos(tiltAngle), 0, np.sin(tiltAngle)],
+                  [0, 1, 0],
+                  [-np.sin(tiltAngle), 0, np.cos(tiltAngle)]]
+        rotCoords = []
+        for x, y, z in coords:
+            x, y, z = np.matmul(rotMat, [x,y,z])
+            p0 = (x, y, z)
+            rotCoords.append(p0)
+
+        return rotCoords
+
+    def calcFieldLinesForCoords(args):
+        # Unpack arguments for the multiprocessed version of the calculations
+        coordList, parmList = args
+        parmod, rLim, r0 = parmList
+        # Get line at each coordinate in both directions
+        lines = []
+        for vecDir in [-1, 1]:
+            for p0 in coordList:
+                line = MagnetosphereTool.getFieldLine(p0, parmod, vecDir, rLim, r0)
+                lines.append(line)
+
+        return lines
+
+    def getFieldLine(p0, parmod, vecDir, rLim, r0):
+        x0, y0, z0 = p0
+        res = geopack.trace(x0, y0, z0, vecDir, rLim, r0, parmod, 't96', 
+            'igrf', maxloop=50)
+        x, y, z, xx, yy, zz = res
+        return xx, yy, zz
 
 class OrbitPlotItem(MagPyPlotItem):
     def __init__(self):
