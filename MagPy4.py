@@ -1827,8 +1827,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if len(Y) <= 1: # not sure if this can happen but just incase
             print(f'Error: insufficient Y data for column "{dstr}"')
             return
+        errMask = abs(Y) < abs(self.errorFlag)
 
         times,resolutions,avgRes = self.getTimes(dstr, editNumber)
+        Y = Y[errMask]
+        times = times[errMask]
+        resolutions = resolutions[errMask]
 
         # Find smallest tick in data
         ofst = self.minTime
@@ -1896,6 +1900,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                         a,b = b,a
 
                     Y = Y[a:b] # get correct slice
+
+                Y = Y[Y<self.errorFlag]
 
                 minVal = min(minVal, np.min(Y))
                 maxVal = max(maxVal, np.max(Y))

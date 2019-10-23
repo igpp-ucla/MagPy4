@@ -164,10 +164,9 @@ class Mth:
         for si in range(len(segs) - 1):
             gO = segs[si][1] # start of gap
             gE = segs[si + 1][0] # end of gap
-            gSize = gE - gO + 1 # gap size
-            for i in range(gO,gE): # calculate gap values by lerping from start to end
-                t = (i - gO + 1) / gSize
-                data[i] = (1 - t) * data[gO - 1] + t * data[gE]
+
+            interpTimes = np.arange(0, gE-gO)
+            data[gO:gE] = np.interp(interpTimes, [0, gE-gO], [data[gO], data[gE]])
 
         # if last segment doesnt end with last index of data
         # then set data X - end based on X

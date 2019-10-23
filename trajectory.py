@@ -1151,7 +1151,7 @@ class MagnetosphereToolUI(BaseLayout):
         boxes = [self.swrPressureBox, self.dstIndexBox, self.imfByBox, self.imfBzBox]
 
         # Set the upper/lower bounds for the model parameters
-        boxRanges = [(-100, 20), (-10, 10), (-10, 10)]
+        boxRanges = [(-100, 20), (-30, 30), (-30, 30)]
         for box, (minVal, maxVal) in zip(boxes[1:], boxRanges):
             box.setMinimum(minVal)
             box.setMaximum(maxVal)
