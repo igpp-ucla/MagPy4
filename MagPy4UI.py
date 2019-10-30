@@ -941,6 +941,7 @@ class TimeRegionSelector(QtWidgets.QFrame):
 
     def setupLayout(self):
         self.resize(300, 50)
+        self.setWindowTitle('Time Select')
         layout = QtWidgets.QGridLayout(self)
         self.timeEdit = TimeEdit(QtGui.QFont())
         self.timeEdit.setupMinMax(self.window.getMinAndMaxDateTime())

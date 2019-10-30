@@ -306,45 +306,47 @@ class AltitudePlotter(QtWidgets.QFrame, AltitudeUI):
     def getPlotType(self):
         return self.ui.dstrBox.currentText()
 
-    def calcAltitude(self, posDstrs, a, b, radius):
+    def calcAltitude(self, posDstrs, a, b, radius, mask):
         # Computes r = sqrt(x^2+y^2+z^2), then (r-1) * radius
         en = self.outerFrame.getEditNum()
-        posDta = [self.outerFrame.getData(dstr, en)[a:b] for dstr in posDstrs]
+        posDta = [self.outerFrame.getData(dstr, en)[a:b][mask] for dstr in posDstrs]
+
+        # Mask out any error flag data points
         rDta = np.sqrt((posDta[0] ** 2) + (posDta[1] ** 2) + (posDta[2] ** 2))
 
         alt = (rDta - 1) * radius
 
         return alt
 
-    def getVecData(self, dstrs, en, a, b):
+    def getVecData(self, dstrs, en, a, b, mask):
         vecDta = []
         for dstr in dstrs:
             fieldDta = self.outerFrame.getData(dstr, en)[a:b]
-            vecDta.append(fieldDta)
+            vecDta.append(fieldDta[mask])
 
         return vecDta
 
-    def calcMagDta(self, dstrs, en, a, b):
-        dta = self.getVecData(dstrs, en, a, b)
+    def calcMagDta(self, dstrs, en, a, b, mask):
+        dta = self.getVecData(dstrs, en, a, b, mask)
         magDta = np.sqrt((dta[0]**2)+(dta[1]**2)+(dta[2]**2))
         return magDta
 
-    def calcConeAngle(self, dstrs, en, a, b):
+    def calcConeAngle(self, dstrs, en, a, b, mask):
         # arccos(Bx / Bmag)
         bxDstr = dstrs[0]
-        bxDta = self.outerFrame.getData(bxDstr, en)[a:b]
-        magDta = self.calcMagDta(dstrs, en, a, b)
+        bxDta = self.outerFrame.getData(bxDstr, en)[a:b][mask]
+        magDta = self.calcMagDta(dstrs, en, a, b, mask)
         coneAngle = np.arccos(bxDta/magDta)
-        return coneAngle * Mth.R2D
+        return (coneAngle * Mth.R2D)
 
-    def calcClockAngle(self, dstrs, en, a, b):
+    def calcClockAngle(self, dstrs, en, a, b, mask):
         # arctan(Bz / By)
         byDstr = dstrs[1]
         bzDstr = dstrs[2]
         byDta = self.outerFrame.getData(byDstr, en)[a:b]
         bzDta = self.outerFrame.getData(bzDstr, en)[a:b]
         clockAngle = np.arctan(bzDta/byDta) * Mth.R2D
-        return clockAngle
+        return clockAngle[mask]
 
     def getTimeLbl(self, times):
         t0, t1 = times[0], times[-1]
@@ -354,6 +356,18 @@ class AltitudePlotter(QtWidgets.QFrame, AltitudeUI):
         lbl = pg.LabelItem(lbl)
         lbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
         return lbl
+
+    def getErrorMask(self, fieldDstrs, vecDstrs, en, a, b):
+        dstrs = fieldDstrs + vecDstrs
+        mask = []
+        for dstr in dstrs:
+            dta = self.outerFrame.getData(dstr, en)[a:b]
+            if mask == []:
+                mask = dta < self.outerFrame.window.errorFlag
+            else:
+                mask = mask & (dta < self.outerFrame.window.errorFlag)
+
+        return mask
 
     def updatePlot(self):
         # Extract user-selections from UI
@@ -366,17 +380,18 @@ class AltitudePlotter(QtWidgets.QFrame, AltitudeUI):
 
         # Generate altitude and selected data
         dstrs = self.outerFrame.getFieldVec()
-        altDta = self.calcAltitude(posDstrs, a, b, radius)
+        mask = self.getErrorMask(dstrs, posDstrs, en, a, b)
+        altDta = self.calcAltitude(posDstrs, a, b, radius, mask)
         xUnit = 'nT'
         if plotType == 'Bx, By, Bz':
-            fieldDtaLst = self.getVecData(dstrs, en, a, b)
+            fieldDtaLst = self.getVecData(dstrs, en, a, b, mask)
             lbls = dstrs
         elif plotType == 'Bt':
-            fieldDtaLst = [self.calcMagDta(dstrs, en, a, b)]
+            fieldDtaLst = [self.calcMagDta(dstrs, en, a, b, mask)]
             lbls = ['Bt']
         elif plotType == 'Cone & Clock Angles':
-            fieldDtaLst = [self.calcConeAngle(dstrs, en, a, b)]
-            fieldDtaLst.append(self.calcClockAngle(dstrs, en, a, b))
+            fieldDtaLst = [self.calcConeAngle(dstrs, en, a, b, mask)]
+            fieldDtaLst.append(self.calcClockAngle(dstrs, en, a, b,mask))
             lbls = ['Cone Angle', 'Clock Angle']
             xUnit = 'Degrees'
 
@@ -391,6 +406,7 @@ class AltitudePlotter(QtWidgets.QFrame, AltitudeUI):
             pen = self.outerFrame.getPens()[index]
 
             gaps = self.outerFrame.getSegments(a, b)
+            gaps = gaps[mask]
             plt.plot(fieldDta, altDta, pen=pen, connect=gaps)
             plt.hideButtons()
 
@@ -815,6 +831,14 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         posDta = [self.outerFrame.getData(dstr, en)[sI:eI] for dstr in posDstrs]
         vecDta = [self.outerFrame.getData(dstr, en)[sI:eI] for dstr in vecDstrs]
 
+        # Mask out error flags
+        mask = [True] * len(posDta[0])
+        allDta = list(posDta) + list(vecDta)
+        for dta in allDta:
+            mask = mask & (dta < self.outerFrame.window.errorFlag)
+        posDta = [dta[mask] for dta in posDta]
+        vecDta = [dta[mask] for dta in vecDta]
+
         # Calculate max distance in position
         posStart = [np.max(dta) for dta in posDta]
         posEnd = [np.min(dta) for dta in posDta]
@@ -1074,6 +1098,18 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             xField = self.sampleData(xField, times, rate)
             yField = self.sampleData(yField, times, rate)
             times = self.sampleData(times, times, rate)
+
+        # Mask out data points where an error flag is seen for any value
+        mask = [True] * len(times)
+        for arr in [xDta, yDta, xField, yField, times]:
+            subMask = arr < self.outerFrame.window.errorFlag
+            mask = mask & (subMask) # AND operation between masks
+
+        xDta = xDta[mask]
+        yDta = yDta[mask]
+        xField = xField[mask]
+        yField = yField[mask]
+        times = times[mask]
 
         # Get tick marker width
         tickWidth = self.getTickWidth(xDta, yDta, tickType != 'None')

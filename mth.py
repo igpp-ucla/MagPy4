@@ -149,30 +149,34 @@ class Mth:
         so this function only detects errors really
         could make separate function to detect actual gaps in time so we have option not to draw lines between huge gaps
         """
-        segs = Mth.getSegmentsFromErrors(origData, errorFlag)
         data = np.copy(origData)
-        if len(segs) == 0: # data is pure errors
+
+        # Get a mask identifing error flag values
+        indices = np.arange(0, len(origData))
+        mask = (origData >= errorFlag)
+
+        if True not in mask: # Data is pure errors
             return data
 
-        # if first segment doesnt start at 0 
-        # set data 0 - X to data at X
-        first = segs[0][0]
-        if first != 0: 
+        # Find the indices for the first and last valid (< error flag) values
+        mask = list(mask)
+        first = mask.index(False)
+        last = len(mask) - (mask[::-1]).index(False) - 1
+
+        # Fill any starting error flags w/ the first valid value
+        if first != 0:
             data[:first] = data[first]
+        # Fill any ending error flags w/ the last valid value
+        if last != len(data) - 1:
+            data[last+1:] = data[last]
 
-        # interate over the gaps in the segment list (could use some optimization)
-        for si in range(len(segs) - 1):
-            gO = segs[si][1] # start of gap
-            gE = segs[si + 1][0] # end of gap
+        # Strip starting/ending error flags if set
+        indices = indices[first:last]
+        mask = mask[first:last]
 
-            interpTimes = np.arange(0, gE-gO)
-            data[gO:gE] = np.interp(interpTimes, [0, gE-gO], [data[gO], data[gE]])
-
-        # if last segment doesnt end with last index of data
-        # then set data X - end based on X
-        last = segs[-1][1]
-        if last != len(data):
-            data[last - 1:len(data)] = data[last - 1]
+        # Get indices corresponding to errors and interpolate values for them
+        errIndices = indices[mask]
+        data[errIndices] = np.interp(errIndices, indices, data[first:last])
 
         return data
 
