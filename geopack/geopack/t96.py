@@ -1,8 +1,5 @@
 import numpy as np
 from scipy import special
-# Modified to use Fortran linked versions of the following functions
-# for performance reasons
-from tsyhelper import shlcar3x3, birk1shld, birk2shl, dipxyz, intercon
 
 def t96(parmod,ps,x,y,z):
     """
@@ -339,75 +336,74 @@ def tailrc96(sps, x,y,z):
 
     return bxrc,byrc,bzrc, bxt2,byt2,bzt2, bxt3,byt3,bzt3
 
+def shlcar3x3(a, x,y,z, sps):
+    """
+    This code returns the shielding field represented by  2x3x3=18 "cartesian" harmonics
 
-# def shlcar3x3(a, x,y,z, sps):
-#     """
-#     This code returns the shielding field represented by  2x3x3=18 "cartesian" harmonics
+    The 36 coefficients enter in pairs in the amplitudes of the "cartesian" harmonics a[0]-a[35].
+    The 12 nonlinear parameters a[36]-a[47] are the scales Pi,Ri,Qi,and Si entering the
+    arguments of exponents, sines, and cosines in each of the 18 "Cartesian" harmonics
+    """
 
-#     The 36 coefficients enter in pairs in the amplitudes of the "cartesian" harmonics a[0]-a[35].
-#     The 12 nonlinear parameters a[36]-a[47] are the scales Pi,Ri,Qi,and Si entering the
-#     arguments of exponents, sines, and cosines in each of the 18 "Cartesian" harmonics
-#     """
+    cps=np.sqrt(1-sps**2)
+    s3ps=4*cps**2-1     # this is sin(3*ps)/sin(ps)
 
-#     cps=np.sqrt(1-sps**2)
-#     s3ps=4*cps**2-1     # this is sin(3*ps)/sin(ps)
+    hx,hy,hz= [0.]*3
 
-#     hx,hy,hz= [0.]*3
+    l=0
+    for m in range(2):  # m=1 for 1st sum (perp symmetry), m=2 for 2nd sum (parallel symmetry)
+        for i in range(3):
+            p=a[36+i]
+            q=a[42+i]
+            cypi=np.cos(y/p)
+            cyqi=np.cos(y/q)
+            sypi=np.sin(y/p)
+            syqi=np.sin(y/q)
+            for k in range(3):
+                r=a[39+k]
+                s=a[45+k]
+                szrk=np.sin(z/r)
+                czsk=np.cos(z/s)
+                czrk=np.cos(z/r)
+                szsk=np.sin(z/s)
+                sqpr=np.sqrt(1/p**2+1/r**2)
+                sqqs=np.sqrt(1/q**2+1/s**2)
+                epr=np.exp(x*sqpr)
+                eqs=np.exp(x*sqqs)
+                for n in range(2):  # n=1 for the 1st part of each coefficient, n=2 for 2nd
+                    if m == 0:
+                        if n == 0:
+                            dx=-sqpr*epr*cypi*szrk
+                            dy= epr/p*sypi*szrk
+                            dz=-epr/r*cypi*czrk
+                            hx=hx+a[l]*dx
+                            hy=hy+a[l]*dy
+                            hz=hz+a[l]*dz
+                        else:
+                            dx=dx*cps
+                            dy=dy*cps
+                            dz=dz*cps
+                            hx=hx+a[l]*dx
+                            hy=hy+a[l]*dy
+                            hz=hz+a[l]*dz
+                    else:
+                        if n == 0:
+                            dx=-sps*sqqs*eqs*cyqi*czsk
+                            dy= sps*eqs/q*syqi*czsk
+                            dz= sps*eqs/s*cyqi*szsk
+                            hx=hx+a[l]*dx
+                            hy=hy+a[l]*dy
+                            hz=hz+a[l]*dz
+                        else:
+                            dx=dx*s3ps
+                            dy=dy*s3ps
+                            dz=dz*s3ps
+                            hx=hx+a[l]*dx
+                            hy=hy+a[l]*dy
+                            hz=hz+a[l]*dz
+                    l += 1
 
-#     l=0
-#     for m in range(2):  # m=1 for 1st sum (perp symmetry), m=2 for 2nd sum (parallel symmetry)
-#         for i in range(3):
-#             p=a[36+i]
-#             q=a[42+i]
-#             cypi=np.cos(y/p)
-#             cyqi=np.cos(y/q)
-#             sypi=np.sin(y/p)
-#             syqi=np.sin(y/q)
-#             for k in range(3):
-#                 r=a[39+k]
-#                 s=a[45+k]
-#                 szrk=np.sin(z/r)
-#                 czsk=np.cos(z/s)
-#                 czrk=np.cos(z/r)
-#                 szsk=np.sin(z/s)
-#                 sqpr=np.sqrt(1/p**2+1/r**2)
-#                 sqqs=np.sqrt(1/q**2+1/s**2)
-#                 epr=np.exp(x*sqpr)
-#                 eqs=np.exp(x*sqqs)
-#                 for n in range(2):  # n=1 for the 1st part of each coefficient, n=2 for 2nd
-#                     if m == 0:
-#                         if n == 0:
-#                             dx=-sqpr*epr*cypi*szrk
-#                             dy= epr/p*sypi*szrk
-#                             dz=-epr/r*cypi*czrk
-#                             hx=hx+a[l]*dx
-#                             hy=hy+a[l]*dy
-#                             hz=hz+a[l]*dz
-#                         else:
-#                             dx=dx*cps
-#                             dy=dy*cps
-#                             dz=dz*cps
-#                             hx=hx+a[l]*dx
-#                             hy=hy+a[l]*dy
-#                             hz=hz+a[l]*dz
-#                     else:
-#                         if n == 0:
-#                             dx=-sps*sqqs*eqs*cyqi*czsk
-#                             dy= sps*eqs/q*syqi*czsk
-#                             dz= sps*eqs/s*cyqi*szsk
-#                             hx=hx+a[l]*dx
-#                             hy=hy+a[l]*dy
-#                             hz=hz+a[l]*dz
-#                         else:
-#                             dx=dx*s3ps
-#                             dy=dy*s3ps
-#                             dz=dz*s3ps
-#                             hx=hx+a[l]*dx
-#                             hy=hy+a[l]*dy
-#                             hz=hz+a[l]*dz
-#                     l += 1
-
-#     return hx,hy,hz
+    return hx,hy,hz
 
 def ringcurr96(x,y,z):
     """
@@ -965,35 +961,35 @@ def diploop1(xi):
 
     return d
 
-# def dipxyz(x,y,z):
-#     """
-#     Returns the field components produced by three dipoles, each having M=Me
-#     and oriented parallel to x,y, and z axis, respectively.
+def dipxyz(x,y,z):
+    """
+    Returns the field components produced by three dipoles, each having M=Me
+    and oriented parallel to x,y, and z axis, respectively.
 
-#     :param x,y,z:
-#     :return: bxx,byx,bzx,bxy,byy,bzy,bxz,byz,bzz
-#     """
+    :param x,y,z:
+    :return: bxx,byx,bzx,bxy,byy,bzy,bxz,byz,bzz
+    """
 
-#     x2=x**2
-#     y2=y**2
-#     z2=z**2
-#     r2=x2+y2+z2
+    x2=x**2
+    y2=y**2
+    z2=z**2
+    r2=x2+y2+z2
 
-#     xmr5=30574/(r2*r2*np.sqrt(r2))
-#     xmr53=3*xmr5
-#     bxx=xmr5*(3*x2-r2)
-#     byx=xmr53*x*y
-#     bzx=xmr53*x*z
+    xmr5=30574/(r2*r2*np.sqrt(r2))
+    xmr53=3*xmr5
+    bxx=xmr5*(3*x2-r2)
+    byx=xmr53*x*y
+    bzx=xmr53*x*z
 
-#     bxy=byx
-#     byy=xmr5*(3*y2-r2)
-#     bzy=xmr53*y*z
+    bxy=byx
+    byy=xmr5*(3*y2-r2)
+    bzy=xmr53*y*z
 
-#     bxz=bzx
-#     byz=bzy
-#     bzz=xmr5*(3*z2-r2)
+    bxz=bzx
+    byz=bzy
+    bzz=xmr5*(3*z2-r2)
 
-#     return bxx,byx,bzx,bxy,byy,bzy,bxz,byz,bzz
+    return bxx,byx,bzx,bxy,byy,bzy,bxz,byz,bzz
 
 
 def crosslp(x,y,z,xc,rl,al):
@@ -1200,90 +1196,90 @@ def condip1(xi):
 
     return d
 
-# def birk1shld(ps, x,y,z):
-#     """
-#     The 64 linear parameters are amplitudes of the "box" harmonics. The 16 nonlinear parametersare the scales Pi,
-#     and Qk entering the arguments of sines/cosines and exponents in each of 32 cartesian harmonics
+def birk1shld(ps, x,y,z):
+    """
+    The 64 linear parameters are amplitudes of the "box" harmonics. The 16 nonlinear parametersare the scales Pi,
+    and Qk entering the arguments of sines/cosines and exponents in each of 32 cartesian harmonics
 
-#     :param ps:
-#     :param x,y,z:
-#     :return:
-#     """
+    :param ps:
+    :param x,y,z:
+    :return:
+    """
 
-#     a = np.array([
-#         1.174198045,-1.463820502,4.840161537,-3.674506864,82.18368896,
-#         -94.94071588,-4122.331796,4670.278676,-21.54975037,26.72661293,
-#         -72.81365728,44.09887902,40.08073706,-51.23563510,1955.348537,
-#         -1940.971550,794.0496433,-982.2441344,1889.837171,-558.9779727,
-#         -1260.543238,1260.063802,-293.5942373,344.7250789,-773.7002492,
-#         957.0094135,-1824.143669,520.7994379,1192.484774,-1192.184565,
-#         89.15537624,-98.52042999,-0.8168777675E-01,0.4255969908E-01,0.3155237661,
-#         -0.3841755213,2.494553332,-0.6571440817E-01,-2.765661310,0.4331001908,
-#         0.1099181537,-0.6154126980E-01,-0.3258649260,0.6698439193,-5.542735524,
-#         0.1604203535,5.854456934,-0.8323632049,3.732608869,-3.130002153,
-#         107.0972607,-32.28483411,-115.2389298,54.45064360,-0.5826853320,
-#         -3.582482231,-4.046544561,3.311978102,-104.0839563,30.26401293,
-#         97.29109008,-50.62370872,-296.3734955,127.7872523,5.303648988,
-#         10.40368955,69.65230348,466.5099509,1.645049286,3.825838190,
-#         11.66675599,558.9781177,1.826531343,2.066018073,25.40971369,
-#         990.2795225,2.319489258,4.555148484,9.691185703,591.8280358])
+    a = np.array([
+        1.174198045,-1.463820502,4.840161537,-3.674506864,82.18368896,
+        -94.94071588,-4122.331796,4670.278676,-21.54975037,26.72661293,
+        -72.81365728,44.09887902,40.08073706,-51.23563510,1955.348537,
+        -1940.971550,794.0496433,-982.2441344,1889.837171,-558.9779727,
+        -1260.543238,1260.063802,-293.5942373,344.7250789,-773.7002492,
+        957.0094135,-1824.143669,520.7994379,1192.484774,-1192.184565,
+        89.15537624,-98.52042999,-0.8168777675E-01,0.4255969908E-01,0.3155237661,
+        -0.3841755213,2.494553332,-0.6571440817E-01,-2.765661310,0.4331001908,
+        0.1099181537,-0.6154126980E-01,-0.3258649260,0.6698439193,-5.542735524,
+        0.1604203535,5.854456934,-0.8323632049,3.732608869,-3.130002153,
+        107.0972607,-32.28483411,-115.2389298,54.45064360,-0.5826853320,
+        -3.582482231,-4.046544561,3.311978102,-104.0839563,30.26401293,
+        97.29109008,-50.62370872,-296.3734955,127.7872523,5.303648988,
+        10.40368955,69.65230348,466.5099509,1.645049286,3.825838190,
+        11.66675599,558.9781177,1.826531343,2.066018073,25.40971369,
+        990.2795225,2.319489258,4.555148484,9.691185703,591.8280358])
 
-#     p1 = a[64:68]
-#     r1 = a[68:72]
-#     q1 = a[72:76]
-#     s1 = a[76:80]
-#     rp = 1/p1
-#     rr = 1/r1
-#     rq = 1/q1
-#     rs = 1/s1
+    p1 = a[64:68]
+    r1 = a[68:72]
+    q1 = a[72:76]
+    s1 = a[76:80]
+    rp = 1/p1
+    rr = 1/r1
+    rq = 1/q1
+    rs = 1/s1
 
 
-#     bx,by,bz = [0.]*3
-#     cps=np.cos(ps)
-#     sps=np.sin(ps)
-#     s3ps=4*cps**2-1
+    bx,by,bz = [0.]*3
+    cps=np.cos(ps)
+    sps=np.sin(ps)
+    s3ps=4*cps**2-1
 
-#     l = 0
-#     for m in range(2):  # m=1 for 1st sum (perp symmetry), m=2 for 2nd sum (parallel symmetry)
-#         for i in range(4):
-#             cypi=np.cos(y*rp[i])
-#             cyqi=np.cos(y*rq[i])
-#             sypi=np.sin(y*rp[i])
-#             syqi=np.sin(y*rq[i])
-#             for k in range(4):
-#                 szrk=np.sin(z*rr[k])
-#                 czsk=np.cos(z*rs[k])
-#                 czrk=np.cos(z*rr[k])
-#                 szsk=np.sin(z*rs[k])
-#                 sqpr=np.sqrt(rp[i]**2+rr[k]**2)
-#                 sqqs=np.sqrt(rq[i]**2+rs[k]**2)
-#                 epr= np.exp(x*sqpr)
-#                 eqs= np.exp(x*sqqs)
-#                 for n in range(2):  # n=1 for the 1st part of each coefficient, n=2 for 2nd
-#                     if m == 0:
-#                         if n == 0:
-#                             hx=-sqpr*epr*cypi*szrk
-#                             hy= rp[i]*epr*sypi*szrk
-#                             hz=-rr[k]*epr*cypi*czrk
-#                         else:
-#                             hx=hx*cps
-#                             hy=hy*cps
-#                             hz=hz*cps
-#                     else:
-#                         if n == 0:
-#                             hx=-sps*sqqs*eqs*cyqi*czsk
-#                             hy= sps*rq[i]*eqs*syqi*czsk
-#                             hz= sps*rs[k]*eqs*cyqi*szsk
-#                         else:
-#                             hx=hx*s3ps
-#                             hy=hy*s3ps
-#                             hz=hz*s3ps
-#                     bx=bx+a[l]*hx
-#                     by=by+a[l]*hy
-#                     bz=bz+a[l]*hz
-#                     l=l+1
+    l = 0
+    for m in range(2):  # m=1 for 1st sum (perp symmetry), m=2 for 2nd sum (parallel symmetry)
+        for i in range(4):
+            cypi=np.cos(y*rp[i])
+            cyqi=np.cos(y*rq[i])
+            sypi=np.sin(y*rp[i])
+            syqi=np.sin(y*rq[i])
+            for k in range(4):
+                szrk=np.sin(z*rr[k])
+                czsk=np.cos(z*rs[k])
+                czrk=np.cos(z*rr[k])
+                szsk=np.sin(z*rs[k])
+                sqpr=np.sqrt(rp[i]**2+rr[k]**2)
+                sqqs=np.sqrt(rq[i]**2+rs[k]**2)
+                epr= np.exp(x*sqpr)
+                eqs= np.exp(x*sqqs)
+                for n in range(2):  # n=1 for the 1st part of each coefficient, n=2 for 2nd
+                    if m == 0:
+                        if n == 0:
+                            hx=-sqpr*epr*cypi*szrk
+                            hy= rp[i]*epr*sypi*szrk
+                            hz=-rr[k]*epr*cypi*czrk
+                        else:
+                            hx=hx*cps
+                            hy=hy*cps
+                            hz=hz*cps
+                    else:
+                        if n == 0:
+                            hx=-sps*sqqs*eqs*cyqi*czsk
+                            hy= sps*rq[i]*eqs*syqi*czsk
+                            hz= sps*rs[k]*eqs*cyqi*szsk
+                        else:
+                            hx=hx*s3ps
+                            hy=hy*s3ps
+                            hz=hz*s3ps
+                    bx=bx+a[l]*hx
+                    by=by+a[l]*hy
+                    bz=bz+a[l]*hz
+                    l=l+1
 
-#     return bx,by,bz
+    return bx,by,bz
 
 def birk2tot_02(ps, x,y,z):
     """
@@ -1301,83 +1297,83 @@ def birk2tot_02(ps, x,y,z):
 
     return bx,by,bz
 
-# def birk2shl(x,y,z, ps):
-#     """
-#     The model parameters are provided to this module via common-block /A/.
-#     The 16 linear parameters enter in pairs in the amplitudes of the "cartesian" harmonics.
-#     The 8 nonlinear parameters are the scales Pi,Ri,Qi,and Si entering the
-#     arguments of exponents, sines, and cosines in each of the 8 "Cartesian" harmonics
+def birk2shl(x,y,z, ps):
+    """
+    The model parameters are provided to this module via common-block /A/.
+    The 16 linear parameters enter in pairs in the amplitudes of the "cartesian" harmonics.
+    The 8 nonlinear parameters are the scales Pi,Ri,Qi,and Si entering the
+    arguments of exponents, sines, and cosines in each of the 8 "Cartesian" harmonics
 
-#     :param x,y,z:
-#     :param ps:
-#     :return:
-#     """
+    :param x,y,z:
+    :param ps:
+    :return:
+    """
 
-#     a = np.array([
-#         -111.6371348,124.5402702,110.3735178,-122.0095905,111.9448247,-129.1957743,
-#         -110.7586562,126.5649012,-0.7865034384,-0.2483462721,0.8026023894,0.2531397188,
-#         10.72890902,0.8483902118,-10.96884315,-0.8583297219,13.85650567,14.90554500,
-#         10.21914434,10.09021632,6.340382460,14.40432686,12.71023437,12.83966657])
-#     p = a[16:18]
-#     r = a[18:20]
-#     q = a[20:22]
-#     s = a[22:24]
+    a = np.array([
+        -111.6371348,124.5402702,110.3735178,-122.0095905,111.9448247,-129.1957743,
+        -110.7586562,126.5649012,-0.7865034384,-0.2483462721,0.8026023894,0.2531397188,
+        10.72890902,0.8483902118,-10.96884315,-0.8583297219,13.85650567,14.90554500,
+        10.21914434,10.09021632,6.340382460,14.40432686,12.71023437,12.83966657])
+    p = a[16:18]
+    r = a[18:20]
+    q = a[20:22]
+    s = a[22:24]
 
-#     cps=np.cos(ps)
-#     sps=np.sin(ps)
-#     s3ps=4*cps**2-1 # this is sin(3*ps)/sin(ps)
+    cps=np.cos(ps)
+    sps=np.sin(ps)
+    s3ps=4*cps**2-1 # this is sin(3*ps)/sin(ps)
 
-#     hx,hy,hz = [0.]*3
+    hx,hy,hz = [0.]*3
 
-#     l = 0
-#     for m in range(2):  # m=1 for 1st sum (perp symmetry), m=2 for 2nd sum (parallel symmetry)
-#         for i in range(2):
-#             cypi=np.cos(y/p[i])
-#             cyqi=np.cos(y/q[i])
-#             sypi=np.sin(y/p[i])
-#             syqi=np.sin(y/q[i])
-#             for k in range(2):
-#                 szrk=np.sin(z/r[k])
-#                 czsk=np.cos(z/s[k])
-#                 czrk=np.cos(z/r[k])
-#                 szsk=np.sin(z/s[k])
-#                 sqpr=np.sqrt(1/p[i]**2+1/r[k]**2)
-#                 sqqs=np.sqrt(1/q[i]**2+1/s[k]**2)
-#                 epr= np.exp(x*sqpr)
-#                 eqs= np.exp(x*sqqs)
-#                 for n in range(2):  # n=1 for the 1st part of each coefficient, n=2 for 2nd
-#                     if m == 0:
-#                         if n == 0:
-#                             dx=-sqpr*epr*cypi*szrk
-#                             dy= epr/p[i]*sypi*szrk
-#                             dz=-epr/r[k]*cypi*czrk
-#                             hx=hx+a[l]*dx
-#                             hy=hy+a[l]*dy
-#                             hz=hz+a[l]*dz
-#                         else:
-#                             dx=dx*cps
-#                             dy=dy*cps
-#                             dz=dz*cps
-#                             hx=hx+a[l]*dx
-#                             hy=hy+a[l]*dy
-#                             hz=hz+a[l]*dz
-#                     else:
-#                         if n == 0:
-#                             dx=-sps*sqqs*eqs*cyqi*czsk
-#                             dy= sps*eqs/q[i]*syqi*czsk
-#                             dz= sps*eqs/s[k]*cyqi*szsk
-#                             hx=hx+a[l]*dx
-#                             hy=hy+a[l]*dy
-#                             hz=hz+a[l]*dz
-#                         else:
-#                             dx=dx*s3ps
-#                             dy=dy*s3ps
-#                             dz=dz*s3ps
-#                             hx=hx+a[l]*dx
-#                             hy=hy+a[l]*dy
-#                             hz=hz+a[l]*dz
-#                     l += 1
-#     return hx,hy,hz
+    l = 0
+    for m in range(2):  # m=1 for 1st sum (perp symmetry), m=2 for 2nd sum (parallel symmetry)
+        for i in range(2):
+            cypi=np.cos(y/p[i])
+            cyqi=np.cos(y/q[i])
+            sypi=np.sin(y/p[i])
+            syqi=np.sin(y/q[i])
+            for k in range(2):
+                szrk=np.sin(z/r[k])
+                czsk=np.cos(z/s[k])
+                czrk=np.cos(z/r[k])
+                szsk=np.sin(z/s[k])
+                sqpr=np.sqrt(1/p[i]**2+1/r[k]**2)
+                sqqs=np.sqrt(1/q[i]**2+1/s[k]**2)
+                epr= np.exp(x*sqpr)
+                eqs= np.exp(x*sqqs)
+                for n in range(2):  # n=1 for the 1st part of each coefficient, n=2 for 2nd
+                    if m == 0:
+                        if n == 0:
+                            dx=-sqpr*epr*cypi*szrk
+                            dy= epr/p[i]*sypi*szrk
+                            dz=-epr/r[k]*cypi*czrk
+                            hx=hx+a[l]*dx
+                            hy=hy+a[l]*dy
+                            hz=hz+a[l]*dz
+                        else:
+                            dx=dx*cps
+                            dy=dy*cps
+                            dz=dz*cps
+                            hx=hx+a[l]*dx
+                            hy=hy+a[l]*dy
+                            hz=hz+a[l]*dz
+                    else:
+                        if n == 0:
+                            dx=-sps*sqqs*eqs*cyqi*czsk
+                            dy= sps*eqs/q[i]*syqi*czsk
+                            dz= sps*eqs/s[k]*cyqi*szsk
+                            hx=hx+a[l]*dx
+                            hy=hy+a[l]*dy
+                            hz=hz+a[l]*dz
+                        else:
+                            dx=dx*s3ps
+                            dy=dy*s3ps
+                            dz=dz*s3ps
+                            hx=hx+a[l]*dx
+                            hy=hy+a[l]*dy
+                            hz=hz+a[l]*dz
+                    l += 1
+    return hx,hy,hz
 
 def r2_birk(x,y,z, ps):
     """
@@ -1824,58 +1820,58 @@ def dipdistr(x,y,z,mode):
 
     return bx,by,bz
 
-# def intercon(x,y,z):
-#     """
-#     Calculates the potential interconnection field inside the magnetosphere, corresponding to
-#     DELTA_X = 20Re and DELTA_Y = 10Re (NB#3, p.90, 6/6/1996).
+def intercon(x,y,z):
+    """
+    Calculates the potential interconnection field inside the magnetosphere, corresponding to
+    DELTA_X = 20Re and DELTA_Y = 10Re (NB#3, p.90, 6/6/1996).
 
-#     The position (X,Y,Z) and field components BX,BY,BZ are given in the rotated coordinate system,
-#     in which the Z-axis is always directed along the BzIMF (i.e. rotated by the IMF clock angle Theta)
+    The position (X,Y,Z) and field components BX,BY,BZ are given in the rotated coordinate system,
+    in which the Z-axis is always directed along the BzIMF (i.e. rotated by the IMF clock angle Theta)
 
-#     It is also assumed that the IMF Bt=1 nT, so that the components should be
-#        (i) multiplied by the actual Bt, and
-#        (ii) transformed to standard GSM coords by rotating back around X axis by the angle -Theta.
+    It is also assumed that the IMF Bt=1 nT, so that the components should be
+       (i) multiplied by the actual Bt, and
+       (ii) transformed to standard GSM coords by rotating back around X axis by the angle -Theta.
 
-#     :param x,y,z: GSM position
-#     :return: bx,by,bz. Interconnection field components inside the magnetosphere of a standard size
-#         (to take into account effects of pressure changes, apply the scaling transformation)
-#     """
+    :param x,y,z: GSM position
+    :return: bx,by,bz. Interconnection field components inside the magnetosphere of a standard size
+        (to take into account effects of pressure changes, apply the scaling transformation)
+    """
 
-#     # The 9 linear parameters are amplitudes of the "cartesian" harmonics
-#     # The 6 nonlinear parameters are the scales Pi and Ri entering the arguments of exponents, sines, and cosines in the 9 "Cartesian" harmonics (3+3)
+    # The 9 linear parameters are amplitudes of the "cartesian" harmonics
+    # The 6 nonlinear parameters are the scales Pi and Ri entering the arguments of exponents, sines, and cosines in the 9 "Cartesian" harmonics (3+3)
 
-#     a = np.array([
-#         -8.411078731,5932254.951,-9073284.93,-11.68794634,6027598.824,
-#         -9218378.368,-6.508798398,-11824.42793,18015.66212,7.99754043,
-#         13.9669886,90.24475036,16.75728834,1015.645781,1553.493216])
+    a = np.array([
+        -8.411078731,5932254.951,-9073284.93,-11.68794634,6027598.824,
+        -9218378.368,-6.508798398,-11824.42793,18015.66212,7.99754043,
+        13.9669886,90.24475036,16.75728834,1015.645781,1553.493216])
 
-#     p = a[9 :12]
-#     r = a[12:15]
-#     rp = 1/p
-#     rr = 1/r
+    p = a[9 :12]
+    r = a[12:15]
+    rp = 1/p
+    rr = 1/r
 
-#     l = 0
-#     bx,by,bz = [0.]*3
-#     # "perpendicular" kind of symmetry only
-#     for i in range(3):
-#         cypi=np.cos(y*rp[i])
-#         sypi=np.sin(y*rp[i])
-#         for k in range(3):
-#             szrk=np.sin(z*rr[k])
-#             czrk=np.cos(z*rr[k])
-#             sqpr=np.sqrt(rp[i]**2+rr[k]**2)
-#             epr= np.exp(x*sqpr)
+    l = 0
+    bx,by,bz = [0.]*3
+    # "perpendicular" kind of symmetry only
+    for i in range(3):
+        cypi=np.cos(y*rp[i])
+        sypi=np.sin(y*rp[i])
+        for k in range(3):
+            szrk=np.sin(z*rr[k])
+            czrk=np.cos(z*rr[k])
+            sqpr=np.sqrt(rp[i]**2+rr[k]**2)
+            epr= np.exp(x*sqpr)
 
-#             hx=-sqpr*epr*cypi*szrk
-#             hy= rp[i]*epr*sypi*szrk
-#             hz=-rr[k]*epr*cypi*czrk
+            hx=-sqpr*epr*cypi*szrk
+            hy= rp[i]*epr*sypi*szrk
+            hz=-rr[k]*epr*cypi*czrk
 
-#             bx=bx+a[l]*hx
-#             by=by+a[l]*hy
-#             bz=bz+a[l]*hz
-#             l += 1
+            bx=bx+a[l]*hx
+            by=by+a[l]*hy
+            bz=bz+a[l]*hz
+            l += 1
 
-#     return bx,by,bz
+    return bx,by,bz
 
 
 def dipole(ps, x,y,z):
