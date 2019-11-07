@@ -1832,7 +1832,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         times,resolutions,avgRes = self.getTimes(dstr, editNumber)
         Y = Y[errMask]
         times = times[errMask]
-        resolutions = resolutions[errMask]
+        resolutions = np.diff(times)
+        resolutions = np.concatenate([resolutions, [resolutions[-1]]])
 
         # Find smallest tick in data
         ofst = self.minTime
