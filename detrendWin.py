@@ -394,7 +394,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
     def getPrunedData(self, dstr, en, a, b):
         dta = self.getData(dstr, en)[a:b]
-        return dta[dta < self.window.errorFlag]
+        return dta[np.abs(dta) < self.window.errorFlag]
 
     def calcDataIndicesFromLines(self, dstr, editNumber, regNum=0):
         # Re-implemented from main window version to use detrend window's

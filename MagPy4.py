@@ -1003,6 +1003,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.TIMES.append(times)
         self.TIMEINDEX[dstr] = len(self.TIMES) - 1
 
+        # Mask out any errors in calculated data
+        mask1 = ~np.isnan(dta)
+        mask2 = np.abs(dta) < self.errorFlag
+        mask = np.logical_and(mask1, mask2)
+        times = times[mask] if len(times) == len(dta) else times
+        dta = dta[mask]
+
         # Add in data to dictionaries, no units
         self.ORIGDATADICT[dstr] = dta
         self.DATADICT[dstr] = [dta]
