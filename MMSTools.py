@@ -693,6 +693,7 @@ class CurlometerUI(object):
         minDt, maxDt = window.getMinAndMaxDateTime()
         self.timeEdit.setupMinMax((minDt, maxDt))
         self.onTopCheckBox = QtWidgets.QCheckBox('Stay On Top')
+        self.onTopCheckBox.setChecked(True)
         btmLt.addWidget(self.timeEdit.start)
         btmLt.addWidget(self.onTopCheckBox)
         btmLt.addStretch()
@@ -709,8 +710,7 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         self.ui.setupUI(self, window)
 
         # Set up window-on-top settings
-        if self.ui.onTopCheckBox.isChecked():
-            self.toggleWindowOnTop(True)
+        self.visibleWin = False
         self.ui.onTopCheckBox.clicked.connect(self.toggleWindowOnTop)
 
         # Set up new plot variables interface
@@ -744,6 +744,10 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         self.show()
 
     def calculate(self, specIndex=None):
+        if not self.visibleWin:
+            self.toggleWindowOnTop(self.ui.onTopCheckBox.isChecked())
+            self.visibleWin = True
+
         refSpc = 4 # Current default for now
         mu0 = constants.mu_0
 
@@ -931,17 +935,21 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
 
         return jPara, jPerp
 
-    def calcRange(self):
+    def calcRange(self, indices=None, regNum=0, totRegions=1):
         # Get data indices to generate values for
-        t0, t1 = self.window.minTime, self.window.maxTime
-        times = self.window.getTimes(self.window.DATASTRINGS[0], 0)[0]
-        i0 = self.window.calcDataIndexByTime(times, t0)
-        i1 = self.window.calcDataIndexByTime(times, t1)
+        if indices is None:
+            t0, t1 = self.window.minTime, self.window.maxTime
+            times = self.window.getTimes(self.window.DATASTRINGS[0], 0)[0]
+            i0 = self.window.calcDataIndexByTime(times, t0)
+            i1 = self.window.calcDataIndexByTime(times, t1)
+        else:
+            i0, i1 = indices
         numIndices = abs(i1 - i0)
 
         # Initialize progress bar settings/visibility
-        progVal = 0
-        progStep = 100 / numIndices
+        regFrac = 100/totRegions
+        progVal = regNum*regFrac
+        progStep = regFrac / numIndices
         self.setProgressVis(True)
 
         mat = np.zeros((6, numIndices))
@@ -973,12 +981,48 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         if len(varsToAdd) == 0:
             return
 
-        # Calculate |J|, |J_Par|, |J_Perp| and initialize the new varialbes
-        times = self.window.getTimes(self.getDstrsBySpcrft(1)[0], 0)
-        resultMat = self.calcRange()
-        for dstr in varsToAdd:
-            index = list(self.nameDict.values()).index(dstr)
-            self.window.initNewVar(dstr, resultMat[index], 'nA/m^2', times=times)
+        regions = self.window.currSelect.regions
+        refDstr = self.getDstrsBySpcrft(1)[0]
+        if len(regions) == 1 and regions[0].isLine():
+            # Calculate |J|, |J_Par|, |J_Perp| and initialize the new variables
+            times = self.window.getTimes(refDstr, 0)
+            resultMat = self.calcRange()
+            for dstr in varsToAdd:
+                index = list(self.nameDict.values()).index(dstr)
+                self.window.initNewVar(dstr, resultMat[index], 'nA/m^2', times=times)
+        elif len(regions) >= 1:
+            # Get indices for each region
+            indices = []
+            for regNum in range(0, len(regions)):
+                indexPair = self.window.calcDataIndicesFromLines(refDstr, 0, regNum)
+                indices.append(indexPair)
+
+            # Initialize time and result arrays
+            times = []
+            resDta = []
+            for var in varsToAdd:
+                resDta.append([])
+
+            # Run calculations for each region, updating result arrays that
+            # are going to be returned
+            regIndex = 0
+            for a, b in indices:
+                times.extend(self.window.getTimes(refDstr, 0)[0][a:b])
+                resultMat = self.calcRange((a,b), regIndex, len(regions))
+                for dstr in varsToAdd:
+                    index = list(self.nameDict.values()).index(dstr)
+                    resDta[index].extend(resultMat[index])
+                regIndex += 1
+
+            # Re-calculate resolutions and create time object for the new variable
+            times = np.array(times)
+            prevTimes, prevRes, avgRes = self.window.getTimes(refDstr, 0)
+            diff = np.diff(times)
+            diff = np.concatenate([diff, [times[-1]]])
+            times = (times, diff, avgRes)
+            for dstr in varsToAdd:
+                index = list(self.nameDict.values()).index(dstr)
+                self.window.initNewVar(dstr, np.array(resDta[index]), 'nA/m^2', times=times)
 
     def setProgressVis(self, b=False):
         # Sets progress bar / label as hidden or visible
@@ -1019,6 +1063,8 @@ class CurvatureUI(object):
         minDt, maxDt = window.getMinAndMaxDateTime()
         self.timeEdit.setupMinMax((minDt, maxDt))
         self.stayOnTopChk = QtWidgets.QCheckBox('Stay on top')
+        self.stayOnTopChk.setChecked(True)
+
         self.progBar = QtWidgets.QProgressBar()
         self.progBar.setVisible(False)
 
@@ -1100,6 +1146,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         self.eDta, self.iDta = None, None
 
         self.ui.stayOnTopChk.clicked.connect(self.toggleWindowOnTop)
+        self.visibleWin = False
         self.ui.applyBtn.clicked.connect(self.addNewVars)
 
     def closeEvent(self, ev):
@@ -1118,6 +1165,10 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         self.show()
 
     def updateCalculations(self):
+        if not self.visibleWin:
+            self.visibleWin = True
+            self.toggleWindowOnTop(self.ui.stayOnTopChk.isChecked())
+
         # Determine selected data index
         tO, tE = self.window.getSelectionStartEndTimes()
         dstr = self.getDstrsBySpcrft(1)[0] # Use any relevant dstr
@@ -1317,25 +1368,63 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         plotIGyro = self.ui.checkboxes[len(dstrs)+2].isChecked()
         plotCurves = True in [self.ui.checkboxes[i].isChecked() for i in [0,1,2]]
 
+        regions = self.window.currSelect.regions
+        refDstr = self.getDstrsBySpcrft(1)[0]
+        indices = []
+        if len(regions) == 1 and regions[0].isLine():
+            indices = [(0, dtaLen)] # Full data set if no region selected
+        elif len(regions) >= 1:
+            # Get indices for each selected region
+            indices = []
+            for regNum in range(0, len(regions)):
+                indexPair = self.window.calcDataIndicesFromLines(refDstr, 0, regNum)
+                indices.append(indexPair)
+
+            # Set up new times array/object from selected regions
+            oldTimes, oldRes, avgRes = self.window.getTimes(refDstr, 0)
+            times = []
+            numIndices = 0
+            for a, b in indices:
+                times.extend(self.window.getTimes(refDstr, 0)[0][a:b])
+                numIndices += (b-a)
+            times = np.array(times)
+            diff = np.diff(times)
+            diff = np.concatenate([diff, [times[-1]]])
+            timeInfo = (times, diff, avgRes)
+
+            # Adjust the step size based on the number of points selected
+            stepSize = 100 / numIndices
+
+        # Create a mask of the selected indices to use to extract data from
+        # results arrays
+        mask = [np.arange(a,b) for (a,b) in indices]
+        mask = np.concatenate(mask)
+    
         # Calculate curvatures and radii if checked
         curvatures = np.zeros((3, dtaLen))
         radii = np.zeros(dtaLen)
         eGyroRadii = np.zeros(dtaLen)
         iGyroRadii = np.zeros(dtaLen)
-        for index in range(0, dtaLen):
-            if plotCurves or plotRadii:
-                vec, radius, err = self.calculate(index)
-                curvatures[:,index] = vec
-            if plotRadii:
-                radii[index] = radius
-            if plotEGyro:
-                eGyroRadii[index] = self.getGyroRadius(index, 'Electron')
-            if plotIGyro:
-                iGyroRadii[index] = self.getGyroRadius(index, 'Ion')
+        for a, b in indices: # Calculate individually for each region
+            for index in range(a, b):
+                if plotCurves or plotRadii:
+                    vec, radius, err = self.calculate(index)
+                    curvatures[:,index] = vec
+                if plotRadii:
+                    radii[index] = radius
+                if plotEGyro:
+                    eGyroRadii[index] = self.getGyroRadius(index, 'Electron')
+                if plotIGyro:
+                    iGyroRadii[index] = self.getGyroRadius(index, 'Ion')
 
-            # Update progress bar
-            progVal += stepSize
-            self.ui.progBar.setValue(progVal)
+                # Update progress bar
+                progVal += stepSize
+                self.ui.progBar.setValue(progVal)
+
+        curvatures = np.array([curvatures[row][mask] for row in range(0, 3)])
+        radii = radii[mask]
+        eGyroRadii = eGyroRadii[mask]
+        iGyroRadii = iGyroRadii[mask]
 
         # Create new variables
         i = 0

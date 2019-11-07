@@ -26,13 +26,14 @@ class GeneralSelect(object):
         self.closeFunc = closeFunc # Function called when all regions hidden
         self.maxSteps = maxSteps # If negative, multi-select mode
 
-        self.allModes = ['Multi','Single','Adjusting','Line']
+        self.allModes = ['Multi','Single','Adjusting','Line', 'Multi-Strict']
         '''
             Multi - multiple regions can be selected, not used for now
             Single - single selected region
             Adjusting - starts as a single line and can expand to one or more
                         full regions (limited by maxSteps)
             Line - Single line 'region'
+            Multi-Strict - Line by default, other regions must use ctrl
             maxSteps parameter determines how many regions can be created
         '''
         self.regions = []
@@ -90,7 +91,7 @@ class GeneralSelect(object):
         # Extend or add new regions depending on settings
         lastRegion = self.regions[-1]
         if lastRegion.fixedLine:
-            self.extendRegion(x, lastRegion)
+            self.extendRegion(x, lastRegion, ctrlPressed)
         elif self.stepsLeft(ctrlPressed):
             self.addRegion(x)
         elif self.stepsLeft():
@@ -98,6 +99,14 @@ class GeneralSelect(object):
 
         if self.name == 'Stats':
             self.updtFunc()
+
+    def isLine(self):
+        if len(regions) < 1:
+            return False
+        lastRegion = self.regions[-1]
+        if lastRegion.fixedLine:
+            return True
+        return False
 
     def rightClick(self, pltNum):
         # Hide sub regions in this plot
@@ -178,9 +187,9 @@ class GeneralSelect(object):
             self.fullStepTrigger()
             QtCore.QTimer.singleShot(100, self.func)
 
-    def extendRegion(self, x, region):
+    def extendRegion(self, x, region, ctrlPressed):
         # Extends previously added region (that hasn't been expanded yet)
-        if self.mode == 'Line' or self.regions == []:
+        if (self.mode == 'Line' and self.maxSteps >= 0) or self.regions == []:
             return
         x0, x1 = region.getRegion()
         region.setRegion((x0-self.window.tickOffset, x))

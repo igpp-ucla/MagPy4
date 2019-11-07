@@ -514,7 +514,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.curlometer = Curlometer(self)
         self.initGeneralSelect('Curlometer', '#ffa500', self.curlometer.ui.timeEdit, 
             'Line', self.showCurlometer, self.updateCurlometer, 
-            closeFunc=self.closeCurlometer)
+            closeFunc=self.closeCurlometer, maxSteps=-1)
 
     def showCurlometer(self):
         if self.curlometer:
@@ -530,7 +530,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeMMSTools()
         self.curvature = Curvature(self)
         self.initGeneralSelect('Curvature', '#ff4242', self.curvature.ui.timeEdit,
-            'Line', self.showCurvature, self.updateCurvature, self.closeCurvature)
+            'Line', self.showCurvature, self.updateCurvature, self.closeCurvature,
+            maxSteps=-1)
 
     def showCurvature(self):
         if self.curvature:
@@ -991,8 +992,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def initNewVar(self, dstr, dta, units='', times=None):
         # Add new variable name to list of datastrings
-        self.newVars.append(dstr)
-        self.DATASTRINGS.append(dstr)
+        if dstr not in self.newVars:
+            self.newVars.append(dstr)
+            self.DATASTRINGS.append(dstr)
         self.ABBRV_DSTR_DICT[dstr] = dstr
 
         # Use any datastring's times as base
