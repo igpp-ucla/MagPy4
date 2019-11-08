@@ -1000,15 +1000,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Use any datastring's times as base
         if times is None:
             times = self.getTimes(self.DATASTRINGS[0], 0)
-        self.TIMES.append(times)
-        self.TIMEINDEX[dstr] = len(self.TIMES) - 1
 
-        # Mask out any errors in calculated data
+        # Mask out any errors in calculated data and apply mask to times
+        t, diff, res = times
         mask1 = ~np.isnan(dta)
         mask2 = np.abs(dta) < self.errorFlag
         mask = np.logical_and(mask1, mask2)
-        times = times[mask] if len(times) == len(dta) else times
+        t = t[mask] if len(t) == len(dta) else t
+        diff = np.diff(t)
         dta = dta[mask]
+        times = (t, diff, res)
+
+        self.TIMES.append(times)
+        self.TIMEINDEX[dstr] = len(self.TIMES) - 1
+
 
         # Add in data to dictionaries, no units
         self.ORIGDATADICT[dstr] = dta
