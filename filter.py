@@ -65,7 +65,7 @@ def chebyshevParameters(nfx, dpx, dfx):
         c1 = acosh((1.0 + dp) / dp)
         c2 = cosh(c1 / xn)
         dfx = acos(1.0 / c2) / pi
-    else:
+    elif dfx == 0.0:
         # nf and df are specified; determine dp
         xn = nf - 1
         c0 = cos(pi * df)

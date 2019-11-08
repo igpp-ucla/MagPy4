@@ -108,7 +108,6 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         self.w = None
         self.gw = None
 
-        self.chebyshevParameters()
         self.setWidgets()
 
         self.updateFilterType()
