@@ -264,28 +264,33 @@ class MagPyAxisItem(pg.AxisItem):
 #todo show minor ticks on left side
 #hide minor tick labels always
 class LogAxis(pg.AxisItem):
-    def __init__(self, customTicks, customStrings, customSpacing, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         self.tickDiff = None
         pg.AxisItem.__init__(self, *args, **kwargs)
 
         self.tickFont = QtGui.QFont()
         self.tickFont.setPixelSize(14)
-        self.customStrings = customStrings
-        self.customSpacing = customSpacing
-        if customTicks:
+
+    def setLogMode(self, log):
+        if log:
             self.style['maxTextLevel'] = 1 # never have any subtick labels
             self.style['textFillLimits'] = [(0,1.1)] # try to always draw labels
-        #self.style['tickLength'] = -10
+        else:
+            self.style['maxTextLevel'] = 2
+            self.style['textFillLimits'] = [(2, 0.7)] # try to always draw labels
 
-    # todo: should just try to figure out range of values and add decimals if small enough
+        if log != self.logMode:
+            self.tickDiff = None
+
+        pg.AxisItem.setLogMode(self, log)
+
     def tickStrings(self, values, scale, spacing):
-        if self.customStrings:
+        if self.logMode:
             return [f'{int(x)}    ' for x in values] # spaces are for eyeballing the auto sizing before rich text override below
-        #return [f'{x:.1f}    ' for x in values]
         return pg.AxisItem.tickStrings(self,values,scale,spacing)
 
     def tickSpacing(self, minVal, maxVal, size):
-        if self.customSpacing:
+        if self.logMode:
             if self.tickDiff:
                 return [(self.tickDiff, 0)]
             else:
@@ -293,14 +298,14 @@ class LogAxis(pg.AxisItem):
         return pg.AxisItem.tickSpacing(self,minVal,maxVal,size)
 
     def axisType(self):
-        if self.customStrings:
+        if self.logMode:
             return 'Log'
         else:
             return 'Regular'
 
     # overriden from source to be able to have superscript text
     def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
-        if not self.customStrings:
+        if not self.logMode:
             pg.AxisItem.drawPicture(self, p, axisSpec, tickSpecs, textSpecs)
             return
         p.setRenderHint(p.Antialiasing, False)

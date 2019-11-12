@@ -31,12 +31,14 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui.separateTracesCheckBox.stateChanged.connect(self.initPlots)
         self.ui.aspectLockedCheckBox.stateChanged.connect(self.setAspect)
         self.ui.waveAnalysisButton.clicked.connect(self.openWaveAnalysis)
-        self.ui.logModeCheckBox.stateChanged.connect(self.updateScaling)
+        self.ui.logModeCheckBox.toggled.connect(self.updateScaling)
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
         self.ui.unitRatioCheckbox.stateChanged.connect(self.squarePlots)
 
         self.plotItems = []
         self.sumPlots = []
+        self.cohPhaPlots = []
+        self.rowItems = []
         self.tracePenList = []
         self.wasClosed = False
         self.waveAnalysis = None
@@ -128,12 +130,57 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui.grid.resizeEvent(None)
         self.setAspect()
 
-    def updateScaling(self):
-        self.linearMode = not self.ui.logModeCheckBox.isChecked()
-        self.initPlots()
+    def updateScaling(self, val=None):
+        # TODO: Reset tick diff after updating scaling mode
+        # Set the mode parameter
+        if val is None:
+            val = self.ui.logModeCheckBox.isChecked()
+        self.linearMode = not val
 
-    def setAspect(self):
-        if self.ui.aspectLockedCheckBox.isChecked() == True:
+        # Disable/Enable auto-range and set scaling mode for spectra plots
+        for pi in self.plotItems:
+            pi.enableAutoRange(x=True, y=False) # disable y auto scaling
+
+            # Set up range/scaling modes
+            if self.linearMode:
+                pi.setLogMode(False, True)
+            else:
+                pi.setLogMode(True, True)
+    
+        # Manually set y-scale for each row in spectra plots
+        for row in range(0, len(self.rowItems)):
+            self.setYRangeForRow(row)
+
+        # Set log mode for coh/pha plots
+        for pi in self.cohPhaPlots:
+            if self.linearMode:
+                pi.setLogMode(False, False)
+            else:
+                pi.setLogMode(True, False)
+
+        # Set log mode for sum of power spectra plots
+        for pi in self.sumPlots:
+            if self.linearMode:
+                pi.setLogMode(False, True)
+            else:
+                pi.setLogMode(True, True)
+
+        # Set the bottom axis labels for all plots
+        btmLabel = 'Log Frequency (Hz)'
+        if self.linearMode:
+            btmLabel = 'Frequency (Hz)'
+
+        for plt in self.sumPlots + self.cohPhaPlots + self.plotItems:
+            plt.getAxis('bottom').setLabel(btmLabel)
+
+        # Reset aspect ratios
+        self.setAspect(False)
+        QtCore.QTimer.singleShot(500, self.setAspect)
+
+    def setAspect(self, val=None):
+        if val is None:
+            val = self.ui.aspectLockedCheckBox.isChecked()
+        if val:
             # Setting ratio to None locks in current aspect ratio
             for pi in self.plotItems + self.sumPlots:
                 ratio = None
@@ -178,6 +225,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui.grid.clear()
         self.ui.labelLayout.clear()
         self.plotItems = []
+        self.cohPhaPlots = []
 
         # Get updated information about plots/settings
         self.updateCalculations()
@@ -186,6 +234,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
 
         numberPlots = 0
+        rowItems = []
         curRow = []
         maxTitleWidth = 0
         self.tracePenList = []
@@ -199,9 +248,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 if i == 0 or oneTracePerPlot:
                     # Set up axes and viewBox
                     pi = self.buildPlotItem()
-                    pi.enableAutoRange(y=False) # disable y auto scaling so doesnt interfere with custom range settings
-                    if self.linearMode:
-                        pi.enableAutoRange(x=True, y=True)
 
                     numberPlots += 1
                     titleString = ''
@@ -223,10 +269,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 # also links the y scale of each row together
                 lastPlotInList = i == len(strList) - 1
                 if lastPlotInList or oneTracePerPlot:
-                    btmLabel = 'Log Frequency (Hz)'
-                    if self.linearMode:
-                        btmLabel = 'Frequency (Hz)'
-                    pi.setLabels(title=titleString, left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)', bottom=btmLabel)
+                    pi.setLabels(title=titleString, left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)')
                     piw = pi.titleLabel._sizeHint[0][0] + 60 # gestimating padding
                     maxTitleWidth = max(maxTitleWidth,piw)
                     self.ui.grid.addItem(pi)
@@ -234,6 +277,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                     curRow.append((pi,powers))
                     if numberPlots % 4 == 0:
                         self.setYRangeForRow(curRow)
+                        rowItems.append(curRow)
                         curRow = []
             self.tracePenList.append(penList)
 
@@ -262,8 +306,11 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui.labelLayout.nextColumn()
         self.ui.labelLayout.addItem(rightLabel)
 
+        self.rowItems = rowItems
         self.updateCohPha()
         self.updateCombined()
+
+        self.updateScaling()
 
         # Add plot appearance menu to context menu for each plot:
         for plt in self.plotItems:
@@ -303,23 +350,16 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 pen = self.tracePenList[listIndex][i]
                 pi.plot(freq, power, pen=pen)
                 plotNum += 1
+
         # Update coherence and phase graphs
         self.updateCohPha()
         self.updateCombined()
+        self.updateScaling()
 
     def buildPlotItem(self):
-        ba = LogAxis(True,True,True,orientation='bottom')
-        la = LogAxis(True,True,True,orientation='left')
-        if self.linearMode:
-            ba = MagPyAxisItem(orientation='bottom')
-            la = MagPyAxisItem(orientation='left')
-            self.setAxisAppearance([ba,la])
+        ba = LogAxis(orientation='bottom')
+        la = LogAxis(orientation='left')
         pi = SpectraPlotItem(viewBox = SpectraViewBox(), axisItems={'bottom':ba, 'left':la})
-
-        # Set up range/scaling modes
-        pi.setLogMode(True, True)
-        if self.linearMode:
-            pi.setLogMode(False, False)
         pi.hideButtons() # hide autoscale button
 
         return pi
@@ -427,10 +467,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
         # Set axis labels for all plots
         for pi in self.sumPlots:
-            btmLabel = 'Log Frequency (Hz)'
-            if self.linearMode:
-                btmLabel = 'Frequency (Hz)'
-            pi.setLabels(left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)', bottom=btmLabel)
+            pi.setLabels(left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)')
 
         # Adjust aspect ratio settings w/ delay in case plots haven't been shown yet
         QtCore.QTimer.singleShot(100, self.setAspect)
@@ -473,22 +510,12 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
         for d in datas:
             d[0].clear()
-            ba = LogAxis(True,True,False,orientation='bottom')
-            la = LogAxis(False,False,False,orientation='left')
-            if self.linearMode:
-                ba = MagPyAxisItem(orientation='bottom')
-                la = MagPyAxisItem(orientation='left')
-                self.setAxisAppearance([ba,la])
+            ba = LogAxis(orientation='bottom')
+            la = LogAxis(orientation='left')
             pi = MagPyPlotItem(axisItems={'bottom':ba, 'left':la})
-            pi.setLogMode(True, False)
-            if self.linearMode:
-                pi.setLogMode(False, False)
             pi.plot(freqs, d[1], pen=QtGui.QPen(self.window.pens[0]))
-            btmLabel = 'Log Frequency (Hz)'
-            if self.linearMode:
-                btmLabel = 'Frequency (Hz)'
             pi.titleLabel.setAttr('size', '12pt') # Set up default font size
-            pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}', bottom=btmLabel)
+            pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}')
             d[0].addItem(pi)
             plts.append(pi)
 
@@ -505,6 +532,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
             vb = pi.getViewBox()
             vb.menu.addAction(act)
 
+        self.cohPhaPlots = plts
+
     # scale each plot to use same y range
     # the viewRange function was returning incorrect results so had to do manually
     def setYRangeForRow(self, curRow):
@@ -518,8 +547,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                                     
         #if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or
         #np.isinf(maxVal):
-        if not self.linearMode:
-            minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
-            maxVal = np.log10(maxVal)
+        minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
+        maxVal = np.log10(maxVal)
         for item in curRow:
             item[0].setYRange(minVal,maxVal)

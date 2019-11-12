@@ -622,7 +622,7 @@ class SpectrogramPlotItem(pg.PlotItem):
         vb = SpectrogramViewBox()
         dateAxis = DateAxis(epoch, orientation='bottom')
         if self.logMode:
-            leftAxis = LogAxis(True, True, True, orientation='left')
+            leftAxis = LogAxis(orientation='left')
         else:
             leftAxis = MagPyAxisItem(orientation='left')
         axisItems = {'bottom':dateAxis, 'left':leftAxis}
