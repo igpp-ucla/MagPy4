@@ -1014,7 +1014,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.TIMES.append(times)
         self.TIMEINDEX[dstr] = len(self.TIMES) - 1
 
-
         # Add in data to dictionaries, no units
         self.ORIGDATADICT[dstr] = dta
         self.DATADICT[dstr] = [dta]
@@ -2083,7 +2082,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         i1 = self.calcDataIndexByTime(times, t1)
         if i1 > len(times)-1:
             i1 = len(times)-1
-        assert(i0 <= i1)
+        if i0 >= i1:
+            i0 = i1-1
         return i0,i1
 
     def getSelectionStartEndTimes(self, regNum=0):
