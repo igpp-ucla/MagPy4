@@ -543,8 +543,6 @@ class SpectraLine(pg.PlotCurveItem):
         # Draws filled rects for every point using designated colors
         for pairNum in range(0, len(self.colors)):
             # Create a rectangle path
-            color = self.colors[pairNum]
-
             x0 = self.times[pairNum]
             x1 = self.times[pairNum+1]
             fillLevel = self.opts['fillLevel']
@@ -556,6 +554,8 @@ class SpectraLine(pg.PlotCurveItem):
     def paint(self, p, opt, widget):
         if self.xData is None or len(self.xData) == 0:
             return
+
+        p.setRenderHint(p.Antialiasing, False)
 
         if self.prevPaths == []:
             self.setupPath(p)
@@ -606,6 +606,8 @@ class SpectrogramPlotItem(pg.PlotItem):
     def __init__(self, epoch, logMode=False):
         super(SpectrogramPlotItem, self).__init__(parent=None)
         self.logMode = logMode # Log scaling for y-axis parameter (Boolean)
+        self.baseOffset = None
+        self.lines = []
 
         # Initialize colors for color map
         rgbBlue = (25, 0, 245)
@@ -761,12 +763,14 @@ class SpectrogramPlotItem(pg.PlotItem):
         stepSize = (statusEnd-statusStrt) / (len(yVals) - 1)
         currentStep = statusStrt
 
+        self.lines = []
         # Creates a SpectraLine object for every row in value grid
         for rowIndex in range(0, len(yVals)-1):
             yVal = yVals[rowIndex+1]
             colors = list(map(self.mkRGBColor, mappedGrid[rowIndex,:]))
             pdi = self.getSpectraLine(yVal, colors, timeVals, winFrame, lastVal)
             self.addItem(pdi)
+            self.lines.append(pdi)
 
             if winFrame: # If winFrame is passed, update progress in status bar
                 currentStep += stepSize
@@ -779,6 +783,55 @@ class SpectrogramPlotItem(pg.PlotItem):
         self.setYRange(lowerBnd, yVals[-1], 0)
         timeLbl = self.getAxis('bottom').tm.getTimeLabel(timeVals[-1]-timeVals[0])
         self.getAxis('bottom').setLabel(timeLbl)
+
+    # Prepares plot item for export as an SVG image by adjusting large time values
+    def prepareForExport(self):
+        # Offset times for each data tiem
+        pdis = self.listDataItems()
+        self.baseOffset = self.lines[0].times[0]
+        for pdi in pdis:
+            if pdi in self.lines:
+                pdi.times = pdi.times - self.baseOffset
+                pdi.prevPaths = []
+            pdi.setData(x=pdi.xData-self.baseOffset, y=pdi.yData)
+            pdi.update()
+
+        # Adjust time tick offset
+        ba = self.getAxis('bottom')
+        ba.tickOffset = self.baseOffset
+
+        # Offset viewbox range/state as well
+        vb = self.getViewBox()
+        xRange, yRange = vb.viewRange()
+        xMin, xMax = xRange
+        vb.setRange(xRange=(xMin-self.baseOffset, xMax-self.baseOffset), padding=0)
+        vb.prepareForPaint()
+        vb.update()
+
+    def resetAfterExport(self):
+        # Add in offset back into all spectra lines
+        pdis = self.listDataItems()
+        if self.baseOffset:
+            for pdi in pdis:
+                if pdi in self.lines:
+                    pdi.times = pdi.times + self.baseOffset
+                pdi.setData(x=pdi.xData+self.baseOffset, y=pdi.yData)
+                pdi.prevPaths = []
+                pdi.path = None
+
+        # Reset tick offset
+        ba = self.getAxis('bottom')
+        ba.tickOffset = 0
+
+        # Add offset back into view range and reset viewbox state
+        vb = self.getViewBox()
+        xRange, yRange = vb.viewRange()
+        xMin, xMax = xRange
+        vb.setRange(xRange=(xMin+self.baseOffset, xMax+self.baseOffset), padding=0)
+        vb.prepareForPaint()
+        vb.update()
+
+        self.baseOffset = None
 
 class PhaseSpectrogram(SpectrogramPlotItem):
     def __init__(self, epoch, logMode=True):

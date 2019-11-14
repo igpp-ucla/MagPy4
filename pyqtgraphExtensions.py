@@ -1035,13 +1035,13 @@ def cstmSVGExport(self, fileName=None, toBytes=False, copy=False):
     if toBytes is False and copy is False and fileName is None:
         self.fileSaveDialog(filter="Scalable Vector Graphics (*.svg)")
         return
-    
+
     ## Qt's SVG generator is not complete. (notably, it lacks clipping)
     ## Instead, we will use Qt to generate SVG for each item independently,
     ## then manually reconstruct the entire document.
     options = {ch.name():ch.value() for ch in self.params.children()}
     xml = generateSvg(self.item, options)
-    
+
     if toBytes:
         return xml.encode('UTF-8')
     elif copy:
@@ -1067,9 +1067,8 @@ def generateSvg(item, options={}):
         for i in items:
             if hasattr(i, 'setExportMode'):
                 i.setExportMode(False)
-    
+
     cleanXml(node)
-    
     defsXml = "<defs>\n"
     for d in defs:
         defsXml += d.toprettyxml(indent='    ')
@@ -1078,6 +1077,14 @@ def generateSvg(item, options={}):
 
 
 def cstmGenerateItemSvg(item, nodes=None, root=None, options={}):
+    # Color plots need to be prepared for SVG export
+    refItem = item
+    if isinstance(refItem, pg.PlotItem):
+        if hasattr(refItem, 'prepareForExport'):
+            refItem.prepareForExport()
+            app = QtCore.QCoreApplication.instance()
+            app.processEvents()
+
     if nodes is None:  ## nodes maps all node IDs to their XML element. 
                        ## this allows us to ensure all elements receive unique names.
         nodes = {}
@@ -1087,10 +1094,19 @@ def cstmGenerateItemSvg(item, nodes=None, root=None, options={}):
                 
     ## Skip hidden items
     if hasattr(item, 'isVisible') and not item.isVisible():
+        # Reset color plots back to previous values after export is complete
+        if isinstance(refItem, pg.PlotItem):
+            if hasattr(refItem, 'prepareForExport'):
+                refItem.resetAfterExport()
+
         return None
         
     ## If this item defines its own SVG generator, use that.
     if hasattr(item, 'generateSvg'):
+        # Reset color plots back to previous values after export is complete
+        if isinstance(refItem, pg.PlotItem):
+            if hasattr(refItem, 'prepareForExport'):
+                refItem.resetAfterExport()
         return item.generateSvg(nodes)
     
 
@@ -1113,6 +1129,7 @@ def cstmGenerateItemSvg(item, nodes=None, root=None, options={}):
             rootPos = QtCore.QPoint(0,0)
         else:
             rootPos = root.scenePos()
+
         tr2 = QtGui.QTransform()
         tr2.translate(-rootPos.x(), -rootPos.y())
         tr = tr * tr2
@@ -1206,6 +1223,11 @@ def cstmGenerateItemSvg(item, nodes=None, root=None, options={}):
         childGroup.appendChild(cg)  ### this isn't quite right--some items draw below their parent (good enough for now)
         defs.extend(cdefs)
 
+    # Reset color plots back to previous values after export is complete
+    if isinstance(refItem, pg.PlotItem):
+        if hasattr(refItem, 'prepareForExport'):
+            refItem.resetAfterExport()
+
     return g1, defs
 
 
@@ -1249,7 +1271,7 @@ def correctCoordinates(node, defs, item, options):
         else:
             vals = [float(a) for a in match.groups()[0].split(',')]
         tr = np.array([[vals[0], vals[2], vals[4]], [vals[1], vals[3], vals[5]]])
-        
+
         removeTransform = False
         for ch in grp.childNodes:
             if not isinstance(ch, xml.Element):
