@@ -1,6 +1,7 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
+from plotAppearance import DynamicPlotApp
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
@@ -630,6 +631,8 @@ class SpectrogramPlotItem(pg.PlotItem):
         axisItems = {'bottom':dateAxis, 'left':leftAxis}
 
         # Initialize default pg.PlotItem settings
+        self.plotAppr = None
+        self.plotApprAct = None
         pg.PlotItem.__init__(self, viewBox=vb, axisItems=axisItems)
 
         # Set log/linear scaling after initialization
@@ -640,6 +643,29 @@ class SpectrogramPlotItem(pg.PlotItem):
         vb.enableAutoRange(x=False, y=False)
 
         self.plotSetup() # Additional plot appearance set up
+
+    def openPlotAppearance(self):
+        self.closePlotAppearance()
+        self.plotAppr = DynamicPlotApp(self, [self])
+        self.plotAppr.show()
+
+    def closePlotAppearance(self):
+        if self.plotAppr:
+            self.plotAppr.close()
+            self.plotAppr = None
+
+    def getPlotApprMenu(self):
+        self.plotApprAct = QtWidgets.QAction('Change Plot Appearance...')
+        self.plotApprAct.triggered.connect(self.openPlotAppearance)
+        self.stateGroup.autoAdd(self.plotApprAct)
+        return self.plotApprAct
+
+    def getMenu(self, event):
+        return self.getPlotApprMenu()
+
+    def getContextMenus(self, event):
+        pltMenu = self.getPlotApprMenu()
+        return pltMenu
 
     def isSpecialPlot(self):
         return True
@@ -1082,6 +1108,8 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
     def closeEvent(self, ev):
         self.closeLineTool()
         self.window.endGeneralSelect()
+        if self.ui.plotItem:
+            self.ui.plotItem.closePlotAppearance()
         self.window.clearStatusMsg()
         self.wasClosed = True
 
@@ -1444,6 +1472,7 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         self.window = window
         self.wasClosed = False
 
+        self.cohPlt, self.phaPlt = None, None
         self.gradRange = None # Custom color gradient range
         self.lastCalc = None # Previously calculated values, if any
 
@@ -1468,6 +1497,10 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
     def closeEvent(self, ev):
         self.closeLineTool()
         self.window.endGeneralSelect()
+        if self.cohPlt:
+            self.cohPlt.closePlotAppearance()
+        if self.phaPlt:
+            self.phaPlt.closePlotAppearance()
         self.window.clearStatusMsg()
         self.wasClosed = True
         self.close()

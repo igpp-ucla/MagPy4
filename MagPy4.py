@@ -1674,7 +1674,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             #la.setWidth(50) # this also kinda works but a little space wasteful, saving as reminder incase dynamic solution messes up
 
             ba = pi.getAxis('bottom')
-            #ba.style['textFillLimits'] = [(0,1.1)]
+            ba.style['textFillLimits'] = [(2, 0.45)]
             ta = pi.getAxis('top')
             ra = pi.getAxis('right')
             ta.show()

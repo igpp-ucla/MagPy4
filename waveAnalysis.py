@@ -728,6 +728,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.avgDict = {}
 
         self.lastCalc = None # Stores last calculated times, freqs, values
+        self.plotItem = None
 
         self.ui.setupUI(self, window, self.defParams.keys())
         self.ui.updtBtn.clicked.connect(self.update)
@@ -743,6 +744,8 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.closeLineTool()
         self.closePreSelectWin()
         self.window.endGeneralSelect()
+        if self.plotItem:
+            self.plotItem.closePlotAppearance()
 
     def setUserSelections(self):
         if self.preWindow:

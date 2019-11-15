@@ -354,6 +354,7 @@ class DateAxis(pg.AxisItem):
         self.tm = TimeManager(0, 0, self.epoch)
         pg.AxisItem.__init__(self, orientation, pen, linkView, None,
                             maxTickLength,showValues)
+
         # Dictionary holding default increment values for ticks
         self.modeToDelta = {}
         self.modeToDelta['DAY'] = timedelta(hours=6)
@@ -362,7 +363,55 @@ class DateAxis(pg.AxisItem):
         self.modeToDelta['MS'] = timedelta(milliseconds=500)
         # String used by strftime/strptime to parse UTC strings
         self.fmtStr = '%Y %j %b %d %H:%M:%S.%f'
+
+        # Custom tick spacing
         self.tickDiff = None
+
+        # Custom label formatting
+        self.labelFormat = None
+        self.timeModes = ['DATE', 'DATE HH:MM', 'DATE HH:MM:SS', 'HH',
+            'HH:MM', 'HH:MM:SS', 'MM', 'MM:SS', 'MM:SS.SSS', 'SS.SSS']
+        self.refIndices = [[1,2], [1,2,3,4], [1,2,3,4,5], [3], [3,4],
+            [3,4,5], [4], [4,5], [4,5,6], [5,6]] # Sections of time to use for each time mode
+        self.kwSeparators = [' ', ' ', ' ', ':', ':', '.', ' '] # Suffix for each time section
+        self.timeDict = {} # Maps time modes to indices
+        for timeMode, indexLst in zip(self.timeModes, self.refIndices):
+            self.timeDict[timeMode] = indexLst
+
+    def splitTimestamp(self, tmstmp):
+        # Break down timestamp into its components and return a list of strings
+        dateSplit = tmstmp.split(' ')
+        year = dateSplit[0]
+        month = dateSplit[2]
+        day = dateSplit[3]
+
+        # Split time into its units
+        timeSplit1 = dateSplit[4].split(':')
+        timeSplit2 = timeSplit1[2].split('.')
+        hours, minutes = timeSplit1[0:2]
+        seconds, ms = timeSplit2[0:2]
+
+        return [year, month, day, hours, minutes, seconds, ms]
+
+    def setLabelFormat(self, kw):
+        self.labelFormat = kw
+        # Update axis label
+        if self.label and (self.label.isVisible()):
+            kw = kw.strip('DATE ')
+            if kw == '':
+                kw = 'Time'
+            self.setLabel(kw)
+        self.picture = None
+        self.update()
+
+    def resetLabelFormat(self):
+        self.labelFormat = None
+        # Reset axis label
+        if self.label and (self.label.isVisible()):
+            label = self.tm.getTimeLabel(self.tm.getSelectedTimeRange())
+            self.setLabel(label)
+        self.picture = None
+        self.update()
 
     def setRange(self, mn, mx):
         pg.AxisItem.setRange(self, mn, mx)
@@ -371,22 +420,61 @@ class DateAxis(pg.AxisItem):
 
     # Format a timestamp according to format underneath axis
     def fmtTimeStmp(self, times):
+        # Get a formatted timestamp based on user-set format or default format
         splits = times.split(' ')
         t = splits[4]
 
+        if self.labelFormat:
+            fmt = self.labelFormat
+            return self.specificSplitStr(times, fmt)
+        else:
+            fmt = self.defaultLabelFormat()
+            return self.formatSplitStr(splits, t, fmt)
+
+    def specificSplitStr(self, timestamp, fmt):
+        # Get indices associated with label format and split timestamp into components
+        indices = self.timeDict[fmt]
+        splitStr = self.splitTimestamp(timestamp)
+
+        # Build timestamp from components corresp. to indices, using the
+        # appropriate suffix/prefix as needed
+        newStr = ''
+        for index in indices[::-1]:
+            if newStr != '':
+                sep = self.kwSeparators[index]
+                newStr = splitStr[index] + sep + newStr
+            else:
+                newStr = splitStr[index]
+        return newStr
+
+    def defaultLabelFormat(self):
+        # Get time label format based on range visible
         if self.timeRange is not None:
             rng = abs(self.timeRange[1] - self.timeRange[0])
         else:
             rng = self.tm.getSelectedTimeRange()
+        
+        fmt = 'MS' # Show mm:ss.mmm
 
-        if rng > self.tm.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
-            return f'{splits[2]} {splits[3]} {t.split(":")[0]}:{t.split(":")[1]}'
+        if rng > self.tm.dayCutoff: # if over day show MMM dd hh:mm:ss
+            fmt = 'DAY'
         elif rng > self.tm.hrCutoff: # if over half hour show hh:mm:ss
-            return t.rsplit('.',1)[0]
+            fmt = 'HR'
         elif rng > self.tm.minCutoff: # if over 10 seconds show mm:ss
+            fmt = 'MIN'
+        
+        return fmt
+
+    def formatSplitStr(self, splits, t, fmt='MS'):
+        # Format timestamp based on selected keyword
+        if fmt == 'DAY':
+            return f'{splits[2]} {splits[3]} {t.split(":")[0]}:{t.split(":")[1]}'
+        elif fmt == 'HR':
+            return t.rsplit('.',1)[0]
+        elif fmt == 'MIN':
             return t.split(':',1)[1].split('.')[0]
         else:
-            return t.split(':',1)[1] # else show mm:ss.mmm
+            return t.split(':',1)[1] 
 
     # Helper functions for convert between datetime obj, timestamp, and tick val
     def tmstmpToDateTime(self, timeStr):
