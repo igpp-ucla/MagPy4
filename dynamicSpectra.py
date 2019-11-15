@@ -532,6 +532,7 @@ class SpectraLine(pg.PlotCurveItem):
         self.freq = freq
         self.colors = colors
         self.times = times
+        self.drawEdges = False
         # Used to update window's status bar w/ the clicked value if passed
         self.window = window
         self.prevPaths = []
@@ -552,6 +553,26 @@ class SpectraLine(pg.PlotCurveItem):
             p2.addRect(x0, fillLevel, x1-x0, yVal-fillLevel)
             self.prevPaths.append(p2)
 
+    def getCornerPaths(self):
+        # Generates paths for the bottom and right edges of each 'square'
+        yVal = self.yData[0]
+        paths = []
+        viewPixelSize = self.getViewBox().viewPixelSize()
+        pixWidth, pixHeight = viewPixelSize
+        pixWidth = pixWidth/2
+        # Draws filled rects for every point using designated colors
+        for pairNum in range(0, len(self.colors)):
+            # Create a rectangle path
+            x0 = self.times[pairNum]
+            x1 = self.times[pairNum+1]
+            fillLevel = self.opts['fillLevel']
+            pt1 = QtCore.QPointF(x0+pixWidth, fillLevel)
+            p2 = QtGui.QPainterPath(pt1)
+            p2.lineTo(x1, fillLevel)
+            p2.lineTo(x1, yVal)
+            paths.append(p2)
+        return paths
+
     def paint(self, p, opt, widget):
         if self.xData is None or len(self.xData) == 0:
             return
@@ -561,6 +582,15 @@ class SpectraLine(pg.PlotCurveItem):
         if self.prevPaths == []:
             self.setupPath(p)
 
+        if self.drawEdges: # Draw edge paths when exporting image as SVG
+            cornerPaths = self.getCornerPaths()
+            for pairNum in range(0, len(self.colors)):
+                color = self.colors[pairNum]
+                p2 = cornerPaths[pairNum]
+                pen = pg.mkPen(color)
+                p.setPen(pen)
+                p.drawPath(p2)
+
         # Draws filled rects for every point using designated colors
         for pairNum in range(0, len(self.colors)):
             # Create a rectangle path
@@ -568,6 +598,7 @@ class SpectraLine(pg.PlotCurveItem):
             # Find the corresponding color and fill the rectangle
             color = self.colors[pairNum]
             p.fillPath(p2, color)
+
 
     def mouseClickEvent(self, ev):
         if self.window is None:
@@ -819,6 +850,7 @@ class SpectrogramPlotItem(pg.PlotItem):
             if pdi in self.lines:
                 pdi.times = pdi.times - self.baseOffset
                 pdi.prevPaths = []
+                pdi.drawEdges = True
             pdi.setData(x=pdi.xData-self.baseOffset, y=pdi.yData)
             pdi.update()
 
@@ -841,6 +873,7 @@ class SpectrogramPlotItem(pg.PlotItem):
             for pdi in pdis:
                 if pdi in self.lines:
                     pdi.times = pdi.times + self.baseOffset
+                    pdi.drawEdges = False
                 pdi.setData(x=pdi.xData+self.baseOffset, y=pdi.yData)
                 pdi.prevPaths = []
                 pdi.path = None
