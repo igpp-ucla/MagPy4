@@ -664,6 +664,7 @@ class SpectrogramPlotItem(pg.PlotItem):
         # Initialize default pg.PlotItem settings
         self.plotAppr = None
         self.plotApprAct = None
+        self.plotMenuEnabled = True
         pg.PlotItem.__init__(self, viewBox=vb, axisItems=axisItems)
 
         # Set log/linear scaling after initialization
@@ -674,6 +675,12 @@ class SpectrogramPlotItem(pg.PlotItem):
         vb.enableAutoRange(x=False, y=False)
 
         self.plotSetup() # Additional plot appearance set up
+
+    def setPlotMenuEnabled(self, val=True):
+        if val:
+            self.plotMenuEnabled = True
+        else:
+            self.plotMenuEnabled = False
 
     def openPlotAppearance(self):
         self.closePlotAppearance()
@@ -691,12 +698,12 @@ class SpectrogramPlotItem(pg.PlotItem):
         self.stateGroup.autoAdd(self.plotApprAct)
         return self.plotApprAct
 
-    def getMenu(self, event):
-        return self.getPlotApprMenu()
-
     def getContextMenus(self, event):
-        pltMenu = self.getPlotApprMenu()
-        return pltMenu
+        if self.plotMenuEnabled:
+            plotApp = self.getPlotApprMenu()
+            return [plotApp, self.ctrlMenu]
+        else:
+            return self.ctrlMenu
 
     def isSpecialPlot(self):
         return True

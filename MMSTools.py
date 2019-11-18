@@ -1971,12 +1971,15 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
 
             pltNum += 1
 
+        # Set time label for bottom axis and adjust margins for gradient bar
+        plt = self.plotItems[-1]
+        grad = self.gradients[-1]
+        grad.setOffsets(1, 45, 0, 0)
+        plt.getAxis('bottom').showLabel(True)
+
         # Add in time and file info labels
-        lbl = self.window.getTimeLabel(abs(times[-1]-times[0]))
-        lbl = pg.LabelItem(lbl)
-        self.ui.glw.addItem(lbl, pltNum + 1, 1, 1, 1)
         lbl = self.getTimeRangeLbl(times[0], times[-1])
-        self.ui.glw.addItem(lbl, pltNum + 2, 0, 1, 3)
+        self.ui.glw.addItem(lbl, pltNum + 1, 0, 1, 3)
 
         self.ui.statusBar.clearMessage()
 
@@ -1991,6 +1994,8 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
     def closeEvent(self, ev):
         self.ui.glw.clear()
         self.window.endGeneralSelect()
+        for plt in self.plotItems:
+            plt.closePlotAppearance()
         self.wasClosed = True
         self.close()
 
@@ -2229,5 +2234,7 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
 
     def closeEvent(self, ev):
         self.window.endGeneralSelect()
+        for plt in self.plotItems:
+            plt.closePlotAppearance()
         self.wasClosed = True
         self.close()
