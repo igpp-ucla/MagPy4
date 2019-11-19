@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QSizePolicy
 
 from plotAppearance import DynamicPlotApp
 import pyqtgraph as pg
-from scipy import fftpack
+from scipy import fftpack, signal
 import numpy as np
 from MagPy4UI import TimeEdit, NumLabel
 from pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, DateAxis, StackedAxisLabel
@@ -314,8 +314,10 @@ class SpectraBase(object):
             return None
         return freq
 
-    def getfft(self, dstr, en, i0, i1):
+    def getfft(self, dstr, en, i0, i1, detrend=False):
         data = self.window.getData(dstr, en)[i0:i1]
+        if detrend:
+            data = signal.detrend(data)
         fft = fftpack.rfft(data.tolist())
         return fft
 
@@ -955,6 +957,7 @@ class DynamicSpectraUI(BaseLayout):
         shiftTip = 'Number of data points to move forward after each FFT calculation'
         fftIntTip = 'Number of data points to use per FFT calculation'
         scaleTip = 'Scaling mode that will be used for y-axis (frequencies)'
+        detrendTip = 'Detrend data using the least-squares fit method before each FFT is applied '
 
         spacer = QtWidgets.QSpacerItem(10, 1)
 
@@ -962,6 +965,10 @@ class DynamicSpectraUI(BaseLayout):
         self.updateBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.addLineBtn = QtWidgets.QPushButton('Add Line')
         self.addLineBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        self.detrendCheck = QtWidgets.QCheckBox(' Detrend Data')
+        self.detrendCheck.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        self.detrendCheck.setToolTip(detrendTip)
 
         # Set up FFT parameter widgets
         self.addPair(settingsLt, lbls[0], self.fftInt, 0, 0, 1, 1, fftIntTip)
@@ -971,7 +978,21 @@ class DynamicSpectraUI(BaseLayout):
         # Set up data variable parameters
         self.addPair(settingsLt, lbls[3], self.dstrBox, 0, 2, 1, 1)
         self.addPair(settingsLt, lbls[4], self.scaleModeBox, 1, 2, 1, 1, scaleTip)
-        self.addPair(settingsLt, lbls[5], self.fftDataPts, 2, 2, 1, 1, dtaPtsTip)
+
+        # Set up data points / detrend checkbox layout
+        ptsLt = QtWidgets.QGridLayout()
+        ptsLt.addWidget(self.fftDataPts, 0, 0, 1, 1)
+        spacer = self.getSpacer(10)
+        ptsLt.addItem(spacer, 0, 1, 1, 1)
+        ptsLt.addWidget(self.detrendCheck, 0, 2, 1, 1)
+
+        # Add in data points label and its sublayout to settings layout
+        ptsLbl = QtWidgets.QLabel(lbls[5])
+        ptsLbl.setToolTip(dtaPtsTip)
+        settingsLt.addWidget(ptsLbl, 2, 2, 1, 1)
+        settingsLt.addLayout(ptsLt, 2, 3, 1, 1)
+
+        spacer = QtWidgets.QSpacerItem(10, 1)
         settingsLt.addItem(spacer, 3, 4, 1, 1)
 
         # Set up power min/max checkbox layout
@@ -1109,6 +1130,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         super(DynamicSpectra, self).__init__(parent)
         SpectraBase.__init__(self)
         DynamicAnalysisTool.__init__(self)
+        self.detrendMode = True
 
         # Set up sum of powers plot titles and simple keywords that they map
         # to elsewhere in the DynamicSpectra class
@@ -1117,7 +1139,6 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.spStateKws = {}
         for kw, stateKw in zip(self.sumPowersPlotTypes, stateKws):
             self.spStateKws[kw] = stateKw
-        self.bMagDta = [] # Stores any pre-computed b_mag data
         # Find any plotted vector groups beforehand
         self.vecGrps = window.findPlottedVecGroups()
         self.vecIdentifiers = self.getVecIdentifiers(self.vecGrps)
@@ -1176,6 +1197,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         shift = self.ui.fftShift.value()
         dstr = self.ui.dstrBox.currentText()
         bw = self.ui.bwBox.value()
+        detrendMode = self.ui.detrendCheck.isChecked()
 
         if self.ui.selectToggle.isChecked():
             minGradPower = self.ui.powerMin.value()
@@ -1196,7 +1218,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.ui.initPlot(self.window)
 
         # Generate plot grid and spectrogram from this
-        self.calculate(dataRng, interval, shift, bw, dstr)
+        self.calculate(dataRng, interval, shift, bw, dstr, detrend=detrendMode)
 
         if self.savedLineInfo:
             self.addSavedLine()
@@ -1230,37 +1252,37 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
             index = 0
         return self.vecGrps[index]
 
-    def calcSumOfPowers(self, vecDstrs, bw, startIndex, endIndex):
+    def calcSumOfPowers(self, vecDstrs, bw, startIndex, endIndex, detrend=False):
         # Calculates the spectra for each variable separately and returns the sum
         powers = []
         for dstr in vecDstrs:
-            freqs, power = self.calcSpectra(dstr, bw, startIndex, endIndex)
+            freqs, power = self.calcSpectra(dstr, bw, startIndex, endIndex, detrend=detrend)
             powers.append(np.array(power))
 
         sumOfPowers = powers[0] + powers[1] + powers[2]
         return freqs, sumOfPowers
 
-    def calcMag(self, vecDstrs, startIndex, endIndex):
+    def calcMag(self, vecDstrs, startIndex, endIndex, detrend=False):
         a, b = startIndex, endIndex
         # Computes the magnitude of the vector over the selected interval
         en = self.window.currentEdit
         datas = [self.window.getData(dstr, en)[a:b] ** 2 for dstr in vecDstrs]
         mag = np.sqrt(datas[0] + datas[1] + datas[2])
-        # Fill start so calculations aren't affected by offset
-        mag = np.concatenate([np.empty(startIndex), mag])
+        if detrend:
+            mag = signal.detrend(mag)
         return mag
 
-    def calcMagPower(self, bw, start, end):
+    def calcMagPower(self, vecDstrs, bw, start, end, detrend=False):
         # Similar to calcSpectra but using pre-computed magnitude data
         en = self.window.currentEdit
         N = abs(end-start)
-        data = self.bMagDta[start:end]
+        data = self.calcMag(vecDstrs, start, end, detrend=detrend)
         fft = fftpack.rfft(data.tolist())
         power = self.calculatePower(bw, fft, N)
         freqs = self.calculateFreqList(bw, N)
         return freqs, power
 
-    def calculate(self, dataRng, interval, shift, bw, dstr):
+    def calculate(self, dataRng, interval, shift, bw, dstr, detrend=False):
         shiftAmnt = shift
         minIndex, maxIndex = dataRng
         startIndex, endIndex = minIndex, minIndex + interval
@@ -1273,12 +1295,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         # Get vector var names and computer magnitude of vector if necessary
         if spPlot is not None:
             vecDstrs = self.getVecDstrs(dstr)
-            if spPlot == 'MagPower' or spPlot == 'AbsSumPowers':
-                a, b = minIndex, maxIndex
-                self.bMagDta = self.calcMag(vecDstrs, a, b)
             dstr = vecDstrs[0] # Adjusted for future call to getTimes()
-        else:
-            self.bMagDta = [] # Clear unused magnitude calculation
 
         # Generate the list of powers and times associated w/ each FFT interval
         powerLst = []
@@ -1290,15 +1307,19 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
             # Calculate freqs and powers
             if spPlot is not None:
                 if spPlot == 'SumPowers':
-                    freqs, powers = self.calcSumOfPowers(vecDstrs, bw, startIndex, endIndex)
+                    freqs, powers = self.calcSumOfPowers(vecDstrs, bw, startIndex, 
+                        endIndex, detrend=detrend)
                 elif spPlot == 'MagPower':
-                    freqs, powers = self.calcMagPower(bw, startIndex, endIndex)
+                    freqs, powers = self.calcMagPower(vecDstrs, bw, startIndex,
+                        endIndex, detrend=detrend)
                 else:
-                    freqs, sumPowers = self.calcSumOfPowers(vecDstrs, bw, startIndex, endIndex)
-                    freqs, magPower = self.calcMagPower(bw, startIndex, endIndex)
+                    freqs, sumPowers = self.calcSumOfPowers(vecDstrs, bw, startIndex, 
+                        endIndex, detrend=detrend)
+                    freqs, magPower = self.calcMagPower(vecDstrs, bw, startIndex, 
+                        endIndex, detrend=detrend)
                     powers = np.abs(sumPowers - magPower)
             else:
-                freqs, powers = self.calcSpectra(dstr, bw, startIndex, endIndex)
+                freqs, powers = self.calcSpectra(dstr, bw, startIndex, endIndex, detrend)
             powerLst.append(np.array(powers))
             # Move to next interval
             startIndex += shiftAmnt
@@ -1324,7 +1345,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.ui.statusBar.showMessage('Generating plot...')
         self.createPlot(pixelGrid, freqs, timeSeries, (minPower, maxPower))
 
-    def calcSpectra(self, dstr, bw, start, end):
+    def calcSpectra(self, dstr, bw, start, end, detrend=False):
         """
         Calculate the spectra for the given sub interval
         """
@@ -1333,7 +1354,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         en = self.window.currentEdit
         N = abs(i1-i0)
 
-        fft = self.getfft(dstr, en, i0, i1)
+        fft = self.getfft(dstr, en, i0, i1, detrend=detrend)
         power = self.calculatePower(bw, fft, N)
         freqs = self.calculateFreqList(bw, N)
         return freqs, power
@@ -1451,6 +1472,8 @@ class DynamicCohPhaUI(BaseLayout):
         fftIntTip = 'Number of data points to use per FFT calculation'
         shiftTip = 'Number of data points to move forward after each FFT calculation'
         scaleTip = 'Scaling mode that will be used for y-axis (frequencies)'
+        detrendTip = 'Detrend data using the least-squares fit method before each FFT is applied '
+        ptsTip = 'Total number of data points within selected time range'
 
         tips = [fftIntTip, shiftTip, '']
         boxes = [self.fftInt, self.fftShift, self.bwBox]
@@ -1481,9 +1504,18 @@ class DynamicCohPhaUI(BaseLayout):
             self.boxB.setCurrentIndex(1)
 
         # Set up num points label, bandwidth btn, and update btn
-        self.fftDataPts = QtWidgets.QLabel()
-        ptsTip = 'Total number of data points within selected time range'
-        self.addPair(layout, 'Num Points: ', self.fftDataPts, 2, 3, 1, 1, ptsTip)
+        # Also, add in detrend check box within data pts layout
+        self.detrendCheck = QtWidgets.QCheckBox(' Detrend Data')
+        self.detrendCheck.setToolTip(detrendTip)
+        self.fftDataPts = QtWidgets.QLabel('')
+        ptsLbl = QtWidgets.QLabel('Data Points: ')
+        ptsLbl.setToolTip(ptsTip)
+
+        ptsLt = QtWidgets.QGridLayout()
+        ptsLt.addWidget(self.fftDataPts, 0, 0, 1, 1)
+        ptsLt.addWidget(self.detrendCheck, 0, 1, 1, 1)
+        layout.addWidget(ptsLbl, 2, 3, 1, 1)
+        layout.addLayout(ptsLt, 2, 4, 1, 1)
 
         self.bwBox.setValue(3)
         self.bwBox.setSingleStep(2)
@@ -1555,22 +1587,26 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         shiftAmnt = self.ui.fftShift.value()
         interval = self.ui.fftInt.value()
         nPoints = abs(indexRng[1]-indexRng[0])
+        detrendMode = self.ui.detrendCheck.isChecked()
 
         if self.checkParameters(interval, shiftAmnt, bw, nPoints) == False:
             return
 
-        self.calculate(varA, varB, bw, logMode, indexRng, shiftAmnt, interval)
+        self.calculate(varA, varB, bw, logMode, indexRng, shiftAmnt, 
+            interval, detrendMode)
 
         if self.savedLineInfo: # Add any saved lines
             self.addSavedLine()
 
-    def calculate(self, varA, varB, bw, logMode, indexRng, shiftAmt, interval):
+    def calculate(self, varA, varB, bw, logMode, indexRng, shiftAmt, 
+        interval, detrend=False):
         cohLst, phaLst = [], []
         timeSeries = []
         times = self.window.getTimes(varA, 0)[0]
 
         self.ui.statusBar.showMessage('Calculating...')
 
+        en = self.window.currentEdit
         minIndex, maxIndex = indexRng
         startIndex, endIndex = minIndex, minIndex + interval
         while endIndex < maxIndex:
@@ -1578,8 +1614,8 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
             timeSeries.append(times[startIndex])
             # Calculate ffts and coh/pha
             N = endIndex - startIndex + 1
-            fft1 = self.getfft(varA, 0, startIndex, endIndex)
-            fft2 = self.getfft(varB, 0, startIndex, endIndex)
+            fft1 = self.getfft(varA, en, startIndex, endIndex, detrend=detrend)
+            fft2 = self.getfft(varB, en, startIndex, endIndex, detrend=detrend)
             coh, pha = self.calculateCoherenceAndPhase(bw, fft1, fft2, N)
             cohLst.append(coh)
             phaLst.append(pha)

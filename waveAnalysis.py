@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import QSizePolicy
 from dynamicSpectra import DynamicAnalysisTool, SpectrogramPlotItem, PhaseSpectrogram
 from layoutTools import BaseLayout
 from pyqtgraphExtensions import StackedAxisLabel
-from scipy import fftpack
+from scipy import fftpack, signal
 import pyqtgraph as pg
 
 import multiprocessing
@@ -536,10 +536,25 @@ class DynamicWaveUI(BaseLayout):
             for dstrLst, box in zip(axisDstrs, self.vectorBoxes):
                 box.addItems(dstrLst)
 
-        # Setup data points indicator
+        # Setup data points indicator and detrend checkbox
         self.fftDataPts = QtWidgets.QLabel()
         ptsTip = 'Total number of data points within selected time range'
-        self.addPair(layout, 'Data Points: ', self.fftDataPts, 2, 0, 1, 1, ptsTip)
+
+        self.detrendCheck = QtWidgets.QCheckBox(' Detrend Data')
+        self.detrendCheck.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        detrendTip = 'Detrend data using the least-squares fit method before each FFT is applied '
+        self.detrendCheck.setToolTip(detrendTip)
+
+        ptsLt = QtWidgets.QGridLayout()
+        ptsLt.addWidget(self.fftDataPts, 0, 0, 1, 1)
+        spacer = self.getSpacer(10)
+        ptsLt.addItem(spacer, 0, 1, 1, 1)
+        ptsLt.addWidget(self.detrendCheck, 0, 2, 1, 1)
+
+        ptsLbl = QtWidgets.QLabel('Data Points: ')
+        ptsLbl.setToolTip(ptsTip)
+        layout.addWidget(ptsLbl, 2, 0, 1, 1)
+        layout.addLayout(ptsLt, 2, 1, 1, 1)
 
         # Set up FFT parameters layout
         fftLt = self.setupFFTLayout()
@@ -769,12 +784,14 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         dtaRng = self.getDataRange()
         bw = self.ui.bwBox.value()
         logScale = False if self.ui.scaleModeBox.currentText() == 'Linear' else True
+        detrendMode = self.ui.detrendCheck.isChecked()
 
         # Error checking for user parameters
         if self.checkParameters(fftInt, fftShift, bw, dtaRng[1]-dtaRng[0]) == False:
             return
 
-        self.updateCalculations(plotType, fftInt, fftShift, dtaRng, bw, logScale)
+        self.updateCalculations(plotType, fftInt, fftShift, dtaRng, bw, 
+            logScale, detrendMode)
 
         if self.savedLineInfo: # Add any saved lines
             self.addSavedLine()
@@ -792,17 +809,18 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         fullDta[dtaRng[0]:dtaRng[1]] = magDta
         return list(fullDta)
 
-    def processGrp(self, grp, plotType, bw, numFreqs, magDta, prcNum, resQueue):
+    def processGrp(self, grp, plotType, bw, numFreqs, magDta, prcNum, resQueue, detrendMode):
         # Calculates each column in a section of the plot grid and
         # places it in the result queue
         valGrid = []
         for startIndex, stopIndex in grp:
             dta = self.calcWaveAveraged(plotType, (startIndex, stopIndex), bw,
-                numFreqs, magDta=magDta)
+                numFreqs, magDta=magDta, detrendMode=detrendMode)
             valGrid.append(dta)
         resQueue.put((prcNum, valGrid))
 
-    def updateCalculations(self, plotType, fftInt, fftShift, dtaRng, bw, logScale):
+    def updateCalculations(self, plotType, fftInt, fftShift, dtaRng, bw, 
+        logScale, detrend=False):
         self.ui.glw.clear() # Clear any previous grid elements
 
         # Get selected indices and times
@@ -858,7 +876,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             mpQueue = Queue()
             for prcNum in range(0, self.numThreads):
                 grp = grps[prcNum]
-                args = (grp, plotType, bw, numFreqs, magDta, prcNum, mpQueue)
+                args = (grp, plotType, bw, numFreqs, magDta, prcNum, mpQueue, detrend)
                 p = Process(target=self.processGrp, args=args)
                 prcLst.append(p)
                 p.start()
@@ -886,13 +904,12 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         else: # Otherwise entire grid sequentially
             for startIndex, stopIndex in indexPairs:
                 dta = self.calcWaveAveraged(plotType, (startIndex, stopIndex), bw,
-                    numFreqs, magDta=magDta)
+                    numFreqs, magDta=magDta, detrendMode=detrend)
                 valGrid.append(dta)
             valGrid = np.array(valGrid)
 
         # Transpose to turn time result rows into columns
         valGrid = valGrid.T
-
         # Calculate frequencies for plotting and extra frequency for lower bound
         freqs = self.calculateFreqList(bw, fftInt)
         self.lastCalc = (timeStops, freqs, valGrid)
@@ -962,44 +979,48 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
         self.ui.statusBar.clearMessage()
 
-    def getAvg(self, dstr, en, iO, iE):
+    def getAvg(self, dstr, en, iO, iE, detrendMode=False):
         # Calculate average or get from dictionary
-        dta = self.window.getData(dstr, en)
-        avg = np.mean(dta[iO:iE])
+        dta = self.window.getData(dstr, en)[iO:iE]
+        if detrendMode:
+            dta = signal.detrend(dta)
+        avg = np.mean(dta)
         return avg
 
-    def getfft(self, dstr, en, iO, iE):
-        res = DynamicAnalysisTool.getfft(self, dstr, en, iO, iE)
+    def getfft(self, dstr, en, iO, iE, detrend=False):
+        res = DynamicAnalysisTool.getfft(self, dstr, en, iO, iE, detrend=detrend)
         return res
 
     def getNorm(self, v):
         # Faster than np.linalg.norm
         return np.sqrt(np.dot(v,v))
 
-    def calcWaveAveraged(self, plotType, dtaRng, bw, numFreqs, magDta=None):
+    def calcWaveAveraged(self, plotType, dtaRng, bw, numFreqs, magDta=None, detrendMode=False):
         halfBw = int((bw-1)/2) # Num of frequencies on either side of freqNum
 
         # Calculate the bw-averaged wave parameter over the data range
-        sumMats, magfft = self.getAvgMats(dtaRng, numFreqs, bw, magDta)
+        sumMats, magfft = self.getAvgMats(dtaRng, numFreqs, bw, magDta, detrendMode=detrendMode)
         averagedDta = self.calcWave(plotType, (halfBw, numFreqs-halfBw), dtaRng, 
-            bw, sumMats, magfft)
+            bw, sumMats, magfft, detrend=detrendMode)
 
         return averagedDta
 
-    def getAvgMats(self, dtaRng, numFreqs, bw, magDta=None):
+    def getAvgMats(self, dtaRng, numFreqs, bw, magDta=None, detrendMode=False):
         # Computes all the bw-averaged spectral mats for every valid freq index
         minIndex, maxIndex = dtaRng
         halfBw = int((bw-1)/2)
 
         en = self.window.currentEdit
         dstrs = [box.currentText() for box in self.ui.vectorBoxes]
-        ffts = [self.getfft(dstr, en, minIndex, maxIndex) for dstr in dstrs]
+        ffts = [self.getfft(dstr, en, minIndex, maxIndex, detrend=detrendMode) for dstr in dstrs]
 
         # Also pre-computes the magnitude fft used to calculate compressional
         # power if needed
         magfft = None
         if magDta is not None:
             subsetDta = magDta[minIndex:maxIndex]
+            if detrendMode:
+                subsetDta = signal.detrend(subsetDta)
             magfft = fftpack.rfft(subsetDta)
 
         # Complex version of calculations
@@ -1055,7 +1076,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             thbk = Mth.R2D * math.acos(q/norm)
         return thbk
 
-    def calcWave(self, plotType, indexRange, dtaRng, bw, sumMats, magfft=None):
+    def calcWave(self, plotType, indexRange, dtaRng, bw, sumMats, magfft=None, detrend=False):
         minIndex, maxIndex = dtaRng
         numPoints = maxIndex - minIndex
         valLst = []
@@ -1069,7 +1090,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             avg = []
             for dstr in [box.currentText() for box in self.ui.vectorBoxes]:
                 sI, eI = dtaRng
-                dstrAvg = self.getAvg(dstr, self.window.currentEdit, sI, eI)
+                dstrAvg = self.getAvg(dstr, self.window.currentEdit, sI, eI, detrend)
                 avg.append(dstrAvg)
         
         if plotType == 'Compressional Power':
