@@ -261,6 +261,12 @@ class MagPyAxisItem(pg.AxisItem):
             w += self.label.boundingRect().height() * 0.8  # bounding rect is usually an overestimate
         return w + 10 # 10 extra to offset if in scientific notation
 
+    def tickSpacing(self, minVal, maxVal, size):
+        if self.logMode:
+            return LogAxis.tickSpacing(self, minVal, maxVal, size)
+        else:
+            return pg.AxisItem.tickSpacing(self, minVal, maxVal, size)
+
 #todo show minor ticks on left side
 #hide minor tick labels always
 class LogAxis(pg.AxisItem):
@@ -702,6 +708,10 @@ class LinearGraphicsLayout(pg.GraphicsWidget):
 
 # same as pdi but with better down sampling (bds)
 class PlotDataItemBDS(pg.PlotDataItem):
+    def __init__(self, *args, **kwargs):
+        pg.PlotDataItem.__init__(self, *args, **kwargs)
+
+class MagPyPlotDataItem(pg.PlotDataItem):
     def __init__(self, *args, **kwargs):
         pg.PlotDataItem.__init__(self, *args, **kwargs)
 

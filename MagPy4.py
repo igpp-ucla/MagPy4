@@ -37,7 +37,7 @@ from edit import Edit
 from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
-from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem
+from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem, MagPyPlotDataItem
 from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
 from detrendWin import DetrendWindow
 from dynamicSpectra import DynamicSpectra, DynamicCohPha
@@ -1652,8 +1652,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
 
-            pi.setDownsampling(ds=1, auto=True, mode='peak')
-
             pi.ctrl.logYCheck.toggled.connect(functools.partial(self.updateLogScaling, plotIndex))
 
             # add some lines used to show where time series sliders will zoom to
@@ -1864,8 +1862,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             if self.ui.drawPoints.isChecked():
                 pdi = PlotPointsItem(ofstTimes, Y, pen=pen, connect=segs)
             else:
-                pdi = pg.PlotCurveItem(ofstTimes, Y, pen=pen, connect=segs)
+                pdi = MagPyPlotDataItem(ofstTimes, Y, pen=pen, connect=segs)
             pi.addItem(pdi)
+
         else:
             if self.ui.drawPoints.isChecked():
                 pi.addItem(PlotPointsItem(ofstTimes, Y, pen=pen))
