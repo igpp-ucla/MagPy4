@@ -341,7 +341,7 @@ class DynamicPlotApp(PlotAppearance):
         self.ui.tabWidget.removeTab(1)
 
     def allowLeftAxisEditing(self):
-        return False
+        return True
 
 class TickIntervalsUI(BaseLayout):
     def setupUI(self, Frame, window, plotItems, links):

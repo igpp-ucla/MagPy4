@@ -298,7 +298,7 @@ class LogAxis(pg.AxisItem):
     def tickSpacing(self, minVal, maxVal, size):
         if self.logMode:
             if self.tickDiff:
-                return [(self.tickDiff, 0)]
+                return [(self.tickDiff, 0), (self.tickDiff, 0)]
             else:
                 return [(10.0,0),(1.0,0),(0.5,0)]
         return pg.AxisItem.tickSpacing(self,minVal,maxVal,size)
