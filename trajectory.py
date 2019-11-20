@@ -1102,13 +1102,15 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         # Mask out data points where an error flag is seen for any value
         mask = [True] * len(times)
         for arr in [xDta, yDta, xField, yField, times]:
+            if len(arr) < 1:
+                continue
             subMask = arr < self.outerFrame.window.errorFlag
             mask = mask & (subMask) # AND operation between masks
 
         xDta = xDta[mask]
         yDta = yDta[mask]
-        xField = xField[mask]
-        yField = yField[mask]
+        xField = xField[mask] if len(xField) > 0 else xField
+        yField = yField[mask] if len(yField) > 0 else yField
         times = times[mask]
 
         # Get tick marker width
