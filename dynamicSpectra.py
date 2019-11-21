@@ -1335,12 +1335,16 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.lastCalc = (timeSeries, freqs, pixelGrid)
 
         # Map powers to a color gradient based on min/max values in time series
-        maxPower = np.max(pixelGrid)
-        minPower = np.min(pixelGrid)
+        maxPower = np.max(pixelGrid[pixelGrid>0])
+        minPower = np.min(pixelGrid[pixelGrid>0])
         if self.gradRange is not None and self.wasClosed == False:
             minPower, maxPower = self.gradRange # User-set range
         else:
             self.gradRange = None
+
+        if not self.ui.selectToggle.isChecked():
+            self.ui.powerMin.setValue(np.log10(minPower))
+            self.ui.powerMax.setValue(np.log10(maxPower))
 
         self.ui.statusBar.showMessage('Generating plot...')
         self.createPlot(pixelGrid, freqs, timeSeries, (minPower, maxPower))
