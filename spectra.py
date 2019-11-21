@@ -148,7 +148,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 pi.setLogMode(True, True)
     
         # Manually set y-scale for each row in spectra plots
-        for row in range(0, len(self.rowItems)):
+        for row in self.rowItems:
             self.setYRangeForRow(row)
 
         # Set log mode for coh/pha plots
