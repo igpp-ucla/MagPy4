@@ -513,7 +513,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeMMSTools()
         self.curlometer = Curlometer(self)
         self.initGeneralSelect('Curlometer', '#ffa500', self.curlometer.ui.timeEdit, 
-            'Line', self.showCurlometer, self.updateCurlometer, 
+            'Adjusting', self.showCurlometer, self.updateCurlometer, 
             closeFunc=self.closeCurlometer, maxSteps=-1)
 
     def showCurlometer(self):
@@ -530,7 +530,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeMMSTools()
         self.curvature = Curvature(self)
         self.initGeneralSelect('Curvature', '#ff4242', self.curvature.ui.timeEdit,
-            'Line', self.showCurvature, self.updateCurvature, self.closeCurvature,
+            'Adjusting', self.showCurvature, self.updateCurvature, self.closeCurvature,
             maxSteps=-1)
 
     def showCurvature(self):

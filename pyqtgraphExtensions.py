@@ -58,6 +58,8 @@ class LinkedRegion(pg.LinearRegionItem):
         # Initialize region label at top-most plot
         self.labelPltIndex = 0 if lblPos == 'top' else len(self.plotItems) - 1
         self.setLabel(self.labelPltIndex)
+        if self.linkedTE:
+            self.updateTimeEditByLines(self.linkedTE)
 
     def setLabel(self, plotNum, pos=0.95):
         # Create new label for line

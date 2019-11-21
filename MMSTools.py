@@ -695,6 +695,7 @@ class CurlometerUI(object):
         self.onTopCheckBox = QtWidgets.QCheckBox('Stay On Top')
         self.onTopCheckBox.setChecked(True)
         btmLt.addWidget(self.timeEdit.start)
+        btmLt.addWidget(self.timeEdit.end)
         btmLt.addWidget(self.onTopCheckBox)
         btmLt.addStretch()
 
@@ -1069,7 +1070,7 @@ class CurvatureUI(object):
         self.progBar.setVisible(False)
 
         settingsLt = QtWidgets.QHBoxLayout()
-        for e in [self.timeEdit.start, self.progBar, self.stayOnTopChk]:
+        for e in [self.timeEdit.start, self.timeEdit.end, self.progBar, self.stayOnTopChk]:
             settingsLt.addWidget(e)
 
         layout.addLayout(settingsLt, 4, 0, 1, 2)
