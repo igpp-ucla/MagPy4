@@ -36,6 +36,10 @@ class MagPy4UI(object):
         self.actionOpenCDF.setText('Open &CDF File...')
         self.actionOpenCDF.setStatusTip('Opens a CDF file (currently experimental)')
 
+        self.actionOpenASCII = QtWidgets.QAction(window)
+        self.actionOpenASCII.setText('Open ASCII File...')
+        self.actionOpenASCII.setStatusTip('Opens a simple ASCII file')
+
         self.actionExportFF = QtWidgets.QAction(window)
         self.actionExportFF.setText('Export Flat File...')
         self.actionExportFF.setStatusTip('Exports current flat file with edited data')
@@ -149,8 +153,7 @@ class MagPy4UI(object):
         self.fileMenu.addAction(self.actionOpenFF)
         self.fileMenu.addAction(self.actionAddFF)
         self.fileMenu.addSeparator()
-        self.fileMenu.addAction(self.actionOpenCDF)
-        self.fileMenu.addAction(self.actionExportFF)
+        self.fileMenu.addAction(self.actionOpenASCII)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.switchMode)
         self.fileMenu.addSeparator()
@@ -339,8 +342,8 @@ class MagPy4UI(object):
         # Create an HBox layout for every row, and add stretch factors
         # to center everything
         startLt.addStretch(12)
-        for itmGrp in [[nameLabel], None, [modeLbl, self.modeComboBx, openFFBtn],
-                        [self.saveModeChkBx], None]:
+        for itmGrp in [[nameLabel], None, [modeLbl, self.modeComboBx, openFFBtn], 
+            [self.saveModeChkBx], None]:
             if itmGrp is None: # Use None to represent spacers
                 startLt.addStretch(1)
                 continue

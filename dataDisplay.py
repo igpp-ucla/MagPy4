@@ -259,10 +259,8 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 
     def updateFile(self):
         nRows = self.curFID.getRows()
-        records = self.curFID.DID.sliceArray(row=1, nRow=nRows)
-        self.time = records["time"]
-        self.dataByRec = records["data"]
-        self.dataByCol = FF_File.arrayToColumns(records["data"])
+        self.time, self.dataByRec = self.curFID.getRecords()
+        self.dataByCol = np.transpose(self.dataByRec)
 
     def edtdDtaMode(self):
         if self.ui.viewEdtdDta.isChecked():
@@ -422,16 +420,14 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.setWindowTitle(self.title)
 
         # Create header
-        parm = self.curFID.FFParm
-        info = self.curFID.FFInfo
-        self.headerStrings = self.curFID.getColumnDescriptor('NAME')
-        units = self.curFID.getColumnDescriptor('UNITS')
+        self.headerStrings = self.curFID.getLabels()
+        units = self.curFID.getUnits()
         header = [f'{h} ({u})' if u else f'{h}' for h,u in zip(self.headerStrings,units)]
 
         # Update row settings in table
         nRow = self.curFID.getRows()
-        rO = self.curFID.ffsearch(self.time[0], 1, nRow)
-        rE = self.curFID.ffsearch(self.time[-1], 1, nRow)
+        rO = self.curFID.ffSearch(self.time[0], 1, nRow)
+        rE = self.curFID.ffSearch(self.time[-1], 1, nRow)
         if rE is None:
             rE = nRow
         self.ui.Row.setMinimum(rO)
@@ -465,7 +461,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         if fullname[0] == '':
             print('Save cancelled')
             return
-        epoch = self.curFID.FFParm["EPOCH"].value
+        epoch = self.getEpoch()
 
         # Shape data
         selectedDta = self.dataByRec

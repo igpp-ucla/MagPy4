@@ -40,6 +40,7 @@ from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem, MagPyPlotDataItem
 from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
 from detrendWin import DetrendWindow
+from ASCII_Importer import Asc_Importer
 from dynamicSpectra import DynamicSpectra, DynamicCohPha
 from waveAnalysis import DynamicWave
 from trajectory import TrajectoryAnalysis
@@ -108,6 +109,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True))
         self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False))
         self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False,True))
+        self.ui.actionOpenASCII.triggered.connect(functools.partial(self.openFileDialog, False, True, True))
+
         self.ui.actionExportFF.triggered.connect(self.exportFlatFile)
         self.ui.actionExit.triggered.connect(self.close)
         self.ui.actionShowData.triggered.connect(self.showData)
@@ -171,6 +174,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.savedRegion = None
         self.fixedSelect = None
         self.timeSelect = None
+        self.asc = None
 
         # MMS Tools
         self.planeNormal = None
@@ -902,9 +906,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         return filename
 
-    def openFileDialog(self, isFlatfile, clearCurrent):
+    def openFileDialog(self, isFlatfile, clearCurrent, asciiFile=False):
         if isFlatfile:
             fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='Flat Files (*.ffd)')[0]
+        elif asciiFile:
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='ASCII Files (*.csv *.tsv *.txt)')[0]
         else:
             fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
 
@@ -917,22 +923,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             print(f'No files selected, cancelling open operation')
             return
 
-        if self.startUp:
-            self.ui.setupView()
-            self.startUp = False
-            self.ui.showMMSMenu(not self.insightMode)
-            self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
-
         if clearCurrent:
             for fid in self.FIDs:
                 fid.close()
             self.FIDs = []
+            self.nonFFFIDs = []
             self.initDataStorageStructures()
 
         for fileName in fileNames:
             if isFlatfile:        
                 fileName = fileName.rsplit(".", 1)[0] #remove extension
                 self.openFF(fileName)
+            elif asciiFile:
+                self.openAscDialog(fileName)
+                return
             else:
                 # temp solution because this still causes other problems
                 # mainly need to add conversions for the different time formats
@@ -942,10 +946,72 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     print(e)
                     print('CDF LOAD FAILURE')
 
+        self.finishOpenFileSetup()
+
+    def finishOpenFileSetup(self):
+        # Set up view if first set of files has been opened
+        if self.startUp:
+            self.ui.setupView()
+            self.startUp = False
+            self.ui.showMMSMenu(not self.insightMode)
+            self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
+            self.enableToolsAndOptionsMenus(True)
+
+        # Close sub-windows, re-initialize variables, and replot defaults
         self.closeAllSubWindows()
         self.initVariables()
-
         self.plotDataDefault()
+
+    def openAscDialog(self, filename):
+        # Open a dialog box to specify settings for opening this ASCII file
+        # and link its apply btn to the openTextFile function
+        self.closeAscDialog()
+        self.asc = Asc_Importer(self, filename)
+        self.asc.linkApplyBtn(self.openTextFile)
+        self.asc.show()
+
+        # Bring to front
+        self.asc.activateWindow()
+
+    def closeAscDialog(self):
+        if self.asc:
+            self.asc.close()
+            self.asc = None
+
+    def openTextFile(self):
+        # Try to read in times, data, and other file info
+        try:
+            times, data, info = self.asc.readFile()
+        except:
+            self.ui.statusBar.showMessage('Error: Could not open ASCII file')
+            self.closeAscDialog()
+            return
+
+        # Extract other file info from tuple
+        labels, units, epoch, errFlag, fd = info
+
+        # Set error flag, epoch, and calculate a new resolution
+        self.errorFlag = self.asc.getErrorFlag()
+        self.epoch = epoch
+        res = np.median(np.diff(times))
+        self.resolution = min(self.resolution, res)
+
+        # Load data into appropriate structures
+        self.loadData(times, labels, data, units)
+
+        # Update FD list
+        self.FIDs.append(fd)
+
+        # Update other state information and finish setup
+        self.updateAfterOpening()
+        self.finishOpenFileSetup()
+
+        # Close dialog
+        self.closeAscDialog()
+
+    def updateAfterOpening(self):
+        self.calculateAbbreviatedDstrs()
+        self.calculateTimeVariables()
 
     def rmvCustomVar(self, dstr):
         if dstr not in self.DATASTRINGS or dstr not in self.ABBRV_DSTR_DICT:
@@ -1070,15 +1136,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         nRows = FID.getRows()
         records = FID.DID.sliceArray(row=1, nRow=nRows)
         ffTime = records["time"]
-        self.dataByRec = records["data"]
-        self.dataByCol = FF_File.arrayToColumns(records["data"])
+        dataByRec = records["data"]
+        dataByCol = FF_File.arrayToColumns(records["data"])
 
-        numRecords = len(self.dataByRec)
-        numColumns = len(self.dataByCol)
+        numRecords = len(dataByRec)
+        numColumns = len(dataByCol)
         print(f'number records: {numRecords}')
         print(f'number columns: {numColumns}')
 
-        datas = [np.array(col) for col in self.dataByCol]
+        datas = [np.array(col) for col in dataByCol]
 
         # ignoring first column because that is time, hence [1:]
         newDataStrings = FID.getColumnDescriptor("NAME")[1:]
@@ -1090,6 +1156,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # need to ensure loaded times are on same epoch, or do a conversion when plotting
         # loading files with same datastring names should either concatenate or just append a subnumber onto end
 
+        self.loadData(ffTime, newDataStrings, datas, units)
+
+        self.FIDs.append(FF_FD(PATH, FID))
+
+        self.updateAfterOpening()
+        return True
+
+    def loadData(self, ffTime, newDataStrings, datas, units):
         # if all data strings currently exist in main data then append everything instead
         allMatch = True
         for dstr in newDataStrings:
@@ -1158,7 +1232,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     continue
                 else: # if flatfiles have overlapping time series then dont merge
                     print(f'ERROR: times overlap, no merge operation is defined for this yet')
-                    return
+                    return False
 
         else: # this is just standard new flatfile, cant be concatenated with current because it doesn't have matching column names
 
@@ -1179,17 +1253,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 self.DATADICT[dstr] = [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]
                 self.UNITDICT[dstr] = units[i]
 
-        # add file id to list
-
-        self.FIDs.append(FID)
-
-        self.calculateAbbreviatedDstrs()
-        self.calculateTimeVariables()
-
-        self.enableToolsAndOptionsMenus(True)
-
         return True
-
     # redos all the interpolated errors, for when the flag is changed
     def reloadDataInterpolated(self):
         for dstr in self.DATASTRINGS:
@@ -2240,6 +2304,39 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
 
     def wheelEvent(self, ev, axis=None):
         ev.ignore()
+
+
+# Wrapper class for Flat File FID functions
+class FF_FD():
+    def __init__(self, filename, FID):
+        self.FID = FID
+        self.name = filename
+
+    def getEpoch(self):
+        return self.FID.getEpoch()
+
+    def getUnits(self):
+        return self.FID.getColumnDescriptor('UNITS')
+
+    def getLabels(self):
+        return self.FID.getColumnDescriptor('NAME')
+
+    def getRows(self):
+        return self.FID.getRows()
+
+    def ffSearch(self, tick, startRow, endRow):
+        return self.FID.ffsearch(tick, startRow, endRow)
+
+    def getRecords(self):
+        nRows = self.getRows()
+        records = self.FID.DID.sliceArray(row=1, nRow=nRows)
+        return records["time"], records["data"]
+
+    def open(self):
+        self.FID.open()
+
+    def close(self):
+        self.FID.close()
 
 def myexepthook(type, value, tb):
     print(f'{type} {value}')
