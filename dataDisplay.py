@@ -111,6 +111,11 @@ class UTCQDate():
 
     # convert UTC string to QDateTime
     def UTC2QDateTime(UTC):
+        # Remove any trailing zeros that aren't necessary
+        splitStr = UTC.split('.')
+        if len(splitStr) > 1 and len(splitStr[1]) > 3 and splitStr[1][-1] == '0':
+            UTC = UTC[:-1]
+
         UTC = UTCQDate.removeDOY(UTC)
         qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT)
         test = qdateTime.toString()
