@@ -281,6 +281,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                         curRow = []
             self.tracePenList.append(penList)
 
+        if numberPlots > 0 and rowItems == []:
+            rowItems.append(curRow)
+
         if curRow:
             self.setYRangeForRow(curRow)
 
