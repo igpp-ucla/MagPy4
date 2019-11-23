@@ -955,7 +955,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.startUp = False
             self.ui.showMMSMenu(not self.insightMode)
             self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
-            self.enableToolsAndOptionsMenus(True)
+
+        self.enableToolsAndOptionsMenus(True)
 
         # Close sub-windows, re-initialize variables, and replot defaults
         self.closeAllSubWindows()
