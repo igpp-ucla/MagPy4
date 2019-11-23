@@ -910,7 +910,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if isFlatfile:
             fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='Flat Files (*.ffd)')[0]
         elif asciiFile:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='ASCII Files (*.csv *.tsv *.txt)')[0]
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open ASCII File", options = QtWidgets.QFileDialog.ReadOnly, filter='ASCII Files (*.csv *.tsv *.txt)')[0]
         else:
             fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
 
@@ -927,7 +927,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             for fid in self.FIDs:
                 fid.close()
             self.FIDs = []
-            self.nonFFFIDs = []
             self.initDataStorageStructures()
 
         for fileName in fileNames:

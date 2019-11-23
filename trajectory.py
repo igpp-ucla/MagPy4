@@ -80,7 +80,7 @@ class TrajectoryUI(BaseLayout):
         self.radUnitBox = QtWidgets.QLineEdit()
         self.radUnitBox.setMaxLength(15)
         defaultUnit = window.UNITDICT[posVecs[0][-1]]
-        if 'R'.lower() in defaultUnit[0].lower():
+        if len(defaultUnit) > 0 and 'R'.lower() in defaultUnit[0].lower():
             defaultUnit = defaultUnit.upper()
         if 'rti' in defaultUnit.lower():
             defaultUnit = 'RTI'
