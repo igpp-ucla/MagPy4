@@ -175,7 +175,9 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
         # Reset aspect ratios
         self.setAspect(False)
-        QtCore.QTimer.singleShot(500, self.setAspect)
+
+        # Adjust aspect ratio settings w/ delay in case plots haven't been shown yet
+        QtCore.QTimer.singleShot(100, self.setAspect)
 
     def setAspect(self, val=None):
         if val is None:
@@ -312,7 +314,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.rowItems = rowItems
         self.updateCohPha()
         self.updateCombined()
-
         self.updateScaling()
 
         # Add plot appearance menu to context menu for each plot:
@@ -424,11 +425,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         elif not self.ui.tabs.isTabEnabled(3):
             self.ui.tabs.setTabEnabled(3, True)
 
-        # Reset grid and add spacer
+        # Reset grid
         self.ui.sumGrid.clear()
-        spacer = pg.LabelItem('')
-        spacer.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum))
-        self.ui.sumGrid.addItem(spacer, 2, 0, 1, 2)
 
         # Get default plot info
         self.sumPlots = []
@@ -459,6 +457,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui.sumGrid.addItem(pi, 1, 1, 1, 1)
         pi.plot(freq, absSumMinusPt, pen=pens[2])
         pi.plot(freq, magPower, pen=pens[1])
+
         # Custom title string
         titleString = self.formatPltTitle(pltNames[2], pens[2].color().name())
         titleString = f"{titleString} & "
@@ -471,9 +470,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         # Set axis labels for all plots
         for pi in self.sumPlots:
             pi.setLabels(left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)')
-
-        # Adjust aspect ratio settings w/ delay in case plots haven't been shown yet
-        QtCore.QTimer.singleShot(100, self.setAspect)
 
     def updateTitleColors(self, penList):
         # Update title colors to match colors from a list of pens

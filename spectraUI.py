@@ -19,6 +19,7 @@ class SpectraUI(object):
         grid.setContentsMargins(0,0,0,0)
         labelLayout = GridGraphicsLayout()
         labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
+        labelLayout.setContentsMargins(11, 3, 11, 5)
         gmain.addItem(grid)
         gmain.addItem(labelLayout)
         return view, grid, labelLayout
@@ -28,7 +29,7 @@ class SpectraUI(object):
         view.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         gmain = GridGraphicsLayout() # made this based off pg.GraphicsLayout
         #apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
-        gmain.setContentsMargins(11,0,11,0) # left top right bottom
+        gmain.setContentsMargins(11,0,11,11) # left top right bottom
         view.setCentralItem(gmain)
         grid = GridGraphicsLayout()
         grid.setContentsMargins(0,0,0,0)
