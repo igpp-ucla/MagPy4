@@ -1123,7 +1123,6 @@ import re
 from pyqtgraph.python2_3 import asUnicode
 from pyqtgraph.Qt import QtSvg, QT_LIB
 
-
 xmlHeader = """\
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"  version="1.2" baseProfile="tiny">
@@ -1487,3 +1486,52 @@ def cleanXml(node):
         node.parentNode.removeChild(node)
 
 pg.exporters.SVGExporter.export = cstmSVGExport
+
+# Modified ViewBoxMenu's function to set strings that represent ranges
+# as floats instead of rewriting them in scientific notation since precision
+# is lost
+from pyqtgraph import ViewBox # Need to import ViewBox into namespace first
+def vbMenu_UpdateState(self):
+    ## Something about the viewbox has changed; update the menu GUI
+    state = self.view().getState(copy=False)
+    if state['mouseMode'] == ViewBox.PanMode:
+        self.mouseModes[0].setChecked(True)
+    else:
+        self.mouseModes[1].setChecked(True)
+
+    for i in [0,1]:  # x, y
+        tr = state['targetRange'][i]
+        self.ctrl[i].minText.setText("%0.5f" % tr[0])
+        self.ctrl[i].maxText.setText("%0.5f" % tr[1])
+        if state['autoRange'][i] is not False:
+            self.ctrl[i].autoRadio.setChecked(True)
+            if state['autoRange'][i] is not True:
+                self.ctrl[i].autoPercentSpin.setValue(state['autoRange'][i]*100)
+        else:
+            self.ctrl[i].manualRadio.setChecked(True)
+        self.ctrl[i].mouseCheck.setChecked(state['mouseEnabled'][i])
+
+        ## Update combo to show currently linked view
+        c = self.ctrl[i].linkCombo
+        c.blockSignals(True)
+        try:
+            view = state['linkedViews'][i]  ## will always be string or None
+            if view is None:
+                view = ''
+
+            ind = c.findText(view)
+
+            if ind == -1:
+                ind = 0
+            c.setCurrentIndex(ind)
+        finally:
+            c.blockSignals(False)
+
+        self.ctrl[i].autoPanCheck.setChecked(state['autoPan'][i])
+        self.ctrl[i].visibleOnlyCheck.setChecked(state['autoVisibleOnly'][i])
+        xy = ['x', 'y'][i]
+        self.ctrl[i].invertCheck.setChecked(state.get(xy+'Inverted', False))
+
+    self.valid = True
+
+pg.ViewBoxMenu.ViewBoxMenu.updateState = vbMenu_UpdateState
