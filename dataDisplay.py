@@ -461,7 +461,6 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         if fullname[0] == '':
             print('Save cancelled')
             return
-        epoch = self.getEpoch()
 
         # Shape data
         selectedDta = self.dataByRec
