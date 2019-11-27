@@ -36,17 +36,23 @@ class SpectraLineEditorUI(BaseLayout):
         linePropFrame = self.setupLineProperties()
         layout.addWidget(linePropFrame, 2, 0, 1, 4)
 
-        # Set up clear/plot buttons and status bar
+        # Set up state checkboxes
         self.fixLine = QtWidgets.QCheckBox('Fix Line')
         self.fixLine.setToolTip('Replot line after plot is updated')
+
+        self.keepPrevLines = QtWidgets.QCheckBox('Keep Previous Lines')
+        self.keepPrevLines.setToolTip('Keep previously plotted lines on plot')
+
+        # Set up clear/plot buttons and status bar
         self.clearBtn = QtWidgets.QPushButton('Clear')
         self.addBtn = QtWidgets.QPushButton('Plot')
         self.statusBar = QtWidgets.QStatusBar()
 
-        layout.addWidget(self.statusBar, 3, 0, 1, 1)
-        layout.addWidget(self.fixLine, 3, 1, 1, 1)
-        layout.addWidget(self.clearBtn, 3, 2, 1, 1)
-        layout.addWidget(self.addBtn, 3, 3, 1, 1)
+        layout.addWidget(self.statusBar, 4, 0, 1, 2)
+        layout.addWidget(self.fixLine, 3, 0, 1, 1)
+        layout.addWidget(self.keepPrevLines, 3, 1, 1, 2)
+        layout.addWidget(self.clearBtn, 4, 2, 1, 1)
+        layout.addWidget(self.addBtn, 4, 3, 1, 1)
 
     def setupLineProperties(self):
         frame = QtWidgets.QGroupBox('Line Properties')
@@ -74,8 +80,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         super().__init__(parent)
         self.spectraFrame = spectraFrame
         self.window = window
-        self.dataRange = dataRange
-        self.plottedLine = None
+        self.plottedLines = []
         self.ui = SpectraLineEditorUI()
         self.ui.setupUI(self, window)
 
@@ -96,7 +101,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
     def evalExpr(self, exprStr, sI, eI):
         # Attempt to evaluate expression, print error if an exception occurs
         try:
-            expEval = ExpressionEvaluator(exprStr, self.window, self.dataRange)
+            expEval = ExpressionEvaluator(exprStr, self.window, (sI, eI))
             name, exprLst = expEval.splitString()
             stack = expEval.createStack(exprLst)
             res = stack.evaluate()
@@ -116,8 +121,9 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
             return None
 
     def addToPlot(self):
-        self.clearPlot()
-        sI, eI = self.dataRange
+        if not self.keepMode():
+            self.clearPlot()
+        sI, eI = self.spectraFrame.getDataRange()
         exprStr = self.ui.textBox.toPlainText()
         if exprStr == '':
             return
@@ -140,6 +146,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         self.saveLineInfo()
 
     def clearPlot(self):
+        # TODO: Clear saved line info after plot is updated from main window
         self.spectraFrame.removeLinesFromPlot()
         self.clearLineInfo()
 
@@ -160,24 +167,31 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         self.ui.colorBtn.show()
         self.ui.lineColor = color.name()
 
+    def keepMode(self):
+        return self.ui.keepPrevLines.isChecked()
+
     def saveLineInfo(self):
         # Extract parameters used to plot current line
         expr = self.ui.textBox.toPlainText()
         color = self.ui.lineColor
         width = self.ui.lineWidth.value()
         style = self.ui.lineStyles[self.ui.lineStyle.currentText()]
+        lineTuple = (expr, color, width, style)
 
-        self.plottedLine = (expr, color, width, style)
+        if self.keepMode(): # Append to list if keeping previous lines on plot
+            self.plottedLines.append(lineTuple)
+        else: # Otherwise, set to current line only
+            self.plottedLines = [lineTuple]
 
         if self.ui.fixLine.isChecked(): # Save in outer frame if fixLine box is checked
             self.fixedLineToggled(True)
 
     def clearLineInfo(self):
-        self.plottedLine = None
+        self.plottedLines = []
 
     def fixedLineToggled(self, val):
         if val:
-            self.spectraFrame.setSavedLine(self.plottedLine)
+            self.spectraFrame.setSavedLine(self.plottedLines)
         else:
             self.spectraFrame.clearSavedLine()
 
@@ -494,19 +508,18 @@ class DynamicAnalysisTool(SpectraBase):
         self.savedLineInfo = None
 
     def addSavedLine(self):
-        if self.savedLineInfo:
+        for lineInfo in self.savedLineInfo:
             # Get state info
             a, b = self.getDataRange()
             arbDstr = self.window.DATASTRINGS[0]
             times = self.window.getTimes(arbDstr, 0)[0][a:b]
 
             # Extract line info + generate the new line and add it to the plot
-            expr, color, width, style = self.savedLineInfo
+            expr, color, width, style = lineInfo
             lineEditor = SpectraLineEditor(self, self.window, (a,b))
             dta = lineEditor.evalExpr(expr, a, b)
             lineItem = lineEditor.createLine(dta, times, color, style, width)
             self.addLineToPlot(lineItem)
-        return None
 
 class SpectraLegend(GradLegend):
     def __init__(self, offsets=(31, 48)):
