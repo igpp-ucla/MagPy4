@@ -369,6 +369,11 @@ class DateAxis(pg.AxisItem):
         self.modeToDelta['HR'] = timedelta(minutes=30)
         self.modeToDelta['MIN'] = timedelta(minutes=5)
         self.modeToDelta['MS'] = timedelta(milliseconds=500)
+
+        # Increment values in seconds respective to each time unit
+        # Year, month, day, hours, minutes, seconds, ms
+        self.addVals = [24*60*60, 24*60*60, 24*60*60, 60*60, 60, 1, 0]
+
         # String used by strftime/strptime to parse UTC strings
         self.fmtStr = '%Y %j %b %d %H:%M:%S.%f'
 
@@ -437,7 +442,13 @@ class DateAxis(pg.AxisItem):
             return self.specificSplitStr(times, fmt)
         else:
             fmt = self.defaultLabelFormat()
-            return self.formatSplitStr(splits, t, fmt)
+            return self.specificSplitStr(times, fmt)
+
+    def getLabelFormat(self):
+        if self.labelFormat:
+            return self.labelFormat
+        else:
+            return self.defaultLabelFormat()
 
     def specificSplitStr(self, timestamp, fmt):
         # Get indices associated with label format and split timestamp into components
@@ -471,18 +482,22 @@ class DateAxis(pg.AxisItem):
         elif rng > self.tm.minCutoff: # if over 10 seconds show mm:ss
             fmt = 'MIN'
         
+        fmt = self.formatSplitStr(fmt)
         return fmt
 
-    def formatSplitStr(self, splits, t, fmt='MS'):
+    def getDefaultLabel(self):
+        return self.defaultLabelFormat().strip('DATE ')
+
+    def formatSplitStr(self, fmt='MS'):
         # Format timestamp based on selected keyword
         if fmt == 'DAY':
-            return f'{splits[2]} {splits[3]} {t.split(":")[0]}:{t.split(":")[1]}'
+            return 'DATE HH:MM:SS'
         elif fmt == 'HR':
-            return t.rsplit('.',1)[0]
+            return 'HH:MM:SS'
         elif fmt == 'MIN':
-            return t.split(':',1)[1].split('.')[0]
+            return 'MM:SS'
         else:
-            return t.split(':',1)[1] 
+            return 'MM:SS.SSS'
 
     # Helper functions for convert between datetime obj, timestamp, and tick val
     def tmstmpToDateTime(self, timeStr):
@@ -507,10 +522,134 @@ class DateAxis(pg.AxisItem):
         return dt
 
     def tickSpacing(self, minVal, maxVal, size):
+        ofst = 0
         if self.tickDiff:
-            return [(self.tickDiff.total_seconds(), 0)]
+            return [(self.tickDiff.total_seconds(), ofst)]
         else:
-            return pg.AxisItem.tickSpacing(self, minVal, maxVal, size)
+            spacing = self.defaultTickSpacing(minVal, maxVal, size)
+            spacing = [(spacer, ofst) for (spacer, z) in spacing]
+            return spacing
+
+    def timeSpacingBase(self):
+        fmt = self.getLabelFormat()
+        indexLst = self.timeDict[fmt]
+        minIndex = max(indexLst[-1], 2) # Only need to offset times
+        return self.addVals[minIndex]
+
+    def getLogTimeBase(self, val, base):
+        if base <= 0:
+            return -1
+        i = 0
+        while val >= 1:
+            val /= base
+            i += 1
+
+        return max(i - 1, 0)
+
+    def defaultTickSpacing(self, minVal, maxVal, size):
+        # First check for override tick spacing
+        if self._tickSpacing is not None:
+            return self._tickSpacing
+        
+        dif = abs(maxVal - minVal)
+        if dif == 0:
+            return []
+        
+        ## decide optimal minor tick spacing in pixels (this is just aesthetics)
+        optimalTickCount = max(2., np.log(size))
+        
+        ## optimal minor tick spacing 
+        optimalSpacing = dif / optimalTickCount
+        
+        intervals = np.array([1., 2., 10., 20., 100.])
+        ## the largest power-of-10 spacing which is smaller than optimal
+        base = self.timeSpacingBase()
+        if base > 1:
+            p10unit = base ** self.getLogTimeBase(optimalSpacing, base)
+            # Build a new intervals array that goes up to the optimal
+            # spacing value
+            x1, x2 = 1, 2
+            intervals = []
+            while x1 < optimalSpacing:
+                intervals.append(x1)
+                intervals.append(x2)
+                x1 *= 10
+                x2 *= 10
+            intervals = np.array(intervals)
+        else:
+            p10unit = 10 ** np.floor(np.log10(optimalSpacing))
+        
+        ## Determine major/minor tick spacings which flank the optimal spacing.
+        intervals = intervals * p10unit
+        minorIndex = 0
+        while intervals[minorIndex+1] < optimalSpacing:
+            minorIndex += 1
+
+        levels = [
+            (intervals[minorIndex+2], 0),
+            (intervals[minorIndex+1], 0),
+        ]
+
+        if self.style['maxTickLevel'] >= 2:
+            ## decide whether to include the last level of ticks
+            minSpacing = min(size / 20., 30.)
+            maxTickCount = size / minSpacing
+            if dif / intervals[minorIndex] <= maxTickCount:
+                levels.append((intervals[minorIndex], 0))
+            return levels
+
+    def getZeroPaddedInt(self, val):
+        if val < 10:
+            return '0'+str(int(val))
+        else:
+            return str(int(val))
+
+    def getOffset(self, minVal, maxVal):
+        fmt = self.getLabelFormat()
+        indexLst = self.timeDict[fmt]
+        spacers = [' ', ' ', ' ', ':', ':', '.']
+        zeroVals = ['', '', '', '00', '00', '00', '000'] # Hours, minutes, seconds, ms
+
+        # Convert minVal to a timestamp and then to its elements
+        baseTick = minVal
+        baseUTC = (FFTIME(baseTick, Epoch=self.tm.epoch)).UTC
+        splitUTC = self.splitTimestamp(baseUTC)
+        splitUTC[1] = datetime.strptime(splitUTC[1], '%b').strftime('%m')
+
+        # Extract day of year and map month to a number
+        doy = baseUTC.split(' ')[1]
+
+        # Zero out lower values in the split timestamp
+        # year, month, day, hours, minutes, seconds, ms
+        minIndex = max(indexLst[-1], 2) # Only need to offset times
+        count = 0
+        for z in range(minIndex+1, 7):
+            if splitUTC != zeroVals[z]:
+                count += 1
+            splitUTC[z] = zeroVals[z]
+
+        # Build timestamp from edited values
+        splitUTC[1] = datetime.strptime(splitUTC[1], '%m').strftime('%b')
+        newUTC = splitUTC[0] + ' ' + doy
+        for z in range(1, 7):
+            newUTC = newUTC + spacers[z-1] + splitUTC[z]
+
+        newTick = (FFTIME(newUTC, Epoch=self.tm.epoch)).tick
+
+        # If zero-ed out timestamp is different from original timestamp
+        # increment the smallest time unit that will be visible in the
+        # tick label
+        if minIndex > 2 and minIndex < 6 and count > 0:
+            newTick = newTick + self.addVals[minIndex]
+        
+        # Return the difference between the original and new starting ticks
+        # if the difference is positive
+        diff = newTick - baseTick
+
+        if diff < 0:
+            return 0
+        else:
+            return diff
 
     def tickValues(self, minVal, maxVal, size):
         # Get tick values for standard range and then subtract the offset
@@ -521,20 +660,21 @@ class DateAxis(pg.AxisItem):
         vals = pg.AxisItem.tickValues(self, minVal, maxVal, size)
         newVals = []
         for ts, tlst in vals:
-            newtlst = [v - self.tickOffset for v in tlst]
+            if len(tlst) < 1:
+                continue
+            # Adjust starting tick for each spacing group to start
+            # on a neat number
+            diff = self.getOffset(min(tlst), max(tlst))
+            newtlst = [v - self.tickOffset + diff for v in tlst]
             newVals.append((ts, newtlst))
         return newVals
 
     def tickStrings(self, values, scale, spacing):
         # Convert start/end times to strings
-        epochStr = str(FFTIME(0, Epoch=self.epoch).UTC)
-        epochDt = self.tmstmpToDateTime(epochStr)
-
         strings = []
         for v in values:
-            currDt = epochDt + timedelta(seconds=v+self.tickOffset)
-            dtStr = self.dateTimeToTmstmp(currDt)
-            s = self.fmtTimeStmp(dtStr)
+            ts = (FFTIME(v+self.tickOffset, Epoch=self.tm.epoch)).UTC
+            s = self.fmtTimeStmp(ts)
             strings.append(s)
         return strings
 

@@ -198,7 +198,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Cutoff values for time-label properties
         self.dayCutoff = 60 * 60 * 24
-        self.hrCutoff = 60 * 60
+        self.hrCutoff = 60 * 60 * 1.5
         self.minCutoff = 10 * 60
 
         self.magpyIcon = QtGui.QIcon()

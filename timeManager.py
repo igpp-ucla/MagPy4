@@ -15,7 +15,7 @@ class TimeManager(object):
         self.tE = tE if tE is not None else self.maxTime
         self.epoch = epoch
         self.dayCutoff = 60 * 60 * 24
-        self.hrCutoff = 60 * 60
+        self.hrCutoff = 60 * 60 * 1.5
         self.minCutoff = 10 * 60
 
     # given the corresponding time array for data (times) and the time (t), calculate index into data array
