@@ -3,17 +3,20 @@ from MagPy4UI import TimeEdit
 from PyQt5.QtWidgets import QSizePolicy
 from layoutTools import BaseLayout
 from pyqtgraphExtensions import LinkedAxis, DateAxis, MagPyPlotItem
+from dynamicSpectra import GradLegend, ColorBar
 import pyqtgraph as pg
+from pyqtgraph import GraphicsWidgetAnchor
 import numpy as np
 from mth import Mth
-from datetime import timedelta
+
+# Magnetosphere modules
 import sys
 sys.path.insert(0, 'geopack')
 from geopack import geopack
 from datetime import datetime, timedelta
 import multiprocessing
 from multiprocessing import Pool
-import time
+
 
 class TrajectoryUI(BaseLayout):
     def setupUI(self, Frame, window):
@@ -40,11 +43,10 @@ class TrajectoryUI(BaseLayout):
         layout.addLayout(timeLt, 2, 0, 1, 3)
 
     def setupSettingsFrame(self, fieldVecs, posVecs, window):
-        # frame = QtWidgets.QGroupBox('Vector and Units Settings')
         frame = QtWidgets.QFrame()
         frame.setSizePolicy(self.getSizePolicy('Min', 'Max'))
         layout = QtWidgets.QGridLayout(frame)
-        layout.setContentsMargins(2, 2, 5, 2)
+        layout.setContentsMargins(2, 0, 2, 0)
 
         # Setup combo boxes for field and position vectors
         self.posBoxes = []
@@ -70,7 +72,7 @@ class TrajectoryUI(BaseLayout):
 
         # Radius box
         self.radiusBox = QtWidgets.QDoubleSpinBox()
-        self.radiusBox.setMaximum(1e10)
+        self.radiusBox.setMaximum(1e9)
         self.radiusBox.setMinimum(0.0001)
         self.radiusBox.setValue(1)
         self.radiusBox.setDecimals(4)
@@ -218,9 +220,10 @@ class TrajectoryAnalysis(QtGui.QFrame, TrajectoryUI):
 class AltitudeUI(BaseLayout):
     def setupUI(self, Frame, outerFrame):
         layout = QtWidgets.QGridLayout(Frame)
-        layout.setContentsMargins(0, 5, 0, 0)
+        layout.setContentsMargins(0, 4, 0, 0)
         settingsFrame = self.setupSettingsFrame(Frame, outerFrame)
         self.glw = self.getGraphicsGrid()
+        self.glw.setContentsMargins(4, 0, 4, 6)
         layout.addWidget(settingsFrame, 0, 0, 1, 1)
         layout.addWidget(self.gview, 1, 0, 1, 1)
 
@@ -470,6 +473,7 @@ class OrbitUI(BaseLayout):
     def setupSettingsFrame(self, Frame, outerFrame):
         frame = QtWidgets.QFrame()
         layout = QtWidgets.QGridLayout(frame)
+        layout.setContentsMargins(4, 4, 4, 4)
         frame.setSizePolicy(self.getSizePolicy('Max', 'Max'))
 
         # Plot type frame
@@ -560,6 +564,10 @@ class OrbitUI(BaseLayout):
         self.pltOriginBox = QtWidgets.QCheckBox('Plot Origin')
         self.pltOriginBox.setChecked(False)
         layout.addWidget(self.pltOriginBox, 1, 1, 1, 1)
+
+        # Color-mapped
+        self.colorMapBox = QtWidgets.QCheckBox('Color-mapped')
+        layout.addWidget(self.colorMapBox, 2, 0, 1, 1)
 
         return layout
 
@@ -686,6 +694,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         # Initialize the units label for mag line scaling
         self.updtUnits(self.outerFrame.getRadiusUnits())
+        self.plotTypeChanged()
 
         # Enable/disable relavent plot options when tick and plot types are changed
         for btn in self.ui.markerBtns:
@@ -792,6 +801,8 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             self.tickTypeChanged()
 
         self.ui.btnBox.setEnabled(not projMode)
+        self.ui.colorMapBox.setChecked(projMode)
+        self.ui.colorMapBox.setEnabled(projMode)
 
     def enableLineOptions(self, val=True):
         self.ui.centerLinesBox.setEnabled(val)
@@ -931,9 +942,39 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         lbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
         self.ui.glw.layout.setAlignment(lbl, QtCore.Qt.AlignLeft)
 
-    def plotTermProj(self, plt, pen, xDta, yDta, tickWidth):
-        brush = pg.mkBrush(pen.color())
-        plt.scatterPlot(xDta, yDta, size=2, pen=pen, brush=brush)
+    def getOutlineColors(self, colors):
+        # Reduce RGB values by 50 to get a slightly darker color
+        outlineColors = []
+        width = 50
+        for r, g, b in colors:
+            new_r = max(0, r-width)
+            new_g = max(0, g-width)
+            new_b = max(0, b-width)
+            outlineColors.append((new_r, new_g, new_b))
+        return outlineColors
+    
+    def plotTermProj(self, plt, pen, xDta, yDta, tickWidth, times=None):
+        # If times are passed, add a color/time legend to the plot
+        # and map each point to a color
+        if times is not None:
+            # Add a color bar / time legend to the plot
+            startTime, endTime = times[0], times[-1]
+            epoch = self.outerFrame.epoch
+            plt.addColorLegend(epoch, startTime, endTime)
+
+            # Map time values to RGB colors
+            colorMap = LinearRGBGradient().getColorMap(startTime, endTime)
+            colors = colorMap.map(times)
+            brushes = list(map(pg.mkBrush, colors))
+
+            # Make outlines darker
+            outlineColors = self.getOutlineColors(colors)
+            pens = list(map(pg.mkPen, outlineColors))
+
+            plt.scatterPlot(xDta, yDta, size=5, pen=pens, brush=brushes)
+        else: # Otherwise, plot a simple scatter plot
+            brush = pg.mkBrush(pen.color())
+            plt.scatterPlot(xDta, yDta, size=2, pen=pen, brush=brush)
 
     def plotMagLines(self, plt, pen, xField, yField, xDta, yDta, tickWidth):
         # Scale magnetic field data
@@ -1050,6 +1091,17 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         for x, y in zip(xcoords, ycoords):
             plt.plot(x,y, pen=pen)
         self.outerFrame.ui.statusBar.showMessage('Dipole Tilt Angle: '+str(tiltAngle))
+    
+    def plotOrbitLine(self, plt, xDta, yDta, tickType, dataRange, pen, width):
+        sI, eI = dataRange
+        gaps = self.outerFrame.getSegments(sI, eI)
+        # Use a black pen for orbit lines when also drawing field lines
+        arrowPen = pg.mkPen('#000000') if tickType == 'Field Lines' else pen
+        plt.plot(xDta, yDta, pen=arrowPen, connect=gaps)
+
+        # Draw an arrow at end of orbit line
+        if tickType != 'Field Lines':
+            plt.plotArrowLine(xDta[-2:], yDta[-2:], width, pen)
 
     def updatePlot(self):
         # Initialize plot parameters/scales if first plot
@@ -1065,6 +1117,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         radius = self.outerFrame.getRadius()
         times = self.outerFrame.getTimes(vecDstrs[0], en)
         times = times[sI:eI]
+        fullTimes = times[:]
         t0, t1 = times[0], times[-1] # Save start/end times for time label
 
         # Get position data corresponding to plane chosen by user
@@ -1116,16 +1169,15 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         # Get tick marker width
         tickWidth = self.getTickWidth(xDta, yDta, tickType != 'None')
 
+        colorMode = self.ui.colorMapBox.isChecked()
         # Plot orbit and its arrow to indicate direction
         if not projMode:
-            gaps = self.outerFrame.getSegments(sI, eI) # Find gap indices as well
-            plt.plot(xFull, yFull, pen=orbitPen, connect=gaps)
-            arrowPen = pg.mkPen('#0a004a') if tickType == 'Field Lines' else orbitPen
-            plt.plotArrowLine(xFull[-2:], yFull[-2:], tickWidth, arrowPen)
+            self.plotOrbitLine(plt, xFull, yFull, tickType, (sI, eI), orbitPen, tickWidth)
 
         # Add additional markers onto plot
         if projMode:
-            self.plotTermProj(plt, pen, xDta, yDta, tickWidth)
+            colorTimes = times if colorMode else None
+            self.plotTermProj(plt, pen, xDta, yDta, tickWidth, colorTimes)
         elif tickType == 'Field Lines':
             self.plotMagLines(plt, pen, xField, yField, xDta, yDta, tickWidth)
         elif tickType == 'Time Ticks':
@@ -1479,10 +1531,90 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
         x, y, z, xx, yy, zz = res
         return xx, yy, zz
 
+# Default color gradient that starts w/ blue and ends in red
+class LinearRGBGradient(QtGui.QLinearGradient):
+    def __init__(self, *args, **kwargs):
+        QtGui.QLinearGradient.__init__(self, *args, **kwargs)
+
+        rgbBlue = (25, 0, 245)
+        rgbBlueGreen = (0, 245, 245)
+        rgbGreen = (127, 245, 0)
+        rgbYellow = (245, 245, 0)
+        rgbRed = (245, 0, 25)
+
+        self.colorPos = [0, 1/3, 0.5, 2/3, 1]
+        self.colors = [rgbBlue, rgbBlueGreen, rgbGreen, rgbYellow, rgbRed]
+        for pos, rgb in zip(self.colorPos, self.colors):
+            self.setColorAt(pos, pg.mkColor(rgb))
+
+    def getColorMap(self, minVal, maxVal):
+        minVal, maxVal = min(minVal, maxVal), max(minVal, maxVal)
+        diff = maxVal - minVal
+
+        values = []
+        for pos in self.colorPos:
+            val = minVal + diff*pos
+            if pos == 1:
+                val = maxVal
+            values.append(val)
+
+        return pg.ColorMap(values, self.colors)
+
+class TimeColorBar(GradLegend, GraphicsWidgetAnchor):
+    def __init__(self, epoch, parent=None, edge='right', *args, **kwargs):
+        # Initialize state and legend elements
+        self.valueRange = (0, 1)
+        self.colorBar = ColorBar(QtGui.QLinearGradient())
+        self.axisEdge = edge # Side of color bar that time axis is displayed on
+        self.axisItem = DateAxis(epoch, orientation=edge)
+        self.label = None # Axis time label
+
+        # Set default contents spacing/margins
+        pg.GraphicsLayout.__init__(self, parent)
+        GraphicsWidgetAnchor.__init__(self)
+        self.layout.setVerticalSpacing(0)
+        self.layout.setHorizontalSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+
+        cbCol = 0 if edge == 'right' else 1
+        axCol = 1 if edge == 'right' else 0
+        self.addItem(self.colorBar, 0, cbCol, 1, 1)
+        self.addItem(self.axisItem, 0, axCol, 1, 1)
+
+        # Set up DateTime Axis
+        self.axisItem.setStyle(tickLength=-10)
+        self.setRange(LinearRGBGradient(), (0,1))
+
+        # Set up time label, anchoring to the appropriate edge
+        self.label = pg.LabelItem()
+        self.label.opts['justify'] = 'left' if edge == 'right' else 'right'
+        self.addItem(self.label, 1, 0, 1, 2)
+        edgeOfst = 5 if edge == 'left' else -5
+        self.label.anchor((1,1),(1,1),(edgeOfst, 0))
+
+    def getOffsetSuggestions(self):
+        if self.axisEdge == 'left':
+            ofsts = (-15, 15)
+        else:
+            ofsts = (-12, 15)
+        return ofsts
+    
+    def setRange(self, gradient, valRange):
+        GradLegend.setRange(self, gradient, valRange)
+        self.updateLabel()
+
+    def updateLabel(self):
+        # Set time axis label when value range is updated
+        if self.label:
+            lbl = self.axisItem.getDefaultLabel()
+            self.label.setText(lbl)
+
 class OrbitPlotItem(MagPyPlotItem):
     def __init__(self):
         self.originItem = None
         self.scaleBar = None
+        self.colorBar = None
 
         MagPyPlotItem.__init__(self)
 
@@ -1522,6 +1654,27 @@ class OrbitPlotItem(MagPyPlotItem):
         brush = pg.mkBrush(pen.color())
         clstr = ArrowCluster(x, y, xF, yF, width, pen=pen, brush=brush)
         self.addItem(clstr)
+
+    def addColorLegend(self, epoch, minTime, maxTime):
+        # Initialize color bar legend and set the viewbox as its parent
+        self.colorBar = TimeColorBar(epoch, edge='left')
+        self.colorBar.setParentItem(self.getViewBox())
+        self.colorBar.setRange(self.colorBar.getGradient(), (minTime, maxTime))
+
+        # Anchor to top-right corner and set legend width/height
+        self.colorBar.anchor((1,0), (1,0), offset=(-15, 15))
+        self.colorBar.setFixedHeight(190)
+        self.colorBar.setBarWidth(18)
+
+        # Set top and right axes to be visible
+        for ax in ['right', 'top']:
+            self.showAxis(ax, True)
+            self.getAxis(ax).setStyle(showValues=False)
+
+    def removeColorLegend(self):
+        if self.colorBar:
+            self.getViewBox().removeItem(self.colorBar)
+            self.colorBar = None
 
 class ArrowLine(pg.PlotCurveItem):
     def __init__(self, x, y, width, *arg, **karg):

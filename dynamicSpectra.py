@@ -232,9 +232,9 @@ class ColorBarAxis(pg.AxisItem):
         else:
             return tickVals
 
-class ColorBar(pg.GraphicsLayout):
+class ColorBar(pg.GraphicsWidget):
     def __init__(self, gradient, parent=None):
-        super().__init__(parent=None)
+        super().__init__()
         self.gradient = gradient
         self.setMaximumWidth(50)
         self.setMinimumWidth(30)
@@ -247,13 +247,13 @@ class ColorBar(pg.GraphicsLayout):
 
     def paint(self, p, opt, widget):
         ''' Fill the bounding rect w/ current gradient '''
+        pg.GraphicsWidget.paint(self, p, opt,widget)
         rect = self.boundingRect()
         self.gradient.setStart(0, rect.bottom())
         self.gradient.setFinalStop(0, rect.top())
         p.setPen(pg.mkPen((0, 0, 0)))
         p.setBrush(self.gradient)
         p.drawRect(rect)
-        pg.GraphicsWidget.paint(self, p, opt,widget)
 
 class GradLegend(pg.GraphicsLayout):
     def __init__(self, parent=None, *args, **kwargs):
