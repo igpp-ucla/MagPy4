@@ -51,7 +51,7 @@ class TimeManager(object):
         if rng > self.dayCutoff: # if over day show MMM dd hh:mm:ss (don't need to label month and day)
             return 'HH:MM'
         elif rng > self.hrCutoff: # if hour show hh:mm:ss
-            return 'HH:MM:SS'
+            return 'HH:MM'
         elif rng > self.minCutoff: # if over 10 seconds show mm:ss
             return 'MM:SS'
         else: # else show mm:ss.sss

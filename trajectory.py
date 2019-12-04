@@ -7,6 +7,7 @@ from dynamicSpectra import GradLegend, ColorBar
 import pyqtgraph as pg
 from pyqtgraph import GraphicsWidgetAnchor
 import numpy as np
+from scipy import interpolate
 from mth import Mth
 
 # Magnetosphere modules
@@ -801,8 +802,19 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             self.tickTypeChanged()
 
         self.ui.btnBox.setEnabled(not projMode)
-        self.ui.colorMapBox.setChecked(projMode)
-        self.ui.colorMapBox.setEnabled(projMode)
+
+        if not projMode:
+            tickType = self.getTickType()
+            fieldTimeTicks = (tickType == 'Field Lines')
+            self.ui.colorMapBox.setChecked(fieldTimeTicks)
+            self.ui.colorMapBox.setVisible(fieldTimeTicks)
+            self.ui.colorMapBox.setText('Plot Additional Time Ticks')
+            self.ui.colorMapBox.setToolTip('Plot time ticks along orbit line')
+        else:
+            self.ui.colorMapBox.setVisible(True)
+            self.ui.colorMapBox.setText('Color-mapped')
+            self.ui.colorMapBox.setChecked(projMode)
+            self.ui.colorMapBox.setToolTip('Map each point to a color based on its time')
 
     def enableLineOptions(self, val=True):
         self.ui.centerLinesBox.setEnabled(val)
@@ -836,6 +848,9 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         if val is not None:
             val = max(val - (val % 5), 1)
             self.ui.intervalBox.setValue(val)
+
+        fieldTimeTicks = tickType == 'Field Lines'
+        self.ui.colorMapBox.setVisible(fieldTimeTicks)
 
     def setVecScale(self, posDstrs, vecDstrs, sI, eI):
         en = self.outerFrame.getEditNum()
@@ -1000,12 +1015,10 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         # Add in scale bar item
         scaleBar = plt.addScaleBar(scaleFactor)
 
-    def plotTimeTicks(self, plt, pen, xDta, yDta, times, tickWidth):
-        # Add round points at given orbit positions
-        brush = pg.mkBrush(pen.color())
-        plt.scatterPlot(xDta, yDta, size=tickWidth/4, pen=pen, brush=brush, pxMode=False)
+        return (centerLines, xField, yField)
 
-        # Rotate text by 45 degrees if the average slope is 0.5
+    def getTextAngle(self, xDta, yDta):
+        # Rotate text by 45 degrees if the average slope is > 0.5
         yDiff = abs(np.diff(yDta))
         xDiff = abs(np.diff(xDta))
         avgSlope = np.mean(yDiff/xDiff)
@@ -1014,6 +1027,9 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         else:
             angle = 0
 
+        return angle
+
+    def getTextAnchor(self, xDta, yDta, angle):
         # Anchor text to the left of point if the orbit is close to
         # the origin and on its left side
         magDta = np.sqrt((xDta ** 2) + (yDta ** 2))
@@ -1027,17 +1043,32 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             anchor = (1, 0.5)
             endStr = ' '
 
+        return anchor, startStr, endStr
+
+    def plotTimeTicks(self, plt, pen, xDta, yDta, times):
+        # Add round points at given orbit positions
+        brush = pg.mkBrush(pen.color())
+        plt.scatterPlot(xDta, yDta, size=4, pen=pen, brush=brush)
+
+        # Rotate text by 45 degrees if the average slope is > 0.5
+        angle = self.getTextAngle(xDta, yDta)
+
+        # Anchor text to the left of point if the orbit is close to
+        # the origin and on its left side
+        anchor, startStr, endStr = self.getTextAnchor(xDta, yDta, angle)
+
         # Create a datetime axis to convert time ticks into timestamps
         tm = DateAxis(self.outerFrame.epoch, 'bottom')
-        tm.tm.tO = times[0]
-        tm.tm.tE = times[-1]
+        tm.setRange(times[0], times[-1])
 
         # Add a timestamp text item near each of the plotted points,
         # with the given angle calculated above
         for x, y, t in zip(xDta, yDta, times):
             label = self.outerFrame.getTimestampFromTick(t)
             label = startStr + tm.fmtTimeStmp(label) + endStr
-            txt = pg.TextItem(label, color=pg.mkColor('#000000'), anchor=anchor, angle=angle)
+            if t == times[0]:
+                label = label + ' (' + tm.getDefaultLabel() + ')'
+            txt = TimeTickLabel(label, color=pg.mkColor('#000000'), anchor=anchor, angle=angle)
             plt.addItem(txt)
             txt.setPos(x, y)
 
@@ -1092,9 +1123,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             plt.plot(x,y, pen=pen)
         self.outerFrame.ui.statusBar.showMessage('Dipole Tilt Angle: '+str(tiltAngle))
     
-    def plotOrbitLine(self, plt, xDta, yDta, tickType, dataRange, pen, width):
-        sI, eI = dataRange
-        gaps = self.outerFrame.getSegments(sI, eI)
+    def plotOrbitLine(self, plt, xDta, yDta, tickType, gaps, pen, width):
         # Use a black pen for orbit lines when also drawing field lines
         arrowPen = pg.mkPen('#000000') if tickType == 'Field Lines' else pen
         plt.plot(xDta, yDta, pen=arrowPen, connect=gaps)
@@ -1102,6 +1131,131 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         # Draw an arrow at end of orbit line
         if tickType != 'Field Lines':
             plt.plotArrowLine(xDta[-2:], yDta[-2:], width, pen)
+
+    def calcOffset(self, angle, anchor, centerLines):
+        ofst = 15 if centerLines else 5 # Large offset when overlapping w/ lines
+        xAnchor, yAnchor = anchor
+
+        # Opposite direction for labels oriented to left/bottom
+        if xAnchor == 1:
+            ofst = -ofst
+
+        if angle != 0:
+            offsets = (ofst, -ofst)
+        else:
+            offsets = (ofst, 0)
+
+        return offsets
+
+    def getTimeTickValues(self, times, epoch, gaps):
+        # Initialize a datetime axis to generate ticks
+        minTime, maxTime = times[0], times[-1]
+        ta = DateAxis(epoch, orientation='bottom')
+        ta.setRange(minTime, maxTime)
+        tickValues = ta.tickValues(minTime, maxTime, 500)
+
+        # Extract enough ticks so that there are at least 3 time ticks
+        vals = []
+        for i in range(0, min(3, len(tickValues))):
+            levelSpacing, levelVals = tickValues[i]
+            if len(vals) <= 2:
+                vals.extend(levelVals)
+
+        # Ignore any time ticks outside of time range
+        vals = [t for t in vals if t >= minTime and t <= maxTime]
+        vals.sort()
+
+        # Find time gap ranges and remove time ticks in this range
+        gapTimes = []
+        indices = np.arange(0, len(times))
+        gapIndices = [indices[i] for i in range(0, len(indices)) if gaps[i] == 0]
+        for i in gapIndices:
+            if i > 0 and i+1 < len(times):
+                gapTimes.append((times[i], times[i+1]))
+
+        gapVals = []
+        for t in vals:
+            for gapStart, gapEnd in gapTimes:
+                if t > gapStart and t < gapEnd:
+                    gapVals.append(t)
+        vals = [t for t in vals if t not in gapVals]
+
+        return vals, ta
+
+    def plotTimesAlongOrbit(self, plt, posDta, magDta, timeDta, gaps):
+        # Extract data and parameters
+        epoch = self.outerFrame.epoch
+        centerLines = self.ui.centerLinesBox.isChecked()
+        times, fullTimes = timeDta
+        xDta, yDta, xFull, yFull = posDta
+        xMag, yMag, yMagFull, xMagFull = magDta
+
+        # Plot starting and ending ticks
+        brush = pg.mkBrush('#FFFFFF') # White fill, black outline
+        pen = pg.mkPen('#000000')
+        plt.scatterPlot([xDta[0]], [yDta[0]], symbol='s', pen=pen, size=8, brush=brush)
+        plt.scatterPlot([xDta[-1]], [yDta[-1]], symbol='o', pen=pen, size=8, brush=brush)    
+
+        # Initialize a datetime axis and generate the tick values to plot
+        tickValues, timeAxis = self.getTimeTickValues(fullTimes, epoch, gaps)
+
+        # Interpolate position data along the evenly spaced time tick values
+        # and plot points at these coordinates
+        csX = interpolate.CubicSpline(times, xDta)
+        csY = interpolate.CubicSpline(times, yDta)
+
+        xInterp = csX(tickValues)
+        yInterp = csY(tickValues)
+
+        plt.scatterPlot(xInterp, yInterp, symbol='o', size=6, pen=pen, brush=brush)
+
+        # Determine angle, anchor, and offset for the text labels
+        angle = self.getTextAngle(xDta, yDta)
+        anchor, startStr, endStr = self.getTextAnchor(xDta, yDta, angle)
+        ofst = self.calcOffset(angle, anchor, centerLines)
+
+        # Generate labels for each time tick and add to plot
+        labels = []
+        for x, y, t in zip(xInterp, yInterp, tickValues):
+            # Format timestamp
+            timestamp = self.outerFrame.getTimestampFromTick(t)
+            timestamp = timeAxis.fmtTimeStmp(timestamp)
+
+            lbl = TimeTickLabel(timestamp, color='#000000', anchor=anchor, angle=angle)
+            labels.append(lbl)
+
+            plt.addItem(lbl)
+            lbl.setOffset(ofst)
+            lbl.setPos(x,y)
+
+        # Add an additional label to indicate the timestamp format
+        axisLabel = timeAxis.getDefaultLabel()
+        spacing = tickValues[1] - tickValues[0]
+        fracSpacing = abs(spacing / 4)
+        diff = abs(tickValues[0] - times[0])
+        if diff < fracSpacing: # Append to first tick if very close to start time
+            lbl = labels[0]
+            label = lbl.getText()
+            a, b = anchor
+            axisLabel = '(' + axisLabel + ')'
+            if a == 1: # Place on separate line
+                anchor = (a, 0.25)
+                diff = len(axisLabel) - len(label)
+                startStr = ' ' * (abs(diff)*2)
+                if diff < 0: # Axis label is longer
+                    axisLabel = startStr + axisLabel + endStr
+                else:
+                    label = startStr + label + endStr
+                label = label + '\n' + axisLabel
+            else: # Add to end of string
+                label = label + ' ' + axisLabel
+            lbl.setPlainText(label)
+        else:
+            # Otherwise, add to start of orbit
+            lbl = TimeTickLabel(axisLabel, color='#000000', anchor=anchor, angle=angle)
+            plt.addItem(lbl)
+            lbl.setOffset(ofst)
+            lbl.setPos(xFull[0], yFull[0])
 
     def updatePlot(self):
         # Initialize plot parameters/scales if first plot
@@ -1132,6 +1286,8 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         yDta = yDta * radius
         xFull = xDta[:]
         yFull = yDta[:]
+        xFieldFull = xField[:]
+        yFieldFull = yField[:]
 
         # Create plot item and initialize pens
         pen = self.outerFrame.getPens()[0]
@@ -1165,6 +1321,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         xField = xField[mask] if len(xField) > 0 else xField
         yField = yField[mask] if len(yField) > 0 else yField
         times = times[mask]
+        gaps = self.outerFrame.getSegments(sI, eI)
 
         # Get tick marker width
         tickWidth = self.getTickWidth(xDta, yDta, tickType != 'None')
@@ -1172,16 +1329,25 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         colorMode = self.ui.colorMapBox.isChecked()
         # Plot orbit and its arrow to indicate direction
         if not projMode:
-            self.plotOrbitLine(plt, xFull, yFull, tickType, (sI, eI), orbitPen, tickWidth)
+            self.plotOrbitLine(plt, xFull, yFull, tickType, gaps, orbitPen, tickWidth)
 
         # Add additional markers onto plot
+        magDta = None
         if projMode:
             colorTimes = times if colorMode else None
             self.plotTermProj(plt, pen, xDta, yDta, tickWidth, colorTimes)
         elif tickType == 'Field Lines':
-            self.plotMagLines(plt, pen, xField, yField, xDta, yDta, tickWidth)
+            magDta = self.plotMagLines(plt, pen, xField, yField, xDta, yDta, tickWidth)
+            opt, xF, yF = magDta
+            magDta = (opt, xF, yF, times)
         elif tickType == 'Time Ticks':
-            self.plotTimeTicks(plt, pen, xDta, yDta, times, tickWidth)
+            self.plotTimeTicks(plt, pen, xDta, yDta, times)
+
+        if colorMode and magDta is not None:
+            magDta = (xField, yField, xFieldFull, yFieldFull)
+            timesDta = (times, fullTimes)
+            posDta = (xDta, yDta, xFull, yFull)
+            self.plotTimesAlongOrbit(plt, posDta, magDta, timesDta, gaps)
 
         # Origin item
         if self.ui.pltOriginBox.isChecked():
@@ -1205,6 +1371,30 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         self.addTimeInfo(t0, t1)
         self.currPlot = plt
         self.lockAspect(self.ui.aspectBox.isChecked())
+
+class TimeTickLabel(pg.TextItem):
+    def __init__(self, text='', color=(200,200,200), html=None, anchor=(0,0),
+                 border=None, fill=None, angle=0, rotateAxis=None, offset=(0,0)):
+        self.offset = offset
+        pg.TextItem.__init__(self, text, color, html, anchor, border, fill,
+            angle, rotateAxis)
+
+    def setOffset(self, ofst):
+        self.offset = ofst
+        self.updateTextPos()
+
+    def updateTextPos(self):
+        # update text position to obey anchor
+        r = self.textItem.boundingRect()
+        tl = self.textItem.mapToParent(r.topLeft())
+        br = self.textItem.mapToParent(r.bottomRight())
+        ofstX, ofstY = self.offset
+        offset = (br - tl) * self.anchor
+        offset = QtCore.QPointF(offset.x()-ofstX, offset.y()-ofstY)
+        self.textItem.setPos(-offset)
+
+    def getText(self):
+        return self.textItem.toPlainText()
 
 class MagnetosphereToolUI(BaseLayout):
     def setupUI(self, frame, outerFrame):

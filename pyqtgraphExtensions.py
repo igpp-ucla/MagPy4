@@ -491,9 +491,9 @@ class DateAxis(pg.AxisItem):
     def formatSplitStr(self, fmt='MS'):
         # Format timestamp based on selected keyword
         if fmt == 'DAY':
-            return 'DATE HH:MM:SS'
+            return 'DATE HH:MM'
         elif fmt == 'HR':
-            return 'HH:MM:SS'
+            return 'HH:MM'
         elif fmt == 'MIN':
             return 'MM:SS'
         else:
