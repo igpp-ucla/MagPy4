@@ -1188,21 +1188,21 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         centerLines = self.ui.centerLinesBox.isChecked()
         times, fullTimes = timeDta
         xDta, yDta, xFull, yFull = posDta
-        xMag, yMag, yMagFull, xMagFull = magDta
+        xMag, yMag, xMagFull, yMagFull = magDta
 
         # Plot starting and ending ticks
         brush = pg.mkBrush('#FFFFFF') # White fill, black outline
         pen = pg.mkPen('#000000')
-        plt.scatterPlot([xDta[0]], [yDta[0]], symbol='s', pen=pen, size=8, brush=brush)
-        plt.scatterPlot([xDta[-1]], [yDta[-1]], symbol='o', pen=pen, size=8, brush=brush)    
+        plt.scatterPlot([xFull[0]], [yFull[0]], symbol='s', pen=pen, size=8, brush=brush)
+        plt.scatterPlot([xFull[-1]], [yFull[-1]], symbol='o', pen=pen, size=8, brush=brush)
 
         # Initialize a datetime axis and generate the tick values to plot
         tickValues, timeAxis = self.getTimeTickValues(fullTimes, epoch, gaps)
 
         # Interpolate position data along the evenly spaced time tick values
         # and plot points at these coordinates
-        csX = interpolate.CubicSpline(times, xDta)
-        csY = interpolate.CubicSpline(times, yDta)
+        csX = interpolate.CubicSpline(fullTimes, xFull)
+        csY = interpolate.CubicSpline(fullTimes, yFull)
 
         xInterp = csX(tickValues)
         yInterp = csY(tickValues)
