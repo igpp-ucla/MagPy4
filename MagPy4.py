@@ -2305,7 +2305,6 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
     def wheelEvent(self, ev, axis=None):
         ev.ignore()
 
-
 # Wrapper class for Flat File FID functions
 class FF_FD():
     def __init__(self, filename, FID):

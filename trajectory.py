@@ -1243,9 +1243,9 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
                 diff = len(axisLabel) - len(label)
                 startStr = ' ' * (abs(diff)*2)
                 if diff < 0: # Axis label is longer
-                    axisLabel = startStr + axisLabel + endStr
+                    axisLabel = startStr + axisLabel
                 else:
-                    label = startStr + label + endStr
+                    label = startStr + label
                 label = label + '\n' + axisLabel
             else: # Add to end of string
                 label = label + ' ' + axisLabel

@@ -151,23 +151,29 @@ class Mth:
         """
         data = np.copy(origData)
 
-        # Get a mask identifing error flag values
-        indices = np.arange(0, len(origData))
-        mask = (origData >= errorFlag)
+        if len(data) < 1:
+            return data
 
-        if True not in mask: # Data is pure errors
+        # Get a mask identifying error flag values
+        indices = np.arange(0, len(origData))
+        mask = (np.abs(origData) >= errorFlag)
+
+        if True not in mask or False not in mask: # Data is pure errors or has none
             return data
 
         # Find the indices for the first and last valid (< error flag) values
+        lastIndex = len(data) - 1
         mask = list(mask)
-        first = mask.index(False)
-        last = len(mask) - (mask[::-1]).index(False) - 1
+        first = mask.index(False) if mask[0] == True else 0
+        last = lastIndex
+        while last > 0 and mask[last] == True:
+            last -= 1
 
         # Fill any starting error flags w/ the first valid value
         if first != 0:
             data[:first] = data[first]
         # Fill any ending error flags w/ the last valid value
-        if last != len(data) - 1:
+        if last != lastIndex:
             data[last+1:] = data[last]
 
         # Strip starting/ending error flags if set
@@ -189,18 +195,6 @@ class Mth:
             newLst.extend(subLst)
         return newLst
 
-    #def cdfInternal(n):
-    #    dt = 32.184   # tai - tt time?
-    #    div = 10 ** 9
-    #    d2tt2 = pycdf.lib.datetime_to_tt2000
-    #    return d2tt2(n)/div-dt
-
-    #def CDFEpochToTimeTicks(cdfEpoch):
-    #    dt = 32.184   # tai - tt time?
-    #    div = 10 ** 9
-    #    d2tt2 = pycdf.lib.datetime_to_tt2000
-    #    return d2tt2(cdfEpoch)/div-dt
-
     def CDFEpochToTimeTicks(cdfEpoch):
         # todo: add support for other epochs
         d2tt2 = pycdf.lib.datetime_to_tt2000
@@ -216,10 +210,6 @@ class Mth:
         for i in rng:
             arr[i] = d2tt2(cdfEpoch[i]) / div - dt
         return arr
-
-
-
-    # importing from waveAnalysis.py in magpy
 
     def flip(a):   # Inverts row order then inverts column order
         return a[:, ::-1][::-1, ...]
