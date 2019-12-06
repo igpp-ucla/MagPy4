@@ -18,7 +18,6 @@ from datetime import datetime, timedelta
 import multiprocessing
 from multiprocessing import Pool
 
-
 class TrajectoryUI(BaseLayout):
     def setupUI(self, Frame, window):
         Frame.setWindowTitle('Trajectory Analysis')
@@ -481,7 +480,7 @@ class OrbitUI(BaseLayout):
         pltFrm = QtWidgets.QGroupBox('Plot Type:')
         pltLt = QtWidgets.QGridLayout(pltFrm)
 
-        # Plane of view
+        # Plane of view radio button and axis boxes
         self.viewPlaneBtn = QtWidgets.QRadioButton('View Plane: ')
         self.viewPlaneBtn.setChecked(True)
         self.axesList = ['X','Y','Z']
@@ -495,6 +494,7 @@ class OrbitUI(BaseLayout):
         self.planeBox1.currentTextChanged.connect(self.updateBoxItems)
         pltLt.addWidget(self.viewPlaneBtn, 0, 0, 1, 1)
         pltLt.addWidget(self.planeBox1, 0, 1, 1, 1)
+    
         self.addPair(pltLt, ' by ', self.planeBox2, 0, 2, 1, 1)
 
         # Projection onto the terminator plane radio button
@@ -503,29 +503,42 @@ class OrbitUI(BaseLayout):
         pltLt.addWidget(self.projBtn, 1, 0, 1, 4)
 
         layout.addWidget(pltFrm, 0, 0, 1, 5)
-        separator = self.getWidgetSeparator()
-        layout.addWidget(separator, 1, 0, 1, 5)
 
-        # Add tick settings, plot settings, and magnetosphere model layouts
-        tickLt = self.setupTickLt(outerFrame, Frame)
-        pltLt = self.setupPlotSettingsLt(outerFrame, Frame)
+        # Build tick settings sub-layouts and group into a single layout
+        tickSettingsLt = QtWidgets.QVBoxLayout()
+        tickSettingsLt.setContentsMargins(0,0,0,0)
+        tickSettingsLt.setSpacing(10)
+
+        self.fieldLineBox = self.setupFieldLineLt()
+        self.timeTickBox = self.setupTimeLt()
+        self.projLt = self.setupProjLt()
+
+        for frm in [self.fieldLineBox, self.timeTickBox]:
+            tickSettingsLt.addWidget(frm)
+        tickSettingsLt.addLayout(self.projLt)
+    
+        layout.addLayout(tickSettingsLt, 2, 0, 1, 5)
+
+        # Magnetosphere model group box
         modelFrm = self.setupModelLt(outerFrame, Frame)
-        layout.addLayout(tickLt, 2, 0, 1, 5)
         layout.addWidget(modelFrm, 4, 0, 1, 5)
+
+        # Additional plot settings layout
+        pltLt = self.setupPlotSettingsLt(outerFrame, Frame)
         layout.addLayout(pltLt, 6, 0, 1, 5)
 
         # Add in cosmetic separators
-        for row in [3,5,7]:
+        for row in [1, 3,5,7]:
             self.addSeparator(layout, row, 5)
 
         # Update button
         self.updtBtn = QtWidgets.QPushButton('Update')
-        layout.addWidget(self.updtBtn, 8, 4, 1, 1)
+        layout.addWidget(self.updtBtn, 87, 4, 1, 1)
         return frame
 
     def addSeparator(self, layout, row, span):
         separator = self.getWidgetSeparator()
-        layout.addWidget(separator, row, 0, 1, span)
+        layout.addWidget(separator, row, 0, 1, span, QtCore.Qt.AlignVCenter)
 
     def updateBoxItems(self):
         # Makes sure if 'YZ' is selected, than the other axis must be 'X'
@@ -541,7 +554,7 @@ class OrbitUI(BaseLayout):
         # Line separator between layout elements
         spacer = QtWidgets.QFrame()
         spacer.setFrameStyle(QtWidgets.QFrame.HLine)
-        spacer.setMinimumHeight(20)
+        spacer.setMinimumHeight(15)
         spacer.setStyleSheet('color: rgb(191, 191, 191);')
         return spacer
 
@@ -566,26 +579,14 @@ class OrbitUI(BaseLayout):
         self.pltOriginBox.setChecked(False)
         layout.addWidget(self.pltOriginBox, 1, 1, 1, 1)
 
-        # Color-mapped
-        self.colorMapBox = QtWidgets.QCheckBox('Color-mapped')
-        layout.addWidget(self.colorMapBox, 2, 0, 1, 1)
-
         return layout
 
-    def setupTickLt(self, outerFrame, Frame):
-        layout = QtWidgets.QGridLayout()
-
-        # Plot tick types
-        self.btnBox = QtWidgets.QGroupBox('Marker Type:')
-        self.markerBtns = []
-        btnLt = QtWidgets.QHBoxLayout(self.btnBox)
-        btnLbls = ['Field Lines', 'Time Ticks', 'None']
-        for lbl in btnLbls:
-            btn = QtWidgets.QRadioButton(lbl)
-            self.markerBtns.append(btn)
-            btnLt.addWidget(btn)
-        self.markerBtns[0].setChecked(True)
-        layout.addWidget(self.btnBox, 0, 0, 1, 3)
+    def setupFieldLineLt(self):
+        frame = QtWidgets.QGroupBox(' Plot Field Lines: ')
+        frame.setCheckable(True)
+        layout = QtWidgets.QGridLayout(frame)
+        lm, tm, rm, bm = layout.getContentsMargins()
+        layout.setContentsMargins(lm+9, 5, rm, 4)
 
         # Tick interval box
         intLt = QtWidgets.QGridLayout()
@@ -595,61 +596,89 @@ class OrbitUI(BaseLayout):
         self.intervalBox.setSuffix(' pts')
         self.intervalBox.setSingleStep(5)
         tt = 'Number of points between time ticks/field lines'
-        lbl = self.addPair(intLt, 'Tick Spacing:  ', self.intervalBox, 0, 0, 1, 1, tt)
-        self.intLbl = lbl
-        spacer = self.getSpacer(5)
-        intLt.addItem(spacer, 0, 2, 1, 1)
+        lbl = self.addPair(layout, 'Tick Spacing:  ', self.intervalBox, 0, 0, 1, 1, tt)
 
-        # Tick time representation label
-        self.timeLbl = QtWidgets.QLabel()
-        self.timeLbl.setToolTip('HH:MM:SS.SSS')
-        self.intervalBox.valueChanged.connect(self.adjustTimeLabel)
-        intLt.addWidget(self.timeLbl, 0, 3, 1, 1)
         layout.addLayout(intLt, 1, 0, 1, 3)
-
         # Field line scale
         scaleLt = QtWidgets.QGridLayout()
         self.magLineScaleBox = QtWidgets.QDoubleSpinBox()
         self.magLineScaleBox.setMinimum(1e-5)
-        self.magLineScaleBox.setMaximum(1e10)
+        self.magLineScaleBox.setMaximum(1e8)
         self.magLineScaleBox.setDecimals(5)
         self.magLineScaleBox.setValue(0.25)
         self.magLineScaleBox.setMaximumWidth(200)
         tt = 'Ratio between field values and position data units'
-        lbl = self.addPair(scaleLt, 'Field Line Scale:  ', self.magLineScaleBox, 2, 0, 1, 2, tt)
-        self.magLineLbl = lbl
-        layout.addLayout(scaleLt, 2, 0, 1, 3)
+        lbl = self.addPair(layout, 'Field Line Scale:  ', self.magLineScaleBox, 1, 0, 1, 1, tt)
 
         # Center field lines check
         tt = 'Toggle to center field vectors around the orbit line'
         self.centerLinesBox = QtWidgets.QCheckBox('Center Field Vectors')
         self.centerLinesBox.setChecked(True)
         self.centerLinesBox.setToolTip(tt)
-        layout.addWidget(self.centerLinesBox, 3, 0, 1, 1)
+        layout.addWidget(self.centerLinesBox, 3, 0, 1, 2, QtCore.Qt.AlignLeft)
+
+        return frame
+
+    def setupTimeLt(self):
+        frame = QtWidgets.QGroupBox(' Plot Time Ticks: ')
+        frame.setCheckable(True)
+        layout = QtWidgets.QGridLayout(frame)
+        lm, tm, rm, bm = layout.getContentsMargins()
+        layout.setContentsMargins(lm+9, 5, rm, 4)
+
+        # Spacing mode radio buttons
+        lbl = QtWidgets.QLabel('Tick Spacing: ')
+        self.autoBtn = QtWidgets.QRadioButton('Auto')
+        self.customBtn = QtWidgets.QRadioButton('Custom')
+        self.autoBtn.setChecked(True)
+
+        # Time interval edit
+        self.timeBox = QtWidgets.QTimeEdit()
+        self.timeBox.setDisplayFormat("HH:mm:ss '(HH:MM:SS)'")
+        self.timeBox.setMinimumTime(QtCore.QTime(0, 0, 1))
+        
+        layout.addWidget(lbl, 0, 0, 1, 4)
+        layout.addWidget(self.autoBtn, 1, 0, 1, 1)
+        layout.addWidget(self.customBtn, 1, 1, 1, 1)
+        layout.addWidget(self.timeBox, 1, 2, 1, 1)
+
+        return frame
+
+    def setupProjLt(self):
+        layout = QtWidgets.QGridLayout()
+        layout.setVerticalSpacing(2)
+        layout.setContentsMargins(0,0,0,0)
+
+        # Tick intervals box
+        self.projIntBox = QtWidgets.QSpinBox()
+        self.projIntBox.setMinimum(1)
+        self.projIntBox.setMaximum(100000)
+        self.projIntBox.setSuffix(' pts')
+        self.projIntBox.setSingleStep(5)
+        lbl = self.addPair(layout, 'Tick Spacing: ', self.projIntBox, 0, 0, 1, 1)
+        self.projIntLbl = lbl
+
+        # Color-mapped checkbox
+        self.colorMapBox = QtWidgets.QCheckBox('Color-mapped')
+        self.colorMapBox.setToolTip('Map each point to a color based on its time')
+        layout.addWidget(self.colorMapBox, 1, 0, 1, 2, QtCore.Qt.AlignLeft)
 
         return layout
 
     def setupModelLt(self, outerFrame, Frame):
         self.modelBox = QtWidgets.QGroupBox(' Plot Model of Earth\'s Magnetosphere')
         layout = QtWidgets.QHBoxLayout(self.modelBox)
+        lm, tm, rm, bm = layout.getContentsMargins()
+        layout.setContentsMargins(lm+9, 5, rm, 4)
         self.modelBox.setCheckable(True)
         self.modelBox.setChecked(False)
         self.modelBox.toggled.connect(self.modelChecked)
         self.modelBtn = QtWidgets.QPushButton('Set Model Parameters')
-        self.modelBtn.setFixedWidth(235)
+        self.modelBtn.setFixedWidth(230)
 
-        layout.addWidget(self.modelBtn, QtCore.Qt.AlignCenter)
+        layout.addWidget(self.modelBtn, QtCore.Qt.AlignLeft)
+        layout.addStretch()
         return self.modelBox
-
-    def adjustTimeLabel(self, val):
-        vecDstrs = self.outerFrame.getFieldVec()
-        dstr = vecDstrs[0]
-        en = self.outerFrame.getEditNum()
-        times = self.outerFrame.getTimes(dstr, en)
-        res = times[1] - times[0]
-
-        td = timedelta(seconds=val*res)
-        self.timeLbl.setText(str(td))
 
     def modelChecked(self, val):
         # Toggle 'Plot Origin' if model is to be plotted
@@ -687,20 +716,17 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         self.ui.aspectBox.clicked.connect(self.lockAspect)
         self.ui.plotTitleBox.textChanged.connect(self.setPltTitle)
         self.ui.pltOriginBox.toggled.connect(self.addOriginItem)
+
+        self.ui.modelBtn.clicked.connect(self.openMagTool)
         self.outerFrame.ui.radUnitBox.textChanged.connect(self.updtUnits)
         self.outerFrame.ui.radiusBox.valueChanged.connect(self.adjustScale)
         self.ui.magLineScaleBox.valueChanged.connect(self.saveScale)
-
-        self.ui.modelBtn.clicked.connect(self.openMagTool)
 
         # Initialize the units label for mag line scaling
         self.updtUnits(self.outerFrame.getRadiusUnits())
         self.plotTypeChanged()
 
         # Enable/disable relavent plot options when tick and plot types are changed
-        for btn in self.ui.markerBtns:
-            btn.toggled.connect(self.tickTypeChanged)
-
         for btn in [self.ui.projBtn, self.ui.viewPlaneBtn]:
             btn.toggled.connect(self.plotTypeChanged)
 
@@ -721,17 +747,23 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
     def initValues(self):
         a, b = self.outerFrame.getIndices()
-        self.tickTypeChanged()
+        self.updateTickInterval()
         posDstrs = self.outerFrame.getPosVec()
         vecDstrs = self.outerFrame.getFieldVec()
         self.setVecScale(posDstrs, vecDstrs, a,b)
         self.scaleSet = True
 
     def getTickType(self):
-        for btn in self.ui.markerBtns:
-            if btn.isChecked():
-                return btn.text()
-        return 'None'
+        tickType = 'None'
+        if self.ui.fieldLineBox.isChecked():
+            tickType = 'Field Lines'
+
+        if self.ui.timeTickBox.isChecked():
+            if tickType != 'None':
+                tickType = 'Both'
+            else:
+                tickType = 'Time Ticks'
+        return tickType
 
     def getScalingFactor(self):
         scaleVal = self.ui.magLineScaleBox.value()
@@ -793,64 +825,28 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         # projection of the field lines
         projMode = self.inProjMode()
         if projMode:
-            self.enableLineOptions(False)
-            self.enableIntervalOptions(True)
             # Update interval box value
             a, b = self.outerFrame.getIndices()
-            self.ui.intervalBox.setValue(max(1, int((b-a)*.002)))
+            self.ui.projIntBox.setValue(max(1, int((b-a)*.002)))
         else:
-            self.tickTypeChanged()
+            self.updateTickInterval()
+        
+        self.ui.timeTickBox.setVisible(not projMode)
+        self.ui.fieldLineBox.setVisible(not projMode)
+        self.ui.colorMapBox.setChecked(projMode)
 
-        self.ui.btnBox.setEnabled(not projMode)
+        for item in [self.ui.colorMapBox, self.ui.projIntBox, self.ui.projIntLbl]:
+            item.setVisible(projMode)
 
-        if not projMode:
-            tickType = self.getTickType()
-            fieldTimeTicks = (tickType == 'Field Lines')
-            self.ui.colorMapBox.setChecked(fieldTimeTicks)
-            self.ui.colorMapBox.setVisible(fieldTimeTicks)
-            self.ui.colorMapBox.setText('Plot Additional Time Ticks')
-            self.ui.colorMapBox.setToolTip('Plot time ticks along orbit line')
-        else:
-            self.ui.colorMapBox.setVisible(True)
-            self.ui.colorMapBox.setText('Color-mapped')
-            self.ui.colorMapBox.setChecked(projMode)
-            self.ui.colorMapBox.setToolTip('Map each point to a color based on its time')
-
-    def enableLineOptions(self, val=True):
-        self.ui.centerLinesBox.setEnabled(val)
-        self.ui.magLineScaleBox.setEnabled(val)
-        self.ui.magLineLbl.setEnabled(val)
-
-    def enableIntervalOptions(self, val=True):
-        self.ui.intervalBox.setEnabled(val)
-        self.ui.timeLbl.setEnabled(val)
-        self.ui.intLbl.setEnabled(val)
-
-    def tickTypeChanged(self):
+    def updateTickInterval(self):
         # Enable/disable UI elements according to tick type chosen
-        tickType = self.getTickType()
-
-        magScaleEnabled = True if tickType == 'Field Lines' else False
-        tickInterval = False if tickType == 'None' else True
-
-        self.enableLineOptions(magScaleEnabled)
-        self.enableIntervalOptions(tickInterval)
-
         # Update tick spacing if switching between marker types
-        val = None
-        if tickInterval and tickType == 'Time Ticks':
-            a, b = self.outerFrame.getIndices()
-            val = int((b-a)/15)
-        elif tickInterval:
-            a, b = self.outerFrame.getIndices()
-            val = int((b-a)/75)
+        a, b = self.outerFrame.getIndices()
+        val = int((b-a)/75)
 
         if val is not None:
             val = max(val - (val % 5), 1)
             self.ui.intervalBox.setValue(val)
-
-        fieldTimeTicks = tickType == 'Field Lines'
-        self.ui.colorMapBox.setVisible(fieldTimeTicks)
 
     def setVecScale(self, posDstrs, vecDstrs, sI, eI):
         en = self.outerFrame.getEditNum()
@@ -1045,7 +1041,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         return anchor, startStr, endStr
 
-    def plotTimeTicks(self, plt, pen, xDta, yDta, times):
+    def plotTimeTicks(self, plt, pen, xDta, yDta, times, td):
         # Add round points at given orbit positions
         brush = pg.mkBrush(pen.color())
         plt.scatterPlot(xDta, yDta, size=4, pen=pen, brush=brush)
@@ -1129,7 +1125,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         plt.plot(xDta, yDta, pen=arrowPen, connect=gaps)
 
         # Draw an arrow at end of orbit line
-        if tickType != 'Field Lines':
+        if tickType == 'None':
             plt.plotArrowLine(xDta[-2:], yDta[-2:], width, pen)
 
     def calcOffset(self, angle, anchor, centerLines):
@@ -1147,16 +1143,41 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         return offsets
 
-    def getTimeTickValues(self, times, epoch, gaps):
+    def getTimeTickValues(self, times, epoch, gaps, td=None):
         # Initialize a datetime axis to generate ticks
         minTime, maxTime = times[0], times[-1]
         ta = DateAxis(epoch, orientation='bottom')
         ta.setRange(minTime, maxTime)
+
+        if td: # Set user-specified custom tick spacing
+            ta.setCstmTickSpacing(td)
+
+            # Determine which time units need to be included in labels
+            uiTime = self.ui.timeBox.time()
+            refLst = []
+            for val, itemStr in zip([uiTime.hour(),uiTime.minute(), uiTime.second()],
+                ['HH', 'MM', 'SS']):
+                if val != 0:
+                    refLst.append(itemStr)
+            
+            refStr = refLst[0] if len(refLst) > 0 else ''
+            for i in range(1, len(refLst)):
+                refStr = refStr + ':' + refLst[i]
+
+            # Set the time axis label format to one that includes all the
+            # necessary time units
+            for axisMode in ta.timeModes[4:]:
+                if refStr in axisMode:
+                    ta.setLabelFormat(axisMode)
+                    break
+
+        # Get the default tick values/levels
         tickValues = ta.tickValues(minTime, maxTime, 500)
 
         # Extract enough ticks so that there are at least 3 time ticks
+        minLevels = 3 if td is None else 1
         vals = []
-        for i in range(0, min(3, len(tickValues))):
+        for i in range(0, min(minLevels, len(tickValues))):
             levelSpacing, levelVals = tickValues[i]
             if len(vals) <= 2:
                 vals.extend(levelVals)
@@ -1182,7 +1203,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         return vals, ta
 
-    def plotTimesAlongOrbit(self, plt, posDta, magDta, timeDta, gaps):
+    def plotTimesAlongOrbit(self, plt, posDta, magDta, timeDta, gaps, td=None):
         # Extract data and parameters
         epoch = self.outerFrame.epoch
         centerLines = self.ui.centerLinesBox.isChecked()
@@ -1197,7 +1218,9 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         plt.scatterPlot([xFull[-1]], [yFull[-1]], symbol='o', pen=pen, size=8, brush=brush)
 
         # Initialize a datetime axis and generate the tick values to plot
-        tickValues, timeAxis = self.getTimeTickValues(fullTimes, epoch, gaps)
+        tickValues, timeAxis = self.getTimeTickValues(fullTimes, epoch, gaps, td)
+        if len(tickValues) < 1:
+            return
 
         # Interpolate position data along the evenly spaced time tick values
         # and plot points at these coordinates
@@ -1229,7 +1252,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             lbl.setPos(x,y)
 
         # Add an additional label to indicate the timestamp format
-        axisLabel = timeAxis.getDefaultLabel()
+        axisLabel = timeAxis.getDefaultLabel() if timeAxis.labelFormat is None else timeAxis.labelFormat
         spacing = tickValues[1] - tickValues[0]
         fracSpacing = abs(spacing / 4)
         diff = abs(tickValues[0] - times[0])
@@ -1257,6 +1280,37 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             lbl.setOffset(ofst)
             lbl.setPos(xFull[0], yFull[0])
 
+    def getTimeInterval(self):
+        if self.ui.autoBtn.isChecked():
+            return None
+        value = self.ui.timeBox.time()
+        formatStr = '%H:%M:%S'
+        minBoxTime = datetime.strptime(QtWidgets.QTimeEdit().minimumTime().toString(), formatStr)
+        valTime = datetime.strptime(value.toString(), formatStr)
+        value = valTime - minBoxTime
+        return value
+
+    def checkTimeTickInterval(self, td, t0, t1, tickType, projMode):
+        # Don't check if not plotting time ticks
+        if projMode or tickType not in ['Both', 'Time Ticks'] or td is None:
+            return True
+
+        # Check if time tick interval is less than total time / 150 or is
+        # greater than half the the total time, printing an error message if so
+        diff = abs(t1-t0)
+        frac = diff / 150
+        interval = abs(td.total_seconds())
+        if interval < frac:
+            msg = 'Error: Time tick interval is too small'
+            self.outerFrame.ui.statusBar.showMessage(msg, 2500)
+            return False
+        elif interval > (diff / 2):
+            msg = 'Error: Time tick interval too large'
+            self.outerFrame.ui.statusBar.showMessage(msg, 2500)
+            return False
+        
+        return True
+
     def updatePlot(self):
         # Initialize plot parameters/scales if first plot
         if not self.scaleSet:
@@ -1273,6 +1327,10 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         times = times[sI:eI]
         fullTimes = times[:]
         t0, t1 = times[0], times[-1] # Save start/end times for time label
+        td = self.getTimeInterval()
+
+        if not self.checkTimeTickInterval(td, t0, t1, self.getTickType(), projMode):
+            return
 
         # Get position data corresponding to plane chosen by user
         if projMode:
@@ -1299,9 +1357,12 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             self.plotMagnetosphere(plt, t0, xDta, yDta)
 
         # Limit data/times by the user's sample rate if plotting markers
-        tickType = self.getTickType() if not projMode else 'Time Ticks'
-        if tickType != 'None':
-            rate = self.ui.intervalBox.value()
+        tickType = self.getTickType() if not projMode else 'None'
+        if tickType != 'None' or projMode:
+            if projMode:
+                rate = self.ui.projIntBox.value()
+            else:
+                rate = self.ui.intervalBox.value()
             xDta = self.sampleData(xDta, times, rate)
             yDta = self.sampleData(yDta, times, rate)
             xField = self.sampleData(xField, times, rate)
@@ -1336,18 +1397,15 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         if projMode:
             colorTimes = times if colorMode else None
             self.plotTermProj(plt, pen, xDta, yDta, tickWidth, colorTimes)
-        elif tickType == 'Field Lines':
+        if tickType == 'Field Lines' or tickType == 'Both':
             magDta = self.plotMagLines(plt, pen, xField, yField, xDta, yDta, tickWidth)
             opt, xF, yF = magDta
             magDta = (opt, xF, yF, times)
-        elif tickType == 'Time Ticks':
-            self.plotTimeTicks(plt, pen, xDta, yDta, times)
-
-        if colorMode and magDta is not None:
+        if tickType == 'Time Ticks' or tickType == 'Both':
             magDta = (xField, yField, xFieldFull, yFieldFull)
             timesDta = (times, fullTimes)
             posDta = (xDta, yDta, xFull, yFull)
-            self.plotTimesAlongOrbit(plt, posDta, magDta, timesDta, gaps)
+            self.plotTimesAlongOrbit(plt, posDta, magDta, timesDta, gaps, td)
 
         # Origin item
         if self.ui.pltOriginBox.isChecked():
