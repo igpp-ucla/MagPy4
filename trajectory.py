@@ -1015,58 +1015,64 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
     def getTextAngle(self, xDta, yDta):
         # Rotate text by 45 degrees if the average slope is > 0.5
-        yDiff = abs(np.diff(yDta))
-        xDiff = abs(np.diff(xDta))
-        avgSlope = np.mean(yDiff/xDiff)
-        if avgSlope < 0.5:
+        xDiff = max(xDta) - min(xDta)
+        yDiff = max(yDta) - min(yDta)
+        posDiff = np.array([xDiff, yDiff])
+        posDiff = posDiff / np.linalg.norm(posDiff)
+        xAxisVec = [1 * np.sign(xDiff), 0]
+
+        # Calculate the angle between the x-axis and the vector (xMax - xMin, 
+        # yMax - yMin)
+        cos_alpha = np.dot(posDiff, xAxisVec)
+        alpha = np.rad2deg(np.arccos(cos_alpha))
+
+        if alpha < 18:
             angle = 45
         else:
             angle = 0
 
         return angle
 
-    def getTextAnchor(self, xDta, yDta, angle):
+    def getTextAnchor(self, posDta, angle, fieldDta=None):
+        xDta, yDta = posDta
         # Anchor text to the left of point if the orbit is close to
         # the origin and on its left side
-        magDta = np.sqrt((xDta ** 2) + (yDta ** 2))
-        startStr, endStr = ' ', ''
-        anchor = (0, 0.5)
-        minIndex = np.argmin(magDta)
-        minDist = magDta[minIndex]
-        minX = xDta[minIndex]
-        originRadius = self.getOriginRadius(self.outerFrame.getPosVec())
-        if (minDist < originRadius * 4 and minX < 0 and max) and angle == 0:
-            anchor = (1, 0.5)
-            endStr = ' '
+        if fieldDta is None:
+            magDta = np.sqrt((xDta ** 2) + (yDta ** 2))
+            anchor = (0, 0.5)
+            minIndex = np.argmin(magDta)
+            minDist = magDta[minIndex]
+            minX = xDta[minIndex]
+            originRadius = self.getOriginRadius(self.outerFrame.getPosVec())
+            if (minDist < originRadius * 4 and minX < 0 and max) and angle == 0:
+                anchor = (1, 0.5)
+        else:
+            # Try to find the side of the orbit line where most of the vectors
+            # are pointing towards
+            xField, yField = fieldDta
+            xFAvg = np.mean(xField)
+            yFAvg = np.mean(yField)
+            fieldAvg = np.array([xFAvg, yFAvg])
+            fieldAvg = fieldAvg / np.linalg.norm(fieldAvg)
 
-        return anchor, startStr, endStr
+            # Orbit line
+            center, width = int(len(xDta) / 2), 5
+            lb, rb = max(0, center-width), min(len(xDta), center+width)
+            xDiff = xDta[lb] - xDta[rb]
+            yDiff = yDta[lb] - yDta[rb]
+            posDiff = np.array([xDiff, yDiff])
+            posDiff = posDiff / np.linalg.norm(posDiff)
 
-    def plotTimeTicks(self, plt, pen, xDta, yDta, times, td):
-        # Add round points at given orbit positions
-        brush = pg.mkBrush(pen.color())
-        plt.scatterPlot(xDta, yDta, size=4, pen=pen, brush=brush)
+            # Difference vector
+            diffVec = fieldAvg - posDiff
+            refDiff = diffVec[1] if angle != 0 else diffVec[0]
 
-        # Rotate text by 45 degrees if the average slope is > 0.5
-        angle = self.getTextAngle(xDta, yDta)
+            if refDiff > 0:
+                anchor = (1, 0.5)
+            else:
+                anchor = (0, 0.5)
 
-        # Anchor text to the left of point if the orbit is close to
-        # the origin and on its left side
-        anchor, startStr, endStr = self.getTextAnchor(xDta, yDta, angle)
-
-        # Create a datetime axis to convert time ticks into timestamps
-        tm = DateAxis(self.outerFrame.epoch, 'bottom')
-        tm.setRange(times[0], times[-1])
-
-        # Add a timestamp text item near each of the plotted points,
-        # with the given angle calculated above
-        for x, y, t in zip(xDta, yDta, times):
-            label = self.outerFrame.getTimestampFromTick(t)
-            label = startStr + tm.fmtTimeStmp(label) + endStr
-            if t == times[0]:
-                label = label + ' (' + tm.getDefaultLabel() + ')'
-            txt = TimeTickLabel(label, color=pg.mkColor('#000000'), anchor=anchor, angle=angle)
-            plt.addItem(txt)
-            txt.setPos(x, y)
+        return anchor
 
     def getTickWidth(self, xDta, yDta, ticks=True):
         # Estimate a reasonable tick width from position data
@@ -1081,6 +1087,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
             totDist = self.getMaxWidth(xDta, yDta)
             width = min(abs(avgDist / 2), totDist * distFrac)
+            width = max(width, totDist * 0.002)
             return width
         else:
             totDist = self.getMaxWidth(xDta, yDta)
@@ -1206,7 +1213,8 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
     def plotTimesAlongOrbit(self, plt, posDta, magDta, timeDta, gaps, td=None):
         # Extract data and parameters
         epoch = self.outerFrame.epoch
-        centerLines = self.ui.centerLinesBox.isChecked()
+        fieldLinesPlotted = self.ui.fieldLineBox.isChecked()
+        centerLines = self.ui.centerLinesBox.isChecked() and fieldLinesPlotted
         times, fullTimes = timeDta
         xDta, yDta, xFull, yFull = posDta
         xMag, yMag, xMagFull, yMagFull = magDta
@@ -1234,7 +1242,8 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         # Determine angle, anchor, and offset for the text labels
         angle = self.getTextAngle(xDta, yDta)
-        anchor, startStr, endStr = self.getTextAnchor(xDta, yDta, angle)
+        fieldDta = (xMag, yMag) if fieldLinesPlotted else None
+        anchor = self.getTextAnchor((xDta, yDta), angle, fieldDta)
         ofst = self.calcOffset(angle, anchor, centerLines)
 
         # Generate labels for each time tick and add to plot
