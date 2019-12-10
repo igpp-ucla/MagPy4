@@ -221,6 +221,40 @@ class ListLayout(QtWidgets.QGridLayout):
         layout.addWidget(table)
         return frame, table
 
+    def getPlotTitleLt(self, plotNum):
+        # Set up plot number title
+        pltTitleLt = QtWidgets.QHBoxLayout()
+        pltLbl = QtWidgets.QLabel('Plot ' + str(plotNum) + ':')
+
+        # Set up sub-plot options button
+        optBtn = QtWidgets.QPushButton()
+        optBtn.setStyleSheet('QPushButton { color: #292929; }')
+        optBtn.setFlat(True)
+        optBtn.setFixedSize(20, 20)
+
+        # Set up options menu and 'close' action
+        menu = QtWidgets.QMenu()
+        act = menu.addAction('Remove sub-plot')
+        act.triggered.connect(functools.partial(self.subPlotAction, optBtn))
+        optBtn.setMenu(menu)
+
+        # Create layout
+        pltElems = [pltLbl, optBtn]
+        for elem in pltElems:
+            pltTitleLt.addWidget(elem)
+
+        return pltTitleLt, pltElems
+
+    def closeSubPlot(self, plotIndex):
+        if not self.mainFrame.checkIfPlotRemovable():
+            return
+
+        # Remove plot, update frame state, and update plot titles
+        self.removeSpecificPlot(plotIndex)
+        self.updatePlotTitles()
+        self.mainFrame.plotCount -= 1
+        self.mainFrame.rebuildPlotLinks()
+
     def addPlot(self):
         plotNum = len(self.pltFrms) + 1
         row = plotNum - 1
@@ -230,8 +264,8 @@ class ListLayout(QtWidgets.QGridLayout):
         self.pltLt.addLayout(plotTableLt, row, col, 1, 1)
 
         # Add plot label
-        pltLbl = QtWidgets.QLabel('Plot ' + str(plotNum) + ':')
-        plotTableLt.addWidget(pltLbl, 0, 1, 1, 1)
+        pltTitleLt, pltTitleElems = self.getPlotTitleLt(plotNum)
+        plotTableLt.addLayout(pltTitleLt, 0, 1, 1, 1)
 
         # Add plot table
         table = QtWidgets.QListWidget()
@@ -254,12 +288,28 @@ class ListLayout(QtWidgets.QGridLayout):
         # Store this layout and elems for removing + the plot table itself
         self.pltFrms.append(plotTableLt)
         self.pltTbls.append(table)
-        self.elems.append([pltLbl, pltBtn, pltRmvBtn])
+        elemList = [pltBtn, pltRmvBtn] + pltTitleElems
+        self.elems.append(elemList)
 
         # Connect add/remove buttons to functions
-        pltBtn.clicked.connect(functools.partial(self.addDstrsToPlt, plotNum-1))
-        pltRmvBtn.clicked.connect(functools.partial(self.rmvDstrsFrmPlt, plotNum-1))
+        pltBtn.clicked.connect(functools.partial(self.subPlotAction, pltBtn))
+        pltRmvBtn.clicked.connect(functools.partial(self.subPlotAction, pltRmvBtn))
         return plotTableLt, table
+
+    def subPlotAction(self, btn):
+        # Try to find the index and function corresp. to given button
+        index = 0
+        for addBtn, rmvBtn, lbl, optBtn in self.elems:
+            if addBtn == btn:
+                self.addDstrsToPlt(index)
+                break
+            elif rmvBtn == btn:
+                self.rmvDstrsFrmPlt(index)
+                break
+            elif optBtn == btn:
+                self.closeSubPlot(index)
+                break
+            index += 1
 
     def removePlot(self):
         # Remove plot layout from layout and delete the plot elements
@@ -271,6 +321,31 @@ class ListLayout(QtWidgets.QGridLayout):
         # Update lists that keep track of plot tables and elements
         for lst in [self.pltFrms, self.pltTbls, self.elems]:
             lst.pop()
+
+    def removeSpecificPlot(self, index):
+        # Remove plot layout from layout and delete the plot elements
+        self.pltLt.removeItem(self.pltFrms[index])
+        self.pltTbls[index].deleteLater()
+
+        for elem in self.elems[index]:
+            elem.deleteLater()
+
+        # Update lists that keep track of plot tables and elements
+        for lst in [self.pltFrms, self.pltTbls, self.elems]:
+            lst.pop(index)
+
+        # Shift all plot layouts above this index down by one index
+        for row in range(index, len(self.pltFrms)):
+            lt = self.pltFrms[index]
+            self.pltLt.removeItem(lt)
+            self.pltLt.addLayout(lt, index, 0, 1, 1)
+
+    def updatePlotTitles(self):
+        plotNum = 1
+        for elemLst in self.elems:
+            pltLbl = elemLst[2]
+            pltLbl.setText('Plot ' + str(plotNum) + ':') 
+            plotNum += 1
 
     def initPlots(self, dstrLst):
         # Creates a table for each dstr sub-list and fills it w/ the given dstrs
@@ -633,7 +708,6 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         dstrs = self.getPlotInfo()
         links = self.getLinkLists()
-
         self.window.plotData(dstrs, links)
         self.window.pltGrd.resizeEvent(None)
 
@@ -658,12 +732,17 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                 boolMatrix.append(boolAxis)
         return boolMatrix
 
-    def removePlot(self):
+    def checkIfPlotRemovable(self):
         if self.plotCount <= 1:
             self.window.ui.statusBar.showMessage('Error: Need at least one plot', 5000)
+            return False
+        return True
+
+    def removePlot(self):
+        if not self.checkIfPlotRemovable():
             return
 
-        self.plotCount-=1
+        self.plotCount -= 1
         self.ui.plottingLayout.removePlot()
         self.rebuildPlotLinks()
 
