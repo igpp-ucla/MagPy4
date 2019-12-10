@@ -5,6 +5,26 @@ from PyQt5.QtWidgets import QSizePolicy
 import functools
 from MagPy4UI import PyQtUtils
 
+class AdjustingScrollArea(QtWidgets.QScrollArea):
+    # Scroll area that hides border when vertical scrollbar is not visible
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum))
+
+    def resizeEvent(self, ev):
+        QtWidgets.QScrollArea.resizeEvent(self, ev)
+        self.updateFrameBorder()
+
+    def updateFrameBorder(self):
+        if self.verticalScrollBar().isVisible():
+            self.setFrameShape(QtWidgets.QFrame.StyledPanel)
+            self.setStyleSheet('QScrollArea { background-color : #ffffff; }')
+        else:
+            self.setFrameShape(QtWidgets.QFrame.NoFrame)
+
 class DropdownLayout(QtWidgets.QGridLayout):
     def __init__(self, window, frame):
         self.grid = self
@@ -182,9 +202,13 @@ class ListLayout(QtWidgets.QGridLayout):
         layout.addWidget(self.dstrTableFrame, 0, 0, 1, 1)
 
         self.pltFrms, self.pltTbls, self.elems = [], [], []
-        self.pltLt = QtWidgets.QGridLayout()
+        self.pltLtFrm = QtWidgets.QFrame()
+        self.pltLt = QtWidgets.QGridLayout(self.pltLtFrm)
 
-        layout.addLayout(self.pltLt, 0, 1, 1, 1)
+        # Set up scroll area wrapper for plot boxes
+        self.scrollArea = AdjustingScrollArea()
+        self.scrollArea.setWidget(self.pltLtFrm)
+        layout.addWidget(self.scrollArea, 0, 1, 1, 1)
 
     def setupDstrTable(self, layout):
         frame = QtWidgets.QGroupBox('Data Variables')
@@ -199,12 +223,8 @@ class ListLayout(QtWidgets.QGridLayout):
 
     def addPlot(self):
         plotNum = len(self.pltFrms) + 1
-
-        # Limit the number of plots per column
-        if (plotNum - 1) > 5:
-            row, col = (plotNum - 1) % 6, int((plotNum - 1)/6) + 1
-        else:
-            row, col = plotNum - 1, 1
+        row = plotNum - 1
+        col = 0
 
         plotTableLt = QtWidgets.QGridLayout()
         self.pltLt.addLayout(plotTableLt, row, col, 1, 1)
@@ -324,6 +344,8 @@ class ListLayout(QtWidgets.QGridLayout):
         self.removeWidget(self.dstrTableFrame)
         self.dstrTable.deleteLater()
         self.dstrTableFrame.deleteLater()
+        self.removeWidget(self.scrollArea)
+        self.scrollArea.deleteLater()
 
 class PlotMenuUI(object):
     def setupUI(self, Frame):
@@ -393,9 +415,6 @@ class PlotMenuUI(object):
         self.fgridFrame.setToolTip('Link the Y axes of each plot in each group to have the same scale with each other')
         self.fgrid = QtWidgets.QGridLayout(self.fgridFrame)
         self.layout.addWidget(self.fgridFrame)
-
-        # make invisible stretch to take up rest of space
-        self.layout.addStretch()
 
 class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
     def __init__(self, window, parent=None):
@@ -641,17 +660,12 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
     def removePlot(self):
         if self.plotCount <= 1:
-            print('need at least one plot')
+            self.window.ui.statusBar.showMessage('Error: Need at least one plot', 5000)
             return
 
         self.plotCount-=1
         self.ui.plottingLayout.removePlot()
         self.rebuildPlotLinks()
-
-        # Update window size
-        self.ui.pltLtContainer.invalidate() #otherwise gridframe doesnt shrink back down
-        if self.plotCount < 3:
-            QtCore.QTimer.singleShot(5, functools.partial(self.resize, 100, 100))
 
     def getCurrentEdit(self):
         editNumber = max(0, self.ui.editCombo.currentIndex())

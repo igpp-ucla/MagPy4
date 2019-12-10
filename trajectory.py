@@ -1087,7 +1087,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
             totDist = self.getMaxWidth(xDta, yDta)
             width = min(abs(avgDist / 2), totDist * distFrac)
-            width = max(width, totDist * 0.002)
+            width = max(width, totDist * 0.001)
             return width
         else:
             totDist = self.getMaxWidth(xDta, yDta)
