@@ -293,6 +293,7 @@ class MagPy4UI(object):
         # Create frame and insert it into main layout
         self.startFrame = QtWidgets.QFrame()
         self.layout.insertWidget(0, self.startFrame)
+
         # Set frame background to white
         startLt = QtWidgets.QVBoxLayout(self.startFrame)
         styleSheet = ".QFrame { background-color:" + '#ffffff' + '}'
@@ -308,6 +309,14 @@ class MagPy4UI(object):
         styleSheet = "* { color:" + '#f44242' + " }"
         nameLabel.setStyleSheet(styleSheet)
 
+        descLbl = QtWidgets.QLabel('Magnetic Field Analysis Program')
+        font = QtGui.QFont()
+        font.setPointSize(16)
+        descLbl.setFont(font)
+        ownerLbl = QtWidgets.QLabel('IGPP / UCLA')
+        font.setPointSize(12)
+        ownerLbl.setFont(font)
+
         # Mode selection UI elements
         modeLbl = QtWidgets.QLabel('Mode: ')
         self.modeComboBx = QtWidgets.QComboBox()
@@ -319,6 +328,13 @@ class MagPy4UI(object):
         self.saveModeChkBx = QtWidgets.QCheckBox('Set As Default')
         self.saveModeChkBx.clicked.connect(self.saveState)
 
+        # Layout for mode box + openFFBtn
+        modeFrame = QtWidgets.QFrame()
+        modeLt = QtWidgets.QGridLayout(modeFrame)
+        modeLt.addWidget(modeLbl, 0, 0, 1, 1)
+        modeLt.addWidget(self.modeComboBx, 0, 1, 1, 1)
+        modeLt.addWidget(self.saveModeChkBx, 1, 1, 1, 1)
+
         # Initialize default mode based on state file
         stateFileName = 'state.txt'
         try: # If file exists, use setting
@@ -328,32 +344,38 @@ class MagPy4UI(object):
             fd.close()
         except: # Otherwise MagPy is default
             mode = 'MagPy'
+
         if mode.strip('\n').strip(' ') == 'MagPy':
             self.modeComboBx.setCurrentIndex(1)
             self.window.insightMode = False
         else:
             self.modeComboBx.setCurrentIndex(0)
             self.window.insightMode = True
+        self.modeComboBx.currentTextChanged.connect(nameLabel.setText)
 
         # Button to open a flat file
         openFFBtn = QtWidgets.QPushButton('Open Flat File')
         openFFBtn.clicked.connect(self.actionOpenFF.triggered)
+        modeLt.addWidget(openFFBtn, 0, 2, 1, 1)
 
-        # Create an HBox layout for every row, and add stretch factors
-        # to center everything
-        startLt.addStretch(12)
-        for itmGrp in [[nameLabel], None, [modeLbl, self.modeComboBx, openFFBtn], 
-            [self.saveModeChkBx], None]:
-            if itmGrp is None: # Use None to represent spacers
-                startLt.addStretch(1)
-                continue
-            itmLt = QtWidgets.QHBoxLayout()
-            itmLt.addStretch()
-            for itm in itmGrp:
-                itmLt.addWidget(itm)
-            itmLt.addStretch()
-            startLt.addLayout(itmLt)
-        startLt.addStretch(12)
+        # Create a layout that will be centered within startLt
+        frameLt = QtWidgets.QGridLayout()
+        startLt.addStretch()
+        startLt.addLayout(frameLt)
+        startLt.addStretch()
+
+        # Add all elements into layout
+        alignCenter = QtCore.Qt.AlignCenter
+        spacer1 = QtWidgets.QSpacerItem(0, 10)
+        spacer2 = QtWidgets.QSpacerItem(0, 10)
+
+        frameLt.addWidget(nameLabel, 0, 0, 1, 1, alignCenter)
+        frameLt.addItem(spacer1, 1, 0, 1, 1, alignCenter)
+        frameLt.addWidget(descLbl, 2, 0, 1, 1, alignCenter)
+        frameLt.addWidget(ownerLbl, 3, 0, 1, 1, alignCenter)
+        frameLt.addItem(spacer2, 4, 0, 1, 1, alignCenter)
+        frameLt.addWidget(modeFrame, 5, 0, 1, 1, alignCenter)
+
         self.startLt = startLt
 
         # Disable UI elements for interacting with plots
