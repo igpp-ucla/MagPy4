@@ -329,31 +329,21 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
     # Updates all current plots currently being viewed (unless scaling mode changes)
     def updateSpectra(self):
         self.updateCalculations()
+
         plotInfos = self.window.getSelectedPlotInfo()
         oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
-        plotNum = 0
-        # For every plot spectra is generated from:
-        for listIndex, (strList, penList) in enumerate(plotInfos):
-            # Get the corresponding plot and clear it
-            pi = self.plotItems[listIndex]
-            if oneTracePerPlot == False: # Don't clear in this case bc listIndex != plotNum
-                pi.clear()
-            powers = []
-            # For every trace in plot:
-            for i, (dstr, en) in enumerate(strList):
-                # Get current plot by plot number if separate traces are used
-                if self.ui.separateTracesCheckBox.isChecked():
-                    pi = self.plotItems[plotNum]
-                    pi.clear()
-                    powers = []
-                    titleString = ''
-                # Get x, y, and pen values and plot graph
-                freq = self.getFreqs(dstr,en)
+        plotStrings, plotPens = self.splitPlotInfo(plotInfos, oneTracePerPlot)
+        plotPens = self.tracePenList
+
+        # Clear each plot and re-plot traces w/ updated power results
+        for plotDstrs, plotPenList, plt in zip(plotStrings, plotPens, self.plotItems):
+            plt.clear()
+            for (dstr, en), pen in zip(plotDstrs, plotPenList):
+                freq = self.getFreqs(dstr, en)
                 power = self.powers[dstr]
-                powers.append(power)
-                pen = self.tracePenList[listIndex][i]
-                pi.plot(freq, power, pen=pen)
-                plotNum += 1
+                plt.plot(freq, power, pen=pen)
+
+        self.updateTitleColors(plotPens)
 
         # Update coherence and phase graphs
         self.updateCohPha()
@@ -471,23 +461,46 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         for pi in self.sumPlots:
             pi.setLabels(left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)')
 
+    def splitPlotInfo(self, plotInfos, sepTraceMode=False):
+        # Determine which plot strings correspond to which plots
+        # based on whether plotting separate traces or not
+        plotStrings = []
+        plotPens = []
+        for dstrList, plotPenList in plotInfos:
+            if sepTraceMode:
+                for dstrInfo, penInfo in zip(dstrList, plotPenList):
+                    plotStrings.append([dstrInfo])
+                    plotPens.append([penInfo])
+            else:
+                plotStrings.append(dstrList)
+                plotPens.append(plotPenList)
+
+        return plotStrings, plotPens
+
     def updateTitleColors(self, penList):
         # Update title colors to match colors from a list of pens
         plotInfos = self.window.getSelectedPlotInfo()
         titleString = ''
-        # For every plot
-        for listIndex, (strList, prevPens) in enumerate(plotInfos):
-            pi = self.plotItems[listIndex] # Get the corresponding plot
-            # For every trace in plot:
-            for i, (dstr, en) in enumerate(strList):
-                if i == 0 or self.ui.separateTracesCheckBox.isChecked():
-                    pi = self.plotItems[listIndex+i]
-                    titleString = ''
-                # Get new pen color from list corresponding to plot and trace num
-                pen = penList[listIndex][i]
-                pstr = self.window.getLabel(dstr,en)
+        sepTraceMode = self.ui.separateTracesCheckBox.isChecked()
+
+        # Determine which plot strings correspond to which plots
+        # based on whether plotting separate traces or not
+        plotStrings, prevPlotPens = self.splitPlotInfo(plotInfos, sepTraceMode)
+
+        # Loop through each set of plot strings and the corresponding set of pens
+        # in penList
+        plotIndex = 0
+        for stringInfo, plotPenList in zip(plotStrings, penList):
+            pi = self.plotItems[plotIndex]
+            titleString = ''
+            # Update title string for every plot w/ new pen color
+            for (dstr, en), pen in zip(stringInfo, plotPenList):
+                pstr = self.window.getLabel(dstr, en)
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
-                pi.setTitle(titleString)
+            pi.setTitle(titleString)
+            plotIndex += 1
+
+        self.tracePenList = penList
 
     def formatPltTitle(self, titleStr, color):
         return f"<span style='color:{color};'>{titleStr}</span>"
