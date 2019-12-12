@@ -59,11 +59,69 @@
         referenced to the same point in time. The phase difference between signal 1 and signal 2 at each frequency <i>i</i>
         can be defined by:</p>
     <p class='center'><img src='figure4.png' alt='Figure 4' height='30' width='179'></p>
+    <h3>Tools &gt; Detrend</h3>
+    <p> After selecting a time interval in the main window, each variable in the selected plot(s) is
+        detrended independently using the least-squares fit method and plotted in a separate window.
+        Additionally, buttons for the Spectra, Dynamic Spectra, and Dynamic Coherence/Phase tools are
+        present in this window that, when clicked, automatically apply these tools to the detrended data. 
+        The selected region can be adjusted even further once the tools have been opened. Clicking on
+        the plots when no tool is open in this window will open the Trace Stats tool and apply it
+        to the detrended data.
+    </p>
+    <h3>Tools &gt; Trajectory Analysis</h3>
+    <p> If position data (in Cartesian coordinates) is loaded for the current dataset,
+        the Trajectory Analysis tool is enabled as a menu option. Once activated, the
+        user can select a time region to generate altitude profiles and orbit plots for.
+        For the orbit plots, the user has the option of plotting time ticks and/or projections
+        of the magnetic field lines onto the selected view plane. The user has the option
+        of modifying the field line scale relative to the position units and to set the
+        tick interval for both the magnetic field lines and time ticks show on the plot.
+        Additionally, the projection of the field lines onto the terminator plane can
+        also be plotted.
+    </p>
+    <h3>Tools &gt; Dynamic Analysis Tools</h3>
+    <p> Many of the calculations from the Spectra tool can be calculated for
+        multiple overlapping, consecutive time regions of equal length to form a 
+        time series. Using this time series, a plot can be formed where the y-axis
+        represents the frequency, the x-axis represents the time of the calculation,
+        and the calculated values are mapped to a color.
+        <br></br>
+        The FFT interval parameter represents the number of data points that
+        will be used to compute the values for a single column in the plot. The
+        FFT shift parameter represents the number of data points to move forward
+        after each iteration. The bandwidth parameter represents the number of spectral
+        matrices that will be averaged together for each frequency before the
+        rest of the necessary computations are performed.
+
+        <h4> Dynamic Spectra</h4>
+        <p> Within the Dynamic Spectra tool, the user can set the log power
+            range represented by the color scale. Values above or below the user-set
+            values are mapped to the maximum and minimum values respectively.
+            Besides the selected plot variables, the user can also calculate the
+            sum of the power spectra and the power spectra of the magnitude of
+            the field vectors. These options are located within the data variable
+            option box as '|Px + Py + Pz - Pt|', '|Px+Py+Pz|', and 'Pt'.
+        </p>
+        <h4> Dynamic Coherence/Phase</h4>
+        <p>
+            Within the Dynamic Coherence/Phase tool, the user can select the
+            variable pairs to calculate coherence and phase for, and each of these
+            calculations is plotted in a separate tab.
+        </p>
+        <h4> Dynamic Wave Analysis</h4>
+        <p> Within the Dynamic Wave Analysis tool, the user can generate plots
+            for the ellipticity, propagation angle, azimuth angle, power spectra
+            trace, and compressional power for a given vector. The user can
+            also specify the minimum/maximum values for the color scale for each
+            plot.
+        </p>
+    </p>
     <h3>Tools &gt; Edit</h3>
     <p>The Edit window allows you to perform matrix rotation and filtering. You can either click the Custom Rotation
         button to specify a custom rotation or click the Minimum Variance button to calculate the minimum variance
         matrix, and then transform the magnetic field vector to the new coordinate. You can also click the Filter
-        button to filter the data.</p>
+        button to filter the data. Additionally, new variables can be created using existing variables through
+        simple arithmetic operations in the Calculate tool. </p>
     <h4>Minimum Variance</h4>
     <p>By solving an eigenvalue problem, it is possible to calculate the rotation matrix that rotates a vector time
         series into a coordinate system in which the direction of the coordinate axes are those of the maximum
@@ -92,6 +150,8 @@
     <p>The Trace Stats window appears when you click the start and stop time you are interested in on the main
         plotting window. It shows you the minimum value, maximum value, mean value, median value, and standard
         deviation of the magnetic field data in the time interval you choose.</p>
+    <p>Multiple regions can be selected to perform this computation on by holding the CTRL key while selecting
+        a new region. </p>
     <p>Suppose [<i>x<sub>1</sub></i>, <i>x<sub>2</sub></i>, &hellip;, <i>x<sub>N</sub></i>] is the data set of one
         component of the vector magnetic field or the total magnetic field in the time interval you choose. Minimum
         is the smallest value of this data set and maximum is the largest value. The median is the value separating
