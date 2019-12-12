@@ -68,7 +68,11 @@ class Operand(ExprElement):
     def calculate(self, lft, rght):
         # Evaluate left/right to num/array form and apply current operand
         result = None
+        while lft.isExpr():
+            lft = lft.evaluate()
         lftVal = lft.evaluate()
+        while rght.isExpr():
+            rght = rght.evaluate()
         rghtVal = rght.evaluate()
 
         if self.opStr == '+':
@@ -102,6 +106,9 @@ class Expr(ExprElement):
 
     def evaluate(self):
         if len(self.exprStack) == 1:
+            if self.exprStack[0].isExpr():
+                while self.exprStack[0].isExpr():
+                    self.exprStack[0] = self.exprStack[0].evaluate()
             return self.exprStack[0]
         elif len(self.exprStack) == 0 or len(self.exprStack) == 2:
             return None
@@ -116,10 +123,6 @@ class Expr(ExprElement):
                 if e == opType:
                     left = resultsStack.pop()
                     right = self.exprStack[index+1]
-                    if left.isExpr():
-                        left = left.evaluate()
-                    if right.isExpr():
-                        right = right.evaluate()
                     res = e.calculate(left, right)
                     resultsStack.append(res)
                     # Prev element was popped off stack, skip next element too
@@ -130,7 +133,6 @@ class Expr(ExprElement):
                     index += 1
             # Update the main stack with the resulting stack just calculated
             self.exprStack = resultsStack
-
         return self.exprStack[0]
 
 class ExpressionEvaluator():
@@ -145,7 +147,7 @@ class ExpressionEvaluator():
     def splitByOp(self, s):
         # Looks for every operand and splits the previously cleaned expression 
         # string by the operands into a list
-        dstrs = self.window.DATASTRINGS[:]
+        dstrs = self.window.DATADICT.keys()
 
         # Create a new list of strings with variable names replaced by Vec objects
         currLst = [s]
@@ -336,6 +338,7 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
         # Break down expression into list of var/num/op strings and create an Expr obj
         expEval = ExpressionEvaluator(exprStr, self.window)
         self.varName, exprLst = expEval.splitString()
+        self.varName = self.varName.strip(' ')
         exprObj = expEval.createStack(exprLst)
 
         # Try evaluating exprObj, catch exceptions by printing error message to user
