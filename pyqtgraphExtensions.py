@@ -585,9 +585,12 @@ class DateAxis(pg.AxisItem):
         while intervals[minorIndex+1] < optimalSpacing:
             minorIndex += 1
 
+        upperIndex = minorIndex + 1 if base > 1 else minorIndex + 2
+        lowerIndex = minorIndex if base > 1 else minorIndex + 1
+
         levels = [
-            (intervals[minorIndex+2], 0),
-            (intervals[minorIndex+1], 0),
+            (intervals[upperIndex], 0),
+            (intervals[lowerIndex], 0),
         ]
 
         if self.style['maxTickLevel'] >= 2:
