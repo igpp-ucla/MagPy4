@@ -235,7 +235,11 @@ class ListLayout(QtWidgets.QGridLayout):
         # Set up options menu and 'close' action
         menu = QtWidgets.QMenu()
         act = menu.addAction('Remove sub-plot')
-        act.triggered.connect(functools.partial(self.subPlotAction, optBtn))
+        act.triggered.connect(functools.partial(self.subMenuAction, optBtn, 'Remove'))
+        act = menu.addAction('Move up')
+        act.triggered.connect(functools.partial(self.subMenuAction, optBtn, 'Up'))
+        act = menu.addAction('Move down')
+        act.triggered.connect(functools.partial(self.subMenuAction, optBtn, 'Down'))
         optBtn.setMenu(menu)
 
         # Create layout
@@ -306,10 +310,61 @@ class ListLayout(QtWidgets.QGridLayout):
             elif rmvBtn == btn:
                 self.rmvDstrsFrmPlt(index)
                 break
-            elif optBtn == btn:
-                self.closeSubPlot(index)
+            index += 1
+
+    def subMenuAction(self, btn, actType):
+        # Find the index of the menu's frame first
+        index = 0
+        found = False
+        for addBtn, rmvBtn, lbl, optBtn in self.elems:
+            if optBtn == btn:
+                found = True
                 break
             index += 1
+
+        # Apply action if a matching plot is found
+        if found:
+            if actType == 'Remove':
+                self.closeSubPlot(index)
+            elif actType == 'Up':
+                self.movePlotUp(index)
+            elif actType == 'Down':
+                self.movePlotDown(index)
+
+    def switchTables(self, lowerTable, upperTable):
+        # Switch the set of items in each table with the items from the other
+        # table
+        upperDstrs = [upperTable.item(row) for row in range(upperTable.count())]
+        upperDstrs = [item.text() for item in upperDstrs]
+        lowerDstrs = [lowerTable.item(row) for row in range(lowerTable.count())]
+        lowerDstrs = [item.text() for item in lowerDstrs]
+
+        upperTable.clear()
+        lowerTable.clear()
+
+        for item in upperDstrs:
+            lowerTable.addItem(item)
+
+        for item in lowerDstrs:
+            upperTable.addItem(item)
+
+    def movePlotUp(self, index):
+        if index <= 0:
+            return
+
+        # Switch list items w/ list below current index
+        upperTable = self.pltTbls[index-1]
+        lowerTable = self.pltTbls[index]
+        self.switchTables(lowerTable, upperTable)
+
+    def movePlotDown(self, index):
+        if index >= len(self.pltTbls) - 1:
+            return
+
+        # Switch list items w/ list above current index
+        upperTable = self.pltTbls[index]
+        lowerTable = self.pltTbls[index+1]
+        self.switchTables(lowerTable, upperTable)
 
     def removePlot(self):
         # Remove plot layout from layout and delete the plot elements
