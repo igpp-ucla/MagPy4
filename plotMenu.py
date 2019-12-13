@@ -391,9 +391,9 @@ class ListLayout(QtWidgets.QGridLayout):
 
         # Shift all plot layouts above this index down by one index
         for row in range(index, len(self.pltFrms)):
-            lt = self.pltFrms[index]
+            lt = self.pltFrms[row]
             self.pltLt.removeItem(lt)
-            self.pltLt.addLayout(lt, index, 0, 1, 1)
+            self.pltLt.addLayout(lt, row, 0, 1, 1)
 
     def updatePlotTitles(self):
         plotNum = 1
