@@ -245,6 +245,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         self.pltGrd.addItem(pg.LabelItem('Detrended Data'), 0, 1, 1, 1)
 
         plotNum = 0
+        plotDataLists = []
         for pltInfo in self.window.getSelectedPlotInfo():
             # Extract variable names, edit nums, and pens from plot info
             plotStrings, pens = pltInfo
@@ -277,6 +278,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
             # Add to grid
             self.pltGrd.addPlt(plt, stackLbl)
             pltStrs = []
+            pltDtas = []
             for dstr, pen in zip(dstrs, pens):
                 modifiedStr = dstr + self.modifier
                 startIndex, endIndex = self.window.calcDataIndicesFromLines(dstr, 
@@ -293,10 +295,12 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
                 detrendType = 'linear'
                 dtData = signal.detrend(dtaSubset, type=detrendType)
                 self.dtDatas[modifiedStr] = dtData
+                pltDtas.append(dtData)
 
                 # Plot and store for lastPlotStrings
                 plt.plot(timeSubset, dtData, pen=pen)
                 pltStrs.append((modifiedStr, 0))
+            plotDataLists.append(pltDtas)
 
             # Update time range and axis appearance settings
             plt.setXRange(timeSubset[0], timeSubset[-1], 0.0)
@@ -328,8 +332,8 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
         # Link plots if necessary
         if self.ui.linkPlotsChk.isChecked():
-            dtas = [i for k,i in self.dtDatas.items()]
-            self.linkPlots(dtas, self.plotItems)
+            dtas = [i for k, i in self.dtDatas.items()]
+            self.linkPlots(plotDataLists, self.plotItems)
 
     def clearStatusMsg(self):
         return
@@ -338,9 +342,15 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         # Re-implementation of plot linking code in updateYRange of main window
         ranges = []
         maxDiff = 0
-        for dta in dtas:
-            minVal = np.min(dta)
-            maxVal = np.max(dta)
+        for pltDta in dtas:
+            minVal, maxVal = None, None
+            for dta in pltDta:
+                if minVal is None:
+                    minVal = np.min(dta)
+                    maxVal = np.max(dta)
+                else:
+                    minVal = min(np.min(dta), minVal)
+                    maxVal = max(np.max(dta), maxVal)
 
             if np.isnan(minVal) or np.isnan(maxVal):
                 return
