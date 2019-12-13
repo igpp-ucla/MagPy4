@@ -612,7 +612,7 @@ class PlotGrid(pg.GraphicsLayout):
             return
 
         # Determine new height for each plot
-        botmAxisHeight = 40
+        botmAxisHeight = self.plotItems[-1].getAxis('bottom').maximumHeight() + 1
         labelSetHeight = 0
         if self.labelSetGrd:
             labelSetHeight = self.labelSetGrd.boundingRect().height()
