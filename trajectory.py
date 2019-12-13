@@ -1128,7 +1128,8 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
     
     def plotOrbitLine(self, plt, xDta, yDta, tickType, gaps, pen, width):
         # Use a black pen for orbit lines when also drawing field lines
-        arrowPen = pg.mkPen('#000000') if tickType == 'Field Lines' else pen
+        fieldLinePlot = (tickType == 'Field Lines' or tickType == 'Both')
+        arrowPen = pg.mkPen('#000000') if fieldLinePlot else pen
         plt.plot(xDta, yDta, pen=arrowPen, connect=gaps)
 
         # Draw an arrow at end of orbit line
