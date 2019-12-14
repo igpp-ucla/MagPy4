@@ -1006,9 +1006,5 @@ class RenameLabels(QtWidgets.QFrame, RenameLabelsUI):
             prevDstrs, prevColors = prevLbl.dstrs, prevLbl.colors
 
             newDstrs, newColors = self.ui.getPlotInfo(plotNum)
-            # Skip unmodified labels
-            if newDstrs == prevDstrs and newColors == prevColors:
-                continue
-
             lbl = StackedLabel(newDstrs, newColors)
             self.plotGrid.setPlotLabel(lbl, plotNum)

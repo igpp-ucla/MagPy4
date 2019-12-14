@@ -780,8 +780,23 @@ class StackedAxisLabel(pg.GraphicsLayout):
         if self.sublabels == []:
             return
 
-        fontSize = plotHeight * 0.07
-        fontSize = min(12, max(fontSize, 2))
+        # Get the max length of each line of text in this label
+        maxChar = max(list(map(len, self.lblTxt)))
+
+        # Increment the font size until the average char width * max line length
+        # is greater than the plot height
+        font = QtGui.QFont()
+        currSize = 4
+        font.setPointSize(currSize)
+        met = QtGui.QFontMetricsF(font)
+
+        while met.averageCharWidth() * maxChar < plotHeight:
+            currSize += 1
+            font.setPointSize(currSize)
+            met = QtGui.QFontMetricsF(font)
+
+        # Set the label font size to the calculated point size - 1
+        fontSize = min(max(2, font.pointSize() - 1), 12)
         for lbl in self.sublabels:
             txt = lbl.text
             lbl.setText(txt, size=str(fontSize)+'pt')

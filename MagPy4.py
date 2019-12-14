@@ -339,6 +339,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         """init variables here that should be reset when file changes"""
         self.lastPlotStrings = None
         self.lastPlotLinks = None
+        self.lastPlotHeightFactors = None
         self.selectMode = None
         self.currentEdit = 0 # current edit number selected
         self.editNames = [] # list of edit names, index into list is edit number
@@ -1567,7 +1568,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def plotDataDefault(self):
         dstrs,links = self.getDefaultPlotInfo()
 
-        self.plotData(dstrs, links)
+        self.plotData(dstrs, links, [])
 
     def getData(self, dstr, editNumber=None):
         edits = self.DATADICT[dstr]
@@ -1641,13 +1642,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         stackLbl = StackedLabel(labels, colors, units=unitsString)
         return stackLbl
 
-    def plotData(self, dataStrings, links):
+    def plotData(self, dataStrings, links, heightFactors):
         self.closeTraceStats() # Clear any regions
         self.endGeneralSelect()
 
         # save what the last plotted strings and links are for other modules
         self.lastPlotStrings = dataStrings
         self.lastPlotLinks = links
+        self.lastPlotHeightFactors = heightFactors
 
         self.plotItems = []
         self.labelItems = []
@@ -1686,6 +1688,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Create new plot grid
         self.pltGrd = MainPlotGrid(self)
+        self.pltGrd.setHeightFactors(heightFactors)
         self.ui.glw.addItem(self.pltGrd, 1, 0, 1, 1)
 
         self.trackerLines = []

@@ -595,10 +595,14 @@ class PlotGrid(pg.GraphicsLayout):
         self.labelSetGrd = None
         self.labelSetLabel = None
         self.startRow = 1
+        self.factors = []
 
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
         self.layout.setVerticalSpacing(2)
         self.layout.setContentsMargins(0,0,0,0)
+
+    def setHeightFactors(self, heightFactors):
+        self.factors = heightFactors
 
     def setTimeLabel(self, text):
         if self.plotItems == []:
@@ -611,6 +615,17 @@ class PlotGrid(pg.GraphicsLayout):
             pg.GraphicsLayout.resizeEvent(self, event)
             return
 
+        # Get height factors, filling in with 1's for any added or modified
+        # plots
+        hfactors = self.factors
+        while len(hfactors) < len(self.plotItems):
+            hfactors.append(1)
+
+        # Scale the factors by the sum of the factors, so we get the fraction
+        # of the plot area height that should be assigned to each plot item
+        totFactors = sum(hfactors)
+        hfactors = np.array(hfactors) / totFactors
+
         # Determine new height for each plot
         botmAxisHeight = self.plotItems[-1].getAxis('bottom').maximumHeight() + 1
         labelSetHeight = 0
@@ -619,23 +634,41 @@ class PlotGrid(pg.GraphicsLayout):
         gridHeight = self.boundingRect().height()
         vertSpacing = self.layout.verticalSpacing() * (self.numPlots - 1)
         plotAreaHeight = gridHeight - vertSpacing - botmAxisHeight - labelSetHeight
-        plotHeight = plotAreaHeight / self.numPlots
+        rowHeights = hfactors * plotAreaHeight
 
-        # Update label font sizes
-        for lbl in self.labels:
+        # Update label font sizes and limit the column width
+        maxFontSize = self.getFontSize(plotAreaHeight, self.numPlots)
+        for lbl, rowHeight in zip(self.labels, rowHeights):
             lbl.layout.setContentsMargins(10, 0, 0, 0)
-            lbl.adjustLabelSizes(plotAreaHeight, self.numPlots)
+            lbl.adjustLabelSizes(maxFontSize, rowHeight)
 
+        maxLabelWidth = self.getMaxLabelWidth(maxFontSize)
+        self.layout.setColumnMaximumWidth(0, maxLabelWidth)
+
+        # Get the plot indices corresponding to each color plot
+        colorPlotIndices = []
+        index = 0
+        for plt in self.plotItems:
+            if plt in self.colorPlts:
+                colorPlotIndices.append(index)
+            index += 1
+
+        # Adjust color bar legend label sizes according to its row height
+        index = 0
         for grad, lbl in self.colorPltElems:
+            rowHeight = rowHeights[colorPlotIndices[index]]
             if lbl:
-                lbl.adjustLabelSizes(plotHeight)
+                lbl.adjustLabelSizes(rowHeight)
                 lbl.setContentsMargins(0, 0, 0, 0)
             grad.setOffsets(1, 1, 2)
+            index += 1
 
         # Set row heights, add in extra space for last plot's dateTime axis
+        index = 0
         for row in range(self.startRow, self.startRow+self.numPlots-1):
-            self.layout.setRowPreferredHeight(row, plotHeight)
-        self.layout.setRowPreferredHeight(self.startRow+self.numPlots-1, plotHeight + botmAxisHeight)
+            self.layout.setRowPreferredHeight(row, rowHeights[index])
+            index += 1
+        self.layout.setRowPreferredHeight(self.startRow+self.numPlots-1, rowHeights[-1] + botmAxisHeight)
 
         # Adjust vertical placement of bottom label
         botmLabel = self.labels[-1]
@@ -649,6 +682,27 @@ class PlotGrid(pg.GraphicsLayout):
             botmGrad.setOffsets(1, botmAxisHeight, 2)
 
         self.adjustPlotWidths()
+
+    def getFontSize(self, height, numPlots):
+        # Hard-coded method for determing label font sizes based on window size
+        fontSize = height / numPlots * 0.0775
+        fontSize = min(18, max(fontSize,4))
+        return fontSize
+
+    def getMaxLabelWidth(self, maxFontSize):
+        # Calculate the length of the variable names in each stacked plot label
+        # and find the maximum of these lengths
+        lenList = [list(map(len, lbl.dstrs)) for lbl in self.labels]
+        lenList = np.concatenate(lenList)
+        maxChar = max(lenList)
+
+        # Calculate the number of pixels needed to represent maxChar characters
+        # using a font with the given maximum font size
+        font = QtGui.QFont()
+        font.setPointSizeF(maxFontSize)
+        met = QtGui.QFontMetricsF(font)
+        labelWidth = met.averageCharWidth() * maxChar
+        return labelWidth
 
     def addPlt(self, plt, lbl):
         # Inserts a plot and its label item into the grid
@@ -675,8 +729,6 @@ class PlotGrid(pg.GraphicsLayout):
             self.addItem(colorLbl, self.startRow + self.numPlots - 1, 3, 1, 1)
 
         # Additional state updates
-        lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-        lbl.setFixedWidth(35)
         plt.getAxis('bottom').tickOffset = self.window.tickOffset
         colorBar.setBarWidth(28)
 
@@ -807,9 +859,6 @@ class PlotGrid(pg.GraphicsLayout):
             la = pi.getAxis('left')
             la.setWidth(maxWidth)
 
-        # Limit label column width
-        self.layout.setColumnMaximumWidth(0, 25)
-
         if self.labelSetGrd: # Match extra tick axis widths to maxWidth
             self.labelSetGrd.adjustWidths(maxWidth)
 
@@ -831,7 +880,6 @@ class PlotGrid(pg.GraphicsLayout):
         self.removeItem(prevLabel)
         self.addItem(lbl, self.startRow+plotNum, 0, 1, 1)
         self.labels[plotNum] = lbl
-        self.resizeEvent(None)
 
     def getPlotLabel(self, plotNum):
         return self.labels[plotNum]
@@ -858,14 +906,16 @@ class StackedLabel(pg.GraphicsLayout):
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
 
         # Spacing/margins setup
-        self.layout.setVerticalSpacing(-2)
+        self.layout.setVerticalSpacing(-4)
         self.layout.setContentsMargins(10, 0, 0, 0)
         self.layout.setRowStretchFactor(0, 1)
+        self.layout.setColumnAlignment(0, QtCore.Qt.AlignHCenter)
         rowNum = 1
 
         # Add in every dstr label and set its color
         for dstr, clr in zip(dstrs, colors):
             curLabel = self.addLabel(text=dstr, color=clr, row=rowNum, col=0)
+            curLabel.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
             self.subLabels.append(curLabel)
             rowNum += 1
 
@@ -873,6 +923,7 @@ class StackedLabel(pg.GraphicsLayout):
         if units is not None:
             unitStr = '[' + units + ']'
             unitLbl = self.addLabel(text=unitStr, color='#888888', row=rowNum, col=0)
+            unitLbl.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
             self.subLabels.append(unitLbl)
             self.dstrs.append(unitStr)
             self.colors.append('#888888')
@@ -882,32 +933,41 @@ class StackedLabel(pg.GraphicsLayout):
 
     def addSubLabel(self, dstr, color):
         # Add another sublabel at end of stackedLabel
-        lbl = self.addLabel(text=dstr, color=color, row=len(self.subLabels)+1, col=0)
+        lbl = self.addLabel(text=dstr, color=color, row=len(self.subLabels), col=0)
+
+        # Reset stretch factor used to center the sublabels within the stackedLabel
+        self.layout.setRowStretchFactor(len(self.subLabels), 0)
+        self.layout.setRowStretchFactor(len(self.subLabels)+1, 1)
+
         # Update all internal lists
         self.subLabels.append(lbl)
         self.dstrs.append(dstr)
         self.colors.append(color)
-        # Reset stretch factor used to center the sublabels within the stackedLabel
-        self.layout.setRowStretchFactor(len(self.subLabels)+1, 0)
-        self.layout.setRowStretchFactor(len(self.subLabels)+1+1, 1)
 
-    def adjustLabelSizes(self, height, numPlots):
+    def adjustLabelSizes(self, maxFontSize, rowHeight):
         if self.subLabels == []:
             return
 
+        # Get the number of rows in this stacked label
+        numRows = len(self.dstrs)
+        if self.units:
+            numRows += 1
+
+        # Decrement the font size until the (font height * numRows) is less
+        # than the maximum row height
+        font = QtGui.QFont()
+        font.setPointSizeF(maxFontSize)
+        fontInfo = QtGui.QFontMetricsF(font)
+        while (fontInfo.height() * numRows + 4) > rowHeight:
+            font.setPointSizeF(font.pointSizeF() - 1)
+            fontInfo = QtGui.QFontMetricsF(font)
+            if font.pointSize() <= 2:
+                break
+        fontSize = font.pointSize()
+
         # Determines new font size and updates all labels accordingly
-        fontSize = self.detFontSize(height, numPlots)
         for lbl, txt, clr in zip(self.subLabels, self.dstrs, self.colors):
             lbl.setText(txt, color=clr, size=str(fontSize)+'pt')
-
-    def detFontSize(self, height, numPlots):
-        # Hard-coded method for determing label font sizes based on window size
-        fontSize = height / numPlots * 0.08
-        traceCount = len(self.subLabels) + 1 # Stretch factor added in
-        if traceCount > numPlots and numPlots > 1:
-            fontSize -= (traceCount - numPlots) * (1.0 / min(4, numPlots) + 0.35)
-        fontSize = min(18, max(fontSize,4))
-        return fontSize
 
 class FixedSelectionUI():
     def setupUI(self, Frame, window):

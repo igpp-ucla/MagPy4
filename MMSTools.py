@@ -1819,6 +1819,7 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
 
         self.lowKw, self.midKw, self.hiKw = 'PAD_Lo', 'PAD_Mid', 'PAD_Hi'
         self.paDstrs = self.findStrings()
+        self.plotItems = []
 
         self.ui.setupUI(self, window)
         self.ui.updtBtn.clicked.connect(self.update)

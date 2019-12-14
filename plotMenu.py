@@ -183,6 +183,9 @@ class DropdownLayout(QtWidgets.QGridLayout):
             self.removePlot()
             numPlts -= 1
 
+    def setHeightFactor(self, plotItem, factor):
+        return
+
 class ListLayout(QtWidgets.QGridLayout):
     def __init__(self, window, frame):
         self.window = window
@@ -242,12 +245,30 @@ class ListLayout(QtWidgets.QGridLayout):
         act.triggered.connect(functools.partial(self.subMenuAction, optBtn, 'Down'))
         optBtn.setMenu(menu)
 
+        # Set up height factor action + its internal layout
+        frame = QtWidgets.QFrame()
+        lt = QtWidgets.QGridLayout(frame)
+        lt.setContentsMargins(30, 2, 2, 2)
+
+        lbl = QtWidgets.QLabel('Set height factor: ')
+        lt.addWidget(lbl, 0, 0, 1, 1)
+
+        heightBox = QtWidgets.QSpinBox()
+        heightBox.setMinimum(1)
+        heightBox.setMaximum(5)
+        lt.addWidget(heightBox, 0, 1, 1, 1)
+
+        act = QtWidgets.QWidgetAction(menu)
+        act.setDefaultWidget(frame)
+        menu.addSeparator()
+        menu.addAction(act)
+
         # Create layout
         pltElems = [pltLbl, optBtn]
         for elem in pltElems:
             pltTitleLt.addWidget(elem)
 
-        return pltTitleLt, pltElems
+        return pltTitleLt, pltElems + [heightBox]
 
     def closeSubPlot(self, plotIndex):
         if not self.mainFrame.checkIfPlotRemovable():
@@ -303,7 +324,7 @@ class ListLayout(QtWidgets.QGridLayout):
     def subPlotAction(self, btn):
         # Try to find the index and function corresp. to given button
         index = 0
-        for addBtn, rmvBtn, lbl, optBtn in self.elems:
+        for addBtn, rmvBtn, lbl, optBtn, heightBox in self.elems:
             if addBtn == btn:
                 self.addDstrsToPlt(index)
                 break
@@ -316,7 +337,7 @@ class ListLayout(QtWidgets.QGridLayout):
         # Find the index of the menu's frame first
         index = 0
         found = False
-        for addBtn, rmvBtn, lbl, optBtn in self.elems:
+        for addBtn, rmvBtn, lbl, optBtn, heightBox in self.elems:
             if optBtn == btn:
                 found = True
                 break
@@ -331,9 +352,16 @@ class ListLayout(QtWidgets.QGridLayout):
             elif actType == 'Down':
                 self.movePlotDown(index)
 
-    def switchTables(self, lowerTable, upperTable):
+    def setHeightFactor(self, plotIndex, factor):
+        box = self.elems[plotIndex][4]
+        box.setValue(factor)
+
+    def switchTables(self, plotIndex_1, plotIndex_2):
         # Switch the set of items in each table with the items from the other
         # table
+        upperTable = self.pltTbls[plotIndex_1]
+        lowerTable = self.pltTbls[plotIndex_2]
+
         upperDstrs = [upperTable.item(row) for row in range(upperTable.count())]
         upperDstrs = [item.text() for item in upperDstrs]
         lowerDstrs = [lowerTable.item(row) for row in range(lowerTable.count())]
@@ -348,23 +376,28 @@ class ListLayout(QtWidgets.QGridLayout):
         for item in lowerDstrs:
             upperTable.addItem(item)
 
+        # Switch height factor settings
+        upperBox = self.elems[plotIndex_1][4]
+        upperHeight = upperBox.value()
+        lowerBox = self.elems[plotIndex_2][4]
+        lowerHeight = lowerBox.value()
+
+        upperBox.setValue(lowerHeight)
+        lowerBox.setValue(upperHeight)
+
     def movePlotUp(self, index):
         if index <= 0:
             return
 
         # Switch list items w/ list below current index
-        upperTable = self.pltTbls[index-1]
-        lowerTable = self.pltTbls[index]
-        self.switchTables(lowerTable, upperTable)
+        self.switchTables(index-1, index)
 
     def movePlotDown(self, index):
         if index >= len(self.pltTbls) - 1:
             return
 
         # Switch list items w/ list above current index
-        upperTable = self.pltTbls[index]
-        lowerTable = self.pltTbls[index+1]
-        self.switchTables(lowerTable, upperTable)
+        self.switchTables(index, index+1)
 
     def removePlot(self):
         # Remove plot layout from layout and delete the plot elements
@@ -574,7 +607,8 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             self.ui.editCombo.addItem(editName)
         self.ui.editCombo.currentTextChanged.connect(self.updtDstrOptions)
 
-        self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)
+        self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks,
+            self.window.lastPlotHeightFactors)
 
     def closeEvent(self, event):
         self.window.plotMenuTableMode = self.tableMode
@@ -591,14 +625,15 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             self.tableMode = False
             self.ui.switchButton.setText('Switch to Table View')
 
-        self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks)
+        self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks,
+            self.window.lastPlotHeightFactors)
         self.ui.pltLtContainer.invalidate() #otherwise gridframe doesnt shrink back down
         QtCore.QTimer.singleShot(5, functools.partial(self.resize, 100, 100))
 
     def reloadDefaults(self):
         dstrs, links = self.window.getDefaultPlotInfo()
         self.ui.editCombo.setCurrentIndex(0)
-        self.initPlotMenu(dstrs, links)
+        self.initPlotMenu(dstrs, links, [])
 
     def getLayout(self):
         if self.tableMode:
@@ -613,7 +648,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.ui.pltLtContainer.removeItem(self.ui.plottingLayout)
         self.ui.plottingLayout.deleteLater()
 
-    def initPlotMenu(self, dstrs, links):
+    def initPlotMenu(self, dstrs, links, heightFactors):
         if dstrs is None:
             print('empty plot matrix!')
             return
@@ -638,6 +673,15 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                     if j >= len(self.fcheckBoxes[i]):
                         continue
                     self.fcheckBoxes[i][j].setChecked(True)
+
+        # Fill in any height factors that aren't defined for plots w/ 
+        # the default value of 1
+        while len(heightFactors) < len(dstrs):
+            heightFactors.append(1)
+
+        for plotIndex in range(0, len(heightFactors)):
+            factor = heightFactors[plotIndex]
+            self.ui.plottingLayout.setHeightFactor(plotIndex, factor)
 
     # returns list of list of strings (one list for each plot, (dstr, editNumber) for each trace)
     def getPlotInfo(self):
@@ -763,8 +807,21 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         dstrs = self.getPlotInfo()
         links = self.getLinkLists()
-        self.window.plotData(dstrs, links)
+        heightFactors = self.getHeightFactors()
+        self.window.plotData(dstrs, links, heightFactors)
         self.window.pltGrd.resizeEvent(None)
+
+    def getHeightFactors(self):
+        # Return empty list if in dropdown mode
+        if not self.tableMode:
+            return []
+
+        # Extract the height factors from the plot layout sub-menus
+        factors = []
+        for elems in self.ui.plottingLayout.elems:
+            box = elems[4]
+            factors.append(box.value())
+        return factors
 
     def clearRows(self):
         self.ui.plottingLayout.clearPlots()
