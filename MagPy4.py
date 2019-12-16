@@ -37,7 +37,7 @@ from edit import Edit
 from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
-from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotPointsItem, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem, MagPyPlotDataItem
+from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem, MagPyPlotDataItem
 from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
 from detrendWin import DetrendWindow
 from ASCII_Importer import Asc_Importer
@@ -1927,17 +1927,29 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # Find segments of data that should not be connected due to time gaps
             segs = self.getConnectionList(resolutions, avgRes)
             if self.ui.drawPoints.isChecked():
-                pdi = PlotPointsItem(ofstTimes, Y, pen=pen, connect=segs)
+                brush = pg.mkBrush(pen.color())
+                outlinePen = self.getPointsOutlinePen(pen)
+                pi.scatterPlot(ofstTimes, Y, pen=outlinePen, brush=brush, size=2, connect=segs)
             else:
                 pdi = MagPyPlotDataItem(ofstTimes, Y, pen=pen, connect=segs)
-            pi.addItem(pdi)
-
+                pi.addItem(pdi)
         else:
             if self.ui.drawPoints.isChecked():
-                pi.addItem(PlotPointsItem(ofstTimes, Y, pen=pen))
+                brush = pg.mkBrush(pen.color())
+                outlinePen = self.getPointsOutlinePen(pen)
+                pi.scatterPlot(ofstTimes, Y, pen=outlinePen, brush=brush, size=2)
             else:
-                pi.addItem(PlotDataItemBDS(ofstTimes, Y, pen=pen))
-    
+                pdi = MagPyPlotDataItem(ofstTimes, Y, pen=pen)
+                pi.addItem(pdi)
+
+    def getPointsOutlinePen(self, pen):
+        color = pen.color()
+        r, g, b, alpha = color.getRgb()
+        new_r = max(r-25, 0)
+        new_g = max(g-25, 0)
+        new_b = max(b-25, 0)
+        return pg.mkPen(new_r, new_g, new_b)
+
     def updateYRange(self):
         """
         this function scales Y axis to have equally scaled ranges but not the same actual range
