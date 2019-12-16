@@ -880,6 +880,7 @@ class PlotGrid(pg.GraphicsLayout):
         self.removeItem(prevLabel)
         self.addItem(lbl, self.startRow+plotNum, 0, 1, 1)
         self.labels[plotNum] = lbl
+        self.resizeEvent(None)
 
     def getPlotLabel(self, plotNum):
         return self.labels[plotNum]
