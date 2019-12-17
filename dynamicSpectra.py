@@ -1630,7 +1630,7 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
             # Save start time
             timeSeries.append(times[startIndex])
             # Calculate ffts and coh/pha
-            N = endIndex - startIndex + 1
+            N = endIndex - startIndex
             fft1 = self.getfft(varA, en, startIndex, endIndex, detrend=detrend)
             fft2 = self.getfft(varB, en, startIndex, endIndex, detrend=detrend)
             coh, pha = self.calculateCoherenceAndPhase(bw, fft1, fft2, N)
