@@ -976,8 +976,12 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
         # Add in time information at bottom
         self.ui.addTimeInfo((timeStops[0], timeStops[-1]), self.window)
-
         self.ui.statusBar.clearMessage()
+
+        # Enable exporting plot data
+        fftParam = (fftInt, fftShift, bw, detrend)
+        exportFunc = functools.partial(self.exportData, self.window, plt, fftParam)
+        self.plotItem.setExportEnabled(exportFunc)
 
     def getAvg(self, dstr, en, iO, iE, detrendMode=False):
         # Calculate average or get from dictionary

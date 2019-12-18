@@ -12,6 +12,7 @@ import functools
 from mth import Mth
 from layoutTools import BaseLayout
 from simpleCalculations import ExpressionEvaluator
+import os
 
 class SpectraLineEditorUI(BaseLayout):
     def setupUI(self, Frame, window):
@@ -521,6 +522,93 @@ class DynamicAnalysisTool(SpectraBase):
             lineItem = lineEditor.createLine(dta, times, color, style, width)
             self.addLineToPlot(lineItem)
 
+    def exportData(self, window, plt, fftParam):
+        # Get the filename to save data to from user
+        filename = window.saveFileDialog()
+        if filename is None:
+            return
+
+        # Format information about the data file's and selected time range
+        dataFile = 'unknown'
+        if len(window.FIDs) > 0:
+            names = [os.path.split(FID.name)[1] for FID in self.window.FIDs]
+            dataFile = ','.join(names)
+        dataFile = 'File(s): ' + dataFile + '\n'
+
+        timeFmtStr = 'yyyy MMM dd HH:mm:ss.zzz'
+        startTime = self.ui.timeEdit.start.dateTime().toString(timeFmtStr)
+        endTime = self.ui.timeEdit.end.dateTime().toString(timeFmtStr)
+        timeRangeStr = 'Time Range: ' + startTime + ' to ' + endTime + '\n'
+
+        dataInfo = [dataFile, timeRangeStr]
+
+        self.writeExportData(filename, plt, dataInfo, fftParam)
+
+    def writeExportData(self, filename, plt, dataInfo, fftParam):
+        # Get plot grid info
+        freqs, times, grid, mappedColors = plt.getSavedPlotInfo()
+        freqs = freqs[1:][::-1] # Reverse frequency order, skip extended values
+        times = times[:-1]
+        grid = grid[::-1]
+        mappedColors = mappedColors[::-1]
+
+        # String formatting lambda functions
+        fmtNum = lambda n : np.format_float_positional(n, precision=7, trim='0')
+        fmtStr = lambda v : '{:<15}'.format(fmtNum(v))
+
+        # Open file for writing
+        fd = open(filename, 'w')
+
+        # Write file info + FFT parameters in first
+        for line in dataInfo:
+            fd.write(line)
+
+        for lbl, val in zip(['FFT Interval: ', 'FFT Shift: ', 'Bandwidth: ', 
+            'Detrended: '], fftParam):
+            fd.write(lbl + str(val) + '\n')
+
+        # Get SCET row string
+        timeRowStr = ('{:<15}'.format('Freq\SCET'))
+        for t in times[:-1]:
+            timeRowStr += fmtStr(t)
+        timeRowStr += '\n'
+
+        # Write each row of data and the corresponding frequency
+        # for both the calculated values and mapped colors
+        valRowStr = ''
+        colorRowStr = ''
+        for i in range(0, len(freqs)):
+            # Get row information
+            freqStr = fmtStr(freqs[i])
+            rowVals = grid[i]
+            colors = mappedColors[i]
+
+            # Add current frequency label
+            valRowStr += freqStr
+            colorRowStr += freqStr
+
+            # Write down grid values
+            for e in rowVals:
+                valRowStr += fmtStr(e)
+
+            # Write down cplor values in hex format
+            for color in colors:
+                colorRowStr += '{:<15}'.format(str(color.name()))
+
+            valRowStr += '\n'
+            colorRowStr += '\n'
+
+        # Write strings into file
+        fd.write('\nGrid Values\n')
+        fd.write(timeRowStr)
+        fd.write(valRowStr)
+        fd.write('\n')
+
+        fd.write('Mapped Grid Colors (Hexadecimal)\n')
+        fd.write(timeRowStr)
+        fd.write(colorRowStr)
+        fd.close()
+
 class SpectraLegend(GradLegend):
     def __init__(self, offsets=(31, 48)):
         GradLegend.__init__(self)
@@ -655,6 +743,7 @@ class SpectrogramPlotItem(pg.PlotItem):
         self.logMode = logMode # Log scaling for y-axis parameter (Boolean)
         self.baseOffset = None
         self.lines = []
+        self.savedPlot = None
 
         # Initialize colors for color map
         rgbBlue = (25, 0, 245)
@@ -680,6 +769,8 @@ class SpectrogramPlotItem(pg.PlotItem):
         self.plotAppr = None
         self.plotApprAct = None
         self.plotMenuEnabled = True
+        self.exportAct = None
+        self.exportEnabled = False
         pg.PlotItem.__init__(self, viewBox=vb, axisItems=axisItems)
 
         # Set log/linear scaling after initialization
@@ -707,6 +798,11 @@ class SpectrogramPlotItem(pg.PlotItem):
             self.plotAppr.close()
             self.plotAppr = None
 
+    def setExportEnabled(self, linkFunc):
+        self.exportEnabled = True
+        self.exportAct = QtWidgets.QAction('Save Plot Data...')
+        self.exportAct.triggered.connect(linkFunc)
+
     def getPlotApprMenu(self):
         self.plotApprAct = QtWidgets.QAction('Change Plot Appearance...')
         self.plotApprAct.triggered.connect(self.openPlotAppearance)
@@ -714,9 +810,15 @@ class SpectrogramPlotItem(pg.PlotItem):
         return self.plotApprAct
 
     def getContextMenus(self, event):
-        if self.plotMenuEnabled:
-            plotApp = self.getPlotApprMenu()
-            return [plotApp, self.ctrlMenu]
+        if self.plotMenuEnabled or self.exportEnabled:
+            actList = [self.ctrlMenu]
+            if self.exportEnabled:
+                self.stateGroup.autoAdd(self.exportAct)
+                actList = [self.exportAct] + actList
+            if self.plotMenuEnabled:
+                plotApp = self.getPlotApprMenu()
+                actList = [plotApp] + actList
+            return actList
         else:
             return self.ctrlMenu
 
@@ -828,6 +930,7 @@ class SpectrogramPlotItem(pg.PlotItem):
         winFrame=None, statusStrt=0, statusEnd=100):
         # Map values in grid to RGB colors
         minPower, maxPower = colorRng
+        freqs = np.array(yVals)
         mappedGrid = self.mapValueToColor(valueGrid, minPower, maxPower, logColorScale)
 
         # Frequency/value that serves as lower bound for plot grid
@@ -843,6 +946,7 @@ class SpectrogramPlotItem(pg.PlotItem):
         currentStep = statusStrt
 
         self.lines = []
+        mappedColors = []
         # Creates a SpectraLine object for every row in value grid
         for rowIndex in range(0, len(yVals)-1):
             yVal = yVals[rowIndex+1]
@@ -850,6 +954,7 @@ class SpectrogramPlotItem(pg.PlotItem):
             pdi = self.getSpectraLine(yVal, colors, timeVals, winFrame, lastVal)
             self.addItem(pdi)
             self.lines.append(pdi)
+            mappedColors.append(colors)
 
             if winFrame: # If winFrame is passed, update progress in status bar
                 currentStep += stepSize
@@ -862,6 +967,14 @@ class SpectrogramPlotItem(pg.PlotItem):
         self.setYRange(lowerBnd, yVals[-1], 0)
         timeLbl = self.getAxis('bottom').tm.getTimeLabel(timeVals[-1]-timeVals[0])
         self.getAxis('bottom').setLabel(timeLbl)
+
+        self.savePlotInfo(freqs, timeVals, valueGrid, mappedColors)
+
+    def savePlotInfo(self, freqs, times, grid, colors):
+        self.savedPlot = (freqs, times, grid, colors)
+
+    def getSavedPlotInfo(self):
+        return self.savedPlot
 
     # Prepares plot item for export as an SVG image by adjusting large time values
     def prepareForExport(self):
@@ -1362,6 +1475,12 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.ui.statusBar.showMessage('Generating plot...')
         self.createPlot(pixelGrid, freqs, timeSeries, (minPower, maxPower))
 
+        # Enable exporting plot data
+        fftParam = (interval, shift, bw, detrend)
+        exportFunc = functools.partial(self.exportData, self.window, 
+            self.ui.plotItem, fftParam)
+        self.ui.plotItem.setExportEnabled(exportFunc)
+
     def calcSpectra(self, dstr, bw, start, end, detrend=False):
         """
         Calculate the spectra for the given sub interval
@@ -1660,6 +1779,13 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         # Generate plots
         self.cohPlt, self.phaPlt = self.createPlots(freqs, timeSeries, cohGrid, 
             phaGrid, logMode)
+
+        # Enable exporting data
+        fftParam = (interval, shiftAmt, bw, detrend)
+        for plt in [self.cohPlt, self.phaPlt]:
+            exportFunc = functools.partial(self.exportData, self.window, plt,
+                fftParam)
+            plt.setExportEnabled(exportFunc)
 
         # Adjust plot ranges and y axis labels
         timeRng = (timeSeries[0], timeSeries[-1])
