@@ -497,7 +497,7 @@ class DynamicWaveUI(BaseLayout):
     def initVars(self, window):
         # Initialize the number of data points in selected range
         minTime, maxTime = window.getTimeTicksFromTimeEdit(self.timeEdit)
-        times = window.getTimes(self.vectorBoxes[0].currentText(), 0)[0]
+        times = window.getTimes(self.vectorBoxes[0].currentText(), window.currentEdit)[0]
         startIndex = window.calcDataIndexByTime(times, minTime)
         endIndex = window.calcDataIndexByTime(times, maxTime)
         nPoints = abs(endIndex-startIndex)
@@ -813,8 +813,9 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         # Calculates each column in a section of the plot grid and
         # places it in the result queue
         valGrid = []
+        dstrs = [box.currentText() for box in self.ui.vectorBoxes]
         for startIndex, stopIndex in grp:
-            dta = self.calcWaveAveraged(plotType, (startIndex, stopIndex), bw,
+            dta = self.calcWaveAveraged(dstrs, plotType, (startIndex, stopIndex), bw,
                 numFreqs, magDta=magDta, detrendMode=detrendMode)
             valGrid.append(dta)
         resQueue.put((prcNum, valGrid))
@@ -826,7 +827,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         # Get selected indices and times
         self.currIndices = dtaRng
         minIndex, maxIndex = dtaRng
-        times = self.window.getTimes(self.window.DATASTRINGS[0], 0)[0]
+        times = self.window.getTimes(self.ui.vectorBoxes[0].currentText(), self.window.currentEdit)[0]
 
         # Get full list of frequencies to be used when averaging by bandwidth
         freqs = self.calculateFreqList(1, fftInt)
@@ -902,8 +903,9 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             valGrid = [subGrids[i] for i in gridOrder]
             valGrid = np.concatenate(valGrid)
         else: # Otherwise entire grid sequentially
+            dstrs = [box.currentText() for box in self.ui.vectorBoxes]
             for startIndex, stopIndex in indexPairs:
-                dta = self.calcWaveAveraged(plotType, (startIndex, stopIndex), bw,
+                dta = self.calcWaveAveraged(dstrs, plotType, (startIndex, stopIndex), bw,
                     numFreqs, magDta=magDta, detrendMode=detrend)
                 valGrid.append(dta)
             valGrid = np.array(valGrid)
@@ -999,23 +1001,22 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         # Faster than np.linalg.norm
         return np.sqrt(np.dot(v,v))
 
-    def calcWaveAveraged(self, plotType, dtaRng, bw, numFreqs, magDta=None, detrendMode=False):
+    def calcWaveAveraged(self, dstrs, plotType, dtaRng, bw, numFreqs, magDta=None, detrendMode=False):
         halfBw = int((bw-1)/2) # Num of frequencies on either side of freqNum
 
         # Calculate the bw-averaged wave parameter over the data range
-        sumMats, magfft = self.getAvgMats(dtaRng, numFreqs, bw, magDta, detrendMode=detrendMode)
+        sumMats, magfft = self.getAvgMats(dstrs, dtaRng, numFreqs, bw, magDta, detrendMode=detrendMode)
         averagedDta = self.calcWave(plotType, (halfBw, numFreqs-halfBw), dtaRng, 
             bw, sumMats, magfft, detrend=detrendMode)
 
         return averagedDta
 
-    def getAvgMats(self, dtaRng, numFreqs, bw, magDta=None, detrendMode=False):
+    def getAvgMats(self, dstrs, dtaRng, numFreqs, bw, magDta=None, detrendMode=False):
         # Computes all the bw-averaged spectral mats for every valid freq index
         minIndex, maxIndex = dtaRng
         halfBw = int((bw-1)/2)
 
         en = self.window.currentEdit
-        dstrs = [box.currentText() for box in self.ui.vectorBoxes]
         ffts = [self.getfft(dstr, en, minIndex, maxIndex, detrend=detrendMode) for dstr in dstrs]
 
         # Also pre-computes the magnitude fft used to calculate compressional
