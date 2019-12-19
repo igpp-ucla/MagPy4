@@ -464,6 +464,26 @@ class DynamicAnalysisTool(SpectraBase):
             return False
         return True
 
+    def getLabels(self, varInfo, logScale):
+        pass # Y axis label, title, stackedAxis
+
+    def getTimeInfoLbl(self, timeRng):
+        # Convert time ticks to tick strings
+        startTime, endTime = timeRng
+        startStr = self.window.getTimestampFromTick(startTime)
+        endStr = self.window.getTimestampFromTick(endTime)
+
+        # Remove day of year
+        startStr = startStr[:4] + startStr[8:]
+        endStr = endStr[:4] + endStr[8:]
+
+        # Create time label widget and add to grid layout
+        timeLblStr = 'Time Range: ' + startStr + ' to ' + endStr
+        timeLbl = pg.LabelItem(timeLblStr)
+        timeLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        return timeLbl
+
     def showValue(self, freq, time, prefix, lastCalc):
         # Takes x,y values and uses them to find/display the power value
         if lastCalc is None:
@@ -942,9 +962,6 @@ class SpectrogramPlotItem(pg.PlotItem):
             lastVal = np.log10(lastVal)
         lowerBnd = lastVal
 
-        stepSize = (statusEnd-statusStrt) / (len(yVals) - 1)
-        currentStep = statusStrt
-
         self.lines = []
         mappedColors = []
         # Creates a SpectraLine object for every row in value grid
@@ -955,10 +972,6 @@ class SpectrogramPlotItem(pg.PlotItem):
             self.addItem(pdi)
             self.lines.append(pdi)
             mappedColors.append(colors)
-
-            if winFrame: # If winFrame is passed, update progress in status bar
-                currentStep += stepSize
-                winFrame.ui.statusBar.showMessage('Generating plot...' + str(int(currentStep)) + '%')
 
             lastVal = yVal
 
@@ -1155,7 +1168,6 @@ class DynamicSpectraUI(BaseLayout):
         self.scaleModeBox.addItem('Linear')
 
         # Plot setup
-        self.initPlot(window)
         layout.addWidget(self.gview, 1, 0, 8, 2)
 
         # Default settings
@@ -1203,48 +1215,6 @@ class DynamicSpectraUI(BaseLayout):
         self.selectToggle.toggled.connect(self.powerRngSelectToggled)
         return rangeLt
 
-    def initPlot(self, window):
-        # Clear previous plot
-        self.glw.clear()
-
-        # Set title and lower downsampling
-        dstrTitle = self.dstrBox.currentText()
-
-        logMode = self.scaleModeBox.currentText() == 'Logarithmic'
-        self.plotItem = SpectrogramPlotItem(window.epoch, logMode=logMode)
-        self.plotItem.setTitle('Dynamic Spectra Analysis'+' ('+dstrTitle+')', size='13pt')
-        self.plotItem.setDownsampling(mode='subsample')
-
-        self.glw.addItem(self.plotItem, 0, 0, 5, 4)
-
-    def addTimeInfo(self, timeRng, window):
-        # Convert time ticks to tick strings
-        startTime, endTime = timeRng
-        startStr = window.getTimestampFromTick(startTime)
-        endStr = window.getTimestampFromTick(endTime)
-
-        # Remove day of year
-        startStr = startStr[:4] + startStr[8:]
-        endStr = endStr[:4] + endStr[8:]
-
-        # Create time label widget and add to grid layout
-        timeLblStr = 'Time Range: ' + startStr + ' to ' + endStr
-        self.timeLbl = pg.LabelItem(timeLblStr)
-        self.timeLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.glw.addItem(self.timeLbl, 5, 0, 1, 1)
-
-    def setupGradient(self):
-        # Create gradient legend and add it to the graphics layout
-        gradLegend = self.plotItem.getGradLegend()
-        gradLegend.setBarWidth(40)
-        self.glw.addItem(gradLegend, 0, 5, 5, 1)
-
-        # Add in legend labels and center them
-        lbl = StackedAxisLabel(['Log Power', '(nT^2/Hz)'], angle=0)
-        lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-        lbl.layout.setContentsMargins(0,0,0,0)
-        self.glw.addItem(lbl, 0, 6, 5, 1)
-
     def powerRngSelectToggled(self, val):
         self.powerMax.setEnabled(val)
         self.powerMin.setEnabled(val)
@@ -1256,7 +1226,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         super(DynamicSpectra, self).__init__(parent)
         SpectraBase.__init__(self)
         DynamicAnalysisTool.__init__(self)
-        self.detrendMode = True
+        self.plotItem = None
 
         # Set up sum of powers plot titles and simple keywords that they map
         # to elsewhere in the DynamicSpectra class
@@ -1295,8 +1265,8 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
     def closeEvent(self, ev):
         self.closeLineTool()
         self.window.endGeneralSelect()
-        if self.ui.plotItem:
-            self.ui.plotItem.closePlotAppearance()
+        if self.plotItem:
+            self.plotItem.closePlotAppearance()
         self.window.clearStatusMsg()
         self.wasClosed = True
 
@@ -1324,30 +1294,62 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         dstr = self.ui.dstrBox.currentText()
         bw = self.ui.bwBox.value()
         detrendMode = self.ui.detrendCheck.isChecked()
+        logScaling = self.ui.scaleModeBox.currentText() == 'Logarithmic'
+        colorRng = self.getGradRange()
+        fftParam = (interval, shift, bw)
 
+        # Error checking for user parameters
+        if self.checkParameters(interval, shift, bw, numPoints) == False:
+            return
+
+        # Calculate grid values and set up the plot layout
+        grid, freqs, times = self.calcGrid(dataRng, fftParam, dstr, detrendMode)
+        if colorRng is None: # Default range is the range of vals in the grid
+            minPower = np.min(grid[grid>0])
+            maxPower = np.max(grid[grid>0])
+            colorRng = (minPower, maxPower)
+        plt = self.generatePlot(grid, freqs, times, colorRng, logScaling)
+        self.setupPlotLayout(plt, dstr, times, logScaling)
+
+        # Store calculations for displaying values at a point
+        self.lastCalc = (times, freqs, grid)
+
+        # Update min / max color map boxes
+        self.updateMinMaxBoxes(grid)
+
+        # Enable context menu option for saving plot data
+        self.enableDataExport(interval, shift, bw, detrendMode)
+
+        if self.savedLineInfo:
+            self.addSavedLine()
+
+    def getGradRange(self):
         if self.ui.selectToggle.isChecked():
             minGradPower = self.ui.powerMin.value()
             maxGradPower = self.ui.powerMax.value()
             # Adjust order if flipped
             minGradPower = min(minGradPower, maxGradPower)
             maxGradPower = max(minGradPower, maxGradPower)
-            self.gradRange = (10**minGradPower, 10**maxGradPower)
+            gradRange = (10**minGradPower, 10**maxGradPower)
         else:
-            self.gradRange = None
+            gradRange = None
+        return gradRange
 
-        # Error checking for user parameters
-        if self.checkParameters(interval, shift, bw, numPoints) == False:
-            return
+    def updateMinMaxBoxes(self, grid):
+        # Update min and max values in 'Set Range' boxes with the grid min/max
+        # vals if the user did not specify a range
+        minPower = np.min(grid[grid>0])
+        maxPower = np.max(grid[grid>0])
+        if not self.ui.selectToggle.isChecked():
+            self.ui.powerMin.setValue(np.log10(minPower))
+            self.ui.powerMax.setValue(np.log10(maxPower))
 
-        # Initialize empty plot
-        self.ui.statusBar.showMessage('Clearing previous plot...')
-        self.ui.initPlot(self.window)
-
-        # Generate plot grid and spectrogram from this
-        self.calculate(dataRng, interval, shift, bw, dstr, detrend=detrendMode)
-
-        if self.savedLineInfo:
-            self.addSavedLine()
+    def enableDataExport(self, interval, shift, bw, detrend):
+        # Enable exporting plot data
+        fftParam = (interval, shift, bw, detrend)
+        exportFunc = functools.partial(self.exportData, self.window, 
+            self.plotItem, fftParam)
+        self.plotItem.setExportEnabled(exportFunc)
 
     def getVecIdentifiers(self, vecGrps):
         if len(vecGrps) == 1:
@@ -1408,12 +1410,11 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         freqs = self.calculateFreqList(bw, N)
         return freqs, power
 
-    def calculate(self, dataRng, interval, shift, bw, dstr, detrend=False):
+    def calcGrid(self, dataRng, fftParam, dstr, detrend=False):
+        interval, shift, bw = fftParam
         shiftAmnt = shift
         minIndex, maxIndex = dataRng
         startIndex, endIndex = minIndex, minIndex + interval
-
-        self.ui.statusBar.showMessage('Calculating...')
 
         # Check if this is a special sum-of-powers plot
         spPlot = self.spStateKws[dstr] if dstr in self.spStateKws else None
@@ -1457,29 +1458,33 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         pixelGrid = np.array(powerLst)
         pixelGrid = pixelGrid.T
 
-        # Store calculations for displaying values at a point
-        self.lastCalc = (timeSeries, freqs, pixelGrid)
+        return pixelGrid, freqs, timeSeries
 
-        # Map powers to a color gradient based on min/max values in time series
-        maxPower = np.max(pixelGrid[pixelGrid>0])
-        minPower = np.min(pixelGrid[pixelGrid>0])
-        if self.gradRange is not None and self.wasClosed == False:
-            minPower, maxPower = self.gradRange # User-set range
-        else:
-            self.gradRange = None
+    def generatePlot(self, grid, freqs, times, colorRng, logScaling):
+        freqs = self.extendFreqs(freqs, logScaling) # Get lower bounding frequency
+        plt = SpectrogramPlotItem(self.window.epoch, logScaling)
+        plt.createPlot(freqs, grid, times, colorRng, winFrame=self)
+        self.plotItem = plt
+        return plt
 
-        if not self.ui.selectToggle.isChecked():
-            self.ui.powerMin.setValue(np.log10(minPower))
-            self.ui.powerMax.setValue(np.log10(maxPower))
+    def setupPlotLayout(self, plt, dstr, times, logScaling):
+        # Create gradient legend and add it to the graphics layout
+        gradLegend = plt.getGradLegend()
+        gradLegend.setBarWidth(40)
 
-        self.ui.statusBar.showMessage('Generating plot...')
-        self.createPlot(pixelGrid, freqs, timeSeries, (minPower, maxPower))
+        # Get labels
+        title, axisLbl, legendLbl = self.getLabels(dstr, logScaling)
+        plt.setTitle(title, size='14pt')
+        plt.getAxis('left').setLabel(axisLbl)
 
-        # Enable exporting plot data
-        fftParam = (interval, shift, bw, detrend)
-        exportFunc = functools.partial(self.exportData, self.window, 
-            self.ui.plotItem, fftParam)
-        self.ui.plotItem.setExportEnabled(exportFunc)
+        # Time range information
+        timeInfo = self.getTimeInfoLbl((times[0], times[-1]))
+
+        self.ui.glw.clear()
+        self.ui.glw.addItem(plt, 0, 0, 1, 1)
+        self.ui.glw.addItem(gradLegend, 0, 1, 1, 1)
+        self.ui.glw.addItem(legendLbl, 0, 2, 1, 1)
+        self.ui.glw.addItem(timeInfo, 1, 0, 1, 3)
 
     def calcSpectra(self, dstr, bw, start, end, detrend=False):
         """
@@ -1494,53 +1499,37 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         power = self.calculatePower(bw, fft, N)
         freqs = self.calculateFreqList(bw, N)
         return freqs, power
-
-    def createPlot(self, pixelGrid, freqs, times, colorRng):
-        # Frequency that serves as lower bound for plot grid
+    
+    def extendFreqs(self, freqs, logScale):
+        # Calculate frequency that serves as lower bound for plot grid
         diff = abs(freqs[1] - freqs[0])
         lowerFreqBnd = freqs[0] - diff
-        if lowerFreqBnd == 0 and self.ui.scaleModeBox.currentText() == 'Logarithmic':
+        if lowerFreqBnd == 0 and logScale:
             lowerFreqBnd = freqs[0] - diff/2
         freqs = np.concatenate([[lowerFreqBnd], freqs])
+        return freqs
 
-        # Pass calculated values to SpectogramPlotItem to generate plot
-        self.ui.plotItem.createPlot(freqs, pixelGrid, times, colorRng, winFrame=self)
-
-        # Update x/y range and axis labels
-        self.adjustPlotItem([times[0], times[-1]], (freqs[0], freqs[-1]))
-        self.ui.statusBar.clearMessage()
-
-    def adjustPlotItem(self, xRange, yRange):
-        # Set log mode and left axis labels
-        if self.ui.scaleModeBox.currentText() == 'Logarithmic':
-            self.ui.plotItem.getAxis('left').setLabel('Log Frequency (Hz)')
-            yMin, yMax = yRange
-            yRange = (np.log10(yMin), np.log10(yMax))
-        else:
-            la = self.ui.plotItem.getAxis('left')
-            self.ui.plotItem.getAxis('left').setLabel('Frequency (Hz)')
-
-        # Disable auto range because setting log mode enables it
-        vb = self.ui.plotItem.getViewBox()
-        vb.enableAutoRange(x=False, y=False)
-
-        # Set bottom axis time ticks and axis label
-        self.ui.addTimeInfo(xRange, self.window)
-
-        self.ui.setupGradient()
+    def getLabels(self, dstr, logScale):
+        title = 'Dynamic Spectra Analysis ' + '(' + dstr + ')'
+        axisLbl = 'Frequency (Hz)'
+        if logScale:
+            axisLbl = 'Log ' + axisLbl
+        legendLbl = StackedAxisLabel(['Log Power', '(nT^2/Hz)'], angle=0)
+        legendLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
+        return title, axisLbl, legendLbl
 
     def showPointValue(self, freq, time):
         self.showValue(freq, time, 'Freq, Power: ', self.lastCalc)
 
     def addLineToPlot(self, line):
-        self.ui.plotItem.addItem(line)
+        self.plotItem.addItem(line)
         self.lineHistory.add(line)
 
     def removeLinesFromPlot(self):
         histCopy = self.lineHistory.copy()
         for line in histCopy:
-            if line in self.ui.plotItem.listDataItems():
-                self.ui.plotItem.removeItem(line)
+            if line in self.plotItem.listDataItems():
+                self.plotItem.removeItem(line)
                 self.lineHistory.remove(line)
 
 class DynamicCohPhaUI(BaseLayout):
@@ -1725,22 +1714,81 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         nPoints = abs(indexRng[1]-indexRng[0])
         detrendMode = self.ui.detrendCheck.isChecked()
 
+        fftParam = (interval, shiftAmnt, bw)
+        varPair = (varA, varB)
+
         if self.checkParameters(interval, shiftAmnt, bw, nPoints) == False:
             return
 
-        self.calculate(varA, varB, bw, logMode, indexRng, shiftAmnt, 
-            interval, detrendMode)
+        # Calculate grid values for each plot and add to respective grids
+        grids, freqs, times = self.calcGrids(indexRng, fftParam, varPair, detrendMode)
+        self.cohPlt, self.phaPlt = self.generatePlots(grids, freqs, times, logMode)
+        self.setupPlotLayout(self.cohPlt, 'Coherence', varPair, times, logMode)
+        self.setupPlotLayout(self.phaPlt, 'Phase', varPair, times, logMode)
+
+        # Enable exporting data
+        fftParam = (interval, shiftAmnt, bw, detrendMode)
+        for plt in [self.cohPlt, self.phaPlt]:
+            exportFunc = functools.partial(self.exportData, self.window, plt,
+                fftParam)
+            plt.setExportEnabled(exportFunc)
+        self.lastCalc = (freqs, times, grids[0], grids[1])
 
         if self.savedLineInfo: # Add any saved lines
             self.addSavedLine()
 
-    def calculate(self, varA, varB, bw, logMode, indexRng, shiftAmt, 
-        interval, detrend=False):
+    def setupPlotLayout(self, plt, plotType, varPair, times, logScaling):
+        # Create gradient legend and add it to the graphics layout
+        gradLegend = plt.getGradLegend(logMode=False)
+        gradLegend.setBarWidth(38)
+
+        cohMode = (plotType == 'Coherence')
+        if cohMode:
+            gradLegend.setTickSpacing(0.2, 0.1)
+        else:
+            gradLegend.setTickSpacing(60, 30)
+
+        # Get labels
+        title, axisLbl, legendLbl = self.getLabels(plotType, varPair, logScaling)
+        plt.setTitle(title, size='13pt')
+        plt.getAxis('left').setLabel(axisLbl)
+
+        # Time range information
+        timeInfo = self.getTimeRangeLbl(times[0], times[-1])
+
+        # Determine which grid to use and add items to layout
+        gridLt = self.ui.cohGrid if cohMode else self.ui.phaGrid
+        gridLt.clear()
+        gridLt.addItem(plt, 0, 0, 1, 1)
+        gridLt.addItem(gradLegend, 0, 1, 1, 1)
+        gridLt.addItem(legendLbl, 0, 2, 1, 1)
+        gridLt.addItem(timeInfo, 1, 0, 1, 3)
+
+    def getLabels(self, plotType, varInfos, logScaling):
+        cohMode = (plotType == 'Coherence')
+        varA, varB = varInfos
+        title = 'Dynamic ' + plotType + ' Analysis'
+        title = title + ' (' + varA + ' by ' + varB + ')'
+
+        axisLbl = 'Frequency (Hz)'
+        if logScaling:
+            axisLbl = 'Log ' + axisLbl
+
+        legendStrs = ['Angle', '[Degrees]']
+        if cohMode:
+            legendStrs = [plotType]
+        legendLbl = StackedAxisLabel(legendStrs, angle=0)
+        legendLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
+
+        return title, axisLbl, legendLbl
+
+    def calcGrids(self, indexRng, fftParam, varPair, detrend=False):
+        interval, shiftAmt, bw = fftParam
+        varA, varB = varPair
+
         cohLst, phaLst = [], []
         timeSeries = []
-        times = self.window.getTimes(varA, 0)[0]
-
-        self.ui.statusBar.showMessage('Calculating...')
+        times = self.window.getTimes(varA, self.window.currentEdit)[0]
 
         en = self.window.currentEdit
         minIndex, maxIndex = indexRng
@@ -1766,97 +1814,30 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         phaGrid = np.array(phaLst).T
         freqs = self.calculateFreqList(bw, N)
 
-        # Save calculated values
-        self.lastCalc = (freqs, timeSeries, cohGrid, phaGrid)
+        return (cohGrid, phaGrid), freqs, timeSeries
 
-        # Get lower bound for frequencies and add to beginning of freq list
-        diff = freqs[1] - freqs[0]
-        lowerBnd = freqs[0] - diff
-        if lowerBnd == 0 and logMode:
-            lowerBnd = freqs[0] - diff/2
-        freqs = np.concatenate([[lowerBnd], freqs])
-
-        # Generate plots
-        self.cohPlt, self.phaPlt = self.createPlots(freqs, timeSeries, cohGrid, 
-            phaGrid, logMode)
-
-        # Enable exporting data
-        fftParam = (interval, shiftAmt, bw, detrend)
-        for plt in [self.cohPlt, self.phaPlt]:
-            exportFunc = functools.partial(self.exportData, self.window, plt,
-                fftParam)
-            plt.setExportEnabled(exportFunc)
-
-        # Adjust plot ranges and y axis labels
-        timeRng = (timeSeries[0], timeSeries[-1])
-        freqRng = (freqs[0], freqs[-1])
-        self.adjustPlots(self.cohPlt, self.phaPlt, varA, varB, logMode, timeRng, 
-            freqRng)
-
-        # Add in time label info at bottom
-        for grid in [self.ui.cohGrid, self.ui.phaGrid]:
-            timeLbl = self.getTimeRangeLbl(timeSeries[0], timeSeries[-1])
-            grid.addItem(timeLbl, 1, 0, 1, 1)
-        self.ui.statusBar.clearMessage()
-
-    def createPlots(self, freqs, times, cohGrid, phaGrid, logMode):
-        # Generate the color mapped plots from the value grids
-        cohPlt = SpectrogramPlotItem(self.window.epoch, logMode)
-        phaPlt = PhaseSpectrogram(self.window.epoch, logMode)
+    def generatePlots(self, grids, freqs, times, logScaling):
+        freqs = self.extendFreqs(freqs, logScaling)
+        cohGrid, phaGrid = grids
+        cohPlt = SpectrogramPlotItem(self.window.epoch, logScaling)
+        phaPlt = PhaseSpectrogram(self.window.epoch, logScaling)
         cohRng = (0, 1.0)
         phaRng = (-180, 180)
         cohPlt.createPlot(freqs, cohGrid, times, cohRng, winFrame=self, 
-            logColorScale=False, statusStrt=0, statusEnd=50)
+            logColorScale=False)
         phaPlt.createPlot(freqs, phaGrid, times, phaRng, winFrame=self, 
-            logColorScale=False, statusStrt=50, statusEnd=100)
-
-        # Get color gradients
-        cohGrad = cohPlt.getGradLegend(logMode=False)
-        cohGrad.setBarWidth(40)
-
-        phaGrad = phaPlt.getGradLegend(logMode=False)
-        phaGrad.setBarWidth(40)
-
-        # Get color bar labels
-        cohLbl = pg.LabelItem('Coherence')
-        cohLbl.setFixedWidth(65)
-
-        phaLbl = StackedAxisLabel(['Phase', '[Degrees]'], angle=0)
-        phaLbl.setFixedWidth(70)
-
-        cohGrad.setTickSpacing(0.2, 0.1)
-        phaGrad.setTickSpacing(60, 30)
-
-        # Add items into grids
-        for grid, plt, grad, lbl in zip([self.ui.cohGrid, self.ui.phaGrid],
-            [cohPlt, phaPlt], [cohGrad, phaGrad], [cohLbl, phaLbl]):
-            grid.clear()
-            grid.addItem(plt)
-            grid.nextCol()
-            grid.addItem(grad)
-            grid.nextCol()
-            grid.addItem(lbl)
-
-        return cohPlt, phaPlt
-
-    def adjustPlots(self, cohPlt, phaPlt, varA, varB, logMode, xRng, yRng):
-        # Set titles
-        subTitle = '(' + varA + ' by ' + varB + ')'
-        cohPlt.setTitle('Dynamic Coherence Analysis ' + subTitle, size='13pt')
-        phaPlt.setTitle('Dynamic Phase Analysis ' + subTitle, size='13pt')
-
-        # Set time labels
-        if logMode:
-            a = np.log10(yRng[0])
-            b = np.log10(yRng[1])
-            yRng = (a, b)
-
-        # Update plot ranges and set axis labels
-        for plt in [cohPlt, phaPlt]:
-            if logMode:
-                plt.getAxis('left').setLabel('Log Frequency (Hz)')
-            else:
-                plt.getAxis('left').setLabel('Frequency (Hz)')
+            logColorScale=False)
+        
+        return (cohPlt, phaPlt)
+    
+    def extendFreqs(self, freqs, logScale):
+        # Calculate frequency that serves as lower bound for plot grid
+        diff = abs(freqs[1] - freqs[0])
+        lowerFreqBnd = freqs[0] - diff
+        if lowerFreqBnd == 0 and logScale:
+            lowerFreqBnd = freqs[0] - diff/2
+        freqs = np.concatenate([[lowerFreqBnd], freqs])
+        return freqs
 
     def getDataRange(self):
         dstr = self.ui.boxA.currentText()

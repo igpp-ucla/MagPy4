@@ -736,9 +736,6 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
                     self.plotGroups[kw].append(plotType)
                     break
 
-        self.currIndices = None # Indices to be used for current calculation
-        self.prevIndices = None # Indices used for last calculation
-
         self.fftDict = {} # Stores dicts for each dstr, second key is indices
         self.avgDict = {}
 
@@ -786,48 +783,125 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         logScale = False if self.ui.scaleModeBox.currentText() == 'Linear' else True
         detrendMode = self.ui.detrendCheck.isChecked()
 
+        fftParam = (fftInt, fftShift, bw)
+        vecDstrs = [box.currentText() for box in self.ui.vectorBoxes]
+
         # Error checking for user parameters
         if self.checkParameters(fftInt, fftShift, bw, dtaRng[1]-dtaRng[0]) == False:
             return
 
-        self.updateCalculations(plotType, fftInt, fftShift, dtaRng, bw, 
-            logScale, detrendMode)
+        # Calculate grid values and generate plot items
+        grid, freqs, times = self.calcGrid(plotType, dtaRng, fftParam, vecDstrs, detrendMode)
+        colorRng = self.getColorRng(plotType, grid)
+        plt = self.generatePlots(grid, freqs, times, colorRng, plotType, logScale)
+        self.setupPlotLayout(plt, plotType, times, logScale)
+
+        # Save state
+        self.plotItem = plt
+        self.lastCalc = (times, freqs, grid)
+
+        # Enable exporting plot data
+        fftParam = (fftInt, fftShift, bw, detrendMode)
+        exportFunc = functools.partial(self.exportData, self.window, plt, fftParam)
+        self.plotItem.setExportEnabled(exportFunc)
 
         if self.savedLineInfo: # Add any saved lines
             self.addSavedLine()
 
-    def computeMag(self, dtaRng):
+    def getLabels(self, plotType, logScaling):
+        # Determine plot title and y axis label
+        title = self.titleDict[plotType]
+
+        axisLbl = 'Frequency (Hz)'
+        if logScaling:
+            axisLbl = 'Log ' + axisLbl
+
+        # Get gradient legend label and units for this plot type        
+        valRng, gradLbl, units = self.defParams[plotType]
+        gradLblStrs = [gradLbl]
+        if units:
+            gradLblStrs.append('['+units+']')
+
+        # Build gradient legend's stacked label and rotate if necessary
+        angle = 90 if plotType in self.plotGroups['Ellipticity'] else 0
+        legendLbl = StackedAxisLabel(gradLblStrs, angle=angle)
+        legendLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
+        return title, axisLbl, legendLbl
+
+    def setupPlotLayout(self, plt, plotType, times, logMode):
+        # Get gradient legend and set its tick spacing accordingly
+        gradLegend = plt.getGradLegend(logMode=False)
+        if plotType in self.plotGroups['Angle']:
+            gradLegend.setTickSpacing(60, 30)
+        elif plotType in self.plotGroups['Ellipticity']:
+            gradLegend.setTickSpacing(0.2, 0.1)
+        else:
+            gradLegend = plt.getGradLegend(logMode=True)
+            gradLegend.setTickSpacing(1, 0.5)
+        gradLegend.setBarWidth(40)
+
+        # Get title, y axis, and gradient legend labels
+        title, axisLbl, legendLbl = self.getLabels(plotType, logMode)
+        plt.setTitle(title, size='13pt')
+        plt.getAxis('left').setLabel(axisLbl)
+
+        # Add in time range label at bottom
+        timeInfo = self.getTimeInfoLbl((times[0], times[-1]))
+
+        self.ui.glw.clear()
+        self.ui.glw.addItem(plt, 0, 0, 1, 1)
+        self.ui.glw.addItem(gradLegend, 0, 1, 1, 1)
+        self.ui.glw.addItem(legendLbl, 0, 2, 1, 1)
+        self.ui.glw.addItem(timeInfo, 1, 0, 1, 3)
+
+    def getColorRng(self, plotType, grid):
+        defaultRng, gradStr, gradUnits = self.defParams[plotType]
+
+        # Determine color gradient range
+        logColorScale = True if plotType in self.plotGroups['Power'] else False
+        if self.ui.selectToggle.isChecked():
+            minVal, maxVal = self.ui.valueMin.value(), self.ui.valueMax.value()
+            if logColorScale:
+                minVal = 10 ** minVal
+                maxVal = 10 ** maxVal
+            colorRng = (minVal, maxVal)
+        else: # Color range not set by user
+            if logColorScale:
+                colorRng = (np.min(grid[grid>0]), np.max(grid[grid>0]))
+            else:
+                colorRng = (np.min(grid), np.max(grid))
+            colorRng = defaultRng if defaultRng is not None else colorRng
+        
+        return colorRng
+
+    def computeMag(self, dtaRng, vecDstrs):
         # Computes the magnitude of the vector for every index in dtaRng
         sI, eI = dtaRng
         numVals = eI - sI
 
-        dstrs = [box.currentText() for box in self.ui.vectorBoxes]
-        dtas = [self.window.getData(dstr, self.window.currentEdit) for dstr in dstrs]
+        dtas = [self.window.getData(dstr, self.window.currentEdit) for dstr in vecDstrs]
 
         magDta = [np.sqrt(dtas[0][i] ** 2 + dtas[1][i]**2 + dtas[2][i]**2) for i in range(sI, eI)]
         fullDta = np.empty(len(dtas[0]))
         fullDta[dtaRng[0]:dtaRng[1]] = magDta
         return list(fullDta)
 
-    def processGrp(self, grp, plotType, bw, numFreqs, magDta, prcNum, resQueue, detrendMode):
+    def processGrp(self, vecDstrs, grp, plotType, bw, numFreqs, magDta, 
+        prcNum, resQueue, detrendMode):
         # Calculates each column in a section of the plot grid and
         # places it in the result queue
         valGrid = []
-        dstrs = [box.currentText() for box in self.ui.vectorBoxes]
         for startIndex, stopIndex in grp:
-            dta = self.calcWaveAveraged(dstrs, plotType, (startIndex, stopIndex), bw,
+            dta = self.calcWaveAveraged(vecDstrs, plotType, (startIndex, stopIndex), bw,
                 numFreqs, magDta=magDta, detrendMode=detrendMode)
             valGrid.append(dta)
         resQueue.put((prcNum, valGrid))
 
-    def updateCalculations(self, plotType, fftInt, fftShift, dtaRng, bw, 
-        logScale, detrend=False):
-        self.ui.glw.clear() # Clear any previous grid elements
-
+    def calcGrid(self, plotType, dtaRng, fftParam, vecDstrs, detrend=False):
+        fftInt, fftShift, bw = fftParam
         # Get selected indices and times
-        self.currIndices = dtaRng
         minIndex, maxIndex = dtaRng
-        times = self.window.getTimes(self.ui.vectorBoxes[0].currentText(), self.window.currentEdit)[0]
+        times = self.window.getTimes(vecDstrs[0], self.window.currentEdit)[0]
 
         # Get full list of frequencies to be used when averaging by bandwidth
         freqs = self.calculateFreqList(1, fftInt)
@@ -836,10 +910,9 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         # Special vector magnitude pre-calculation for compress power
         magDta = None
         if plotType == 'Compressional Power':
-            magDta = self.computeMag(dtaRng)
+            magDta = self.computeMag(dtaRng, vecDstrs)
 
         # Calculate values in grid
-        self.ui.statusBar.showMessage('Calculating...')
         timeStops = []
         valGrid = []
 
@@ -877,7 +950,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             mpQueue = Queue()
             for prcNum in range(0, self.numThreads):
                 grp = grps[prcNum]
-                args = (grp, plotType, bw, numFreqs, magDta, prcNum, mpQueue, detrend)
+                args = (vecDstrs, grp, plotType, bw, numFreqs, magDta, prcNum, mpQueue, detrend)
                 p = Process(target=self.processGrp, args=args)
                 prcLst.append(p)
                 p.start()
@@ -903,9 +976,8 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             valGrid = [subGrids[i] for i in gridOrder]
             valGrid = np.concatenate(valGrid)
         else: # Otherwise entire grid sequentially
-            dstrs = [box.currentText() for box in self.ui.vectorBoxes]
             for startIndex, stopIndex in indexPairs:
-                dta = self.calcWaveAveraged(dstrs, plotType, (startIndex, stopIndex), bw,
+                dta = self.calcWaveAveraged(vecDstrs, plotType, (startIndex, stopIndex), bw,
                     numFreqs, magDta=magDta, detrendMode=detrend)
                 valGrid.append(dta)
             valGrid = np.array(valGrid)
@@ -914,76 +986,25 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         valGrid = valGrid.T
         # Calculate frequencies for plotting and extra frequency for lower bound
         freqs = self.calculateFreqList(bw, fftInt)
-        self.lastCalc = (timeStops, freqs, valGrid)
-        diff = freqs[1] - freqs[0]
-        if logScale and freqs[0] - diff <= 0:
-            diff = diff * 0.5
-        lowerBnd = freqs[0] - diff
-        freqs = [lowerBnd] + list(freqs)
 
-        defaultRng, gradStr, gradUnits = self.defParams[plotType]
+        return valGrid, freqs, timeStops
 
-        # Determine color gradient range
+    def generatePlots(self, grid, freqs, times, colorRng, plotType, logMode):
+        freqs = self.extendFreqs(freqs, logMode)
+        plt = SpectrogramPlotItem(self.window.epoch, logMode)
         logColorScale = True if plotType in self.plotGroups['Power'] else False
-        if self.ui.selectToggle.isChecked():
-            minVal, maxVal = self.ui.valueMin.value(), self.ui.valueMax.value()
-            if logColorScale:
-                minVal = 10 ** minVal
-                maxVal = 10 ** maxVal
-            colorRng = (minVal, maxVal)
-        else: # Color range not set by user
-            if logColorScale:
-                colorRng = (np.min(valGrid[valGrid>0]), np.max(valGrid[valGrid>0]))
-            else:
-                colorRng = (np.min(valGrid), np.max(valGrid))
-            colorRng = defaultRng if defaultRng is not None else colorRng
+        plt.createPlot(freqs, grid, times, colorRng, winFrame=self,
+            logColorScale=logColorScale)
+        return plt
 
-        # Generate spectrogram from set parameters and value grid
-        self.ui.statusBar.showMessage('Generating plot...')
-        plt = SpectrogramPlotItem(self.window.epoch, logScale)
-        if plotType in self.plotGroups['Angle'] and colorRng == (-180, 180):
-            plt = PhaseSpectrogram(self.window.epoch, logScale)
-        plt.createPlot(freqs, valGrid, timeStops, colorRng, logColorScale=logColorScale,
-            winFrame=self)
-        self.plotItem = plt
-
-        # Set axis labels
-        plt.setTitle(self.titleDict[plotType], size='13pt')
-        yPrefix = 'Log ' if logScale else ''
-        plt.getAxis('left').setLabel(yPrefix + 'Frequency (Hz)')
-        self.ui.glw.addItem(plt, 0, 0, 1, 1)
-
-        # Add in color gradient
-        grad = plt.getGradLegend(logColorScale)
-        self.ui.glw.nextCol()
-        self.ui.glw.addItem(grad)
-    
-        # Add in gradient label
-        lblStrs = [gradStr]
-        if gradUnits:
-            lblStrs.append('['+gradUnits+']')
-        gradLbl = StackedAxisLabel(lblStrs)
-
-        if plotType in self.plotGroups['Angle']:
-            grad.setTickSpacing(60, 30)
-        elif plotType in self.plotGroups['Ellipticity']:
-            grad.setTickSpacing(0.2, 0.1)
-        else:
-            grad.setTickSpacing(1, 0.5)
-        grad.setBarWidth(40)
-
-        self.ui.glw.nextCol()
-        self.ui.glw.addItem(gradLbl)
-        gradLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-
-        # Add in time information at bottom
-        self.ui.addTimeInfo((timeStops[0], timeStops[-1]), self.window)
-        self.ui.statusBar.clearMessage()
-
-        # Enable exporting plot data
-        fftParam = (fftInt, fftShift, bw, detrend)
-        exportFunc = functools.partial(self.exportData, self.window, plt, fftParam)
-        self.plotItem.setExportEnabled(exportFunc)
+    def extendFreqs(self, freqs, logScale):
+        # Calculate frequency that serves as lower bound for plot grid
+        diff = abs(freqs[1] - freqs[0])
+        lowerFreqBnd = freqs[0] - diff
+        if lowerFreqBnd == 0 and logScale:
+            lowerFreqBnd = freqs[0] - diff/2
+        freqs = np.concatenate([[lowerFreqBnd], freqs])
+        return freqs
 
     def getAvg(self, dstr, en, iO, iE, detrendMode=False):
         # Calculate average or get from dictionary
@@ -992,10 +1013,6 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             dta = signal.detrend(dta)
         avg = np.mean(dta)
         return avg
-
-    def getfft(self, dstr, en, iO, iE, detrend=False):
-        res = DynamicAnalysisTool.getfft(self, dstr, en, iO, iE, detrend=detrend)
-        return res
 
     def getNorm(self, v):
         # Faster than np.linalg.norm

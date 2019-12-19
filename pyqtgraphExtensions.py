@@ -757,7 +757,10 @@ class StackedAxisLabel(pg.GraphicsLayout):
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
         self.layout.setVerticalSpacing(-2)
         self.layout.setHorizontalSpacing(-2)
-        self.layout.setContentsMargins(5, 0, 5, 0)
+        if angle != 0:
+            self.layout.setContentsMargins(5, 0, 5, 0)
+        else:
+            self.layout.setContentsMargins(0, 0, 0, 0)
         self.setupLabels(lbls)
 
     def setupLabels(self, lbls):
