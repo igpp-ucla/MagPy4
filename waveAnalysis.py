@@ -406,11 +406,13 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
 
         pp, ppm, elip, elipm, azim = self.bornWolf(trp,tip,trm,tim)
 
-        self.ui.ppLabel.setText(Mth.formatNumber(pp))
-        self.ui.ppmLabel.setText(Mth.formatNumber(ppm))
-        self.ui.elipLabel.setText(Mth.formatNumber(elip))
-        self.ui.elipmLabel.setText(Mth.formatNumber(elipm))
-        self.ui.azimLabel.setText(Mth.formatNumber(azim))
+        formatNum = lambda x : np.format_float_positional(x, precision=3, trim='0')
+
+        self.ui.ppLabel.setText(formatNum(pp))
+        self.ui.ppmLabel.setText(formatNum(ppm))
+        self.ui.elipLabel.setText(formatNum(elip))
+        self.ui.elipmLabel.setText(formatNum(elipm))
+        self.ui.azimLabel.setText(formatNum(azim))
 
         self.ui.prop.setText(self.vectorLabel(qkem))
         self.ui.jmAngle.setText(str(round(qtem, 3)))
@@ -714,9 +716,11 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.defParams = { # Value range, grad label, grad label units
             'Azimuth Angle' : ((-90, 90), 'Azimuth Angle', 'Degrees'),
             'Ellipticity (Means)' : ((-1.0, 1.0), 'Ellipticity', None),
+            'Ellipticity (SVD)' : ((0, 1.0), 'Ellipticity', None),
             'Ellipticity (Born-Wolf)' : ((0, 1.0), 'Ellipticity', None),
             'Propagation Angle (Means)' : ((0, 90), 'Angle', 'Degrees'),
-            'Propagation Angle (BK)' : ((0, 90), 'Angle', 'Degrees'),
+            'Propagation Angle (SVD)' : ((0, 90), 'Angle', 'Degrees'),
+            'Propagation Angle (Min Var)' : ((0, 90), 'Angle', 'Degrees'),
             'Power Spectra Trace' : (None, 'Log Power', 'nT^2/Hz'),
             'Compressional Power' : (None, 'Log Power', 'nT^2/Hz')
         }
@@ -725,7 +729,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         for key in self.defParams.keys():
             self.titleDict[key] = key
         self.titleDict['Power Spectra Trace'] = 'Trace Power Spectral Density'
-        self.titleDict['Propagation Angle (BK)'] = 'Minimum Variance Angle'
+        self.titleDict['Propagation Angle (Min Var)'] = 'Minimum Variance Angle'
         self.titleDict['Compressional Power'] = 'Compressional Power Spectral Density'
 
         # Sorts plot type names into groups
@@ -1097,6 +1101,19 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             norm = np.sqrt(vetm)
             thbk = Mth.R2D * math.acos(q/norm)
         return thbk
+    
+    def computeCompressionalPower(self, indexRange, bw, magfft, deltaf):
+        # Computes the compressional power all at once
+        halfBw = int((bw-1)/2)
+        fftReal, fftImag = self.splitfft(magfft)
+        fftDouble = ((fftReal[:len(fftImag)] ** 2) + (fftImag ** 2)) * deltaf
+        powerSum = []
+        for i in range(indexRange[0], indexRange[1]):
+            avgSum = 0
+            for subIndex in range(i-halfBw, i+halfBw+1):
+                avgSum += fftDouble[subIndex] # fftReal^2 + fftImag^2
+            powerSum.append(np.abs(avgSum))
+        return powerSum
 
     def calcWave(self, plotType, indexRange, dtaRng, bw, sumMats, magfft=None, detrend=False):
         minIndex, maxIndex = dtaRng
@@ -1106,27 +1123,18 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         numPairs = [(0, 1), (0, 2), (1, 2)] # Matrix indices used in calculations
         deltaf = (2.0 * self.window.resolution) / (numPoints * bw)
 
-        if plotType in ['Ellipticity (Means)', 'Azimuth Angle',
-            'Propagation Angle (Means)', 'Propagation Angle (BK)']:
+        if plotType in ['Ellipticity (Means)', 'Ellipticity (SVD)', 'Azimuth Angle',
+            'Propagation Angle (Means)', 'Propagation Angle (Min Var)',
+            'Propagation Angle (SVD)']:
             # Compute the average field for each dstr within the given time range
             avg = []
             for dstr in [box.currentText() for box in self.ui.vectorBoxes]:
                 sI, eI = dtaRng
                 dstrAvg = self.getAvg(dstr, self.window.currentEdit, sI, eI, detrend)
                 avg.append(dstrAvg)
-        
+
         if plotType == 'Compressional Power':
-            # Computes the compressional power all at once
-            halfBw = int((bw-1)/2)
-            fftReal, fftImag = self.splitfft(magfft)
-            fftDouble = ((fftReal[:len(fftImag)] ** 2) + (fftImag ** 2)) * deltaf
-            powerSum = []
-            for i in range(indexRange[0], indexRange[1]):
-                avgSum = 0
-                for subIndex in range(i-halfBw, i+halfBw+1):
-                    avgSum += fftDouble[subIndex] # fftReal^2 + fftImag^2
-                powerSum.append(np.abs(avgSum))
-            return powerSum
+            return self.computeCompressionalPower(indexRange, bw, magfft, deltaf)
 
         for index in range(indexRange[0], indexRange[1]):
             # Get the pre-computed averaged cospectral matrix
@@ -1145,74 +1153,63 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
             if plotType in self.plotGroups['Power']:
                 pwspectra = np.abs(np.trace(realPower))
-                valLst.append(pwspectra)
-                continue
-
-            if plotType in ['Ellipticity (Means)', 'Azimuth Angle',
+                res = pwspectra
+            elif plotType == 'Ellipticity (SVD)':
+                res = self.calcSVDEllip(realPower, imagPower, avg)
+            elif plotType == 'Propagation Angle (SVD)':
+                res = self.calcSVDPropAngle(realPower, imagPower, avg)
+            elif plotType in ['Ellipticity (Means)', 'Azimuth Angle',
                 'Propagation Angle (Means)']:
-                # Wave propogation direction
-                qqq = self.getNorm(qs)
-                qkem = np.array([qs[2] / qqq, -qs[1] / qqq, qs[0] / qqq])
-
-                qqqp = self.getNorm(avg)
-                qqqn = np.dot(qkem, avg)
-                if qqqn < 0:
-                    qkem = qkem * -1
-                    qqqn = -1 * qqqn
-                qqq = qqqn / qqqp
-                qtem = Mth.R2D * math.acos(qqq) # field angle
-                qqq = self.getNorm(cs)
-                qdlm = np.array(cs[::-1] / qqq)
-                qqqn = np.dot(qdlm, avg)
-                qqq = qqqn / qqqp
-                qalm = Mth.R2D * math.acos(qqq)
-
-                if plotType == 'Propagation Angle (Means)':
-                    valLst.append(qtem)
-                    continue
-
-                # Means transformation matrix
-                yx = qkem[1] * avg[2] - qkem[2] * avg[1]
-                yy = qkem[2] * avg[0] - qkem[0] * avg[2]
-                yz = qkem[0] * avg[1] - qkem[1] * avg[0]
-                qyxyz = self.getNorm([yx, yy, yz])
-                yx = yx / qyxyz
-                yy = yy / qyxyz
-                yz = yz / qyxyz
-                xx = yy * qkem[2] - yz * qkem[1]
-                xy = yz * qkem[0] - yx * qkem[2]
-                xz = yx * qkem[1] - yy * qkem[0]
-
-                bmat = np.array([[xx, xy, xz], [yx, yy, yz], qkem])
-                tmat = Mth.arpat(bmat, sumMat)
-                trm = tmat.real # transformed real matrix
-                tim = tmat.imag # transformed imaginary matrix
-                elip, azim = self.joeMeansElip(trm, tim)
-                if plotType == 'Ellipticity (Means)':
-                    valLst.append(elip)
-                    continue
-                else:
-                    valLst.append(azim)
-                    continue
+                res = self.joeMeansMethod(plotType, qs, cs, avg, sumMat)
             else:
                 duhh, amat = np.linalg.eigh(realPower, UPLO="U")
                 amat = np.transpose(amat)
-                if plotType == 'Propagation Angle (BK)':
-                    bk = self.computeMinVarAngle(amat, avg)
-                    valLst.append(bk)
-                    continue
-
-                # Transformed Values Spectral Matrices 
-                tmat = Mth.arpat(amat, sumMat)
-                tmat = Mth.flip(tmat)
-                trp = tmat.real
-                tip = tmat.imag
-                elip = self.bornWolfElip(trp, tip)
-                valLst.append(elip)
-                continue
+                if plotType == 'Propagation Angle (Min Var)':
+                    res = self.computeMinVarAngle(amat, avg)
+                else:
+                    res = self.calcBornWolfElip(amat, sumMat)
+            valLst.append(res)
         return valLst
 
-    def bornWolfElip(self, trp, tip):
+    def calcSVDEllip(self, realPower, imagPower, avg):
+        # Get singular values for the matrix formed by stacking the real
+        # and imaginary parts of spectral matrix
+        aMat = np.vstack([realPower, imagPower*(-1)])
+        wVec = np.linalg.svd(aMat, compute_uv=False)
+        wVec.sort()
+
+        # Calculate ellipticity from the ratio of two of the sorted singular values
+        res = (wVec[1] / wVec[2])
+        return res
+
+    def calcSVDPropAngle(self, realPower, imagPower, avg):
+        # Get singular value decomposition for the matrix formed by stacking the real
+        # and imaginary parts of spectral matrix
+        aMat = np.vstack([realPower, imagPower*(-1)])
+        uMat, wVec, vMat = np.linalg.svd(aMat)
+
+        # Wave vector corresponds to vMat's row that 
+        # corresponds to the minimum singular value
+        kVec = vMat[2] 
+
+        # Calculate the dot product between the background field vector
+        # and solve for the arccos to get the angle
+        avg = avg / np.sqrt(np.dot(avg, avg)) # Normalized
+        cosTheta = np.dot(kVec, avg)
+        theta = np.rad2deg(np.arccos(cosTheta))
+
+        # Wrap value
+        if theta > 90:
+            theta = 180 - theta
+
+        return theta
+
+    def calcBornWolfElip(self, amat, sumMat):
+        tmat = Mth.arpat(amat, sumMat)
+        tmat = Mth.flip(tmat)
+        trp = tmat.real
+        tip = tmat.imag
+
         # Calculate polarization/ellipticity parameters by Born-Wolf
         trj = trp[0][0] + trp[1][1]
         detj = trp[0][0] * trp[1][1] - trp[1][0] * trp[1][0] - tip[1][0] * tip[1][0]
@@ -1225,6 +1222,49 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         else:
             elip = math.tan(0.5*math.asin(fnum))
         return abs(elip)
+
+    def joeMeansMethod(self, plotType, qs, cs, avg, sumMat):
+        # Wave propogation direction
+        qqq = self.getNorm(qs)
+        qkem = np.array([qs[2] / qqq, -qs[1] / qqq, qs[0] / qqq])
+
+        qqqp = self.getNorm(avg)
+        qqqn = np.dot(qkem, avg)
+        if qqqn < 0:
+            qkem = qkem * -1
+            qqqn = -1 * qqqn
+        qqq = qqqn / qqqp
+        qtem = Mth.R2D * math.acos(qqq) # field angle
+        qqq = self.getNorm(cs)
+        qdlm = np.array(cs[::-1] / qqq)
+        qqqn = np.dot(qdlm, avg)
+        qqq = qqqn / qqqp
+        qalm = Mth.R2D * math.acos(qqq)
+
+        if plotType == 'Propagation Angle (Means)':
+            return qtem
+
+        # Means transformation matrix
+        yx = qkem[1] * avg[2] - qkem[2] * avg[1]
+        yy = qkem[2] * avg[0] - qkem[0] * avg[2]
+        yz = qkem[0] * avg[1] - qkem[1] * avg[0]
+        qyxyz = self.getNorm([yx, yy, yz])
+        yx = yx / qyxyz
+        yy = yy / qyxyz
+        yz = yz / qyxyz
+        xx = yy * qkem[2] - yz * qkem[1]
+        xy = yz * qkem[0] - yx * qkem[2]
+        xz = yx * qkem[1] - yy * qkem[0]
+
+        bmat = np.array([[xx, xy, xz], [yx, yy, yz], qkem])
+        tmat = Mth.arpat(bmat, sumMat)
+        trm = tmat.real # transformed real matrix
+        tim = tmat.imag # transformed imaginary matrix
+        elip, azim = self.joeMeansElip(trm, tim)
+        if plotType == 'Ellipticity (Means)':
+            return elip
+        else:
+            return azim
 
     def joeMeansElip(self, trm, tim):
         """
