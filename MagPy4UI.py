@@ -8,6 +8,7 @@ import pyqtgraph as pg
 import functools
 
 from pyqtgraphExtensions import GridGraphicsLayout,LinearGraphicsLayout,BLabelItem
+
 from mth import Mth
 
 class MagPy4UI(object):
@@ -116,6 +117,11 @@ class MagPy4UI(object):
         self.actionSelectByTime.setStatusTip('Select a time region to apply the currently selected tool to')
         self.actionSelectByTime.setVisible(True)
 
+        self.actionSelectView = QtWidgets.QAction(window)
+        self.actionSelectView.setText('Select Visible Region')
+        self.actionSelectView.setStatusTip('Select currently visible region')
+        self.actionSelectView.setVisible(True)
+
         # Options menu actions
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
         self.scaleYToCurrentTimeAction.setStatusTip('')
@@ -181,6 +187,7 @@ class MagPy4UI(object):
         self.selectMenu = self.menuBar.addMenu('Selection Tools')
         self.selectMenu.addAction(self.actionFixSelection)
         self.selectMenu.addAction(self.actionSelectByTime)
+        self.selectMenu.addAction(self.actionSelectView)
         self.showSelectionMenu(False) # Hidden by default
 
         self.optionsMenu = self.menuBar.addMenu('&Options')
@@ -1030,6 +1037,7 @@ class TimeRegionSelector(QtWidgets.QFrame):
         self.updateBtn.clicked.connect(self.applySelection)
 
     def setupLayout(self):
+        # Time edits and update button
         self.resize(300, 50)
         self.setWindowTitle('Time Select')
         layout = QtWidgets.QGridLayout(self)

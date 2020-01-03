@@ -142,6 +142,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Selection menu actions
         self.ui.actionFixSelection.triggered.connect(self.fixSelection)
         self.ui.actionSelectByTime.triggered.connect(self.openTimeSelect)
+        self.ui.actionSelectView.triggered.connect(self.autoSelectRange)
 
         # Content menu action connections
         self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
@@ -710,10 +711,17 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.timeSelect.close()
             self.timeSelect = None
 
+    def showNewSelectActions(self, val):
+        self.setTimeSelectVisible(val)
+        self.setSelectViewVisible(val)
+
     def setTimeSelectVisible(self, val):
         self.ui.actionSelectByTime.setVisible(val)
         if not val:
             self.closeTimeSelect()
+
+    def setSelectViewVisible(self, val):
+        self.ui.actionSelectView.setVisible(val)
 
     def setFixSelectVisible(self, val):
         self.ui.actionFixSelection.setVisible(val)
@@ -2158,7 +2166,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Enable selection menu
         self.ui.showSelectionMenu(True)
-        self.currSelect.setStepTrigger(functools.partial(self.setTimeSelectVisible, False))
+        self.currSelect.setStepTrigger(functools.partial(self.showNewSelectActions, False))
         self.currSelect.setFullSelectionTrigger(functools.partial(self.setFixSelectVisible, True))
 
         # Apply a saved region if there is one
@@ -2172,7 +2180,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.currSelect = None
             self.ui.showSelectionMenu(False)
 
-            self.setTimeSelectVisible(True)
+            self.showNewSelectActions(True)
             self.setFixSelectVisible(False)
 
     # get slider ticks from time edit
@@ -2273,9 +2281,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def autoSelectRange(self):
         # Automatically select the section currently being viewed
         t0, t1 = self.tO-self.tickOffset, self.tE-self.tickOffset
-        region = LinkedRegion(self, self.plotItems, values=(t0, t1), 
-            mode=self.selectMode, color=self.selectColor)
-        self.regions.append(region)
+        if self.currSelect == None:
+            self.openTraceStats()
+            self.initGeneralSelect('Stats', None, self.traceStats.ui.timeEdit,
+                'Adjusting', None, self.updateTraceStats, closeFunc=self.closeTraceStats, 
+                maxSteps=-1)
+        self.currSelect.leftClick(t0, 0, False)
+        self.currSelect.leftClick(t1, 0, False)
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
