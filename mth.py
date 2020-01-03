@@ -161,28 +161,12 @@ class Mth:
         if True not in mask or False not in mask: # Data is pure errors or has none
             return data
 
-        # Find the indices for the first and last valid (< error flag) values
-        lastIndex = len(data) - 1
-        mask = list(mask)
-        first = mask.index(False) if mask[0] == True else 0
-        last = lastIndex
-        while last > 0 and mask[last] == True:
-            last -= 1
-
-        # Fill any starting error flags w/ the first valid value
-        if first != 0:
-            data[:first] = data[first]
-        # Fill any ending error flags w/ the last valid value
-        if last != lastIndex:
-            data[last+1:] = data[last]
-
-        # Strip starting/ending error flags if set
-        indices = indices[first:last]
-        mask = mask[first:last]
-
         # Get indices corresponding to errors and interpolate values for them
+        # using the non-error data
         errIndices = indices[mask]
-        data[errIndices] = np.interp(errIndices, indices, data[first:last])
+        dataIndices = indices[np.logical_not(mask)] # Indices that have valid data
+        fillData = np.interp(errIndices, dataIndices, data[dataIndices])
+        data[errIndices] = fillData
 
         return data
 
