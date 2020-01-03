@@ -102,6 +102,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.mvRgtShrtct.activated.connect(self.shiftWinRgt)
         self.ui.shftPrcntBox.valueChanged.connect(self.updtShftPrcnt)
 
+        # Zoom window connects
+        self.ui.zoomInShrtct.activated.connect(self.zoomWindowIn)
+        self.ui.zoomOutShrtct.activated.connect(self.zoomWindowOut)
+        self.zoomFrac = 1.0/3
+
         self.ui.timeEdit.start.dateTimeChanged.connect(self.onStartEditChanged)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
 
@@ -229,8 +234,26 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.startUp = True
 
-    def shiftWindow(self, direction):
+    def getWinTickWidth(self):
         winWidth = abs(self.iE - self.iO) # Number of ticks currently displayed
+        return winWidth
+
+    def setNewWindowTicks(self, newTO, newTE):
+        # Update slider values and self.iO, self.iE
+        self.setSliderNoCallback(self.ui.startSlider, newTO)
+        self.setSliderNoCallback(self.ui.endSlider, newTE)
+
+        # Update timeEdit values
+        self.onStartSliderChanged(newTO)
+        self.onEndSliderChanged(newTE)
+        self.ui.timeEdit.start.update() # Update appearance for OSX users
+        self.ui.timeEdit.end.update()
+
+        # Update plots
+        self.setTimes()
+
+    def shiftWindow(self, direction):
+        winWidth = self.getWinTickWidth() # Number of ticks currently displayed
         shiftAmt = int(winWidth*self.shftPrcnt)
 
         if direction == 'L': # Shift amt is negative if moving left
@@ -245,18 +268,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         else:
             newTO, newTE = self.chkBoundaries(newTO, newTE, winWidth)
 
-        # Update slider values and self.iO, self.iE
-        self.setSliderNoCallback(self.ui.startSlider, newTO)
-        self.setSliderNoCallback(self.ui.endSlider, newTE)
-
-        # Update timeEdit values
-        self.onStartSliderChanged(newTO)
-        self.onEndSliderChanged(newTE)
-        self.ui.timeEdit.start.update() # Update appearance for OSX users
-        self.ui.timeEdit.end.update()
-
-        # Update plots
-        self.setTimes()
+        self.setNewWindowTicks(newTO, newTE)
 
     def enableMouseDrag(self, val):
         self.mouseEnabled = val
@@ -280,6 +292,36 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def updtShftPrcnt(self):
         self.shftPrcnt = self.ui.shftPrcntBox.value()/100
+
+    def zoomWindowIn(self):
+        self.zoomWindow(True)
+
+    def zoomWindowOut(self):
+        self.zoomWindow(False)
+
+    def zoomWindow(self, zoomIn):
+        # Get amount of ticks in window to reduce/increase width by
+        winWidth = self.getWinTickWidth()
+        zoomAmnt = winWidth * self.zoomFrac
+        halfZoomAmnt = zoomAmnt / 2
+
+        # Get tentative new start/end ticks
+        start, end = self.iO, self.iE
+        if zoomIn: # Reduce width by increasing start and decreasing end
+            start = start + halfZoomAmnt
+            end = end - halfZoomAmnt
+        else:
+            start = start - halfZoomAmnt
+            end = end + halfZoomAmnt
+
+        # Wrap endpoints and adjust window widths
+        start = min(max(start, 0), self.iiE)
+        end = max(min(end, self.iiE), 0)
+
+        if end - start < 4: # Do not do anything if zooming in results in few ticks visible
+            return
+
+        self.setNewWindowTicks(start, end)
 
     # Use these two functions to set a temporary status msg and clear it
     def showStatusMsg(self, msg):

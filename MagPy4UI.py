@@ -226,6 +226,10 @@ class MagPy4UI(object):
         self.mvLftShrtct = QtWidgets.QShortcut('Left', window)
         self.mvRgtShrtct = QtWidgets.QShortcut('Right', window)
 
+        # Zoom in/out shortcuts
+        self.zoomInShrtct = QtWidgets.QShortcut('Ctrl+=', window)
+        self.zoomOutShrtct = QtWidgets.QShortcut('Ctrl+-', window)
+
         # Shift percentage box setup
         self.shftPrcntBox = QtWidgets.QSpinBox()
         self.shftPrcntBox.setButtonSymbols(QtWidgets.QAbstractSpinBox.PlusMinus)        
