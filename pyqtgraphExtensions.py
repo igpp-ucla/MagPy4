@@ -918,7 +918,7 @@ def cstmImageExport(self, fileName=None, toBytes=False, copy=False):
     bg[:,:,1] = color.green()
     bg[:,:,2] = color.red()
     bg[:,:,3] = color.alpha()
-    self.png = fn.makeQImage(bg, alpha=True)
+    self.png = pg.makeQImage(bg, alpha=True)
     
     ## set resolution of image:
     origTargetRect = self.getTargetRect()
@@ -1204,7 +1204,7 @@ def correctCoordinates(node, defs, item, options):
             if ch.tagName == 'polyline':
                 removeTransform = True
                 coords = np.array([[float(a) for a in c.split(',')] for c in ch.getAttribute('points').strip().split(' ')])
-                coords = fn.transformCoordinates(tr, coords, transpose=True)
+                coords = pg.transformCoordinates(tr, coords, transpose=True)
                 ch.setAttribute('points', ' '.join([','.join([str(a) for a in c]) for c in coords]))
             elif ch.tagName == 'path':
                 removeTransform = True
@@ -1219,7 +1219,7 @@ def correctCoordinates(node, defs, item, options):
                         x = x[1:]
                     else:
                         t = ''
-                    nc = fn.transformCoordinates(tr, np.array([[float(x),float(y)]]), transpose=True)
+                    nc = pg.transformCoordinates(tr, np.array([[float(x),float(y)]]), transpose=True)
                     newCoords += t+str(nc[0,0])+','+str(nc[0,1])+' '
                 # If coords start with L instead of M, then the entire path will not be rendered.
                 # (This can happen if the first point had nan values in it--Qt will skip it on export)
@@ -1245,7 +1245,7 @@ def correctCoordinates(node, defs, item, options):
             ## correct line widths if needed
             if removeTransform and ch.getAttribute('vector-effect') != 'non-scaling-stroke' and grp.getAttribute('stroke-width') != '':
                 w = float(grp.getAttribute('stroke-width'))
-                s = fn.transformCoordinates(tr, np.array([[w,0], [0,0]]), transpose=True)
+                s = pg.transformCoordinates(tr, np.array([[w,0], [0,0]]), transpose=True)
                 w = ((s[0]-s[1])**2).sum()**0.5
                 ch.setAttribute('stroke-width', str(w))
             
