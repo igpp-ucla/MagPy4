@@ -1,0 +1,1240 @@
+from PyQt5 import QtGui, QtCore, QtWidgets
+from PyQt5.QtWidgets import QSizePolicy
+
+from plotAppearance import DynamicPlotApp
+import pyqtgraph as pg
+from scipy import fftpack, signal
+import numpy as np
+from MagPy4UI import TimeEdit, NumLabel
+from pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, DateAxis, StackedAxisLabel
+import bisect
+import functools
+from mth import Mth
+from layoutTools import BaseLayout
+from simpleCalculations import ExpressionEvaluator
+import os
+
+class SpectraLineEditorUI(BaseLayout):
+    def setupUI(self, Frame, window):
+        Frame.resize(100, 100)
+        Frame.setWindowTitle('Line Tool')
+        layout = QtWidgets.QGridLayout(Frame)
+        self.lineColor = '#000000'
+        self.lineStyles = {'Solid': QtCore.Qt.SolidLine, 'Dashed':QtCore.Qt.DashLine, 
+            'Dotted': QtCore.Qt.DotLine, 'DashDot': QtCore.Qt.DashDotLine}
+
+        helpInfo = 'Please enter an expression to calculate and press \'Plot\':'
+        layout.addWidget(QtWidgets.QLabel(helpInfo), 0, 0, 1, 4)
+
+        # Set up text box for user to input expression
+        self.textBox = QtWidgets.QTextEdit()
+        exampleTxt = 'Examples:\nLine = (Bx^2 + By^2 + Bz^2)^(1/2) - 50 \n' +\
+                'Line = 0.24'
+        self.textBox.setPlaceholderText(exampleTxt)
+        layout.addWidget(self.textBox, 1, 0, 1, 4)
+
+        # Set up line appearance options
+        linePropFrame = self.setupLineProperties()
+        layout.addWidget(linePropFrame, 2, 0, 1, 4)
+
+        # Set up state checkboxes
+        self.fixLine = QtWidgets.QCheckBox('Fix Line')
+        self.fixLine.setToolTip('Replot line after plot is updated')
+
+        self.keepPrevLines = QtWidgets.QCheckBox('Keep Previous Lines')
+        self.keepPrevLines.setToolTip('Keep previously plotted lines on plot')
+
+        # Set up clear/plot buttons and status bar
+        self.clearBtn = QtWidgets.QPushButton('Clear')
+        self.addBtn = QtWidgets.QPushButton('Plot')
+        self.statusBar = QtWidgets.QStatusBar()
+
+        layout.addWidget(self.statusBar, 4, 0, 1, 2)
+        layout.addWidget(self.fixLine, 3, 0, 1, 1)
+        layout.addWidget(self.keepPrevLines, 3, 1, 1, 2)
+        layout.addWidget(self.clearBtn, 4, 2, 1, 1)
+        layout.addWidget(self.addBtn, 4, 3, 1, 1)
+
+    def setupLineProperties(self):
+        frame = QtWidgets.QGroupBox('Line Properties')
+        layout = QtWidgets.QGridLayout(frame)
+
+        self.colorBtn = QtWidgets.QPushButton()
+        styleSheet = "* { background: #000000 }"
+        self.colorBtn.setStyleSheet(styleSheet)
+        self.colorBtn.setFixedWidth(45)
+
+        self.lineStyle = QtWidgets.QComboBox()
+        self.lineStyle.addItems(self.lineStyles.keys())
+
+        self.lineWidth = QtWidgets.QSpinBox()
+        self.lineWidth.setMinimum(1)
+        self.lineWidth.setMaximum(5)
+
+        for col, elem, name in zip([0, 2, 4], [self.colorBtn, self.lineStyle, 
+            self.lineWidth], ['Color: ', ' Style: ', ' Width: ']):
+            self.addPair(layout, name, elem, 0, col, 1, 1)
+        return frame
+
+class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
+    def __init__(self, spectraFrame, window, dataRange, parent=None):
+        super().__init__(parent)
+        self.spectraFrame = spectraFrame
+        self.window = window
+        self.plottedLines = []
+        self.ui = SpectraLineEditorUI()
+        self.ui.setupUI(self, window)
+
+        self.ui.colorBtn.clicked.connect(self.openColorSelect)
+        self.ui.clearBtn.clicked.connect(self.clearPlot)
+        self.ui.addBtn.clicked.connect(self.addToPlot)
+        if self.spectraFrame.savedLineInfo:
+            self.ui.fixLine.setChecked(True)
+        self.ui.fixLine.toggled.connect(self.fixedLineToggled)
+
+    def createLine(self, dta, times, color, style, width):
+        # Constructs a plotDataItem object froms given settings and data
+        pen = pg.mkPen(color=color, width=width)
+        pen.setStyle(style)
+        line = pg.PlotDataItem(times, dta, pen=pen)
+        return line
+
+    def evalExpr(self, exprStr, sI, eI):
+        # Attempt to evaluate expression, print error if an exception occurs
+        try:
+            expEval = ExpressionEvaluator(exprStr, self.window, (sI, eI))
+            name, exprLst = expEval.splitString()
+            stack = expEval.createStack(exprLst)
+            res = stack.evaluate()
+            dta = res.evaluate()
+
+            # Reshape constants to match times length
+            if res.isNum():
+                dta = [dta] * (eI-sI)
+
+            # Adjust values if plot is in log scale
+            if self.isLogMode():
+                dta = np.log10(dta)
+
+            return dta
+
+        except:
+            return None
+
+    def addToPlot(self):
+        if not self.keepMode():
+            self.clearPlot()
+        sI, eI = self.spectraFrame.getDataRange()
+        exprStr = self.ui.textBox.toPlainText()
+        if exprStr == '':
+            return
+
+        dta = self.evalExpr(exprStr, sI, eI)
+        if dta is None: # Return + print error message for invalid expression
+            self.ui.statusBar.showMessage('Error: Invalid operation')
+            return
+
+        # Extract line settings from UI and times to use for data
+        arbDstr = self.window.DATASTRINGS[0]
+        times = self.window.getTimes(arbDstr, 0)[0][sI:eI]
+        color = self.ui.lineColor
+        width = self.ui.lineWidth.value()
+        lineStyle = self.ui.lineStyles[self.ui.lineStyle.currentText()]
+
+        # Create line from user input and add it to the plot item
+        lineItem = self.createLine(dta, times, color, lineStyle, width)
+        self.spectraFrame.addLineToPlot(lineItem)
+        self.saveLineInfo()
+
+    def clearPlot(self):
+        # TODO: Clear saved line info after plot is updated from main window
+        self.spectraFrame.removeLinesFromPlot()
+        self.clearLineInfo()
+
+    def isLogMode(self):
+        mode = self.spectraFrame.ui.scaleModeBox.currentText()
+        if mode == 'Linear':
+            return False
+        return True
+
+    def openColorSelect(self):
+        clrDialog = QtWidgets.QColorDialog(self)
+        clrDialog.show()
+        clrDialog.colorSelected.connect(self.setButtonColor)
+
+    def setButtonColor(self, color):
+        styleSheet = "* { background:" + color.name() + " }"
+        self.ui.colorBtn.setStyleSheet(styleSheet)
+        self.ui.colorBtn.show()
+        self.ui.lineColor = color.name()
+
+    def keepMode(self):
+        return self.ui.keepPrevLines.isChecked()
+
+    def saveLineInfo(self):
+        # Extract parameters used to plot current line
+        expr = self.ui.textBox.toPlainText()
+        color = self.ui.lineColor
+        width = self.ui.lineWidth.value()
+        style = self.ui.lineStyles[self.ui.lineStyle.currentText()]
+        lineTuple = (expr, color, width, style)
+
+        if self.keepMode(): # Append to list if keeping previous lines on plot
+            self.plottedLines.append(lineTuple)
+        else: # Otherwise, set to current line only
+            self.plottedLines = [lineTuple]
+
+        if self.ui.fixLine.isChecked(): # Save in outer frame if fixLine box is checked
+            self.fixedLineToggled(True)
+
+    def clearLineInfo(self):
+        self.plottedLines = []
+
+    def fixedLineToggled(self, val):
+        if val:
+            self.spectraFrame.setSavedLine(self.plottedLines)
+        else:
+            self.spectraFrame.clearSavedLine()
+
+class ColorBarAxis(pg.AxisItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setStyle(tickLength=-5)
+
+    def tickSpacing(self, minVal, maxVal, size):
+        dif = abs(maxVal - minVal)
+        if dif == 0:
+            return []
+        vals = pg.AxisItem.tickSpacing(self, minVal, maxVal, size)
+
+        # Adjust spacing to use 'neat' numbers as lower bound
+        newVals = []
+        for spacing, ofst in vals:
+            lowerBound = int(minVal/spacing)*spacing + spacing
+            newVals.append((spacing, lowerBound))
+        return newVals
+
+    def tickValues(self, minVal, maxVal, size):
+        # Limit tick values to top level if sufficient, or add in
+        # second level minor ticks and limit the number of ticks
+        tickVals = pg.AxisItem.tickValues(self, minVal, maxVal, size)
+
+        majorSpacing, majorTicks = tickVals[0]
+        if len(majorTicks) >= 4:
+            return [(majorSpacing, majorTicks)]
+        elif len(tickVals) > 1:
+            minorSpacing, minorTicks = tickVals[1]
+            if len(majorTicks+minorTicks) >= 10:
+                allTicks = majorTicks + minorTicks
+                allTicks.sort()
+                return [(majorSpacing*2, allTicks[::2])]
+            else:
+                return tickVals
+        else:
+            return tickVals
+
+class ColorBar(pg.GraphicsWidget):
+    def __init__(self, gradient, parent=None):
+        super().__init__()
+        self.gradient = gradient
+        self.setMaximumWidth(50)
+        self.setMinimumWidth(30)
+
+    def setGradient(self, gradient):
+        self.gradient = gradient
+
+    def getGradient(self):
+        return self.gradient
+
+    def paint(self, p, opt, widget):
+        ''' Fill the bounding rect w/ current gradient '''
+        pg.GraphicsWidget.paint(self, p, opt,widget)
+        rect = self.boundingRect()
+        self.gradient.setStart(0, rect.bottom())
+        self.gradient.setFinalStop(0, rect.top())
+        p.setPen(pg.mkPen((0, 0, 0)))
+        p.setBrush(self.gradient)
+        p.drawRect(rect)
+
+class GradLegend(pg.GraphicsLayout):
+    def __init__(self, parent=None, *args, **kwargs):
+        # Initialize state and legend elements
+        self.valueRange = (0, 1)
+        self.colorBar = ColorBar(QtGui.QLinearGradient())
+        self.axisItem = ColorBarAxis(orientation='right')
+
+        # Set default contents spacing/margins
+        super().__init__(parent)
+        self.layout.setVerticalSpacing(0)
+        self.layout.setHorizontalSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+
+        self.addItem(self.colorBar, 0, 0, 1, 1)
+        self.addItem(self.axisItem, 0, 1, 1, 1)
+
+    def getGradient(self):
+        return self.colorBar.getGradient()
+
+    def getValueRange(self):
+        ''' Returns the numerical value range represented by gradient '''
+        return self.valueRange
+
+    def setRange(self, gradient, valRange):
+        ''' Sets the color gradient and numerical value range it represents '''
+        startVal, stopVal = valRange
+        self.axisItem.setRange(startVal, stopVal)
+        self.colorBar.setGradient(gradient)
+        self.valueRange = valRange
+
+    def setOffsets(self, top, bottom, left=None, right=None):
+        ''' Set top/bottom margins and optionally, left and right margins '''
+        if left is None:
+            left = 10
+        if right is None:
+            right = 0
+        self.layout.setContentsMargins(left, top, right, bottom)
+
+    def setEdgeMargins(self, left, right):
+        ''' Set left and right margins '''
+        lm, tm, rm, bm = self.layout.getContentsMargins()
+        self.layout.setContentsMargins(left, tm, right, bm)
+
+    def setBarWidth(self, width):
+        ''' Sets the width of the color bar/gradient to a fixed amount '''
+        self.colorBar.setFixedWidth(width)
+        self.layout.setColumnMaximumWidth(0, width)
+        self.layout.setColumnMinimumWidth(0, width)
+
+    def setTickSpacing(self, major, minor):
+        self.axisItem.setTickSpacing(major, minor)
+
+class SpectraBase(object):
+    def getCommonVars(self, bw, N):
+        if bw % 2 == 0: # make sure its odd
+            bw += 1
+        kmo = int((bw + 1) * 0.5)
+        nband = (N - 1) / 2
+        half = int(bw / 2)
+        nfreq = int(nband - bw + 1)
+        return bw,kmo,nband,half,nfreq
+
+    def calculateFreqList(self, bw, N):
+        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
+        nfreq = int(nband - half + 1) #try to match power length
+        C = N * self.window.resolution
+        freq = np.arange(kmo, nfreq) / C
+        if len(freq) < 2:
+            print('Proposed spectra plot invalid!\nFrequency list has less than 2 values')
+            return None
+        return freq
+
+    def getfft(self, dstr, en, i0, i1, detrend=False):
+        data = self.window.getData(dstr, en)[i0:i1]
+        if detrend:
+            data = signal.detrend(data)
+        fft = fftpack.rfft(data.tolist())
+        return fft
+
+    def calculateFreqList(self, bw, N):
+        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
+        nfreq = int(nband - half + 1) #try to match power length
+        C = N * self.window.resolution
+        freq = np.arange(kmo, nfreq) / C
+        if len(freq) < 2:
+            print('Proposed spectra plot invalid!\nFrequency list has less than 2 values')
+            return None
+        return freq
+
+    def splitfft(self, fft):
+        '''
+            Splits FFT results into its real and imaginary parts as separate
+            lists
+        '''
+        fftReal = fft[1::2]
+        fftImag = fft[2::2]
+        return fftReal, fftImag
+
+    def fftToComplex(self, fft):
+        '''
+            Converts fft (cos, sin) pairs into complex numbers
+        '''
+        rfft, ifft = self.splitfft(fft)
+        cfft = np.array(rfft, dtype=np.complex)
+        cfft = cfft[:len(ifft)]
+        cfft.imag = ifft
+        return cfft
+
+    # Spectra calculations
+    def calculatePower(self, bw, fft, N):
+        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
+        C = 2 * self.window.resolution / N
+        fsqr = [ft * ft for ft in fft]
+        power = [0] * nfreq
+        for i in range(nfreq):
+            km = kmo + i
+            kO = int(km - half)
+            kE = int(km + half) + 1
+
+            power[i] = sum(fsqr[kO * 2 - 1:kE * 2 - 1]) / bw * C
+
+        return power
+
+    # Coherence and phase calculations
+    def calculateCoherenceAndPhase(self, bw, fft0, fft1, N):
+        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
+        kStart = kmo - half
+        kSpan = half * 4 + 1
+
+        csA = fft0[:-1] * fft1[:-1] + fft0[1:] * fft1[1:]
+        qsA = fft0[:-1] * fft1[1:] - fft1[:-1] * fft0[1:]
+        pAA = fft0[:-1] * fft0[:-1] + fft0[1:] * fft0[1:]
+        pBA = fft1[:-1] * fft1[:-1] + fft1[1:] * fft1[1:]
+
+        csSum = np.zeros(nfreq)
+        qsSum = np.zeros(nfreq)
+        pASum = np.zeros(nfreq)
+        pBSum = np.zeros(nfreq)
+
+        for n in range(nfreq):
+            KO = (kStart + n) * 2 - 1
+            KE = KO + kSpan
+
+            csSum[n] = sum(csA[KO:KE:2])
+            qsSum[n] = sum(qsA[KO:KE:2])
+            pASum[n] = sum(pAA[KO:KE:2])
+            pBSum[n] = sum(pBA[KO:KE:2])
+
+        coh = (csSum * csSum + qsSum * qsSum) / (pASum * pBSum)
+        pha = np.arctan2(qsSum, csSum) * Mth.R2D
+
+        return coh,pha
+
+    # Wave analysis calculations
+    def computeSpectralMats(self, cffts):
+        # Computes the complex versions of the spectral matrices
+        mats = np.zeros((len(cffts[0]), 3, 3), dtype=np.complex)
+        for r in range(0, 3):
+            for c in range(0, r+1):
+                f0, f1 = cffts[r], cffts[c]
+                res = f0 * np.conj(f1)
+                conjRes = np.conj(res)
+                mats[:,r][:,c] = res
+                if r != c:
+                    mats[:,c][:,r] = conjRes
+
+        return mats
+
+class DynamicAnalysisTool(SpectraBase):
+    def __init__(self):
+        self.lineTool = None
+        self.maskTool = None
+        self.savedLineInfo = None
+        self.lineHistory = set()
+        self.fftBins = [32, 64, 128, 256, 512, 1024, 2048, 4096]
+        self.fftBinBound = 131072
+
+    def getFFTParam(self):
+        interval = self.ui.fftInt.value()
+        shift = self.ui.fftShift.value()
+        bw = self.ui.bwBox.value()
+        return (interval, shift, bw)
+
+    def getAxisScaling(self):
+        return self.ui.scaleModeBox.currentText()
+
+    def getDetrendMode(self):
+        return self.ui.detrendCheck.isChecked()    
+
+    def getGradTickSpacing(self, plotType=None):
+        return None
+
+    def updateParameters(self):
+        # Set num data points
+        self.ui.initVars(self.window)
+        nPoints = int(self.ui.fftDataPts.text())
+
+        # Set interval and overlap max
+        self.ui.fftInt.setMaximum(nPoints)
+        self.ui.fftShift.setMaximum(nPoints)
+
+        interval = max(min(nPoints, 10), int(nPoints*0.025))
+        if nPoints > self.fftBins[4] and nPoints < self.fftBinBound:
+            index = bisect.bisect(self.fftBins, interval)
+            if index < len(self.fftBins):
+                interval = self.fftBins[index]
+
+        self.ui.fftInt.setValue(interval)
+        overlap = int(interval/4)
+        self.ui.fftShift.setValue(overlap)
+
+    def checkParameters(self, interval, overlap, bw, numPoints):
+        if interval <= overlap:
+            self.ui.statusBar.showMessage('Error: Interval <= Shift amount')
+            return False
+        elif bw % 2 == 0:
+            self.ui.statusBar.showMessage('Error: Bandwidth must be odd.')
+            return False
+        elif numPoints <= interval:
+            self.ui.statusBar.showMessage('Error: Total num points <= Interval')
+            return False
+        return True
+
+    def getLabels(self, varInfo, logScale):
+        pass # Y axis label, title, stackedAxis
+
+    def getTimeInfoLbl(self, timeRng):
+        # Convert time ticks to tick strings
+        startTime, endTime = timeRng
+        startStr = self.window.getTimestampFromTick(startTime)
+        endStr = self.window.getTimestampFromTick(endTime)
+
+        # Remove day of year
+        startStr = startStr[:4] + startStr[8:]
+        endStr = endStr[:4] + endStr[8:]
+
+        # Create time label widget and add to grid layout
+        timeLblStr = 'Time Range: ' + startStr + ' to ' + endStr
+        timeLbl = pg.LabelItem(timeLblStr)
+        timeLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        return timeLbl
+
+    def showValue(self, freq, time, prefix, lastCalc):
+        # Takes x,y values and uses them to find/display the power value
+        if lastCalc is None:
+            return
+
+        if self.ui.scaleModeBox.currentText() == 'Logarithmic':
+            freq = 10 ** freq
+
+        # Find grid indices corresponding to the point
+        times, freqs, powerGrid = lastCalc
+        numRows, numCols = powerGrid.shape
+        freqIndex = max(bisect.bisect(freqs, freq), 0)
+        timeIndex = max(bisect.bisect(times, time)-1, 0)
+
+        if freq >= freqs[-1] or time <= times[0] or time >= times[-1]:
+            self.ui.statusBar.clearMessage()
+            return
+
+        # Extract the grid's frequency and power values
+        val = powerGrid[freqIndex][timeIndex]
+
+        # Create and display the freq/power values in the status bar
+        freqStr = NumLabel.formatVal(freq, 5)
+        valStr = NumLabel.formatVal(val, 5)
+        msg = prefix +'('+freqStr+', '+valStr+')'
+        self.ui.statusBar.showMessage(msg)
+
+    def openLineTool(self):
+        self.closeLineTool()
+        dtaRange = self.getDataRange()
+        self.lineTool = SpectraLineEditor(self, self.window, dtaRange)
+        self.lineTool.show()
+
+    def closeLineTool(self):
+        if self.lineTool:
+            self.lineTool.close()
+            self.lineTool = None
+
+    def setSavedLine(self, lineInfo):
+        self.savedLineInfo = lineInfo
+
+    def clearSavedLine(self):
+        self.savedLineInfo = None
+
+    def addSavedLine(self):
+        for lineInfo in self.savedLineInfo:
+            # Get state info
+            a, b = self.getDataRange()
+            arbDstr = self.window.DATASTRINGS[0]
+            times = self.window.getTimes(arbDstr, 0)[0][a:b]
+
+            # Extract line info + generate the new line and add it to the plot
+            expr, color, width, style = lineInfo
+            lineEditor = SpectraLineEditor(self, self.window, (a,b))
+            dta = lineEditor.evalExpr(expr, a, b)
+            lineItem = lineEditor.createLine(dta, times, color, style, width)
+            self.addLineToPlot(lineItem)
+
+    def openMaskTool(self):
+        self.closeMaskTool()
+        self.maskTool = MaskTool(self, self.getToolType())
+        self.maskTool.show()
+
+    def closeMaskTool(self):
+        if self.maskTool:
+            self.maskTool.close()
+            self.maskTool = None
+    
+    def getToolType(self):
+        pass
+
+    def addLineToPlot(self, line):
+        pass
+
+    def exportData(self, window, plt, fftParam):
+        # Get the filename to save data to from user
+        filename = window.saveFileDialog()
+        if filename is None:
+            return
+
+        # Format information about the data file's and selected time range
+        dataFile = 'unknown'
+        if len(window.FIDs) > 0:
+            names = [os.path.split(FID.name)[1] for FID in self.window.FIDs]
+            dataFile = ','.join(names)
+        dataFile = 'File(s): ' + dataFile + '\n'
+
+        timeFmtStr = 'yyyy MMM dd HH:mm:ss.zzz'
+        startTime = self.ui.timeEdit.start.dateTime().toString(timeFmtStr)
+        endTime = self.ui.timeEdit.end.dateTime().toString(timeFmtStr)
+        timeRangeStr = 'Time Range: ' + startTime + ' to ' + endTime + '\n'
+
+        dataInfo = [dataFile, timeRangeStr]
+
+        self.writeExportData(filename, plt, dataInfo, fftParam)
+
+    def writeExportData(self, filename, plt, dataInfo, fftParam):
+        # Get plot grid info
+        freqs, times, grid, mappedColors = plt.getSavedPlotInfo()
+        freqs = freqs[1:][::-1] # Reverse frequency order, skip extended values
+        times = times[:-1]
+        grid = grid[::-1]
+        mappedColors = mappedColors[::-1]
+
+        # String formatting lambda functions
+        fmtNum = lambda n : np.format_float_positional(n, precision=7, trim='0')
+        fmtStr = lambda v : '{:<15}'.format(fmtNum(v))
+
+        # Open file for writing
+        fd = open(filename, 'w')
+
+        # Write file info + FFT parameters in first
+        for line in dataInfo:
+            fd.write(line)
+
+        for lbl, val in zip(['FFT Interval: ', 'FFT Shift: ', 'Bandwidth: ', 
+            'Detrended: '], fftParam):
+            fd.write(lbl + str(val) + '\n')
+
+        # Get SCET row string
+        timeRowStr = ('{:<15}'.format('Freq\SCET'))
+        for t in times[:-1]:
+            timeRowStr += fmtStr(t)
+        timeRowStr += '\n'
+
+        # Write each row of data and the corresponding frequency
+        # for both the calculated values and mapped colors
+        valRowStr = ''
+        colorRowStr = ''
+        for i in range(0, len(freqs)):
+            # Get row information
+            freqStr = fmtStr(freqs[i])
+            rowVals = grid[i]
+            colors = mappedColors[i]
+
+            # Add current frequency label
+            valRowStr += freqStr
+            colorRowStr += freqStr
+
+            # Write down grid values
+            for e in rowVals:
+                valRowStr += fmtStr(e)
+
+            # Write down cplor values in hex format
+            for color in colors:
+                colorRowStr += '{:<15}'.format(str(color.name()))
+
+            valRowStr += '\n'
+            colorRowStr += '\n'
+
+        # Write strings into file
+        fd.write('\nGrid Values\n')
+        fd.write(timeRowStr)
+        fd.write(valRowStr)
+        fd.write('\n')
+
+        fd.write('Mapped Grid Colors (Hexadecimal)\n')
+        fd.write(timeRowStr)
+        fd.write(colorRowStr)
+        fd.close()
+
+class SpectraLegend(GradLegend):
+    def __init__(self, offsets=(31, 48)):
+        GradLegend.__init__(self)
+        topOff, botOff = offsets
+        self.setOffsets(topOff, botOff)
+        self.logMode = False
+
+    def getCopy(self):
+        newLegend = SpectraLegend()
+        newLegend.setRange(self.getGradient(), self.getValueRange())
+        return newLegend
+
+    def setLogMode(self, logMode):
+        self.logMode = logMode
+        if logMode:
+            self.setTickSpacing(1, 0.5)
+
+    def logModeSetting(self):
+        return self.logMode
+
+class SpectraLine(pg.PlotCurveItem):
+    def __init__(self, freq, colors, times, window=None, *args, **kargs):
+        # Takes the y-values, mapped color values, and time ticks
+        self.freq = freq
+        self.colors = colors
+        self.times = times
+        self.drawEdges = False
+        # Used to update window's status bar w/ the clicked value if passed
+        self.window = window
+        self.prevPaths = []
+
+        yVals = [freq]*len(times)
+        pg.PlotCurveItem.__init__(self, x=times, y=yVals, *args, **kargs)
+
+    def setupPath(self, p):
+        yVal = self.yData[0]
+        # Draws filled rects for every point using designated colors
+        for pairNum in range(0, len(self.colors)):
+            # Create a rectangle path
+            x0 = self.times[pairNum]
+            x1 = self.times[pairNum+1]
+            fillLevel = self.opts['fillLevel']
+            pt1 = QtCore.QPointF(x0, yVal)
+            p2 = QtGui.QPainterPath(pt1)
+            p2.addRect(x0, fillLevel, x1-x0, yVal-fillLevel)
+            self.prevPaths.append(p2)
+
+    def getCornerPaths(self):
+        # Generates paths for the bottom and right edges of each 'square'
+        yVal = self.yData[0]
+        paths = []
+        viewPixelSize = self.getViewBox().viewPixelSize()
+        pixWidth, pixHeight = viewPixelSize
+        pixWidth = pixWidth/2
+        # Draws filled rects for every point using designated colors
+        for pairNum in range(0, len(self.colors)):
+            # Create a rectangle path
+            x0 = self.times[pairNum]
+            x1 = self.times[pairNum+1]
+            fillLevel = self.opts['fillLevel']
+            pt1 = QtCore.QPointF(x0+pixWidth, fillLevel)
+            p2 = QtGui.QPainterPath(pt1)
+            p2.lineTo(x1, fillLevel)
+            p2.lineTo(x1, yVal)
+            paths.append(p2)
+        return paths
+
+    def paint(self, p, opt, widget):
+        if self.xData is None or len(self.xData) == 0:
+            return
+
+        p.setRenderHint(p.Antialiasing, False)
+
+        if self.prevPaths == []:
+            self.setupPath(p)
+
+        if self.drawEdges: # Draw edge paths when exporting image as SVG
+            cornerPaths = self.getCornerPaths()
+            for pairNum in range(0, len(self.colors)):
+                color = self.colors[pairNum]
+                p2 = cornerPaths[pairNum]
+                pen = pg.mkPen(color)
+                p.setPen(pen)
+                p.drawPath(p2)
+
+        # Draws filled rects for every point using designated colors
+        for pairNum in range(0, len(self.colors)):
+            # Create a rectangle path
+            p2 = self.prevPaths[pairNum]
+            # Find the corresponding color and fill the rectangle
+            color = self.colors[pairNum]
+            p.fillPath(p2, color)
+
+
+    def mouseClickEvent(self, ev):
+        if self.window is None:
+            return
+
+        # If window argument was passed, show value in its status bar
+        if ev.button() == QtCore.Qt.LeftButton:
+            time = ev.pos().x()
+            yVal = ev.pos().y()
+            self.window.showPointValue(yVal, time)
+            ev.accept()
+        else:
+            pg.PlotCurveItem.mouseClickEvent(self, ev)
+
+class SpectrogramViewBox(pg.ViewBox):
+    # Optimized viewbox class, removed some steps in addItem/clear methods
+    def __init__(self, *args, **kargs):
+        self.lastScene = None
+        pg.ViewBox.__init__(self, *args, **kargs)
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
+
+    def addItem(self, item, ignoreBounds=False):
+        if item.zValue() < self.zValue():
+            item.setZValue(self.zValue()+1)
+        scene = self.scene()
+        if scene is not None and scene is not item.scene():
+            scene.addItem(item)
+        item.setParentItem(self.childGroup)
+        self.addedItems.append(item)
+
+    def clear(self):
+        for item in self.addedItems:
+            self.scene().removeItem(item)
+        self.addedItems = []
+
+class SpectrogramPlotItem(pg.PlotItem):
+    def __init__(self, epoch, logMode=False):
+        super(SpectrogramPlotItem, self).__init__(parent=None)
+        self.logMode = logMode # Log scaling for y-axis parameter (Boolean)
+        self.baseOffset = None
+        self.lines = []
+        self.savedPlot = None
+
+        # Initialize colors for color map
+        rgbBlue = (25, 0, 245)
+        rgbBlueGreen = (0, 245, 245)
+        rgbGreen = (50, 245, 0)
+        rgbYellow = (245, 245, 0)
+        rgbRed = (245, 0, 25)
+
+        self.colorPos = [0, 1/3, 0.5, 2/3, 1]
+        self.colors = [rgbBlue, rgbBlueGreen, rgbGreen, rgbYellow, rgbRed]
+        self.valueRange = (0, 1)
+
+        # Create viewbox and set up custom axis items
+        vb = SpectrogramViewBox()
+        dateAxis = DateAxis(epoch, orientation='bottom')
+        if self.logMode:
+            leftAxis = LogAxis(orientation='left')
+        else:
+            leftAxis = MagPyAxisItem(orientation='left')
+        axisItems = {'bottom':dateAxis, 'left':leftAxis}
+
+        # Initialize default pg.PlotItem settings
+        self.plotAppr = None
+        self.plotApprAct = None
+        self.plotMenuEnabled = True
+        self.exportAct = None
+        self.exportEnabled = False
+        pg.PlotItem.__init__(self, viewBox=vb, axisItems=axisItems)
+
+        # Set log/linear scaling after initialization
+        if self.logMode:
+            self.setLogMode(y=True)
+        else:
+            self.setLogMode(y=False)
+        vb.enableAutoRange(x=False, y=False)
+
+        self.plotSetup() # Additional plot appearance set up
+
+    def setPlotMenuEnabled(self, val=True):
+        if val:
+            self.plotMenuEnabled = True
+        else:
+            self.plotMenuEnabled = False
+
+    def openPlotAppearance(self):
+        self.closePlotAppearance()
+        self.plotAppr = DynamicPlotApp(self, [self])
+        self.plotAppr.show()
+
+    def closePlotAppearance(self):
+        if self.plotAppr:
+            self.plotAppr.close()
+            self.plotAppr = None
+
+    def setExportEnabled(self, linkFunc):
+        self.exportEnabled = True
+        self.exportAct = QtWidgets.QAction('Save Plot Data...')
+        self.exportAct.triggered.connect(linkFunc)
+
+    def getPlotApprMenu(self):
+        self.plotApprAct = QtWidgets.QAction('Change Plot Appearance...')
+        self.plotApprAct.triggered.connect(self.openPlotAppearance)
+        self.stateGroup.autoAdd(self.plotApprAct)
+        return self.plotApprAct
+
+    def getContextMenus(self, event):
+        if self.plotMenuEnabled or self.exportEnabled:
+            actList = [self.ctrlMenu]
+            if self.exportEnabled:
+                self.stateGroup.autoAdd(self.exportAct)
+                actList = [self.exportAct] + actList
+            if self.plotMenuEnabled:
+                plotApp = self.getPlotApprMenu()
+                actList = [plotApp] + actList
+            return actList
+        else:
+            return self.ctrlMenu
+
+    def isSpecialPlot(self):
+        return True
+
+    def plotSetup(self):
+        # Shift axes ticks outwards instead of inwards
+        la = self.getAxis('left')
+        maxTickLength = la.style['tickLength'] - 4
+        la.setStyle(tickLength=maxTickLength*(-1))
+
+        ba = self.getAxis('bottom')
+        maxTickLength = ba.style['tickLength'] - 2
+        ba.setStyle(tickLength=maxTickLength*(-1))
+        ba.autoSIPrefix = False # Disable extra label used in tick offset
+
+        # Hide tick marks on right/top axes
+        self.showAxis('right')
+        self.showAxis('top')
+        ra = self.getAxis('right')
+        ta = self.getAxis('top')
+        ra.setStyle(showValues=False, tickLength=0)
+        ta.setStyle(showValues=False, tickLength=0)
+
+        # Draw axes on top of any plot items (covered by SpectraLines o/w)
+        for ax in [ba, la, ta, ra]:
+            ax.setZValue(1000)
+
+        # Disable mouse panning/scaling
+        self.setMouseEnabled(y=False, x=False)
+        self.setDownsampling(mode='subsample')
+        self.hideButtons()
+
+    def mkRGBColor(self, rgbVals):
+        return QtGui.QColor(rgbVals[0], rgbVals[1], rgbVals[2])
+
+    def mapValueToColor(self, vals, minPower, maxPower, logColorScale):
+        if logColorScale:
+            minLog = np.log10(minPower)
+            maxLog = np.log10(maxPower)
+        else:
+            minLog, maxLog = minPower, maxPower
+
+        self.valueRange = (minLog, maxLog)
+
+        # Determine the non-log values the color map will use
+        midPoint = (minLog + maxLog) / 2
+        oneThird = (maxLog - minLog) / 3
+        logLevels = [minLog, minLog+oneThird, midPoint, maxLog-oneThird, maxLog]
+
+        # Map power values to colors (RGB values) according to gradient
+        prevVals = vals[:]
+        if logColorScale:
+            cleanVals = vals.copy()
+            cleanVals[cleanVals <= 0] = 1
+            vals = np.log10(cleanVals) # Map values to log 10 first
+        colorMap = pg.ColorMap(logLevels, self.colors)
+        mappedVals = colorMap.map(vals)
+        if logColorScale: # Map 0 values to white for log scaling
+            mappedVals[prevVals<=0] = [255, 255, 255]
+
+        return mappedVals
+
+    def getGradLegend(self, logMode=True, offsets=None, cstmTicks=None):
+        # Use default offsets if none passed
+        if offsets:
+            gradLegend = SpectraLegend(offsets)
+        else:
+            gradLegend = SpectraLegend()
+
+        # Create color gradient legend based on color map
+        gradient = QtGui.QLinearGradient()
+        for pos, rgb in zip(self.colorPos, self.colors):
+            gradient.setColorAt(pos, pg.mkColor(rgb))
+        gradLegend.setRange(gradient, self.valueRange)
+
+        # Set log mode
+        gradLegend.setLogMode(logMode)
+
+        return gradLegend
+
+    def addItem(self, item, *args, **kargs):
+        # Optimized from original pg.PlotItem's addItem method
+        """
+        Add a graphics item to the view box. 
+        If the item has plot data (PlotDataItem, PlotCurveItem, ScatterPlotItem), it may
+        be included in analysis performed by the PlotItem.
+        """
+        self.items.append(item)
+        vbargs = {}
+        self.vb.addItem(item, *args, **vbargs)
+        name = None
+        if hasattr(item, 'implements') and item.implements('plotData'):
+            name = item.name()
+            self.dataItems.append(item)
+
+            params = kargs.get('params', {})
+            self.itemMeta[item] = params
+            self.curves.append(item)
+
+    def getSpectraLine(self, yVal, colors, times, winFrame, lastVal):
+        pdi = SpectraLine(yVal, colors, times, winFrame, fillLevel=lastVal)
+        return pdi
+
+    # Takes the y-vals (length m), time ticks (length n), a matrix of values 
+    # (of shape (m-1) x (n-1)), and a tuple of min/max values repres. by color gradient
+    def createPlot(self, yVals, valueGrid, timeVals, colorRng, logColorScale=True, 
+        winFrame=None, maskInfo=None):
+        # Map values in grid to RGB colors
+        minPower, maxPower = colorRng
+        freqs = np.array(yVals)
+        mappedGrid = self.mapValueToColor(valueGrid, minPower, maxPower, logColorScale)
+        # Map any masked values to the given color before plotting
+        if maskInfo:
+            mask, maskColor, maskOutline = maskInfo
+            r, g, b = maskColor
+            if not maskOutline:
+                mappedGrid[mask] = (r, g, b)
+
+        # Frequency/value that serves as lower bound for plot grid
+        lastVal = yVals[0]
+
+        # Convert all frequences to log scale if necessary
+        if self.logMode:
+            yVals = np.log10(yVals)
+            lastVal = np.log10(lastVal)
+        lowerBnd = lastVal
+
+        self.lines = []
+        mappedColors = []
+
+        # Creates a SpectraLine object for every row in value grid
+        for rowIndex in range(0, len(yVals)-1):
+            yVal = yVals[rowIndex+1]
+            colors = list(map(self.mkRGBColor, mappedGrid[rowIndex,:]))
+            pdi = self.getSpectraLine(yVal, colors, timeVals, winFrame, lastVal)
+            self.addItem(pdi)
+            self.lines.append(pdi)
+
+            lastVal = yVal
+
+        # Set axis ranges and update time label
+        self.setXRange(timeVals[0], timeVals[-1], 0)
+        self.setYRange(lowerBnd, yVals[-1], 0)
+        timeLbl = self.getAxis('bottom').tm.getTimeLabel(timeVals[-1]-timeVals[0])
+        self.getAxis('bottom').setLabel(timeLbl)
+        
+        if maskInfo and maskOutline:
+            pen = pg.mkPen(maskColor)
+            maskOutline = MaskOutline(mask, list(yVals), timeVals, pen=pen)
+            self.addItem(maskOutline)
+
+        self.savePlotInfo(freqs, timeVals, valueGrid, mappedColors)
+
+    def savePlotInfo(self, freqs, times, grid, colors):
+        self.savedPlot = (freqs, times, grid, colors)
+
+    def getSavedPlotInfo(self):
+        return self.savedPlot
+
+    # Prepares plot item for export as an SVG image by adjusting large time values
+    def prepareForExport(self):
+        # Offset times for each data tiem
+        pdis = self.listDataItems()
+        self.baseOffset = self.lines[0].times[0]
+        for pdi in pdis:
+            if pdi in self.lines:
+                pdi.times = pdi.times - self.baseOffset
+                pdi.prevPaths = []
+                pdi.drawEdges = True
+            pdi.setData(x=pdi.xData-self.baseOffset, y=pdi.yData)
+            pdi.update()
+
+        # Adjust time tick offset
+        ba = self.getAxis('bottom')
+        ba.tickOffset = self.baseOffset
+
+        # Offset viewbox range/state as well
+        vb = self.getViewBox()
+        xRange, yRange = vb.viewRange()
+        xMin, xMax = xRange
+        vb.setRange(xRange=(xMin-self.baseOffset, xMax-self.baseOffset), padding=0)
+        vb.prepareForPaint()
+        vb.update()
+
+    def resetAfterExport(self):
+        # Add in offset back into all spectra lines
+        pdis = self.listDataItems()
+        if self.baseOffset:
+            for pdi in pdis:
+                if pdi in self.lines:
+                    pdi.times = pdi.times + self.baseOffset
+                    pdi.drawEdges = False
+                pdi.setData(x=pdi.xData+self.baseOffset, y=pdi.yData)
+                pdi.prevPaths = []
+                pdi.path = None
+
+        # Reset tick offset
+        ba = self.getAxis('bottom')
+        ba.tickOffset = 0
+
+        # Add offset back into view range and reset viewbox state
+        vb = self.getViewBox()
+        xRange, yRange = vb.viewRange()
+        xMin, xMax = xRange
+        vb.setRange(xRange=(xMin+self.baseOffset, xMax+self.baseOffset), padding=0)
+        vb.prepareForPaint()
+        vb.update()
+
+        self.baseOffset = None
+
+class PhaseSpectrogram(SpectrogramPlotItem):
+    def __init__(self, epoch, logMode=True):
+        super(SpectrogramPlotItem, self).__init__(parent=None)
+        SpectrogramPlotItem.__init__(self, epoch, logMode)
+        self.valueRange = (-180, 180)
+        self.colors = [(225, 0, 255)] + self.colors + [(225, 0, 255)]
+        self.colorPos = [0]
+        centerTotal = 5/6
+        startStop = 1/12
+        for pos in [0, 1/3, 1/2, 2/3, 1]:
+            currStop = startStop + (centerTotal*pos)
+            self.colorPos.append(currStop)
+        self.colorPos.append(1)
+
+    def mapValueToColor(self, valueGrid, minPower, maxPower, logColorScale):
+        minVal, maxVal = self.valueRange
+        stepSize = 360 / 6
+        colorVals = [(minVal + (360 * pos)) for pos in self.colorPos]
+        colorMap = pg.ColorMap(colorVals, self.colors)
+        mappedGrid = colorMap.map(valueGrid)
+        return mappedGrid
+
+class MaskOutline(pg.PlotCurveItem):
+    def __init__(self, mask, yVals, times, *args, **kargs):
+        self.path = None
+
+        # Store mask grid, freqs, times
+        self.mask = mask
+        self.freqs = yVals
+        self.times = times
+
+        # Map values used to indicate whether to draw a specific edge
+        # for a given 'rect' at a given index
+        self.leftBase = 1
+        self.topBase = 2
+        self.rightBase = 4
+        self.bottomBase = 8
+
+        # Plot values passed to PlotCurveItem
+        xVals = list(times) * len(yVals)
+        yVals = list(yVals) * len(times)
+
+        pg.PlotCurveItem.__init__(self, x=xVals, y=yVals, *args, **kargs)
+
+    def shiftMask(self, mask, direction):
+        rows, cols = mask.shape
+        # Make a copy of the mask and shift it by a single row/column in 
+        # the given direction
+        maskCopy = np.empty(mask.shape, dtype=np.int32)
+        if direction == 'Up':
+            # Drop first row and fill last row w/ copy of mask's last row
+            maskCopy[:-1] = mask[1:]
+            maskCopy[-1] = mask[-1]
+        elif direction == 'Down':
+            # Drop last row and fill first row w/ copy of mask's first row
+            maskCopy[1:] = mask[:-1]
+            maskCopy[0] = mask[0]
+        elif direction == 'Left':
+            # Drop first column and fill last col w/ copy of mask's last col
+            maskCopy[:,0:-1] = mask[:,1:]
+            maskCopy[:,-1] = mask[:,-1]
+        else:
+            # Drop last column and fill first col w/ copy of mask's first col
+            maskCopy[:,1:] = mask[:,0:-1]
+            maskCopy[:,0] = mask[:,0]
+        
+        return maskCopy
+
+    def getMaskOutline(self, mask):
+        shiftBases = [self.leftBase, self.rightBase, self.topBase, self.bottomBase]
+        shiftDirs = ['Right', 'Left', 'Up', 'Down']
+
+        # Create a grid of zeros (zero = no edge is drawn for given point)
+        maskOutlineVals = np.zeros(mask.shape, dtype=np.int32)
+        # For each edge direction
+        for base, shiftDir in zip(shiftBases, shiftDirs):
+            # Shift the mask in the given direction and do an XOR w/ original mask
+            # to see if there is a sign change
+            shiftedMask = self.shiftMask(mask, shiftDir)
+            maskAndOp = np.logical_xor(mask, shiftedMask)
+
+            # Do an additional AND op w/ the original mask to get only points
+            # that are part of the masked values (e.g. unmasked value that was masked)
+            maskAndOp = np.logical_and(mask, maskAndOp)
+
+            # Multiply mask by given base value and add it to grid of values
+            baseMask = np.array(maskAndOp, dtype=np.int32) * base
+            maskOutlineVals = maskOutlineVals + baseMask
+
+        return maskOutlineVals
+    
+    def getPoint(self, x, y):
+        return QtCore.QPointF(x, y)
+
+    def setupPath(self):
+        # Get values indicating which edges to draw at each point (sum of powers of 2)
+        maskOutline = self.getMaskOutline(self.mask)
+        path = QtGui.QPainterPath(QtCore.QPointF(0, 0))
+
+        # Draws filled rects for every point using designated colors
+        for i in range(0, len(self.freqs)-1):
+            y0 = self.freqs[i]
+            y1 = self.freqs[i+1]
+            for j in range(0, len(self.times)-1):
+                # Skip values w/ no edges to draw
+                boxVal = maskOutline[i][j]
+                if boxVal <= 0:
+                    continue
+
+                x0 = self.times[j]
+                x1 = self.times[j+1]
+
+                # Move path to start (bottom left corner) and initialize the
+                # points at each corner in a clockwise rotation
+                path.moveTo(self.getPoint(x0, y0))
+                points = [(x0, y1), (x1, y1), (x1, y0), (x0, y0)]
+                points = [self.getPoint(x, y) for x, y in points]
+                bases = [self.leftBase, self.topBase, self.rightBase, self.bottomBase]
+
+                # Do a bitwise AND operation to see if we need to draw a given
+                # edge to the next corner; Otherwise, just move the path position
+                # to that corner
+                for pt, base in zip(points, bases):
+                    if np.bitwise_and(boxVal, base):
+                        path.lineTo(pt)
+                    else:
+                        path.moveTo(pt)
+
+        self.path = path
+        return path
+
+    def paint(self, p, opt, widget):
+        # Setup path on first paintEvent
+        if self.path is None:
+            path = self.setupPath()
+        else:
+            path = self.path
+
+        # Set antialiasing parameter for pen to False
+        if self._exportOpts is not False:
+            aa = self._exportOpts.get('antialias', False)
+        else:
+            aa = self.opts['antialias']
+        p.setRenderHint(p.Antialiasing, False)
+
+        # Set pen width to 2
+        cp = pg.mkPen(self.opts['pen'])
+        cp.setWidth(2)
+        cp.setJoinStyle(QtCore.Qt.MiterJoin)
+        p.setPen(cp)
+
+        # Draw path edges using given pen
+        p.strokePath(path, cp)
+
+from maskToolBase import MaskTool

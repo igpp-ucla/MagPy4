@@ -14,7 +14,7 @@ from MagPy4UI import TimeEdit
 from spectraUI import SpectraUI, SpectraViewBox
 from layoutTools import BaseLayout
 from waveAnalysis import WaveAnalysis
-from dynamicSpectra import SpectraBase
+from dynBase import SpectraBase
 import functools
 import time
 from mth import Mth

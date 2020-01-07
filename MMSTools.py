@@ -4,7 +4,7 @@ from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphic
 from FF_Time import FFTIME, leapFile
 from dataDisplay import DataDisplay, UTCQDate
 
-from dynamicSpectra import SpectrogramPlotItem, SpectraLine, SpectraLegend
+from dynBase import SpectrogramPlotItem, SpectraLine, SpectraLegend
 from pyqtgraphExtensions import StackedAxisLabel, MagPyColorPlot, LinkedAxis, DateAxis
 from selectionManager import SelectableViewBox
 from layoutTools import BaseLayout

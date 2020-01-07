@@ -1,7 +1,7 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from dynamicSpectra import DynamicAnalysisTool, SpectrogramPlotItem, PhaseSpectrogram
+from dynBase import *
 from layoutTools import BaseLayout
 from pyqtgraphExtensions import StackedAxisLabel
 from scipy import fftpack, signal
@@ -587,8 +587,12 @@ class DynamicWaveUI(BaseLayout):
         self.addLineBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         self.updtBtn = QtWidgets.QPushButton('Update')
         self.updtBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        layout.addWidget(self.updtBtn, 1, 7, 1, 1)
-        layout.addWidget(self.addLineBtn, 0, 7, 1, 1)
+        self.maskBtn = QtWidgets.QPushButton('Mask')
+        self.maskBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        layout.addWidget(self.updtBtn, 2, 7, 1, 1)
+        layout.addWidget(self.addLineBtn, 1, 7, 1, 1)
+        layout.addWidget(self.maskBtn, 0, 7, 1, 1)
 
         return layout
 
@@ -749,19 +753,26 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.ui.setupUI(self, window, self.defParams.keys())
         self.ui.updtBtn.clicked.connect(self.update)
         self.ui.addLineBtn.clicked.connect(self.openLineTool)
+        self.ui.maskBtn.clicked.connect(self.openMaskTool)
         self.ui.timeEdit.start.dateTimeChanged.connect(self.updateParameters)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.updateParameters)
 
         self.preWindow = None # Window used to pre-select information
-        self.showPreSelectWin()
 
     def closeEvent(self, ev):
         self.close()
         self.closeLineTool()
+        self.closeMaskTool()
         self.closePreSelectWin()
         self.window.endGeneralSelect()
         if self.plotItem:
             self.plotItem.closePlotAppearance()
+
+    def getToolType(self):
+        return self.ui.waveParam.currentText()
+
+    def getVarInfo(self):
+        return [box.currentText() for box in self.ui.vectorBoxes]
 
     def setUserSelections(self):
         if self.preWindow:
@@ -778,7 +789,16 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         dstr = self.ui.vectorBoxes[0].currentText()
         return self.window.calcDataIndicesFromLines(dstr, 0)
 
+    def checkIfPlotTypeChanged(self):
+        # If plot type is changed and a mask tool is open,
+        # close the mask tool
+        if self.maskTool:
+            maskType = self.maskTool.plotType
+            if maskType != self.ui.waveParam.currentText():
+                self.closeMaskTool()
+
     def update(self):
+        self.checkIfPlotTypeChanged()
         fftInt = self.ui.fftInt.value()
         fftShift = self.ui.fftShift.value()
         plotType = self.ui.waveParam.currentText()
@@ -832,16 +852,20 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         legendLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
         return title, axisLbl, legendLbl
 
+    def getGradTickSpacing(self, plotType):
+        if plotType in self.plotGroups['Angle']:
+            tickSpacing = (60, 30)
+        elif plotType in self.plotGroups['Ellipticity']:
+            tickSpacing = (0.2, 0.1)
+        else:
+            tickSpacing = (1, 0.5)
+        return tickSpacing
+
     def setupPlotLayout(self, plt, plotType, times, logMode):
         # Get gradient legend and set its tick spacing accordingly
         gradLegend = plt.getGradLegend(logMode=False)
-        if plotType in self.plotGroups['Angle']:
-            gradLegend.setTickSpacing(60, 30)
-        elif plotType in self.plotGroups['Ellipticity']:
-            gradLegend.setTickSpacing(0.2, 0.1)
-        else:
-            gradLegend = plt.getGradLegend(logMode=True)
-            gradLegend.setTickSpacing(1, 0.5)
+        major, minor = self.getGradTickSpacing(plotType)
+        gradLegend.setTickSpacing(major, minor)
         gradLegend.setBarWidth(40)
 
         # Get title, y axis, and gradient legend labels

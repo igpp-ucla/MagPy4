@@ -813,6 +813,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeDynWave()
         if not self.dynWave or self.dynWave.wasClosed:
             self.dynWave = DynamicWave(self)
+            self.dynWave.showPreSelectWin()
             self.initGeneralSelect('Wave Analysis', None, self.dynWave.ui.timeEdit,
                 'Single', self.showDynWave, self.updateDynWave,
                 closeFunc=self.closeDynWave)

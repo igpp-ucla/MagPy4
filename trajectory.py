@@ -3,7 +3,7 @@ from MagPy4UI import TimeEdit
 from PyQt5.QtWidgets import QSizePolicy
 from layoutTools import BaseLayout
 from pyqtgraphExtensions import LinkedAxis, DateAxis, MagPyPlotItem
-from dynamicSpectra import GradLegend, ColorBar
+from dynBase import GradLegend, ColorBar
 import pyqtgraph as pg
 from pyqtgraph import GraphicsWidgetAnchor
 import numpy as np
