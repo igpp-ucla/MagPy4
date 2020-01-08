@@ -126,7 +126,8 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         for btn, btnFunc in zip(self.ui.btns, btnFuncs):
             btn.clicked.connect(btnFunc)
 
-        self.ui.updtBtn.clicked.connect(self.plotDetrendDta)
+        self.ui.updtBtn.clicked.connect(self.update)
+        self.ui.timeEdit.setupMinMax(self.window.getMinAndMaxDateTime())
 
     def closeEvent(self, event):
         self.closeSubWindows()
@@ -240,7 +241,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
             self.currSelect.leftClick(self.tO-self.tickOffset, 0)
             self.currSelect.leftClick(self.tE-self.tickOffset, 0)
 
-    def plotDetrendDta(self):
+    def update(self):
         # Clear previous state
         self.closeSubWindows()
         self.lastPlotStrings = []
@@ -314,6 +315,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
             # Update time range and axis appearance settings
             plt.setXRange(timeSubset[0], timeSubset[-1], 0.0)
+            plt.setLimits(xMin=timeSubset[0], xMax=timeSubset[-1])
             self.tO = timeSubset[0] + self.tickOffset
             self.tE = timeSubset[-1] + self.tickOffset
             self.minTime = self.tO
@@ -322,7 +324,6 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
             self.lastPlotStrings.append(pltStrs)
             plotNum += 1
-        self.ui.timeEdit.setupMinMax(self.getMinAndMaxDateTime())
         self.DATASTRINGS = list(self.dtDatas.keys())
         self.ui.glw.update()
 

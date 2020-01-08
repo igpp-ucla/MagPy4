@@ -839,7 +839,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def showDetrend(self):
         if self.detrendWin:
             self.clearStatusMsg()
-            self.detrendWin.plotDetrendDta()
+            self.detrendWin.update()
             self.detrendWin.show()
 
     def closeDetrend(self):
