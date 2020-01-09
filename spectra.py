@@ -296,20 +296,14 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
             l.setColumnMinimumWidth(i, maxTitleWidth)
 
         # add some text info like time range and file and stuff
-        t0,t1 = self.window.getSelectionStartEndTimes()
-        startDate = UTCQDate.removeDOY(FFTIME(t0, Epoch=self.window.epoch).UTC)
-        endDate = UTCQDate.removeDOY(FFTIME(t1, Epoch=self.window.epoch).UTC)
-
         leftLabel = BLabelItem({'justify':'left'})
         rightLabel = BLabelItem({'justify':'left'})
-
         leftLabel.setHtml('File:<br>Frequency Bands:<br>Time:')
-        maxLabelWidth = BaseLayout.getMaxLabelWidth(rightLabel, self.ui.grid)
-        rightLabel.setHtml(f'{self.window.getFileNameString(maxLabelWidth)}<br>{self.maxN}<br>{startDate} to {endDate}')
-           
+
         self.ui.labelLayout.addItem(leftLabel)
         self.ui.labelLayout.nextColumn()
         self.ui.labelLayout.addItem(rightLabel)
+        self.updateInfoLabel()
 
         self.rowItems = rowItems
         self.updateCohPha()
@@ -325,6 +319,16 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui.bandWidthSpinBox.setMinimum(max(1,bw-2))
         self.ui.bandWidthSpinBox.setMaximum(bw+2)
         QtCore.QTimer.singleShot(500, self.removeLimits)
+
+    def updateInfoLabel(self):
+        # Get max label width and use it to align the info for
+        # the file, frequency bands, and start/end times
+        lbl = self.ui.labelLayout.getItem(0, 2)
+        maxLabelWidth = BaseLayout.getMaxLabelWidth(lbl, self.ui.grid)
+        t0,t1 = self.window.getSelectionStartEndTimes()
+        startDate = UTCQDate.removeDOY(FFTIME(t0, Epoch=self.window.epoch).UTC)
+        endDate = UTCQDate.removeDOY(FFTIME(t1, Epoch=self.window.epoch).UTC)
+        lbl.setHtml(f'{self.window.getFileNameString(maxLabelWidth)}<br>{self.maxN}<br>{startDate} to {endDate}')
 
     # Updates all current plots currently being viewed (unless scaling mode changes)
     def updateSpectra(self):
@@ -344,6 +348,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 plt.plot(freq, power, pen=pen)
 
         self.updateTitleColors(plotPens)
+        self.updateInfoLabel()
 
         # Update coherence and phase graphs
         self.updateCohPha()
