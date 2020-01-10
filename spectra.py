@@ -554,16 +554,15 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
     # scale each plot to use same y range
     # the viewRange function was returning incorrect results so had to do manually
     def setYRangeForRow(self, curRow):
-        self.ui.grid.nextRow()
         minVal = np.inf
         maxVal = -np.inf
         for item in curRow:
-            for pow in item[1]:
-                minVal = min(minVal, min(pow))
-                maxVal = max(maxVal, max(pow))
+            dataItems = item[0].listDataItems()
+            datas = [dataItem.yData for dataItem in dataItems]
+            for dta in datas:
+                minVal = min(minVal, min(dta))
+                maxVal = max(maxVal, max(dta))
                                     
-        #if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or
-        #np.isinf(maxVal):
         minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
         maxVal = np.log10(maxVal)
         for item in curRow:
