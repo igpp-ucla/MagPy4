@@ -34,7 +34,6 @@ class RegionLabel(pg.InfLineLabel):
 class LinkedRegion(pg.LinearRegionItem):
     def __init__(self, window, plotItems, values=(0, 1), mode=None, color=None,
         updateFunc=None, linkedTE=None, lblPos='top'):
-        pg.LinearRegionItem.__init__(self, values=(0,0))
         self.window = window
         self.plotItems = plotItems
         self.regionItems = []
@@ -43,6 +42,8 @@ class LinkedRegion(pg.LinearRegionItem):
         self.updateFunc = updateFunc
         self.linkedTE = linkedTE
         self.lblPos = lblPos
+
+        pg.LinearRegionItem.__init__(self, values=(0,0))
 
         for plt in self.plotItems:
             # Create a LinearRegionItem for each plot with same initialized vals
@@ -61,7 +62,17 @@ class LinkedRegion(pg.LinearRegionItem):
         if self.linkedTE:
             self.updateTimeEditByLines(self.linkedTE)
 
+    def setLabelText(self, lbl):
+        if len(self.regionItems) < 1:
+            return
+        self.regionItems[self.labelPltIndex].lines[0].label.setText(lbl)
+        self.labelText = lbl
+
     def setLabel(self, plotNum, pos=0.95):
+        if len(self.regionItems) < 1:
+            self.labelPlotIndex = 0
+            return
+
         # Create new label for line
         if self.lblPos == 'bottom':
             pos = 0.25
@@ -157,6 +168,10 @@ class LinkedRegion(pg.LinearRegionItem):
             label.setVisible(False)
             self.setLabel(plotIndex)
 
+    def setAllRegionsVisible(self, val=True):
+        for subRegion in self.regionItems:
+            subRegion.setVisible(val)
+
     def updateWindowInfo(self):
         if self.updateFunc and ((not self.fixedLine) or self.labelText == 'Curlometer'
             or self.labelText == 'Curvature' or self.labelText == 'Stats'):
@@ -174,6 +189,10 @@ class LinkedRegion(pg.LinearRegionItem):
 
         timeEdit.setStartNoCallback(min(t0,t1))
         timeEdit.setEndNoCallback(max(t0,t1))
+
+    def setMovable(self, val):
+        for item in self.regionItems:
+            item.setMovable(val)
 
 class LinkedSubRegion(pg.LinearRegionItem):
     def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):

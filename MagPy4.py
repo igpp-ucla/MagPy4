@@ -27,7 +27,7 @@ import pyqtgraph as pg
 import FF_File
 from FF_Time import FFTIME, leapFile
 
-from MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, FixedSelection, TimeRegionSelector
+from MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit
 from plotMenu import PlotMenu
 from spectra import Spectra
 from dataDisplay import DataDisplay, UTCQDate
@@ -50,7 +50,7 @@ from mth import Mth
 from tests import Tests
 import bisect
 from timeManager import TimeManager
-from selectionManager import GeneralSelect
+from selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect
 from layoutTools import BaseLayout
 
 import time
@@ -131,6 +131,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionAbout.triggered.connect(self.openAbout)
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
+        self.ui.actionBatchSelect.triggered.connect(self.openBatchSelect)
 
         # MMS Tool actions
         self.ui.actionPlaneNormal.triggered.connect(self.openPlaneNormal)
@@ -181,6 +182,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.fixedSelect = None
         self.timeSelect = None
         self.asc = None
+        self.batchSelect = None
 
         # MMS Tools
         self.planeNormal = None
@@ -234,6 +236,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.regions = []
 
         self.startUp = True
+
+    def openBatchSelect(self):
+        self.closeTimeSelect()
+        self.closeFixSelection()
+        self.closeBatchSelect()
+        self.closePlotTools()
+        self.batchSelect = BatchSelect(self)
+        self.batchSelect.show()
+        self.updateSelectionMenu()
+
+    def closeBatchSelect(self):
+        if self.batchSelect:
+            self.batchSelect.close()
+            self.batchSelect = None
+        self.updateSelectionMenu()
 
     def getWinTickWidth(self):
         winWidth = abs(self.iE - self.iO) # Number of ticks currently displayed
@@ -369,6 +386,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeTraj()
         self.closeFixSelection()
         self.closeTimeSelect()
+        self.closeBatchSelect()
 
     def closePlotTools(self):
         self.closeDetrend()
@@ -377,6 +395,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeDynamicSpectra()
         self.closeDynWave()
         self.closeTraceStats()
+        self.closeTraj()
+        self.closeMMSTools()
 
     def initVariables(self):
         """init variables here that should be reset when file changes"""
@@ -392,7 +412,38 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.pltGrd = None
         self.regions = []
         self.newVars = []
+
+    def updateSelectionMenu(self):
+        # Set certain selection tools visible/hidden depending on
+        # whether a selection has been made or is to be made
+        batchVisible = False
+        selectTools = False
+        fixSelectVisible = False
+
+        if not self.currSelect: # If no selection, all visible except for saving region
+            batchVisible = True
+            selectTools = True
+            fixSelectVisible = False
+        else: # If there is a selection that's been made, hide all except fix select
+            batchVisible = False
+            selectTools = False
+            fixSelectVisible = True
+
+        if self.fixedSelect: # If fixed selection, hide all other tools
+            batchVisible = False
+            selectTools = False
+            fixSelectVisible = True
         
+        if self.batchSelect:
+            selectTools = False
+            batchVisible = True
+            fixSelectVisible = False
+        
+        self.ui.actionBatchSelect.setVisible(batchVisible)
+        for act in [self.ui.actionSelectByTime, self.ui.actionSelectView]:
+            act.setVisible(selectTools)
+        self.ui.actionFixSelection.setVisible(fixSelectVisible)
+
     def closePlotMenu(self):
         if self.plotMenu:
             self.plotMenu.close()
@@ -711,22 +762,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.timeSelect.close()
             self.timeSelect = None
 
-    def showNewSelectActions(self, val):
-        self.setTimeSelectVisible(val)
-        self.setSelectViewVisible(val)
-
-    def setTimeSelectVisible(self, val):
-        self.ui.actionSelectByTime.setVisible(val)
-        if not val:
-            self.closeTimeSelect()
-
-    def setSelectViewVisible(self, val):
-        self.ui.actionSelectView.setVisible(val)
-
-    def setFixSelectVisible(self, val):
-        self.ui.actionFixSelection.setVisible(val)
-
     def selectTimeRegion(self, t0, t1):
+        if self.currSelect is None:
+            self.openTraceStats()
+            self.setTraceAsSelect()
+
         if self.currSelect:
             self.currSelect.autoSetRegion(t0-self.tickOffset, t1-self.tickOffset)
 
@@ -874,7 +914,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         pg.setConfigOption('antialias', self.ui.antialiasAction.isChecked())
         self.replotData()
         if self.spectra:
-            self.spectra.updateSpectra()
+            self.spectra.update()
 
     def getPrunedData(self, dstr, en, a, b):
         """returns data with error values removed and nothing put in their place (so size reduces)"""
@@ -1006,6 +1046,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.startUp = False
             self.ui.showMMSMenu(not self.insightMode)
             self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
+            self.updateSelectionMenu()
 
         self.enableToolsAndOptionsMenus(True)
 
@@ -2166,23 +2207,45 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             func=startFunc, updtFunc=updtFunc, closeFunc=closeFunc, maxSteps=maxSteps)
 
         # Enable selection menu
-        self.ui.showSelectionMenu(True)
-        self.currSelect.setStepTrigger(functools.partial(self.showNewSelectActions, False))
-        self.currSelect.setFullSelectionTrigger(functools.partial(self.setFixSelectVisible, True))
+        self.currSelect.setFullSelectionTrigger(self.updateSelectionMenu)
 
         # Apply a saved region if there is one
         if self.savedRegion:
             a, b = self.savedRegion.regions[0].getRegion()
             self.currSelect.autoSetRegion(a-self.tickOffset,b-self.tickOffset)
+        elif self.batchSelect:
+            # If batch select is open and one of the following tools
+            tools = ['Spectra', 'Dynamic Spectra', 'Dynamic Coh/Pha',
+                'Wave Analysis', 'Detrend']
+            toolObjs = [self.spectra, self.dynSpectra, self.dynCohPha, self.dynWave,
+                self.detrendWin]
+            toolDict = {}
+            for k, v in zip(tools, toolObjs):
+                toolDict[k] = v
+
+            if name in tools:
+                # Auto-select an empty region
+                self.currSelect.leftClick(0, 0)
+                self.currSelect.leftClick(0, 0)
+
+                # Bring batch select to the top and set the function it will
+                # call to update the tool window
+                self.batchSelect.raise_()
+                self.batchSelect.setUpdateInfo(timeEdit, toolDict[name].update)
+                self.batchSelect.update()
+
+                # Show tool window
+                toolDict[name].show()
 
     def endGeneralSelect(self):
         if self.currSelect:
             self.currSelect.closeAllRegions()
             self.currSelect = None
-            self.ui.showSelectionMenu(False)
 
-            self.showNewSelectActions(True)
-            self.setFixSelectVisible(False)
+            self.updateSelectionMenu()
+
+        elif self.batchSelect:
+            self.batchSelect.setUpdateInfo(None, None)
 
     # get slider ticks from time edit
     def getTicksFromTimeEdit(self, timeEdit):
@@ -2284,11 +2347,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         t0, t1 = self.tO-self.tickOffset, self.tE-self.tickOffset
         if self.currSelect == None:
             self.openTraceStats()
-            self.initGeneralSelect('Stats', None, self.traceStats.ui.timeEdit,
-                'Adjusting', None, self.updateTraceStats, closeFunc=self.closeTraceStats, 
-                maxSteps=-1)
+            self.setTraceAsSelect()
         self.currSelect.leftClick(t0, 0, False)
         self.currSelect.leftClick(t1, 0, False)
+
+    def setTraceAsSelect(self):
+        self.initGeneralSelect('Stats', None, self.traceStats.ui.timeEdit,
+            'Adjusting', None, self.updateTraceStats, closeFunc=self.closeTraceStats, 
+            maxSteps=-1)
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox

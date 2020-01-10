@@ -26,8 +26,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui = SpectraUI()
         self.ui.setupUI(self, window)
         
-        self.ui.updateButton.clicked.connect(self.updateSpectra)
-        self.ui.bandWidthSpinBox.valueChanged.connect(self.updateSpectra)
+        self.ui.updateButton.clicked.connect(self.update)
+        self.ui.bandWidthSpinBox.valueChanged.connect(self.update)
         self.ui.separateTracesCheckBox.stateChanged.connect(self.initPlots)
         self.ui.aspectLockedCheckBox.stateChanged.connect(self.setAspect)
         self.ui.waveAnalysisButton.clicked.connect(self.openWaveAnalysis)
@@ -71,7 +71,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
     def updateDelayed(self):
         self.ui.bandWidthSpinBox.setReadOnly(True)
-        QtCore.QTimer.singleShot(100, self.updateSpectra)
+        QtCore.QTimer.singleShot(100, self.update)
 
     def closeEvent(self, event):
         self.closeWaveAnalysis()
@@ -331,7 +331,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         lbl.setHtml(f'{self.window.getFileNameString(maxLabelWidth)}<br>{self.maxN}<br>{startDate} to {endDate}')
 
     # Updates all current plots currently being viewed (unless scaling mode changes)
-    def updateSpectra(self):
+    def update(self):
         self.updateCalculations()
 
         plotInfos = self.window.getSelectedPlotInfo()

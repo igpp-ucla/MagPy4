@@ -95,3 +95,60 @@ class BaseLayout(object):
         self.glw = GridGraphicsLayout(window)
         self.gview.setCentralItem(self.glw)
         return self.glw
+
+# Subclass of Qt's Table Widget w/ a simplified interface for adding
+# rows to a table
+class TableWidget(QtWidgets.QTableWidget):
+    def __init__(self, numCols, parent=None):
+        super().__init__(parent)
+        for i in range(0, numCols):
+            self.insertColumn(0)
+
+        # Selecting a cell selects the entire row
+        self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+
+        # Columns should stretch to fill available space + don't highlight names
+        header = self.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        header.setHighlightSections(False)
+
+    def setHeader(self, colNames):
+        if len(colNames) != self.columnCount():
+            return
+        
+        self.setHorizontalHeaderLabels(colNames)
+    
+    def addRowItem(self, item):
+        if len(item) != self.columnCount():
+            return
+        
+        row = self.rowCount()
+        self.insertRow(self.rowCount())
+
+        for col in range(0, self.columnCount()):
+            itemText = str(item[col])
+            tableItem = QtWidgets.QTableWidgetItem()
+            tableItem.setText(itemText)
+            self.setItem(row, col, tableItem)
+        
+        self.resizeColumnsToContents()
+    
+    def count(self):
+        return self.rowCount()
+    
+    def setCurrentRow(self, row):
+        self.setCurrentCell(row, 0)
+    
+    def getSelectedRows(self):
+        ranges = self.selectedRanges()
+
+        # Get lower/upper row bounds for each selected range
+        # and add each row in between them (inclusive) to the row list
+        rows = []
+        for rangeObj in ranges:
+            botmRow = rangeObj.bottomRow()
+            topRow = rangeObj.topRow()
+            botmRow, topRow = min(botmRow, topRow), max(botmRow, topRow)
+            rows.extend([i for i in range(botmRow, topRow+1)])
+
+        return list(set(rows)) # Remove duplicates

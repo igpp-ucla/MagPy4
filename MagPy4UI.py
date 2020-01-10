@@ -122,6 +122,10 @@ class MagPy4UI(object):
         self.actionSelectView.setStatusTip('Select currently visible region')
         self.actionSelectView.setVisible(True)
 
+        self.actionBatchSelect = QtWidgets.QAction(window)
+        self.actionBatchSelect.setText('Batch Select...')
+        self.actionBatchSelect.setToolTip('Select multiple regions to examine and apply tools on')
+
         # Options menu actions
         self.scaleYToCurrentTimeAction = QtWidgets.QAction('&Scale Y-range to Current Time Selection',checkable=True,checked=True)
         self.scaleYToCurrentTimeAction.setStatusTip('')
@@ -188,7 +192,7 @@ class MagPy4UI(object):
         self.selectMenu.addAction(self.actionFixSelection)
         self.selectMenu.addAction(self.actionSelectByTime)
         self.selectMenu.addAction(self.actionSelectView)
-        self.showSelectionMenu(False) # Hidden by default
+        self.selectMenu.addAction(self.actionBatchSelect)
 
         self.optionsMenu = self.menuBar.addMenu('&Options')
         self.optionsMenu.addAction(self.scaleYToCurrentTimeAction)
@@ -980,78 +984,3 @@ class StackedLabel(pg.GraphicsLayout):
         # Determines new font size and updates all labels accordingly
         for lbl, txt, clr in zip(self.subLabels, self.dstrs, self.colors):
             lbl.setText(txt, color=clr, size=str(fontSize)+'pt')
-
-class FixedSelectionUI():
-    def setupUI(self, Frame, window):
-        Frame.resize(200, 50)
-        Frame.setWindowTitle('Saved Region')
-        Frame.move(1200, 0)
-
-        # UI elements
-        instr = 'Selected Time Range:'
-        lbl = QtWidgets.QLabel(instr)
-        self.timeEdit = TimeEdit(QtGui.QFont())
-
-        # Layout setup
-        layout = QtWidgets.QGridLayout(Frame)
-        layout.addWidget(lbl, 0, 0, 1, 2)
-        layout.addWidget(self.timeEdit.start, 1, 0, 1, 1)
-        layout.addWidget(self.timeEdit.end, 1, 1, 1, 1)
-
-class FixedSelection(QtWidgets.QFrame, FixedSelectionUI):
-    def __init__(self, window, parent=None):
-        super(FixedSelection, self).__init__(parent)
-        self.window = window
-        self.ui = FixedSelectionUI()
-        self.ui.setupUI(self, window)
-        self.ui.timeEdit.setupMinMax(self.window.getMinAndMaxDateTime())
-        self.toggleWindowOnTop(True) # Keeps window on top of main MagPy window
-
-    def toggleWindowOnTop(self, val):
-        self.setParent(self.window if val else None)
-        dialogFlag = QtCore.Qt.Dialog
-        if self.window.OS == 'posix':
-            dialogFlag = QtCore.Qt.Tool
-        flags = self.windowFlags()
-        flags = flags | dialogFlag if val else flags & ~dialogFlag
-        self.setWindowFlags(flags)
-
-    def setTimeEdit(self, strt, end):
-        self.ui.timeEdit.start.setDateTime(strt)
-        self.ui.timeEdit.end.setDateTime(end)
-
-    def getTimeEditValues(self):
-        strt = self.ui.timeEdit.start.dateTime()
-        end = self.ui.timeEdit.end.dateTime()
-        return strt, end
-
-    def closeEvent(self, ev):
-        self.close()
-        self.window.closeFixSelection()
-
-class TimeRegionSelector(QtWidgets.QFrame):
-    def __init__(self, window, parent=None):
-        QtWidgets.QFrame.__init__(self, parent)
-        self.window = window
-        self.setupLayout()
-        self.updateBtn.clicked.connect(self.applySelection)
-
-    def setupLayout(self):
-        # Time edits and update button
-        self.resize(300, 50)
-        self.setWindowTitle('Time Select')
-        layout = QtWidgets.QGridLayout(self)
-        self.timeEdit = TimeEdit(QtGui.QFont())
-        self.timeEdit.setupMinMax(self.window.getMinAndMaxDateTime())
-        self.updateBtn = QtWidgets.QPushButton('Apply')
-        layout.addWidget(self.timeEdit.start, 0, 0, 1, 1)
-        layout.addWidget(self.timeEdit.end, 0, 1, 1, 1)
-        layout.addWidget(self.updateBtn, 0, 2, 1, 1)
-
-    def getTimes(self):
-        return self.timeEdit.start.dateTime(), self.timeEdit.end.dateTime()
-
-    def applySelection(self):
-        t0, t1 = self.window.getTimeTicksFromTimeEdit(self.timeEdit)
-        self.window.selectTimeRegion(t0, t1)
-        self.window.closeTimeSelect()

@@ -74,3 +74,6 @@ class TimeManager(object):
         timeObj = dt.time()
         dt = datetime(date.year(), date.month(), date.day(), timeObj.hour(), timeObj.minute(), timeObj.second(), timeObj.msec())
         return dt
+    
+    def getTickFromTimestamp(self, ts):
+        return FFTIME(ts, Epoch=self.epoch)._tick
