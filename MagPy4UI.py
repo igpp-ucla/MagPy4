@@ -121,6 +121,8 @@ class MagPy4UI(object):
         self.actionSelectView.setText('Select Visible Region')
         self.actionSelectView.setStatusTip('Select currently visible region')
         self.actionSelectView.setVisible(True)
+        ## Select view is given the 'Ctrl+a' shortcut, typically used for 'Select All'
+        self.actionSelectView.setShortcut('Ctrl+a')
 
         self.actionBatchSelect = QtWidgets.QAction(window)
         self.actionBatchSelect.setText('Batch Select...')
@@ -237,9 +239,10 @@ class MagPy4UI(object):
         self.mvLftShrtct = QtWidgets.QShortcut('Left', window)
         self.mvRgtShrtct = QtWidgets.QShortcut('Right', window)
 
-        # Zoom in/out shortcuts
+        # Zoom in/out and 'view all' shortcuts
         self.zoomInShrtct = QtWidgets.QShortcut('Ctrl+=', window)
         self.zoomOutShrtct = QtWidgets.QShortcut('Ctrl+-', window)
+        self.zoomAllShrtct = QtWidgets.QShortcut('Ctrl+0', window)
 
         # Shift percentage box setup
         self.shftPrcntBox = QtWidgets.QSpinBox()

@@ -105,7 +105,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Zoom window connects
         self.ui.zoomInShrtct.activated.connect(self.zoomWindowIn)
         self.ui.zoomOutShrtct.activated.connect(self.zoomWindowOut)
-        self.zoomFrac = 1.0/3
+        self.ui.zoomAllShrtct.activated.connect(self.viewAllData)
+        self.zoomFrac = 0.4
 
         self.ui.timeEdit.start.dateTimeChanged.connect(self.onStartEditChanged)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
@@ -340,6 +341,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             return
 
         self.setNewWindowTicks(start, end)
+
+    def viewAllData(self):
+        self.setNewWindowTicks(0, self.iiE)
 
     # Use these two functions to set a temporary status msg and clear it
     def showStatusMsg(self, msg):
@@ -751,6 +755,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.closeSavedRegion()
             self.fixedSelect.close()
             self.fixedSelect = None
+            self.updateSelectionMenu()
 
     def openTimeSelect(self):
         self.closeTimeSelect()
