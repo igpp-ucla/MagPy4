@@ -353,11 +353,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def clearStatusMsg(self):
         self.ui.statusBar.clearMessage()
 
-    def enableToolsAndOptionsMenus(self, bool):
+    def enableToolsAndOptionsMenus(self, b):
         """Enable or disable the Tools and Options menus.
         """
-        self.ui.toolsMenu.setEnabled(bool)
-        self.ui.optionsMenu.setEnabled(bool)
+        self.ui.toolsMenu.setEnabled(b)
+        self.ui.optionsMenu.setEnabled(b)
+        self.ui.selectMenu.setEnabled(b)
         self.checkForPosDta()
 
     def checkForPosDta(self):
