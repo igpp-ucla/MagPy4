@@ -600,7 +600,7 @@ class PlotGrid(pg.GraphicsLayout):
     def __init__(self, window=None, *args, **kwargs):
         self.window = window
         self.numPlots = 0
-        self.plotItems = window.plotItems
+        self.plotItems = []
         self.labels = []
 
         # Additional lists for handling color plots
@@ -619,14 +619,24 @@ class PlotGrid(pg.GraphicsLayout):
         self.layout.setVerticalSpacing(2)
         self.layout.setContentsMargins(0,0,0,0)
 
+    def count(self):
+        # Returns number of plots
+        return self.numPlots
+
     def setHeightFactors(self, heightFactors):
         self.factors = heightFactors
 
-    def setTimeLabel(self, text):
+    def setTimeLabel(self):
         if self.plotItems == []:
             return
+
         bottomAxis = self.plotItems[-1].getAxis('bottom')
-        bottomAxis.setLabel(text)
+        bottomAxis.setLabel(bottomAxis.getDefaultLabel())
+    
+        if len(self.plotItems) > 1:
+            bottomAxis = self.plotItems[-2].getAxis('bottom')
+            bottomAxis.showLabel(False)
+            bottomAxis.setStyle(showValues=False)
 
     def resizeEvent(self, event):
         if self.numPlots == 0:
@@ -727,16 +737,15 @@ class PlotGrid(pg.GraphicsLayout):
         lblCol, pltCol = 0, 1
         self.addItem(lbl, self.startRow + self.numPlots, lblCol, 1, 1)
         self.addItem(plt, self.startRow + self.numPlots, pltCol, 1, 1)
-        self.plotItems[self.numPlots-1].getAxis('bottom').setStyle(showValues=False)
-        self.plotItems[self.numPlots-1].getAxis('bottom').showLabel(False)
-        timeText = self.plotItems[self.numPlots-1].getAxis('bottom').labelText
+
         plt.getAxis('bottom').setStyle(showValues=True)
         for axis in ['left','bottom', 'top']:
             plt.getAxis(axis).setStyle(tickLength=-5)
 
-        self.setTimeLabel(timeText)
         self.labels.append(lbl)
+        self.plotItems.append(plt)
         self.numPlots += 1
+        self.setTimeLabel()
 
     def addColorPlt(self, plt, lblStr, colorBar, colorLbl=None, units=None,
                     colorLblSpan=1):

@@ -1604,13 +1604,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         return self.minTime + (self.maxTime - self.minTime) * tick / self.iiE
 
     def updateXRange(self):
-        # Update bottom axis' time label
-        rng = self.getSelectedTimeRange()
-        timeLbl = self.getTimeLabel(rng)
-        self.pltGrd.setTimeLabel(timeLbl)
-
         for pi in self.plotItems:
             pi.setXRange(self.tO-self.tickOffset, self.tE-self.tickOffset, 0.0)
+        self.pltGrd.setTimeLabel()
 
         # Update ticks/labels on bottom axis, clear top axis
         if self.pltGrd.labelSetGrd:

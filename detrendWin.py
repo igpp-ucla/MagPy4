@@ -332,7 +332,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         rng = endTime - startTime
         mode = self.window.getTimeLabelMode(rng)
         lbl = self.window.getTimeLabel(rng)
-        self.pltGrd.setTimeLabel(lbl)
+        self.pltGrd.setTimeLabel()
 
         # Update time ticks
         ba.tickOffset = self.tickOffset
