@@ -1937,8 +1937,7 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
             progStrt, progEnd = 33.3 * (index), 33.3 * (index + 1)
 
             # Generate the color mapped plot
-            plt.createPlot(yVals, pixelGrid, times, colorRng, logColor, self, 
-                statusStrt=progStrt, statusEnd=progEnd)
+            plt.createPlot(yVals, pixelGrid, times, colorRng, logColor, self)
             self.plotItems.append(plt)
             self.ui.glw.addItem(plt, pltNum + 1, 1, 1, 1)
 
