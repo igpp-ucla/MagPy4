@@ -19,6 +19,8 @@ VERSION = f'Version 1.0.1.0 (February 13, 2019)'
 COPYRIGHT = f'Copyright © 2019 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
+from PyQt5.QtCore import pyqtRemoveInputHook
+pyqtRemoveInputHook()
 from PyQt5.QtWidgets import QSizePolicy
 
 import numpy as np
@@ -37,8 +39,9 @@ from edit import Edit
 from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
-from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem, MagPyPlotDataItem
+from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem, MagPyPlotDataItem, StackedAxisLabel
 from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
+from dynBase import SimpleColorPlot
 from detrendWin import DetrendWindow
 from ASCII_Importer import Asc_Importer
 from dynamicSpectra import DynamicSpectra, DynamicCohPha
@@ -1004,14 +1007,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         return filename
 
-    def openFileDialog(self, isFlatfile, clearCurrent, asciiFile=False):
-        if isFlatfile:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='Flat Files (*.ffd)')[0]
-        elif asciiFile:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open ASCII File", options = QtWidgets.QFileDialog.ReadOnly, filter='ASCII Files (*.csv *.tsv *.txt)')[0]
-        else:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
-
+    def openFileList(self, fileNames, isFlatfile, clearCurrent, asciiFile=False):
         fileNames = list(fileNames)
         for fileName in fileNames:
             if '.' not in fileName: # lazy extension check
@@ -1044,6 +1040,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     print('CDF LOAD FAILURE')
 
         self.finishOpenFileSetup()
+
+    def openFileDialog(self, isFlatfile, clearCurrent, asciiFile=False):
+        if isFlatfile:
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='Flat Files (*.ffd)')[0]
+        elif asciiFile:
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open ASCII File", options = QtWidgets.QFileDialog.ReadOnly, filter='ASCII Files (*.csv *.tsv *.txt)')[0]
+        else:
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
+
+        self.openFileList(fileNames, isFlatfile, clearCurrent, asciiFile)
 
     def finishOpenFileSetup(self):
         # Set up view if first set of files has been opened
@@ -1207,6 +1213,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.maxTime = None # maximum
         self.iiE = None # maximum tick of sliders (min is always 0)
         self.resolution = 1000000.0 # this is set to minumum resolution when files are loaded so just start off as something large
+        self.colorPlotInfo = {}
 
     def openFF(self, PATH):  # slot when Open pull down is selected
         FID = FF_File.FF_ID(PATH, status=FF_File.FF_STATUS.READ | FF_File.FF_STATUS.EXIST)
@@ -1736,6 +1743,65 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         stackLbl = StackedLabel(labels, colors, units=unitsString)
         return stackLbl
 
+    def addColorPltToGrid(self, plt, name, gradLbl, units=None):
+        # First, check if already plotted in main window
+        pltIndex = None
+        if name in self.pltGrd.colorPltNames:
+            # Get old plot and its index in the grid's list of color plots
+            cpIndex = self.pltGrd.colorPltNames.index(name)
+            oldPlt = self.pltGrd.colorPlts[cpIndex]
+
+            # Get general plot index as well
+            pltIndex = self.pltGrd.plotItems.index(oldPlt)
+
+            # Remove all linked region items from this plot and GeneralSelect
+            # lists before removing the old plot
+            for select in [self.currSelect, self.batchSelect, self.savedRegion]:
+                if select is not None:
+                    select.onPlotRemoved(oldPlt)
+        else: # Otherwise, add it to the end + update plotStrings list
+            self.lastPlotStrings.append([(name, -1)])
+            self.lastPlotHeightFactors.append(1)
+
+        # Extract plot info needed to replot and store/load it into grid
+        plotInfo = plt.getPlotInfo()
+        self.colorPlotInfo[name] = (plotInfo, gradLbl.lblTxt, units)
+        self.loadColorPlot(plotInfo, name, gradLbl.lblTxt, units, pltIndex)
+
+        # Reset height factors
+        self.pltGrd.setHeightFactors(self.lastPlotHeightFactors)
+        if pltIndex is None: # Also, update trace pens list if adding new plot
+            self.plotTracePens.append(None)
+        
+        return pltIndex if pltIndex is not None else self.pltGrd.numPlots - 1
+
+    def loadColorPlot(self, plotInfo, name, gradLbl, units, index=None):
+        # Extract specific plot info and offset times by main window's tick offset
+        grid, x, y, grad, logY, logColor, valRng = plotInfo
+        x = x - self.tickOffset
+        plotInfo = (grid, x, y, grad, logY, logColor, valRng)
+
+        # Generate plot item
+        vb = MagPyViewBox(self, self.pltGrd.numPlots if index is None else index)
+        axisItems = {'left':LinkedAxis('left')}
+        plt = SimpleColorPlot(self.epoch, logY, vb=vb, axItems=axisItems)
+        plt.getAxis('bottom').tickOffset = self.tickOffset
+        plt.loadPlotInfo(plotInfo)
+
+        # Generate gradient legend and its axis label
+        gradLegend = plt.getGradLegend(logColor)
+        gradLbl = StackedAxisLabel(gradLbl)
+        gradLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
+
+        # If plot index is given (already in grid), replace it
+        # Otherwise, add it to the end of the plot grid
+        if index is not None:
+            self.plotItems[index] = plt
+            self.pltGrd.replaceColorPlot(index, plt, name, gradLegend, gradLbl, units)
+        else:
+            self.pltGrd.addColorPlt(plt, name, gradLegend, gradLbl, units)
+            self.plotItems.append(plt)
+
     def plotData(self, dataStrings, links, heightFactors):
         self.closeTraceStats() # Clear any regions
         self.endGeneralSelect()
@@ -1748,27 +1814,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.plotItems = []
         self.labelItems = []
 
-        # a list of pens for each trace (saved for consistency with spectra)
+        # A list of pens for each trace (saved for consistency with spectra)
         self.plotTracePens = []
 
         # Store any previous label sets (for current file)
         prevLabelSets = []
-
-        # Store old plot grid info in case color plts are replotted
-        oldPltGrd = None
-        if self.pltGrd is not None:
-            oldPltGrd = self.pltGrd
-            for plt in oldPltGrd.colorPlts:
-                oldPltGrd.removeItem(plt)
-                for trackerLine in self.trackerLines: # Remove old tracker
-                    if trackerLine in plt.items:
-                        plt.removeItem(trackerLine)
-                        trackerLine.deleteLater()
-            for cb, cl in oldPltGrd.colorPltElems:
-                if cb is not None:
-                    oldPltGrd.removeItem(cb)
-                if cl is not None:
-                    oldPltGrd.removeItem(cl)
 
         # Clear previous grid
         self.ui.glw.clear()
@@ -1786,21 +1836,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.glw.addItem(self.pltGrd, 1, 0, 1, 1)
 
         self.trackerLines = []
+        newColorPlotInfo = {} # Keep track of which color plots are re-plotted
 
         for plotIndex, dstrs in enumerate(dataStrings):
             # Check if special plot
             colorPlt = False
+            colorPltName = None
             for dstr, en in dstrs:
-                if oldPltGrd and dstr in oldPltGrd.colorPltNames:
+                if en < 0:
                     colorPlt = True
+                    colorPltName = dstr
+
             if colorPlt:
-                index = oldPltGrd.colorPltNames.index(dstr)
-                plt = oldPltGrd.colorPlts[index]
-                colorBar, gradLbl = oldPltGrd.colorPltElems[index]
-                if gradLbl:
-                    gradLbl.offsets = (2, 2)
-                self.plotItems.append(plt)
-                self.pltGrd.addColorPlt(plt, dstr, colorBar, gradLbl, oldPltGrd.colorPltUnits[index])
+                plotInfo, gradLbl, units = self.colorPlotInfo[colorPltName]
+                newColorPlotInfo[colorPltName] = self.colorPlotInfo[colorPltName]
+                self.loadColorPlot(plotInfo, colorPltName, gradLbl, units)
                 self.plotTracePens.append([None])
                 continue
 
@@ -1909,6 +1959,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         for pi in self.plotItems:
             for item in pi.items:
                 item.viewRangeChanged()
+            
+        self.colorPlotInfo = newColorPlotInfo
 
     def genRandomPen(self):
         r = np.random.randint(low=0, high=255)
@@ -2493,7 +2545,9 @@ if __name__ == '__main__':
         app.setStyle(QtGui.QStyleFactory.create('Fusion'))
 
     main = MagPy4Window(app)
-    main.showMaximized()
+    main.resize(1200, 800)
+    main.move(700, 100)
+    main.show()
 
     sys.excepthook = myexepthook
     sys.exit(app.exec_())

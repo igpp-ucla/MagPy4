@@ -52,6 +52,17 @@ class GeneralSelect(object):
         # after a region is fully selected
         self.stepFunc = None
         self.fullStepFunc = None
+    
+    def onPlotRemoved(self, plt):
+        # For every linked region
+        for region in self.regions:
+            # Find this plot in its list of linked plots
+            if plt in region.plotItems:
+                index = region.plotItems.index(plt)
+                # Then remove it from its list of plots and remove its corresp. 
+                # region items
+                region.plotItems.pop(index)
+                region.regionItems.pop(index)
 
     def setStepTrigger(self, func):
         self.stepFunc = func

@@ -4,7 +4,7 @@ from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphic
 from FF_Time import FFTIME, leapFile
 from dataDisplay import DataDisplay, UTCQDate
 
-from dynBase import SpectrogramPlotItem, SpectraLine, SpectraLegend
+from dynBase import SpectrogramPlotItem, SpectraLine, SpectraLegend, SimpleColorPlot
 from pyqtgraphExtensions import StackedAxisLabel, MagPyColorPlot, LinkedAxis, DateAxis
 from selectionManager import SelectableViewBox
 from layoutTools import BaseLayout
@@ -1456,11 +1456,10 @@ class ParticlePlotItem(SpectrogramPlotItem):
         self.getAxis('left').setStyle(tickLength=4)
         self.getViewBox().setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
 
-    def getSpectraLine(self, yVal, colors, timeVals, frm, lastVal):
-        # Return spectra line that doesn't call showPointValue when clicked
-        return SpectraLine(yVal, colors, timeVals, fillLevel=lastVal)
-
 class PitchAnglePlotItem(ParticlePlotItem):
+    def __init__(self, epoch, logMode=False):
+        ParticlePlotItem.__init__(self, epoch, logMode)
+
     def plotSetup(self):
         ParticlePlotItem.plotSetup(self)
         self.getAxis('left').setCstmTickSpacing(30)
@@ -1745,67 +1744,22 @@ class MMSColorPltTool():
 
         return pltCopy, gradBarCopy, gradLblCopy
 
-    def removePrevPlots(self, kws):
-        self.window.currSelect.closeAllRegions()
-        # Find all kw plots in main window and remove them + store their index
-        for kw in kws:
-            inWindow, pltIndex = self.inMainWindow(kw)
-            index = kws.index(kw)
-            if inWindow:
-                self.window.pltGrd.removePlot(pltIndex)
-
     def addPlotsToMain(self, kws, selectedKws, units, editLink=None):
-        pltLinks = []
-        self.removePrevPlots(kws)
-
-        for plt, grad, grdLbl, kw in zip(self.plotItems, self.gradients, self.gradLabels, kws):
-            index = kws.index(kw)
+        links = []
+        for plt, gradLbl, kw in zip(self.plotItems, self.gradLabels, kws):
+            # Skip plots that aren't selected
             if kw not in selectedKws:
                 continue
 
-            # Create copies of color plot elements
-            plt, grad, gradLabel = self.makeCopy(plt, grad, grdLbl)
-
-            if editLink:
-                plt.actionLink = editLink
-
-            # Add all elements to main window
-            self.window.plotItems.append(plt)
-            self.window.pltGrd.addColorPlt(plt, kw, grad, gradLabel, units=units, 
-                colorLblSpan=1)
+            # Pass plot to main window to add it to the main grid
+            pltIndex = self.window.addColorPltToGrid(plt, kw, gradLbl, units)
+            links.append(pltIndex)
 
             # Update ranges and resize
             self.window.updateXRange()
-            vb = plt.getViewBox()
-            vb.plotIndex = self.window.pltGrd.numPlots - 1
-            pltLinks.append(self.window.pltGrd.numPlots - 1)
 
-            offsets = (1, 1) if plt != self.plotItems[-1] else (1, 42)
-            grad.setOffsets(offsets[0], offsets[1])
-
-        if len(selectedKws) == 0:
-            return
-
-        lastPlotLinks = self.window.lastPlotLinks.copy()
-        lastPlotStrings = self.window.lastPlotStrings.copy()
-
-        # Remove all plot strings in list that match one of the keywords
-        for subPltLst in lastPlotStrings:
-            for dstr, en in subPltLst:
-                if dstr in selectedKws:
-                    subPltLst.remove((dstr, en))
-            if subPltLst == []:
-                lastPlotStrings.remove(subPltLst)
-
-        self.window.pltGrd.resizeEvent(None)
-
-        # Update plot links for 'plotAppearance' purposes
-        lastPlotStrings = [[(kw, -1)] for kw in selectedKws]
-        self.window.lastPlotStrings.extend(lastPlotStrings)
-        self.window.lastPlotLinks.append(pltLinks)
-        self.window.plotTracePens.extend([None] * len(selectedKws))
-
-        # Close this window after copying plots to main grid
+        # Update plot links and close current window
+        self.window.lastPlotLinks.append(links)
         self.close()
 
 class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
@@ -2213,9 +2167,14 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
                 minBox.setValue(minVal)
                 maxBox.setValue(maxVal)
 
+        # Adjust frequency lower bound
+        diff = yVals[1] - yVals[0]
+        yVals = [yVals[0] - diff] + yVals
+
         # Create color-mapped plot
         plt = ParticlePlotItem(self.window.epoch, True)
         plt.createPlot(yVals, valGrid, times, (minVal, maxVal), logColorScale=logColor)
+
         title = 'Omni-directional ' + mode + ' Energy Spectrum'
 
         # Set plot title and update time ticks/labels
