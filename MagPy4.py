@@ -19,8 +19,6 @@ VERSION = f'Version 1.0.1.0 (February 13, 2019)'
 COPYRIGHT = f'Copyright © 2019 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
-from PyQt5.QtCore import pyqtRemoveInputHook
-pyqtRemoveInputHook()
 from PyQt5.QtWidgets import QSizePolicy
 
 import numpy as np
@@ -2545,9 +2543,7 @@ if __name__ == '__main__':
         app.setStyle(QtGui.QStyleFactory.create('Fusion'))
 
     main = MagPy4Window(app)
-    main.resize(1200, 800)
-    main.move(700, 100)
-    main.show()
+    main.showMaximized()
 
     sys.excepthook = myexepthook
     sys.exit(app.exec_())
