@@ -394,13 +394,14 @@ class DateAxis(pg.AxisItem):
         self.addVals = [24*60*60, 24*60*60, 24*60*60, 60*60, 60, 1, 0]
 
         # Custom interval base lists to use for hours, min, sec, ms; See tickSpacing()
+        refDays = np.array([1,3, 6, 12]) * self.addVals[-5]
         refHrs = np.array([1, 2, 6, 12]) * self.addVals[-4]
         refMin = np.array([1, 2, 5, 10, 15, 30]) * self.addVals[-3]
         refSec = np.array([1, 2, 5, 10, 15, 30]) * self.addVals[-2]
         refMs = np.array([0.1, 0.25, 0.5])
 
-        self.intervalLists = [None, None, None, refHrs, 
-            np.concatenate([refMin, refHrs]), np.concatenate([refSec, refMin, refHrs]), 
+        self.intervalLists = [None, None, refDays, np.concatenate([refHrs, refDays]), 
+            np.concatenate([refMin, refHrs, refDays]), np.concatenate([refSec, refMin, refHrs]), 
             np.concatenate([refMs, refSec, refMin, refHrs])]
 
         # String used by strftime/strptime to parse UTC strings
@@ -579,7 +580,6 @@ class DateAxis(pg.AxisItem):
         optimalSpacing = dif / optimalTickCount
         
         intervals = np.array([1., 2., 10., 20., 100.])
-
         minIndex, base = self.timeSpacingBase()
         refIntervals = self.intervalLists[minIndex]
         if refIntervals is not None:
