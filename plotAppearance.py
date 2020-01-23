@@ -536,6 +536,7 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
                 axis.resetLabelFormat()
             elif fmtKw is not None:
                 axis.setLabelFormat(fmtKw)
+            self.adjustOpposingAxis(plt, name)
 
     def setDefault(self, name, index):
         # Use all plots if no link settings, otherwise only update link grp
@@ -549,15 +550,36 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
             plt = self.plotItems[pltNum]
             axis = plt.getAxis(name)
             axis.resetTickSpacing()
-            if name == 'bottom': # Update top time axes to match if applicable
-                ta = plt.getAxis('top')
-                visible = True
-                if ta.style['tickLength'] == 0 or (not ta.isVisible()):
-                    visible = False
-                if visible and axis.axisType() == 'DateTime' and ta.axisType() == 'DateTime':
-                    ta.resetTickSpacing()
+            self.adjustOpposingAxis(plt, name)
 
         self.additionalUpdates(None, name)
+
+    def adjustOpposingAxis(self, plt, axName):
+        pairs = [('left', 'right'), ('top', 'bottom')]
+
+        for a, b in pairs:
+            if axName == a:
+                otherAx = b
+            elif axName == b:
+                otherAx = a
+        
+        refAxis = plt.getAxis(axName)
+        otherAxis = plt.getAxis(otherAx)
+
+        if otherAxis.style['tickLength'] == 0 or (not otherAxis.isVisible()):
+            return
+
+        # Set custom tick spacing
+        tickDiff = refAxis.tickDiff
+        otherAxis.setCstmTickSpacing(tickDiff)
+
+        # Set label format if a datetime axis
+        if refAxis.axisType() == 'DateTime':
+            label = refAxis.labelFormat
+            otherAxis.labelFormat = label
+
+        otherAxis.picture = None
+        otherAxis.update()
 
     def getPlotIndices(self, name, index):
         if self.links is not None and name == 'left':
@@ -586,13 +608,7 @@ class TickIntervals(QtGui.QFrame, TickIntervalsUI):
             plt = self.plotItems[pltNum]
             axis = plt.getAxis(name)
             axis.setCstmTickSpacing(value)
-            if name == 'bottom': # Match top time axis
-                ta = plt.getAxis('top')
-                visible = True
-                if ta.style['tickLength'] == 0 or (not ta.isVisible()):
-                    visible = False
-                if visible and axType == 'DateTime' and ta.axisType() == 'DateTime':
-                    ta.setCstmTickSpacing(value)
+            self.adjustOpposingAxis(plt, name)
 
         self.additionalUpdates(value, name)
 

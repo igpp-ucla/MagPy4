@@ -1855,9 +1855,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             axis = DateAxis(self.epoch, orientation='bottom')
             topAxis = DateAxis(self.epoch, orientation='top')
             topAxis.setStyle(showValues=False)
+            rightAxis = LinkedAxis(orientation='right')
             vb = MagPyViewBox(self, plotIndex)
             pi = MagPyPlotItem(viewBox = vb, axisItems={'bottom': axis, 
-                'left': LinkedAxis(orientation='left'), 'top': topAxis })
+                'left': LinkedAxis(orientation='left'), 'top': topAxis,
+                'right':rightAxis})
             #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
 

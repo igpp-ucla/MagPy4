@@ -235,7 +235,7 @@ class MagPyPlotItem(pg.PlotItem):
         self.getAxis('top').setLogMode(x)
         self.getAxis('left').setLogMode(y)
         self.getAxis('right').setLogMode(y)
-
+    
 class MagPyColorPlot(MagPyPlotItem):
     def __init__(self, *args, **kwargs):
         MagPyPlotItem.__init__(self, *args, **kwargs)
@@ -393,6 +393,16 @@ class DateAxis(pg.AxisItem):
         # Year, month, day, hours, minutes, seconds, ms
         self.addVals = [24*60*60, 24*60*60, 24*60*60, 60*60, 60, 1, 0]
 
+        # Custom interval base lists to use for hours, min, sec, ms; See tickSpacing()
+        refHrs = np.array([1, 2, 6, 12]) * self.addVals[-4]
+        refMin = np.array([1, 2, 5, 10, 15, 30]) * self.addVals[-3]
+        refSec = np.array([1, 2, 5, 10, 15, 30]) * self.addVals[-2]
+        refMs = np.array([0.1, 0.25, 0.5])
+
+        self.intervalLists = [None, None, None, refHrs, 
+            np.concatenate([refMin, refHrs]), np.concatenate([refSec, refMin, refHrs]), 
+            np.concatenate([refMs, refSec, refMin, refHrs])]
+
         # String used by strftime/strptime to parse UTC strings
         self.fmtStr = '%Y %j %b %d %H:%M:%S.%f'
 
@@ -541,29 +551,17 @@ class DateAxis(pg.AxisItem):
         return dt
 
     def tickSpacing(self, minVal, maxVal, size):
-        ofst = 0
         if self.tickDiff:
-            return [(self.tickDiff.total_seconds(), ofst)]
+            return [(self.tickDiff.total_seconds(), 0)]
         else:
             spacing = self.defaultTickSpacing(minVal, maxVal, size)
-            spacing = [(spacer, ofst) for (spacer, z) in spacing]
             return spacing
 
     def timeSpacingBase(self):
         fmt = self.getLabelFormat()
         indexLst = self.timeDict[fmt]
         minIndex = max(indexLst[-1], 2) # Only need to offset times
-        return self.addVals[minIndex]
-
-    def getLogTimeBase(self, val, base):
-        if base <= 0:
-            return -1
-        i = 0
-        while val >= 1:
-            val /= base
-            i += 1
-
-        return max(i - 1, 0)
+        return minIndex, self.addVals[minIndex]
 
     def defaultTickSpacing(self, minVal, maxVal, size):
         # First check for override tick spacing
@@ -581,36 +579,37 @@ class DateAxis(pg.AxisItem):
         optimalSpacing = dif / optimalTickCount
         
         intervals = np.array([1., 2., 10., 20., 100.])
-        ## the largest power-of-10 spacing which is smaller than optimal
-        base = self.timeSpacingBase()
-        if base > 1:
-            p10unit = base ** self.getLogTimeBase(optimalSpacing, base)
-            # Build a new intervals array that goes up to the optimal
-            # spacing value
-            x1, x2 = 1, 2
-            intervals = []
-            while x1 < optimalSpacing:
-                intervals.append(x1)
-                intervals.append(x2)
-                x1 *= 10
-                x2 *= 10
-            intervals = np.array(intervals)
+
+        minIndex, base = self.timeSpacingBase()
+        refIntervals = self.intervalLists[minIndex]
+        if refIntervals is not None:
+            intervals = refIntervals
+        elif base > 0:
+            intervals = intervals * base
         else:
             p10unit = 10 ** np.floor(np.log10(optimalSpacing))
-        
+            intervals = intervals * p10unit  
+
         ## Determine major/minor tick spacings which flank the optimal spacing.
-        intervals = intervals * p10unit
         minorIndex = 0
-        while intervals[minorIndex+1] < optimalSpacing:
+        while (minorIndex + 2 < len(intervals)) and intervals[minorIndex+1] < optimalSpacing:
             minorIndex += 1
 
-        upperIndex = minorIndex + 1 if base > 1 else minorIndex + 2
-        lowerIndex = minorIndex if base > 1 else minorIndex + 1
+        upperIndex = minorIndex + 1
+        lowerIndex = minorIndex 
 
         levels = [
             (intervals[upperIndex], 0),
             (intervals[lowerIndex], 0),
         ]
+        
+        if refIntervals is not None:
+            level = intervals[minorIndex]
+            levels = [
+                (level*2, 0),
+                (level, 0)
+            ]
+            return levels
 
         if self.style['maxTickLevel'] >= 2:
             ## decide whether to include the last level of ticks
@@ -646,7 +645,7 @@ class DateAxis(pg.AxisItem):
         minIndex = max(indexLst[-1], 2) # Only need to offset times
         count = 0
         for z in range(minIndex+1, 7):
-            if splitUTC != zeroVals[z]:
+            if splitUTC[z] != zeroVals[z]:
                 count += 1
             splitUTC[z] = zeroVals[z]
 
