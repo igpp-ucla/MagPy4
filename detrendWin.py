@@ -270,12 +270,18 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
             # Build plot item
             la = LinkedAxis(orientation='left')
-            ba = DateAxis(self.epoch, orientation='bottom',)
+            ba = DateAxis(self.epoch, orientation='bottom')
             ta = DateAxis(self.epoch, orientation='top')
             vb = SelectableViewBox(self, plotNum)
             plt = pg.PlotItem(viewBox=vb, axisItems={'left':la, 'bottom':ba,
                 'top':ta })
             self.plotItems.append(plt)
+
+            # Set tick offsets for datetime axes
+            ba.tickOffset = self.tickOffset
+            ta.tickOffset = self.tickOffset
+            ba.setStyle(showValues=False)
+            ta.setStyle(showValues=False)
 
             # Build plot label
             colors = [pen.color().name() for pen in pens]
@@ -334,12 +340,8 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         lbl = self.window.getTimeLabel(rng)
         self.pltGrd.setTimeLabel()
 
-        # Update time ticks
-        ba.tickOffset = self.tickOffset
+        # Show tick labels on bottom axis
         ba.setStyle(showValues=True)
-
-        ta.tickOffset = self.tickOffset
-        ta.setStyle(showValues=False)
 
         # Link plots if necessary
         if self.ui.linkPlotsChk.isChecked():

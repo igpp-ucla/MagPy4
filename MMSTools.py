@@ -1694,56 +1694,6 @@ class MMSColorPltTool():
                 break
         return kwFound, pltIndex
 
-    def makeCopy(self, plt, gradBar, gradLbl):
-        # Make a copy of axis elements
-        gradBarCopy = gradBar.getCopy()
-        gradLblCopy = StackedAxisLabel(gradLbl.lblTxt, gradLbl.angle)
-        gradLblCopy.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-        gradBarCopy.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-
-        # Initialize new plot item
-        vb = SelectableViewBox(self.window, 0)
-        newBA = DateAxis(self.window.epoch, orientation='bottom')
-        newTA = DateAxis(self.window.epoch, orientation='top')
-        newLA = LinkedAxis(orientation='left')
-        pltCopy = MagPyColorPlot(viewBox=vb, axisItems={'bottom':newBA, 
-            'left':newLA, 'top':newTA })
-        pltCopy.hideButtons()
-
-        # Copy axis ranges
-        pltCopy.setLogMode(y=plt.logMode)
-        vb.enableAutoRange(x=False, y=False)
-
-        ba = plt.getAxis('bottom')
-        la = plt.getAxis('left')
-
-        xRng = ba.range
-        yRng = la.range
-
-        pltCopy.setXRange(xRng[0], xRng[1], 0)
-        pltCopy.setYRange(yRng[0], yRng[1], 0)
-
-        # Make copies of SpectraLines, but with offsetted times
-        for pdi in plt.listDataItems():
-            pdiTimes = pdi.times - self.window.tickOffset
-            fillLevel = pdi.opts['fillLevel']
-            newPDI = SpectraLine(pdi.freq, pdi.colors, pdiTimes, fillLevel=fillLevel)
-            pltCopy.addItem(newPDI)
-
-        # Update appearance settings for all axes
-        newTA = pltCopy.getAxis('top')
-        newRA = pltCopy.getAxis('right')
-
-        for ax in [newBA, newLA, newRA, newTA]:
-            ax.setZValue(1000) # So plot lines don't cover axes
-            ax.setStyle(showValues=False)
-        newLA.setStyle(showValues=True)
-
-        for kw in ['top', 'right']:
-            pltCopy.showAxis(kw)
-
-        return pltCopy, gradBarCopy, gradLblCopy
-
     def addPlotsToMain(self, kws, selectedKws, units, editLink=None):
         links = []
         for plt, gradLbl, kw in zip(self.plotItems, self.gradLabels, kws):
@@ -1887,11 +1837,8 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
                     maxBox.setValue(np.log10(maxVal))
             colorRng = (minVal, maxVal)
 
-            # Calculate the progress bar info for current plot
-            progStrt, progEnd = 33.3 * (index), 33.3 * (index + 1)
-
             # Generate the color mapped plot
-            plt.createPlot(yVals, pixelGrid, times, colorRng, logColor, self)
+            plt.createPlot(yVals, pixelGrid, times, colorRng, logColor)
             self.plotItems.append(plt)
             self.ui.glw.addItem(plt, pltNum + 1, 1, 1, 1)
 
