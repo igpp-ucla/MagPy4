@@ -21,7 +21,9 @@ import re
 
 class MMSTools():
     def __init__(self, window):
+        self.earthRadius = 6371
         self.mmsState = True
+        self.diffMode = False
         self.window = window
         # Dicts mapping field/pos kws to datastrings
         self.grps = {} # Internally maps by field axis (bx1, bx2, ...)
@@ -54,19 +56,45 @@ class MMSTools():
         # corresponds to a field/position vector at a given data index
         # i.e. vecArrays['Field'][4] = [[bx4 data] [by4 data] [bz4 data]]
         self.vecArrays = {}
+
+        if self.diffMode: # Get MMS1 pos dta if in diff mode
+            mms1Pos = [self.window.getData(dstr) * 6371 for dstr in self.mms1Vec]
+
         for grp in ['Pos', 'Field']:
             self.vecArrays[grp] = {}
             for scNum in [1,2,3,4]:
                 dstrs = self.getDstrsBySpcrft(scNum, grp)
                 vecArr = []
+                axisIndex = 0
                 for dstr in dstrs:
                     dta = self.window.getData(dstr)
+
+                    # Add in MMS1 coordinates if scNum corresp. to difference vector
+                    if self.diffMode and grp == 'Pos':
+                        if scNum != 1:
+                            dta = dta + mms1Pos[axisIndex]
+                        else:
+                            dta = mms1Pos[axisIndex]
                     vecArr.append(dta)
+                    axisIndex += 1
                 self.vecArrays[grp][scNum] = np.array(vecArr)
+
+    def getDiffMode(self, posDstrs):
+        # Checks if position dstrs are in difference format or direct coordinates
+        # format
+        posKeys = ['DX', 'DY', 'DZ']
+        for dstr in posDstrs:
+            for pk in posKeys:
+                if pk.lower() in dstr.lower():
+                    return True
+
+        return False
 
     def initGroups(self):
         # Extract all position datastrings and field datastrings separately
-        posKeys = ['X','Y','Z']
+        regPosKeys = ['X','Y','Z']
+        diffPosKeys = ['DX', 'DY', 'DZ']
+        posKeys = regPosKeys + diffPosKeys
         fieldKeys = ['Bx', 'By', 'Bz']
         positionDstrs = []
         fieldDstrs = []
@@ -74,7 +102,7 @@ class MMSTools():
             if dstr in self.window.newVars:
                 continue
             for pk in posKeys:
-                if pk.lower()[0] == dstr.lower()[0] and 'b'+pk.lower() not in dstr.lower():
+                if pk.lower() == dstr.lower()[:len(pk)] and 'b'+pk.lower() not in dstr.lower():
                     positionDstrs.append(dstr)
             for fk in fieldKeys:
                 if fk.lower() in dstr.lower():
@@ -85,6 +113,7 @@ class MMSTools():
         fieldDstrs.sort()
 
         # Organize by field vectors
+        self.diffMode = self.getDiffMode(positionDstrs)
         vecKeys = ['X', 'Y', 'Z']
         posDict = {}
         fieldDict = {}
@@ -100,6 +129,22 @@ class MMSTools():
                 if vk.lower() in fieldDstr.lower():
                     vecFieldDstrs.append(fieldDstr)
             fieldDict[vk] = vecFieldDstrs
+
+        # Get MMS1 pos dstrs at end of each dictionary if in diff mode
+        self.mms1Vec = []
+        if self.diffMode:
+            for key in posDict:
+                mms1Dstr = None
+                for dstr in posDict[key]:
+                    if 'D'.lower() != dstr.lower()[0]:
+                        self.mms1Vec.append(dstr)
+                        mms1Dstr = dstr
+
+                # Rearrange position so MMS1 dstr is in front
+                if mms1Dstr:
+                    if mms1Dstr in posDict[key]:
+                        posDict[key].remove(mms1Dstr)
+                        posDict[key] = [mms1Dstr] + posDict[key]
 
         self.grps['Pos'] = posDict
         self.grps['Field'] = fieldDict
@@ -386,10 +431,11 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
     def detCrossTimes(self, axis, dataRanges, threshold):
         result = []
         # For each spcfrt's field data along given axis, within selected time range
+        axisMap = {'X':0, 'Y':1, 'Z':2}
         for scNum, dataRange in zip([1,2,3,4], dataRanges):
             dstr = self.getDstr(scNum, axis)
             dtaStrt, dtaEnd = dataRange
-            dta = self.window.getData(dstr)
+            dta = self.vecArrays['Field'][scNum][axisMap[axis]]
             times = self.window.getTimes(dstr, self.window.currentEdit)[0]
             index = dtaStrt
             # Look for indices in data that threshold should fall between
@@ -418,6 +464,7 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         # Get the position vectors for each spacecraft at their respective cross times
         spcrftPosVecs = []
         vecKeys = ['X','Y','Z']
+        axisMap = {'X':0, 'Y':1, 'Z':2}
         # For every spacecraft
         for scNum in [1,2,3,4]:
             t = crossTimes[scNum-1]
@@ -425,7 +472,7 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
             # For every axis in x, y, z
             for axis in vecKeys:
                 dstr = self.getDstrsByVec(axis, grp='Pos')[scNum-1]
-                posDta = self.window.getData(dstr)
+                posDta = self.vecArrays['Pos'][scNum][axisMap[axis]]
                 times = self.window.getTimes(dstr, self.window.currentEdit)[0]
 
                 # Determine points where crossTime would fall between
@@ -449,13 +496,14 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         maxVals = []
         dataRanges = []
         tO, tE = self.window.getSelectionStartEndTimes()
-        for dstr in dstrs:
+        axisMap = {'X':0, 'Y':1, 'Z':2}
+        dtas = [self.vecArrays['Field'][scNum][axisMap[axis]] for scNum in [1,2,3,4]]
+        for dstr, dta in zip(dstrs, dtas):
             # Get data indices corresp. to time selection
             times = self.window.getTimes(dstr, self.window.currentEdit)[0]
             i0 = self.window.calcDataIndexByTime(times, tO)
             i1 = self.window.calcDataIndexByTime(times, tE)
             # Get the min/max data values in the selected region
-            dta = self.window.getData(dstr)
             dta = dta[i0:i1]
             minVal, maxVal = min(dta), max(dta)
             minVals.append(minVal)
@@ -1318,16 +1366,14 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
                 g_0_ij = g_0_ij / 4
                 G_0[i][j] = g_0_ij
 
-        lambda_i = -sum(G_0[i][i] for i in range(0, 3))
-        lambda_i = lambda_i / sum(Rinv[i][i] for i in range(0, 3))
+        g_0_ii = sum([G_0[i][i] for i in range(0,3)])
+        rInv_ii = sum([Rinv[i][i] for i in range(0, 3)])
+        lambda_i = -g_0_ii / rInv_ii
 
         G = np.zeros((3, 3))
         for i in range(0, 3):
             for j in range(0, 3):
-                g_ij = 0
-                g_0_ij = G_0[i][j]
-                g_ij = g_0_ij + (lambda_i * Rinv[i][j])
-                G[i][j] = g_ij
+                G[i][j] = G_0[i][j] + (lambda_i * Rinv[i][j])
 
         return G
 
@@ -1344,10 +1390,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         G = self.calcGradient(index)
         bUnit = self.getAvgBUnitVec(index)
 
-        curvature = np.zeros(3)
-        for i in range(0, 3):
-            curvature[i] = np.dot(G[i], bUnit)
-
+        curvature = np.matmul(G, bUnit)
         return curvature
 
     def addNewVars(self):
