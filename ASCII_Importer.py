@@ -135,17 +135,12 @@ class Asc_UI(BaseLayout):
 
 class Asc_Importer(QtWidgets.QDialog, Asc_UI):
     def __init__(self, window, filename, parent=None):
-        super(Asc_Importer, self).__init__(parent)
+        super().__init__(parent)
         self.window = window
-        self.filename = filename
-        fn = open(filename, 'r')
-        self.fn = fn
-        self.header = fn.readline()
-        self.firstLine = fn.readline()
-        self.lines = [self.firstLine] + fn.readlines()
-
+        self.fn = None
+        self.setFile(filename)
         self.ui = Asc_UI()
-        self.ui.setupUI(window, self)
+        self.ui.setupUI(self.window, self)
 
         # Guess default file type and time format settings
         fileType, optionIndex = self.guessFileType(filename, self.header)
@@ -153,7 +148,17 @@ class Asc_Importer(QtWidgets.QDialog, Asc_UI):
 
         timeMode, optionIndex = self.guessTimeFormat(self.firstLine)
         self.ui.timeModeBox.setCurrentIndex(optionIndex)
-    
+
+    def setFile(self, filename):
+        # Store filename, file descriptor, header, and lines in file
+        if self.fn:
+            self.fn.close()
+        self.filename = filename
+        self.fn = open(filename, 'r')
+        self.header = self.fn.readline()
+        self.firstLine = self.fn.readline()
+        self.lines = [self.firstLine] + self.fn.readlines()
+
     def getRefYear(self):
         if self.ui.epochBox:
             return self.ui.epochBox.value()

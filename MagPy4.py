@@ -115,8 +115,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Main menu action connections
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True))
         self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False))
-        self.ui.actionOpenCDF.triggered.connect(functools.partial(self.openFileDialog,False,True))
-        self.ui.actionOpenASCII.triggered.connect(functools.partial(self.openFileDialog, False, True, True))
+        self.ui.actionOpenASCII.triggered.connect(functools.partial(self.openFileDialog, False, True))
 
         self.ui.actionExportFF.triggered.connect(self.exportFlatFile)
         self.ui.actionExit.triggered.connect(self.close)
@@ -1005,17 +1004,35 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         return filename
 
-    def openFileList(self, fileNames, isFlatfile, clearCurrent, asciiFile=False):
+    def openFileDialog(self, isFlatfile, clearCurrent):
+        fileNames = []
+        if isFlatfile:
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='Flat Files (*.ffd)')[0]
+        else:
+            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open ASCII File", options = QtWidgets.QFileDialog.ReadOnly, filter='ASCII Files (*.csv *.tsv *.txt)')[0]
+
+        if len(fileNames) < 0 or not self.validFilenames(fileNames):
+            return
+        
+        if isFlatfile:
+            self.openFileList(fileNames, isFlatfile, clearCurrent)
+        else:
+            self.openAscDialog(fileNames)
+
+    def validFilenames(self, fileNames):
         fileNames = list(fileNames)
         for fileName in fileNames:
             if '.' not in fileName: # lazy extension check
                 print(f'Bad file found, cancelling open operation')
-                return
+                return False
         if not fileNames:
             print(f'No files selected, cancelling open operation')
-            return
+            return False
 
-        if clearCurrent:
+        return True
+
+    def openFileList(self, fileNames, isFlatfile, clearCurrent):
+        if clearCurrent: # Clear previously opened files
             for fid in self.FIDs:
                 fid.close()
             self.FIDs = []
@@ -1025,29 +1042,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             if isFlatfile:        
                 fileName = fileName.rsplit(".", 1)[0] #remove extension
                 self.openFF(fileName)
-            elif asciiFile:
-                self.openAscDialog(fileName)
-                return
             else:
-                # temp solution because this still causes other problems
-                # mainly need to add conversions for the different time formats
-                try:
-                    self.openCDF(fileName)
-                except Exception as e:
-                    print(e)
-                    print('CDF LOAD FAILURE')
+                self.openTextFile(fileName)
+        
+        # Close any opened ASCII file format dialog windows
+        self.closeAscDialog() 
 
+        # Update other state information and finish setup
         self.finishOpenFileSetup()
-
-    def openFileDialog(self, isFlatfile, clearCurrent, asciiFile=False):
-        if isFlatfile:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='Flat Files (*.ffd)')[0]
-        elif asciiFile:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open ASCII File", options = QtWidgets.QFileDialog.ReadOnly, filter='ASCII Files (*.csv *.tsv *.txt)')[0]
-        else:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
-
-        self.openFileList(fileNames, isFlatfile, clearCurrent, asciiFile)
 
     def finishOpenFileSetup(self):
         # Set up view if first set of files has been opened
@@ -1065,12 +1067,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.initVariables()
         self.plotDataDefault()
 
-    def openAscDialog(self, filename):
+    def openAscDialog(self, filenames):
         # Open a dialog box to specify settings for opening this ASCII file
         # and link its apply btn to the openTextFile function
         self.closeAscDialog()
-        self.asc = Asc_Importer(self, filename)
-        self.asc.linkApplyBtn(self.openTextFile)
+        self.asc = Asc_Importer(self, filenames[-1], self)
+        openFunc = functools.partial(self.openFileList, filenames, False, True)
+        self.asc.linkApplyBtn(openFunc)
         self.asc.show()
 
         # Bring to front
@@ -1081,13 +1084,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.asc.close()
             self.asc = None
 
-    def openTextFile(self):
+    def openTextFile(self, filename):
+        # Set current file for ascii importer
+        self.asc.setFile(filename)
+
         # Try to read in times, data, and other file info
         try:
             times, data, info = self.asc.readFile()
         except:
             self.ui.statusBar.showMessage('Error: Could not open ASCII file')
-            self.closeAscDialog()
             return
 
         # Extract other file info from tuple
@@ -1100,17 +1105,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.resolution = min(self.resolution, res)
 
         # Load data into appropriate structures
-        self.loadData(times, labels, data, units)
+        res = self.loadData(times, labels, data, units)
+        if res is None:
+            return
 
         # Update FD list
         self.FIDs.append(fd)
-
-        # Update other state information and finish setup
         self.updateAfterOpening()
-        self.finishOpenFileSetup()
-
-        # Close dialog
-        self.closeAscDialog()
 
     def updateAfterOpening(self):
         self.calculateAbbreviatedDstrs()
@@ -1358,6 +1359,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 self.UNITDICT[dstr] = units[i]
 
         return True
+
     # redos all the interpolated errors, for when the flag is changed
     def reloadDataInterpolated(self):
         for dstr in self.DATASTRINGS:
@@ -1711,11 +1713,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
             # Return the first/last files and any files in between that fit
             name = firstFile + middleFiles + lastFile
-
         elif len(self.FIDs) > 0:
             name = self.FIDs[0].name
-        elif self.cdfName:
-            name = self.cdfName
         return name
 
     def getAbbrvDstr(self, dstr):
