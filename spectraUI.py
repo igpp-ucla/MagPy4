@@ -3,25 +3,23 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 import pyqtgraph as pg
-from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis, BLabelItem
+from pyqtgraphExtensions import GridGraphicsLayout, RowGridLayout, LogAxis, BLabelItem
 from MagPy4UI import TimeEdit
 
 class SpectraUI(object):
-
     def buildSpectraView(self):
         view = pg.GraphicsView()
         view.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        gmain = LinearGraphicsLayout() # made this based off pg.GraphicsLayout
-        #apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
+        gmain = GridGraphicsLayout() # made this based off pg.GraphicsLayout
         gmain.setContentsMargins(11,0,11,0) # left top right bottom
         view.setCentralItem(gmain)
-        grid = GridGraphicsLayout()
+        grid = RowGridLayout()
         grid.setContentsMargins(0,0,0,0)
         labelLayout = GridGraphicsLayout()
         labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
         labelLayout.setContentsMargins(11, 3, 11, 5)
-        gmain.addItem(grid)
-        gmain.addItem(labelLayout)
+        gmain.addItem(grid, 0, 0, 1, 1)
+        gmain.addItem(labelLayout, 1, 0, 1, 1)
         return view, grid, labelLayout
 
     def buildCombinedView(self):

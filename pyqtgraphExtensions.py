@@ -829,63 +829,44 @@ class BLabelItem(pg.LabelItem):
         self.resizeEvent(None)
         self.updateGeometry()
 
-# based off class here, except i wanted a linear version (deleted a lot of stuff i wasnt gonna use to save time)
-#https://github.com/pyqtgraph/pyqtgraph/blob/develop/pyqtgraph/graphicsItems/GraphicsLayout.py
-# ref for qt layout component
-#http://doc.qt.io/qt-5/qgraphicslinearlayout.html
-__all__ = ['GraphicsLayout']
-class LinearGraphicsLayout(pg.GraphicsWidget):
-    """
-    Used for laying out GraphicsWidgets in a linear fashion
-    """
-
-    def __init__(self, orientation=QtCore.Qt.Vertical, parent=None):
-        pg.GraphicsWidget.__init__(self, parent)
-        self.layout = QtGui.QGraphicsLinearLayout(orientation)
-        self.setLayout(self.layout)
-        self.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding))
-        self.items = []
-
-    def addLayout(self, **kargs):
-        """
-        Create an empty GraphicsLayout and place it in the next available cell (or in the cell specified)
-        All extra keyword arguments are passed to :func:`GraphicsLayout.__init__ <pyqtgraph.GraphicsLayout.__init__>`
-        Returns the created item.
-        """
-        layout = LinearGraphicsLayout(QtCore.Qt.Horizontal, **kargs)
-        self.addItem(layout)
-        return layout
-        
-    def addItem(self, item):
-        self.items.append(item)
-        self.layout.addItem(item)
-
-    def itemIndex(self, item):
-        for i in range(self.layout.count()):
-            if self.layout.itemAt(i).graphicsItem() is item:
-                return i
-        raise Exception("Could not determine index of item " + str(item))
-
-    def removeItem(self, item):
-        """Remove *item* from the layout."""
-        ind = self.itemIndex(item)
-        self.layout.removeAt(ind)
-        self.scene().removeItem(item)
-        self.items = [x for x in self.items if x != item]
-        self.update()
+class RowGridLayout(pg.GraphicsLayout):
+    def __init__(self, maxCols=None, parent=None, border=None):
+        self.maxCols = maxCols
+        pg.GraphicsLayout.__init__(self)
 
     def clear(self):
-        for i in self.items:
-            self.removeItem(i)
+        pg.GraphicsLayout.clear(self)
+        self.currentRow = 0
+        self.currentCol = 0
 
-    def setContentsMargins(self, *args):
-        # Wrap calls to layout. This should happen automatically, but there
-        # seems to be a Qt bug:
-        # http://stackoverflow.com/questions/27092164/margins-in-pyqtgraphs-graphicslayout
-        self.layout.setContentsMargins(*args)
+    def setNumCols(self, n):
+        self.maxCols = n
 
-    def setSpacing(self, *args):
-        self.layout.setSpacing(*args)
+    def addItem(self, item, row=None, col=None, rowspan=1, colspan=1):
+        pg.GraphicsLayout.addItem(self, item, row, col, rowspan, colspan)
+
+        # If current column (after item is placed) is >= maxCols,
+        # move to the next row
+        if self.maxCols is not None and self.currentCol >= self.maxCols:
+            self.nextRow()
+
+    def getRow(self, rowNum):
+        # Get list of column numbers in sorted order and return items in row
+        cols = list(self.rows[rowNum].keys())
+        cols.sort()
+        return [self.rows[rowNum][col] for col in cols]
+
+    def getRowItems(self):
+        # Get list of row numbers in sorted order
+        rowIndices = list(self.rows.keys())
+        rowIndices.sort()
+
+        # Get list of items in each row
+        rowItems = []
+        for row in rowIndices:
+            rowItems.append(self.getRow(row))
+
+        return rowItems
 
 # same as pdi but with better down sampling (bds)
 class PlotDataItemBDS(pg.PlotDataItem):

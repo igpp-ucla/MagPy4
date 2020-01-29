@@ -7,7 +7,7 @@ import numpy as np
 import pyqtgraph as pg
 import functools
 
-from pyqtgraphExtensions import GridGraphicsLayout,LinearGraphicsLayout,BLabelItem
+from pyqtgraphExtensions import GridGraphicsLayout,BLabelItem
 
 from mth import Mth
 

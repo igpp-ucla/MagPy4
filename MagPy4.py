@@ -852,7 +852,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if self.spectra:
             self.clearStatusMsg()
             self.spectra.show()
-            self.spectra.initPlots()
+            self.spectra.update()
             PyQtUtils.moveToFront(self.spectra)
             QtCore.QTimer.singleShot(100, self.spectra.setAspect)
 

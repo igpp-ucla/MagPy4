@@ -8,7 +8,7 @@ from scipy import fftpack
 import numpy as np
 from FF_Time import FFTIME
 from plotAppearance import PlotAppearance, SpectraPlotApp
-from pyqtgraphExtensions import GridGraphicsLayout, LinearGraphicsLayout, LogAxis, BLabelItem, SpectraPlotItem, MagPyAxisItem, MagPyPlotItem
+from pyqtgraphExtensions import GridGraphicsLayout, LogAxis, BLabelItem, SpectraPlotItem, MagPyAxisItem, MagPyPlotItem
 from dataDisplay import UTCQDate
 from MagPy4UI import TimeEdit
 from spectraUI import SpectraUI, SpectraViewBox
@@ -28,7 +28,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         
         self.ui.updateButton.clicked.connect(self.update)
         self.ui.bandWidthSpinBox.valueChanged.connect(self.update)
-        self.ui.separateTracesCheckBox.stateChanged.connect(self.initPlots)
+        self.ui.separateTracesCheckBox.stateChanged.connect(self.clearAndUpdate)
         self.ui.aspectLockedCheckBox.stateChanged.connect(self.setAspect)
         self.ui.waveAnalysisButton.clicked.connect(self.openWaveAnalysis)
         self.ui.logModeCheckBox.toggled.connect(self.updateScaling)
@@ -222,80 +222,46 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
     # Initialize all plots that will be used with the current scaling
     # Sets up initial plots, label formats, axis types, and plot placement
-    def initPlots(self):
+    def initPlots(self, plotStrings, plotPens):
         # Clear all current plots
         self.ui.grid.clear()
+        self.ui.grid.setNumCols(4)
         self.ui.labelLayout.clear()
         self.plotItems = []
         self.cohPhaPlots = []
+        self.tracePenList = []
 
         # Get updated information about plots/settings
-        self.updateCalculations()
-        plotInfos = self.window.getSelectedPlotInfo()
         oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
         aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
 
-        numberPlots = 0
-        rowItems = []
-        curRow = []
-        maxTitleWidth = 0
-        self.tracePenList = []
-        # For every plot in main window:
-        for listIndex, (strList, penList) in enumerate(plotInfos):
-            # Only copy color from main window
-            penList = [pg.mkPen(pen.color()) for pen in penList]
-            # For every trace/pen in the given plot:
-            for i, (dstr, en) in enumerate(strList):
-                # If first dstr or there are separate traces, create a new plot
-                if i == 0 or oneTracePerPlot:
-                    # Set up axes and viewBox
-                    pi = self.buildPlotItem()
+        # Build a plot item for each sub-list of traces/pens
+        for pltStrsLst, plotPensLst in zip(plotStrings, plotPens):
+            pi = self.buildPlotItem()
+            self.plotItems.append(pi)
+            self.ui.grid.addItem(pi, rowspan=1, colspan=1)
 
-                    numberPlots += 1
-                    titleString = ''
-                    powers = []
+            # Set title font size
+            pi.titleLabel.setAttr('size', '12pt')
 
-                # Get x and y values
-                freq = self.getFreqs(dstr,en)
-                power = self.powers[dstr]
-                powers.append(power)
+            # Update trace pen list
+            plotPensLst = [pg.mkPen(pen) for pen in plotPensLst]
+            self.tracePenList.append(plotPensLst)
 
-                # Initialize pens, plot title, and plot data
-                pen = penList[i]
-                pstr = self.window.getLabel(dstr,en)
-                titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
-                pi.titleLabel.setAttr('size', '12pt') # Set up default font size
-                pi.plot(freq, power, pen=pen)
+        # Update plot titles
+        self.updateTitleColors(self.tracePenList)
 
-                # this part figures out layout of plots into rows depending on settings
-                # also links the y scale of each row together
-                lastPlotInList = i == len(strList) - 1
-                if lastPlotInList or oneTracePerPlot:
-                    pi.setLabels(title=titleString, left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)')
-                    piw = pi.titleLabel._sizeHint[0][0] + 60 # gestimating padding
-                    maxTitleWidth = max(maxTitleWidth,piw)
-                    self.ui.grid.addItem(pi)
-                    self.plotItems.append(pi)
-                    curRow.append((pi,powers))
-                    if numberPlots % 4 == 0:
-                        self.setYRangeForRow(curRow)
-                        rowItems.append(curRow)
-                        curRow = []
-            self.tracePenList.append(penList)
+        # Find largest title width and use it to set the minimum width
+        # for all columns so they all have the same width
+        maxWidth = 0
+        for pi in self.plotItems:
+            piw = pi.titleLabel._sizeHint[0][0] + 60 # gestimating padding
+            maxWidth = max(maxWidth, piw)
 
-        if numberPlots > 0 and rowItems == []:
-            rowItems.append(curRow)
+        for c in range(0, self.ui.grid.layout.columnCount()):
+            self.ui.grid.layout.setColumnMinimumWidth(c, maxWidth)
 
-        if curRow:
-            self.setYRangeForRow(curRow)
-
-        # otherwise gridlayout columns will shrink at different scales based on
-        # the title string
-        l = self.ui.grid.layout
-        for i in range(l.columnCount()):
-            l.setColumnMinimumWidth(i, maxTitleWidth)
-
-        # add some text info like time range and file and stuff
+        # Add info about time range / frequency bands
         leftLabel = BLabelItem({'justify':'left'})
         rightLabel = BLabelItem({'justify':'left'})
         leftLabel.setHtml('File:<br>Frequency Bands:<br>Time:')
@@ -305,20 +271,12 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui.labelLayout.addItem(rightLabel)
         self.updateInfoLabel()
 
-        self.rowItems = rowItems
-        self.updateCohPha()
-        self.updateCombined()
-        self.updateScaling()
+        # Set row items to be used when updating range for each row
+        self.rowItems = self.ui.grid.getRowItems()
 
         # Add plot appearance menu to context menu for each plot:
         for plt in self.plotItems:
             plt.getViewBox().menu.addAction(self.ui.plotApprAction)
-
-        # this is done to avoid it going twice with one click (ideally should make this multithreaded eventually so gui is more responsive)
-        bw = self.ui.bandWidthSpinBox.value()
-        self.ui.bandWidthSpinBox.setMinimum(max(1,bw-2))
-        self.ui.bandWidthSpinBox.setMaximum(bw+2)
-        QtCore.QTimer.singleShot(500, self.removeLimits)
 
     def updateInfoLabel(self):
         # Get max label width and use it to align the info for
@@ -330,17 +288,29 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         endDate = UTCQDate.removeDOY(FFTIME(t1, Epoch=self.window.epoch).UTC)
         lbl.setHtml(f'{self.window.getFileNameString(maxLabelWidth)}<br>{self.maxN}<br>{startDate} to {endDate}')
 
+    def clearAndUpdate(self):
+        self.ui.grid.clear()
+        self.ui.labelLayout.clear()
+        self.update()
+
     # Updates all current plots currently being viewed (unless scaling mode changes)
     def update(self):
+        # Re-calculate power spectra and coh/pha
         self.updateCalculations()
 
+        # Get plot info and parameters
         plotInfos = self.window.getSelectedPlotInfo()
         oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
         plotStrings, plotPens = self.splitPlotInfo(plotInfos, oneTracePerPlot)
-        plotPens = self.tracePenList
 
+        # If grid is empty (nothing plotted yet), initialize plot items
+        if self.ui.grid.layout.count() < 1:
+            self.initPlots(plotStrings, plotPens)
+
+        plotPens = self.tracePenList
+        plts = self.plotItems
         # Clear each plot and re-plot traces w/ updated power results
-        for plotDstrs, plotPenList, plt in zip(plotStrings, plotPens, self.plotItems):
+        for plotDstrs, plotPenList, plt in zip(plotStrings, plotPens, plts):
             plt.clear()
             for (dstr, en), pen in zip(plotDstrs, plotPenList):
                 freq = self.getFreqs(dstr, en)
@@ -538,8 +508,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
             # y axis should be in angles for phase
             if d[2] == 'Phase':
-                angleTicks = [(x,f'{x}') for x in range(360,-361,-90)]
-                la.setTicks([angleTicks])
+                la.setTickSpacing(90, 15)
 
         # Custom context menu handling for coh/pha
         actText = 'Change Plot Appearance...'
@@ -557,7 +526,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         minVal = np.inf
         maxVal = -np.inf
         for item in curRow:
-            dataItems = item[0].listDataItems()
+            dataItems = item.listDataItems()
             datas = [dataItem.yData for dataItem in dataItems]
             for dta in datas:
                 minVal = min(minVal, min(dta))
@@ -566,4 +535,4 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
         maxVal = np.log10(maxVal)
         for item in curRow:
-            item[0].setYRange(minVal,maxVal)
+            item.setYRange(minVal,maxVal)

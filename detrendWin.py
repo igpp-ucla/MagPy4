@@ -155,7 +155,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
     def openSpectra(self):
         if self.spectra:
-            self.spectra.initPlots()
+            self.spectra.update()
             self.spectra.show()
 
     def closeSpectra(self):
