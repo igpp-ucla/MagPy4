@@ -333,47 +333,18 @@ class RangeSelect(QtGui.QFrame, RangeSelectUI):
 
         self.ui = RangeSelectUI()
         self.ui.setupUI(self, maxMin, minMax)
-        self.ui.applyBtn.clicked.connect(self.calcAvg)
+        self.ui.applyBtn.clicked.connect(self.apply)
 
-    def calcAvg(self):
-        # Get parameters
+    def apply(self):
+        # Get parameters and set state in the main window
         step = self.ui.stepSize.value()
         startVal = self.ui.threshMin.value()
         endVal = self.ui.threshMax.value()
-        # Swap if not in correct order
-        startVal = min(startVal, endVal)
-        endVal = max(startVal, endVal)
+        self.window.avgInfo = (step, startVal, endVal)
 
-        # Compute normal vec/vel at each step and average
-        numSteps = 0
-        avgVel = 0
-        avgVec = np.zeros(3)
-        currVal = startVal
-        while currVal <= endVal:
-            rD, tD, nvec, nvel = self.window.calcNormal(self.axis, self.dataRanges, currVal)
-            avgVec = avgVec + nvec
-            avgVel = avgVel + nvel
-            numSteps += 1
-            currVal += step
-
-        if numSteps == 0: # Return if failed
-            return
-        avgVec = avgVec / numSteps
-        avgVel = avgVel / numSteps
-
-        # Update main window's displayed values and close this window
-        self.updateUI(avgVec, avgVel, startVal, endVal)
+        # Update main window w/ current range of values
+        self.window.update()
         self.close()
-
-    def updateUI(self, vec, vel, startVal, endVal):
-        # Change frame titles and values + updt current threshold text w/ range
-        prec = 5
-        self.window.ui.velocFrame.setTitle('Avg Normal Velocity')
-        self.window.ui.velLbl.setText(str(np.round(vel, decimals=prec)))
-        self.window.ui.vecFrame.setTitle('Avg Normal Vector')
-        self.window.ui.normalVec.setVector(np.round(vec, decimals=prec))
-        sv, ev = np.round(startVal, decimals=prec), np.round(endVal, decimals=prec)
-        self.window.ui.threshold.setText(str((sv, ev)))
 
 class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
     def __init__(self, window, parent=None):
@@ -381,6 +352,8 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
 
         self.lines = [] # Threshold lines shown on plots
         self.rangeSelect = None
+        self.avgInfo = None
+        self.lastAvgInfo = None
         MMSTools.__init__(self, window)
         self.ui = PlaneNormalUI()
         self.window = window
@@ -392,10 +365,35 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
 
         self.state = 0 # Startup state, nothing has been calculated yet
 
+    def getState(self):
+        # Get axis and default threshold information
+        axis = self.getAxis()
+        thresh = self.getThreshold()
+        avgInfo = self.lastAvgInfo # If calculating average over a range of thresholds
+        return (axis, thresh, avgInfo)
+    
+    def loadState(self, state):
+        axis, thresh, avgInfo = state
+        self.setAxis(axis)
+        self.setThreshold(thresh)
+        self.avgInfo = avgInfo # Set after axis is changed (due to signals)
+    
+    def setAxis(self, axis):
+        self.ui.axisComboBox.setCurrentText(axis)
+    
+    def setThreshold(self, val):
+        self.ui.threshBox.setValue(val)
+
+    def getAxis(self):
+        return self.ui.axisComboBox.currentText()
+    
+    def getThreshold(self):
+        return self.ui.threshBox.value()
+
     def openRangeSelect(self):
         # Open window to select a range to computer average over
         self.closeRangeSelect()
-        axis = self.ui.axisComboBox.currentText()
+        axis = self.getAxis()
         dataRanges, maxMin, minMax = self.getDataRange(axis)
         self.rangeSelect = RangeSelect(self, axis, dataRanges, maxMin, minMax)
         self.rangeSelect.show()
@@ -535,6 +533,9 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         else:
             return False
 
+    def getAvgInfo(self):
+        return self.avgInfo
+
     def update(self):
         axis = self.ui.axisComboBox.currentText()
         dataRanges, maxMin, minMax = self.getDataRange(axis)
@@ -544,7 +545,7 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
             return
 
         # Update threshold box/settings if necessary
-        currThresh = self.ui.threshBox.value()
+        currThresh = self.getThreshold()
         if self.state == 0 or not self.inBounds(currThresh, maxMin, minMax, 0.0005):
             threshold = (maxMin + minMax)/2
         else:
@@ -555,12 +556,47 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         # Add horizontal lines to plots indicating threshold value
         self.addLinesToPlots(threshold)
 
-        # Calculate the normal vector and update window
-        rD, tD, normalVec, vel = self.calcNormal(axis, dataRanges, threshold)
+        # Calculate for current threshold if not averaging over a range
+        # of thresholds
+        avgInfo = self.getAvgInfo()
+        if avgInfo is None:
+            rD, tD, normalVec, vel = self.calcNormal(axis, dataRanges, threshold)
+        else:
+            rD, tD, normalVec, vel = self.calcAvg(axis, dataRanges, avgInfo)
 
         # Update all UI elements with newly calculated values
-        self.updateLabels(threshold, rD, tD, normalVec, vel)
+        self.updateLabels(threshold, rD, tD, normalVec, vel, avgInfo)
         self.state = 1 # Mark as no longer being in startup state
+
+        # Reset thresh range state after calculating, but keep last range info
+        # in case saving workspace
+        self.lastAvgInfo = self.avgInfo
+        self.avgInfo = None
+
+    def calcAvg(self, axis, dataRanges, threshInfo):
+        # Extract range information and swap if not in correct order
+        step, startVal, endVal = threshInfo
+        startVal = min(startVal, endVal)
+        endVal = max(startVal, endVal)
+
+        # Compute normal vec/vel at each step and average
+        numSteps = 0
+        avgVel = 0
+        avgVec = np.zeros(3)
+        currVal = startVal
+        while currVal <= endVal:
+            rD, tD, nvec, nvel = self.calcNormal(axis, dataRanges, currVal)
+            avgVec = avgVec + nvec
+            avgVel = avgVel + nvel
+            numSteps += 1
+            currVal += step
+
+        if numSteps == 0: # Return if failed
+            return
+        avgVec = avgVec / numSteps
+        avgVel = avgVel / numSteps
+
+        return rD, tD, avgVec, avgVel
 
     def calcNormal(self, axis, dataRanges, threshold):
         # Calculate the times where each spacecraft crosses threshold value
@@ -596,16 +632,30 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
 
         return rDelta, tDelta, normalVec, velocity
 
-    def updateLabels(self, threshold, rDelta, tDelta, normalVec, normalVeloc):
+    def updateLabels(self, thresh, rDelta, tDelta, normalVec, normalVel, avgInfo=None):
         prec = 5
-        self.ui.velocFrame.setTitle('Normal Velocity')
-        self.ui.vecFrame.setTitle('Normal Vector')
-        self.ui.threshold.setText(str(round(threshold, prec)))
-        self.ui.threshBox.setValue(threshold)
+
+        # Set velocity / vector label text and titles
+        velTitle, vecTitle = 'Normal Velocity', 'Normal Vector'
+        if avgInfo is not None: # Add avg keyword if using averaged values
+            velTitle, vecTitle = 'Avg ' + velTitle, 'Avg ' + vecTitle
+        self.ui.velocFrame.setTitle(velTitle)
+        self.ui.vecFrame.setTitle(vecTitle)
+        self.ui.normalVec.setVector(np.round(normalVec, decimals=prec))
+        self.ui.velLbl.setText(str(np.round(normalVel, decimals=prec)))
+
+        # Set threshold text
+        if avgInfo is None:
+            self.ui.threshold.setText(str(round(thresh, prec)))
+        else:
+            step, sv, ev = avgInfo
+            sv, ev = np.round(sv, decimals=prec), np.round(ev, decimals=prec)
+            self.ui.threshold.setText(str((sv, ev)))
+        self.setThreshold(thresh) # Update value if no value set
+
+        # Set r delta and t delta matrix labels text
         self.ui.rDeltaMat.setMatrix(np.round(rDelta, decimals=prec))
         self.ui.tDeltaMat.setVector(np.round(tDelta, decimals=prec))
-        self.ui.normalVec.setVector(np.round(normalVec, decimals=prec))
-        self.ui.velLbl.setText(str(np.round(normalVeloc, decimals=prec)))
 
     def addLinesToPlots(self, threshold):
         # Determine if any lines have previously been added to plots
@@ -625,29 +675,12 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
             plotNum += 1
 
 # Calculations derived from ESA paper on curlometer technique
-class CurlometerUI(object):
+class CurlometerUI(BaseLayout):
     def setupUI(self, Frame, window):
         Frame.setWindowTitle('Curlometer')
         Frame.resize(300, 200)
         layout = QtWidgets.QGridLayout(Frame)
-
-        # Set up frames for values w/ own frames
-        rFrame = QtWidgets.QFrame()
-        JFrame = QtWidgets.QFrame()
-        curlFrame = QtWidgets.QFrame()
-        jParFrame = QtWidgets.QFrame()
-        jPerpFrame = QtWidgets.QFrame()
-        frames = [rFrame, JFrame, curlFrame, jParFrame, jPerpFrame]
-        for frm in frames:
-            frm.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
-
-        # Set up layouts for centering widgets
-        rLt = QtWidgets.QHBoxLayout(rFrame)
-        jLt = QtWidgets.QHBoxLayout(JFrame)
-        curlLt = QtWidgets.QHBoxLayout(curlFrame)
-        jParLt = QtWidgets.QHBoxLayout(jParFrame)
-        jPerpLt = QtWidgets.QHBoxLayout(jPerpFrame)
-        layouts = [rLt, jLt, curlLt, jParLt, jPerpLt]
+        self.layout = layout
 
         # Set up value widgets
         self.curlB = VectorWidget(prec=5)
@@ -657,58 +690,27 @@ class CurlometerUI(object):
         self.divBcurlB = QtWidgets.QLabel()
         self.jPar = QtWidgets.QLabel()
         self.jPerp = QtWidgets.QLabel()
-        widgets = [self.Rmat, self.AvgDensVec, self.curlB, self.jPar, self.jPerp]
 
         # Make value label widgets selectable
         for lbl in [self.divB, self.divBcurlB, self.jPar, self.jPerp]:
             lbl.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
 
-        # Center layouts that contain only one element
-        for lt, wdg in zip(layouts, widgets):
-            lt.addStretch()
-            lt.addWidget(wdg)
-            lt.addStretch()
+        frameTitles = ['R', 'Curl B', '<p> Current Density J (nA/m<sup>2</sup>)</p>',
+            '<p>| J<sub>PAR</sub> |</p>', '<p>| J<sub>PERP</sub> |</p>']
+        frameWidgets = [self.Rmat, self.curlB, self.AvgDensVec, self.jPar, self.jPerp]
+        framePositions = [(0, 0), (0, 1), (0, 2), (1, 1), (1,2)]
 
-        # Set up labels for all widgets that will display values
-        rLbl = QtWidgets.QLabel('R')
-        jLbl = QtWidgets.QLabel('<p> Current Density J (nA/m<sup>2</sup>)</p>')
-        divLbl = QtWidgets.QLabel('<p>Div B: </p>')
-        curlLbl = QtWidgets.QLabel('<p>Curl B</p>')
-        ratioLbl = QtWidgets.QLabel('<p>|Div B|÷|Curl B|:</p>')
-        jParLbl = QtWidgets.QLabel('<p>| J<sub>PAR</sub> |</p>')
-        jPerpLbl = QtWidgets.QLabel('<p>| J<sub>PERP</sub> |</p>')
+        for lbl, elem, pos in zip(frameTitles, frameWidgets, framePositions):
+            frame, frmLt = self.getLabeledFrame(lbl)
+            frmLt.addWidget(elem, 0, 0, 1, 1, QtCore.Qt.AlignCenter)
+            row, col = pos
+            layout.addWidget(frame, row, col, 1, 1)
 
         # Set up quality measures layout
-        qmFrame = QtWidgets.QFrame()
-        qmFrame.setFrameStyle(QtWidgets.QFrame.StyledPanel)
-        qmLt = QtWidgets.QGridLayout(qmFrame)
-        qmLbl = QtWidgets.QLabel('Quality Measures')
-
-        qmLt.addWidget(divLbl, 0, 0, 1, 1)
-        qmLt.addWidget(self.divB, 0, 1, 1, 1)
-        qmLt.addWidget(ratioLbl, 1, 0, 1, 1)
-        qmLt.addWidget(self.divBcurlB, 1, 1, 1, 1)
-
-        # Insert all widgets into layout
-        colNum = 0
-        order = [(rLbl, 2), (curlLbl, 1), (jLbl, 2)]
-        for e, spn in order:
-            layout.addWidget(e, 0, colNum, 1, spn, alignment=QtCore.Qt.AlignCenter)
-            colNum += spn
-
-        colNum = 0
-        order = [(rFrame, 2, 3), (curlFrame, 1, 3), (JFrame, 2, 3)]
-        for e, spn, ht in order:
-            layout.addWidget(e, 1, colNum, ht, spn)
-            colNum += spn
-
-        layout.addWidget(qmLbl, 4, 0, 1, 2, alignment=QtCore.Qt.AlignCenter)
-        layout.addWidget(qmFrame, 5, 0, 2, 2)
-
-        layout.addWidget(jParLbl, 4, 2, 1, 1, alignment=QtCore.Qt.AlignCenter)
-        layout.addWidget(jPerpLbl, 4, 3, 1, 2, alignment=QtCore.Qt.AlignCenter)
-        layout.addWidget(jParFrame, 5, 2, 2, 1)
-        layout.addWidget(jPerpFrame, 5, 3, 2, 2)
+        qualityFrame, qualityLt = self.getLabeledFrame('Quality Measures')
+        self.addPair(qualityLt, 'Div B:', self.divB, 0, 0, 1, 1)
+        self.addPair(qualityLt, '|Div B|÷|Curl B|:', self.divBcurlB, 1, 0, 1, 1)
+        layout.addWidget(qualityFrame, 1, 0, 1, 1)
 
         # New plot variables layout setup
         prgrsLt = QtWidgets.QGridLayout()
@@ -731,9 +733,11 @@ class CurlometerUI(object):
         self.applyBtn = QtWidgets.QPushButton('Apply')
         self.applyBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
 
-        layout.addWidget(plotFrame, 7, 0, 3, 3)
-        layout.addWidget(self.applyBtn, 8, 3, 2, 1)
-        layout.addWidget(self.progressBar, 8, 4, 2, 1)
+        varLt = QtWidgets.QHBoxLayout()
+        varLt.addWidget(plotFrame)
+        varLt.addWidget(self.applyBtn)
+        varLt.addWidget(self.progressBar)
+        layout.addLayout(varLt, 2, 0, 1, 3)
 
         # Set up TimeEdit and checkbox to keep window on top of main win
         btmLt = QtWidgets.QHBoxLayout()
@@ -747,7 +751,24 @@ class CurlometerUI(object):
         btmLt.addWidget(self.onTopCheckBox)
         btmLt.addStretch()
 
-        layout.addLayout(btmLt, 10, 0, 1, 3)
+        layout.addLayout(btmLt, 3, 0, 1, 3)
+        self.glw = None
+
+    def getLabeledFrame(self, lbl):
+        wrapFrame = QtWidgets.QFrame()
+        wrapLt = QtWidgets.QGridLayout(wrapFrame)
+        wrapLt.setContentsMargins(0, 0, 0, 0)
+
+        title = QtWidgets.QLabel(lbl)
+        title.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        wrapLt.addWidget(title, 0, 0, 1, 1, QtCore.Qt.AlignHCenter)
+
+        frm = QtWidgets.QFrame()
+        frm.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+        frmLt = QtWidgets.QGridLayout(frm)
+        wrapLt.addWidget(frm, 1, 0, 1, 1)
+
+        return wrapFrame, frmLt
 
 class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
     def __init__(self, window, parent=None):
@@ -763,7 +784,7 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         self.ui.onTopCheckBox.clicked.connect(self.toggleWindowOnTop)
 
         # Set up new plot variables interface
-        self.ui.applyBtn.clicked.connect(self.addNewVars)
+        self.ui.applyBtn.clicked.connect(self.addcstmVars)
         self.ui.progressBar.setVisible(False)
 
         # Initializes plot variable checkboxes if previously added to DATASTRINGS
@@ -801,14 +822,14 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         mu0 = constants.mu_0
 
         # Determine data index corresponding to selected time
-        tO, tE = self.window.getSelectionStartEndTimes()
-        times = self.window.getTimes(self.window.DATASTRINGS[0], 0)[0]
-        index = self.window.calcDataIndexByTime(times, tO)
-        if index == len(times):
-            index = index - 1
-
         if specIndex is not None:
             index = specIndex
+        else:
+            tO, tE = self.window.getSelectionStartEndTimes()
+            times = self.window.getTimes(self.window.DATASTRINGS[0], 0)[0]
+            index = self.window.calcDataIndexByTime(times, tO)
+            if index == len(times):
+                index = index - 1
 
         # Calculate R, I
         R = self.getRMatrix(refSpc, index)
@@ -820,8 +841,9 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         J = (1/mu0) * curlB
 
         # Calculate quality measures
-        divB = self.calcDivB(refSpc, index)
-        divCurlB = abs(divB) / np.linalg.norm(curlB)
+        if specIndex is None:
+            divB = self.calcDivB(refSpc, index)
+            divCurlB = abs(divB) / self.getNorm(curlB)
 
         # Calculate J_Parallel and J_Perpendicular magnitudes
         jPara, jPerp = self.calcJperpJpar(J, index)
@@ -831,8 +853,10 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         jPerp = self.convertToOriginal(jPerp)
         R = self.convertToOriginal(R, dtaType='pos')
         J = self.convertToOriginal(J)
-        divB = self.convertToOriginal(divB)
-        curlB = self.convertToOriginal(curlB)
+
+        if specIndex is None:
+            divB = self.convertToOriginal(divB)
+            curlB = self.convertToOriginal(curlB)
 
         if specIndex is None:
             self.setLabels(R, J, divB, curlB, divCurlB, (jPara, jPerp))
@@ -976,11 +1000,12 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
             currB = self.convertToSI(np.array(self.getVec(scNum, index)))
             B += currB
         B = B / 4
-        B = B / np.linalg.norm(B)
+        B = B / self.getNorm(B)
 
         jPara = np.dot(J, B)
         jProj = (np.dot(J, B) / (np.dot(B,B))) * B # J proj onto B
-        jPerp = np.linalg.norm(J - jProj)
+        jPara = abs(jPara)
+        jPerp = self.getNorm(J - jProj)
 
         return jPara, jPerp
 
@@ -989,8 +1014,8 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         if indices is None:
             t0, t1 = self.window.minTime, self.window.maxTime
             times = self.window.getTimes(self.window.DATASTRINGS[0], 0)[0]
-            i0 = self.window.calcDataIndexByTime(times, t0)
-            i1 = self.window.calcDataIndexByTime(times, t1)
+            i0 = 0
+            i1 = len(times) - 1
         else:
             i0, i1 = indices
         numIndices = abs(i1 - i0)
@@ -1006,7 +1031,7 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
             # Calculate |J|, |J_perp|, |J_par| at every index and store it
             matIndex = i - i0
             J, jPar, jPerp = self.calculate(i)
-            mat[:,matIndex] = np.array([np.linalg.norm(J), jPar, jPerp, J[0], J[1], J[2]])
+            mat[:,matIndex] = np.array([self.getNorm(J), jPar, jPerp, J[0], J[1], J[2]])
             progVal += progStep
             self.ui.progressBar.setValue(progVal)
 
@@ -1014,8 +1039,17 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         QtCore.QTimer.singleShot(2000, self.setProgressVis)
 
         return mat
+    
+    def lineMode(self):
+        regions = self.window.currSelect.regions
+        if len(regions) == 1 and regions[0].isLine():
+            return True
+        return False
 
-    def addNewVars(self):
+    def getNorm(self, v):
+        return np.sqrt(np.dot(v, v))
+
+    def addcstmVars(self):
         # Calculates selected values for entire dataset and creates corresp. new vars
         varsToAdd = []
         # Gather all new variables to be added and remove any unchecked ones
@@ -1032,7 +1066,7 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
 
         regions = self.window.currSelect.regions
         refDstr = self.getDstrsBySpcrft(1)[0]
-        if len(regions) == 1 and regions[0].isLine():
+        if self.lineMode():
             # Calculate |J|, |J_Par|, |J_Perp| and initialize the new variables
             times = self.window.getTimes(refDstr, 0)
             resultMat = self.calcRange()
@@ -1196,7 +1230,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
 
         self.ui.stayOnTopChk.clicked.connect(self.toggleWindowOnTop)
         self.visibleWin = False
-        self.ui.applyBtn.clicked.connect(self.addNewVars)
+        self.ui.applyBtn.clicked.connect(self.addcstmVars)
 
     def closeEvent(self, ev):
         self.window.endGeneralSelect()
@@ -1313,6 +1347,9 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         error = (1/6) * (alpha ** 2)
         return error
 
+    def getNorm(self, v):
+        return np.sqrt(np.dot(v, v))
+
     def getAvgDist(self, index):
         # Finds the average x pos distance between the spacecfraft
         L = 0
@@ -1325,7 +1362,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         for a, b in pairs:
             vec1 = self.getVec(a, index, grp='Pos')
             vec2 = self.getVec(b, index, grp='Pos')
-            diff = np.linalg.norm(vec2-vec1)
+            diff = self.getNorm(vec2-vec1)
             L += diff
         L = L / len(pairs)
         return L
@@ -1383,7 +1420,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         for scNum in [2,3,4]:
             bUnit += self.getVec(scNum, index)
         bUnit = bUnit / 4
-        bUnit = bUnit / np.linalg.norm(bUnit)
+        bUnit = bUnit / self.getNorm(bUnit)
         return bUnit
 
     def calcCurv(self, index, G=None):
@@ -1393,7 +1430,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         curvature = np.matmul(G, bUnit)
         return curvature
 
-    def addNewVars(self):
+    def addcstmVars(self):
         dstrs = ['Curv_X', 'Curv_Y', 'Curv_Z'] # Prefixes for variable names
 
         # Determine the number of data points to use
@@ -1726,6 +1763,11 @@ class ElectronPitchAngleUI(BaseLayout):
         else:
             return False
 
+    def getRangeChksAndBoxes(self):
+        toggles = self.rangeToggles
+        boxes = [elems[0:2] for elems in self.rangeElems]
+        return toggles, boxes
+
 class MMSColorPltTool():
     def inMainWindow(self, kw):
         kwFound = False
@@ -1754,6 +1796,46 @@ class MMSColorPltTool():
         # Update plot links and close current window
         self.window.lastPlotLinks.append(links)
         self.close()
+    
+    def getRangeSettings(self):
+        valRngs = []
+        toggles, boxes = self.ui.getRangeChksAndBoxes()
+        for toggle, (minBox, maxBox) in zip(toggles, boxes):
+            if toggle.isChecked():
+                minVal, maxVal = minBox.value(), maxBox.value()
+                valRngs.append((minVal, maxVal))
+            else:
+                valRngs.append(None)
+
+        return valRngs
+    
+    def setRangeSettings(self, valRngs):
+        toggles, boxes = self.ui.getRangeChksAndBoxes()
+        for rng, toggle, (minBox, maxBox) in zip(valRngs, toggles, boxes):
+            if rng is not None:
+                minVal, maxVal = rng
+                toggle.setChecked(True)
+                minBox.setValue(minVal)
+                maxBox.setValue(maxVal)
+
+    def getColorScaleMode(self):
+        return self.ui.scaleModeBox.currentText()
+    
+    def setColorScaleMode(self, val):
+        self.ui.scaleModeBox.setCurrentText(val)
+    
+    def getState(self):
+        state = {}
+        state['Scale'] = self.getColorScaleMode()
+        state['Ranges'] = self.getRangeSettings()
+        return state
+    
+    def loadState(self, state):
+        if 'Scale' in state:
+            self.setColorScaleMode(state['Scale'])
+
+        if 'Ranges' in state:
+            self.setRangeSettings(state['Ranges'])
 
 class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
     def __init__(self, window, parent=None):
@@ -1787,12 +1869,7 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
             if self.ui.addCheckboxes[index].isChecked():
                 selectedKws.append(kw)
 
-        # Create context menu link to this plot window
-        actionLink = QtWidgets.QAction(self.window)
-        actionLink.setText('Edit EPAD Plots...')
-        actionLink.triggered.connect(self.window.editEPAD)
-
-        self.addPlotsToMain(kws, selectedKws, 'Degrees', actionLink)
+        self.addPlotsToMain(kws, selectedKws, 'Degrees', None)
 
     def findStrings(self):
         # Extract the variable names corresponding to each electron pitch-angle
@@ -1851,16 +1928,16 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
 
         # Create each plot from its value grid and any user parameters
         pltNum = 0
+        index = 0
+        valRngs = self.getRangeSettings()
         for pixelGrid, lbl in zip(pixelGrids, labels):
             plt = PitchAnglePlotItem(self.window.epoch)
 
             # Check if custom value range is set
             index = labels.index(lbl)
-            selectToggle = self.ui.rangeToggles[index]
-            minBox, maxBox = self.ui.rangeElems[index][0:2]
-            if selectToggle.isChecked(): # User selected range
-                minVal = minBox.value()
-                maxVal = maxBox.value()
+            selectToggle = valRngs[index]
+            if selectToggle is not None: # User selected range
+                minVal, maxVal = selectToggle
                 if logColor: # Map log scale values to non-log values
                     minVal = 10 ** minVal
                     maxVal = 10 ** maxVal
@@ -1873,6 +1950,7 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
                     maxVal = np.max(pixelGrid[pixelGrid>0])
 
                 # Initialize min/max values for value range spinboxes
+                minBox, maxBox = self.ui.rangeElems[index][0:2]
                 minBox.setValue(minVal)
                 maxBox.setValue(maxVal)
                 if logColor:
@@ -1979,12 +2057,12 @@ class ElectronOmniUI(BaseLayout):
 
         # Set up color scaling settings UI
         scaleLbl = QtWidgets.QLabel('Color Scaling Mode:')
-        self.scaleBox = QtWidgets.QComboBox()
-        self.scaleBox.addItems(['Logarithmic', 'Linear'])
-        self.scaleBox.currentTextChanged.connect(self.colorScaleToggled)
+        self.scaleModeBox = QtWidgets.QComboBox()
+        self.scaleModeBox.addItems(['Logarithmic', 'Linear'])
+        self.scaleModeBox.currentTextChanged.connect(self.colorScaleToggled)
         colorLt = QtWidgets.QVBoxLayout()
         colorLt.addWidget(scaleLbl)
-        colorLt.addWidget(self.scaleBox)
+        colorLt.addWidget(self.scaleModeBox)
         layout.addLayout(colorLt)
 
         # Set up min/max boxes for each item + toggles
@@ -2006,7 +2084,7 @@ class ElectronOmniUI(BaseLayout):
                 self.addPair(valueLt, lbl, box, row, 0, 1, 1)
             layout.addWidget(valueFrame)
 
-        self.colorScaleToggled(self.scaleBox.currentText())
+        self.colorScaleToggled(self.scaleModeBox.currentText())
 
         # Set up update button
         self.updtBtn = QtWidgets.QPushButton('Update')
@@ -2018,6 +2096,16 @@ class ElectronOmniUI(BaseLayout):
         self.addToMainBtn = QtWidgets.QPushButton('Add To Main Window')
         sideBarLt.addWidget(self.addToMainBtn)
         return sideBarLt
+    
+    def getRangeChksAndBoxes(self):
+        toggles = []
+        boxes = []
+        for kw in ['Electron', 'Ion']:
+            if kw in self.valBoxes:
+                toggles.append(self.valToggles[kw])
+                boxes.append(self.valBoxes[kw])
+        
+        return toggles, boxes
 
     def colorScaleToggled(self, val):
         # Reset selection boxes
@@ -2092,12 +2180,7 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
         if self.ionDstrs != []:
             selectedKws.append(kws[1])
 
-        # Generate context menu link to edit plots in main window
-        actionLink = QtWidgets.QAction(self.window)
-        actionLink.setText('Edit Energy Spectrum Plots...')
-        actionLink.triggered.connect(self.window.editEOmniPlots)
-
-        self.addPlotsToMain(selectedKws, selectedKws, 'eV', actionLink)
+        self.addPlotsToMain(selectedKws, selectedKws, 'eV', None)
 
     def update(self):
         self.plotItems = []
@@ -2135,7 +2218,7 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
         valGrid = np.array(valGrid)
 
         # Determine min/max ranges for color scale
-        logColor = True if self.ui.scaleBox.currentText() == 'Logarithmic' else False
+        logColor = True if self.getColorScaleMode() == 'Logarithmic' else False
         maxBox, minBox = self.ui.valBoxes[mode]
         setToggle = self.ui.valToggles[mode]
         if setToggle.isChecked(): # Use user-set values
