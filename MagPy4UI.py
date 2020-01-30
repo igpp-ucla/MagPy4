@@ -601,10 +601,8 @@ class PlotGrid(pg.GraphicsLayout):
         self.labels = []
 
         # Additional lists for handling color plots
-        self.colorPlts = []
-        self.colorPltElems = []
-        self.colorPltNames = []
-        self.colorPltUnits = []
+        self.colorPltKws = []
+        self.colorPltInfo = {}
 
         # Elements used if additional tick labels are added
         self.labelSetGrd = None
@@ -638,6 +636,9 @@ class PlotGrid(pg.GraphicsLayout):
         bottomAxis = plt.getAxis('bottom')
         bottomAxis.showLabel(False)
         bottomAxis.setStyle(showValues=False)
+
+    def numColorPlts(self):
+        return len(self.colorPltInfo.keys())
 
     def resizeEvent(self, event):
         if self.numPlots == 0:
@@ -674,23 +675,25 @@ class PlotGrid(pg.GraphicsLayout):
         maxLabelWidth = self.getMaxLabelWidth(maxFontSize)
         self.layout.setColumnMaximumWidth(0, maxLabelWidth)
 
-        # Get the plot indices corresponding to each color plot
-        colorPlotIndices = []
-        index = 0
-        for plt in self.plotItems:
-            if plt in self.colorPlts:
-                colorPlotIndices.append(index)
-            index += 1
+        # Look for color plots and adjust legends + legend labels accordingly
+        for i in range(0, len(self.plotItems)):
+            cpKw = self.colorPltKws[i]
+            if cpKw is None:
+                continue
 
-        # Adjust color bar legend label sizes according to its row height
-        index = 0
-        for grad, lbl in self.colorPltElems:
-            rowHeight = rowHeights[colorPlotIndices[index]]
-            if lbl:
-                lbl.adjustLabelSizes(rowHeight)
-                lbl.setContentsMargins(0, 0, 0, 0)
-            grad.setOffsets(1, 1, 2)
-            index += 1
+            # Extract corresp. objects and get the row height for this plot item
+            rowHeight = rowHeights[i]
+            colorPlotInfo = self.colorPltInfo[cpKw]
+            gradLegend = colorPlotInfo['Legend']
+            gradLbl = colorPlotInfo['LegendLbl']
+
+            # Resize legend label text
+            if gradLbl:
+                gradLbl.adjustLabelSizes(rowHeight)
+                gradLbl.setContentsMargins(0, 0, 0, 0)
+
+            # Update legend offsets
+            gradLegend.setOffsets(1, 1, 1)
 
         # Set row heights, add in extra space for last plot's dateTime axis
         index = 0
@@ -704,8 +707,12 @@ class PlotGrid(pg.GraphicsLayout):
         lm, tm, rm, bm = botmLabel.layout.getContentsMargins()
         botmLabel.layout.setContentsMargins(lm, tm, rm, botmAxisHeight)
 
-        if len(self.colorPlts) > 0 and self.colorPlts[-1] == self.plotItems[-1]:
-            botmGrad, botmLabel = self.colorPltElems[-1]
+        # Additional adjustments to margins for color plot elements
+        # if the last plot is a color plot
+        if self.colorPltKws[-1] is not None:
+            colorPlotInfo = self.colorPltInfo[self.colorPltKws[-1]]
+            botmLabel = colorPlotInfo['LegendLbl']
+            botmGrad = colorPlotInfo['Legend']
             lm, rm, tm, bm = botmLabel.layout.getContentsMargins()
             botmLabel.layout.setContentsMargins(lm, tm, rm, botmAxisHeight)
             botmGrad.setOffsets(1, botmAxisHeight, 2)
@@ -745,8 +752,9 @@ class PlotGrid(pg.GraphicsLayout):
         for axis in ['left','bottom', 'top', 'right']:
             plt.getAxis(axis).setStyle(tickLength=-5)
 
-        self.labels.append(lbl)
-        self.plotItems.append(plt)
+        self.labels.insert(index, lbl)
+        self.plotItems.insert(index, plt)
+        self.colorPltKws.insert(index, None)
         self.numPlots += 1
         self.setTimeLabel()
 
@@ -766,40 +774,34 @@ class PlotGrid(pg.GraphicsLayout):
         # Add tracker lines to plots
         trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine))
         plt.addItem(trackerLine)
-        self.window.trackerLines.append(trackerLine)
+        self.window.trackerLines.insert(index, trackerLine)
 
         # Update state information
-        self.colorPlts.append(plt)
-        self.colorPltNames.append(lblStr)
-        self.colorPltElems.append((colorBar, colorLbl))
-        self.colorPltUnits.append(units)
+        cpInfo = {}
+        cpInfo['Legend'] = colorBar
+        cpInfo['LegendLbl'] = colorLbl
+        cpInfo['Units'] = units
+        self.colorPltInfo[lblStr] = cpInfo
+        self.colorPltKws[index] = lblStr
+
+    def getColorPlotIndex(self, name):
+        # Get row index corresponding to the color plot w/ given name,
+        # returning None if it isn't in the grid
+        index = None
+        if name in self.colorPltInfo.keys():
+            index = self.colorPltKws.index(name)
+
+        return index
 
     def replaceColorPlot(self, pltIndex, newPlt, lblStr, colorBar, colorLbl=None, 
                         units=None):
-        if self.numPlots < 1 or self.plotItems[pltIndex] not in self.colorPlts:
+        if pltIndex >= self.numPlots or self.colorPltKws[pltIndex] is None:
             return
-
-        # Get color plot index before removing
-        cpIndex = self.colorPlts.index(self.plotItems[pltIndex])
 
         # Remove the grid items and objects from state info
         # and add the color plot to the grid
         self._removePlotFromGrid(pltIndex)
         self.addColorPlt(newPlt, lblStr, colorBar, colorLbl, units, index=pltIndex)
-
-        # For every relevant list, remove the newly added plot info and re-insert
-        lsts = [self.colorPlts, self.colorPltNames, self.colorPltElems, 
-            self.colorPltUnits]
-
-        ## Color-plot-specific lists
-        for lst in lsts:
-            elem = lst.pop(-1)
-            lst.insert(cpIndex, elem)
-
-        ## General plot lists
-        for lst in [self.plotItems, self.labels, self.window.trackerLines]:
-            elem = lst.pop(-1)
-            lst.insert(pltIndex, elem)
 
         # Adjust displayed tick marks and time axis labels
         self.setTimeLabel()
@@ -807,6 +809,9 @@ class PlotGrid(pg.GraphicsLayout):
         self.resizeEvent(None)
 
     def _removePlotFromGrid(self, pltIndex):
+        if pltIndex >= self.numPlots or pltIndex < 0:
+            return
+
         # Get plot items/labels and remove from lists
         lbl = self.labels.pop(pltIndex)
         plt = self.plotItems.pop(pltIndex)
@@ -815,24 +820,25 @@ class PlotGrid(pg.GraphicsLayout):
         self.numPlots -= 1
 
         # Additional handling if color plot
-        if plt in self.colorPlts:
-            index = self.colorPlts.index(plt)
-            for elem in self.colorPltElems[index]:
+        if self.colorPltKws[pltIndex] is not None:
+            kw = self.colorPltKws[pltIndex]
+            colorPltInfo = self.colorPltInfo[kw]
+            elems = [colorPltInfo['Legend'], colorPltInfo['LegendLbl']]
+            for elem in elems:
                 if elem is None:
                     continue
                 self.removeItem(elem)
                 elem.deleteLater()
-            self.colorPltElems.pop(index)
-            self.colorPlts.pop(index)
-            self.colorPltUnits.pop(index)
-            self.colorPltNames.pop(index)
 
-        # Remove elements from layout
+        # Remove plot & label elements from layout
         for item in [lbl, plt]:
             self.removeItem(item)
             item.deleteLater()
 
-    def removePlot(self, pltIndex=None, removeState=True):
+        # Update color plot status
+        self.colorPltKws.pop(pltIndex)
+
+    def removePlot(self, pltIndex=None):
         if self.numPlots < 1:
             return
 
@@ -842,27 +848,7 @@ class PlotGrid(pg.GraphicsLayout):
         # Remove plot and related objects from grid
         self._removePlotFromGrid(pltIndex)
 
-        # Update window state if not going to replace with another plot
-        if removeState:
-            self.window.lastPlotStrings.pop(pltIndex)
-            lastPlotLinksCopy = self.window.lastPlotLinks.copy()
-            for subLinkLst in lastPlotLinksCopy:
-                subLinkCopy = subLinkLst[:]
-                for pltNum in subLinkCopy:
-                    if pltNum == pltIndex: # Remove this pltIndex from any links
-                        subLinkLst.remove(pltNum)
-                    elif pltNum > pltIndex: # Decrement all pltIndices > pltIndex
-                        subLinkLst.remove(pltNum)
-                        subLinkLst.append(pltNum-1)
-                if subLinkLst == []:
-                    self.window.lastPlotLinks.remove(subLinkLst)
-
-        # Adjust visual settings
-        if pltIndex == self.numPlots:
-            timeLbl = plt.getAxis('bottom').labelText
-            self.plotItems[pltIndex-1].getAxis('bottom').setStyle(showValues=True)
-            self.plotItems[pltIndex-1].getAxis('bottom').showLabel(True)
-            self.setTimeLabel(timeLbl)
+        self.setTimeLabel()
 
     def addLabelSet(self, dstr):
         # Initialize label set grid/stacked label if one hasn't been created yet

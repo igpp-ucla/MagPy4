@@ -1658,46 +1658,58 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         stackLbl = StackedLabel(labels, colors, units=unitsString)
         return stackLbl
 
+    def onPlotRemoved(self, oldPlt):
+        # Remove all linked region items from this plot and GeneralSelect
+        # lists before removing the old plot
+        for select in [self.currSelect, self.batchSelect, self.savedRegion]:
+            if select is not None:
+                select.onPlotRemoved(oldPlt)
+
     def addColorPltToGrid(self, plt, name, gradLbl, units=None):
-        # First, check if already plotted in main window
-        pltIndex = None
-        if name in self.pltGrd.colorPltNames:
-            # Get old plot and its index in the grid's list of color plots
-            cpIndex = self.pltGrd.colorPltNames.index(name)
-            oldPlt = self.pltGrd.colorPlts[cpIndex]
-
-            # Get general plot index as well
-            pltIndex = self.pltGrd.plotItems.index(oldPlt)
-
-            # Remove all linked region items from this plot and GeneralSelect
-            # lists before removing the old plot
-            for select in [self.currSelect, self.batchSelect, self.savedRegion]:
-                if select is not None:
-                    select.onPlotRemoved(oldPlt)
-        else: # Otherwise, add it to the end + update plotStrings list
-            self.lastPlotStrings.append([(name, -1)])
-            self.lastPlotHeightFactors.append(1)
-
-        # Extract plot info needed to replot and store/load it into grid
+        # Generate plot item and related elements from plot info
+        labelTxt = gradLbl.getLabelText() if gradLbl is not None else None
         plotInfo = plt.getPlotInfo()
-        self.colorPlotInfo[name] = (plotInfo, gradLbl.lblTxt, units)
-        self.loadColorPlot(plotInfo, name, gradLbl.lblTxt, units, pltIndex)
+        newPlt, grad, gradLbl = self.loadColorPlot(plotInfo, labelTxt)
 
-        # Reset height factors
-        self.pltGrd.setHeightFactors(self.lastPlotHeightFactors)
-        if pltIndex is None: # Also, update trace pens list if adding new plot
+        # First, check if already plotted in main window
+        pltIndex = self.pltGrd.getColorPlotIndex(name)
+        if pltIndex is not None:
+            self.pltGrd.replaceColorPlot(pltIndex, newPlt, name, grad, gradLbl, 
+                units=units)
+            self.plotItems[pltIndex] = newPlt
+            self.onPlotRemoved(plt)
+
+            # Update plot index used for selections
+            vb = newPlt.getViewBox()
+            vb.setPlotIndex(pltIndex)
+        else:
+            # Otherwise, add it to the end + update plotStrings list
+            pltIndex = self.pltGrd.numPlots - 1
+            self.pltGrd.addColorPlt(newPlt, name, grad, gradLbl, units=units)
+            self.lastPlotStrings.append([(name, -1)])
+            self.plotItems.append(newPlt)
+
+            # Reset height factors
+            self.lastPlotHeightFactors.append(1)
+            self.pltGrd.setHeightFactors(self.lastPlotHeightFactors)
+
+            # Also, update trace pens list if adding new plot
             self.plotTracePens.append(None)
-        
-        return pltIndex if pltIndex is not None else self.pltGrd.numPlots - 1
 
-    def loadColorPlot(self, plotInfo, name, gradLbl, units, index=None):
+        # Update local state information about color plot grid values
+        self.colorPlotInfo[name] = (plotInfo, labelTxt, units)
+
+        # Return plot index to be used when creating link lists
+        return pltIndex
+
+    def loadColorPlot(self, plotInfo, labelTxt):
         # Extract specific plot info and offset times by main window's tick offset
         grid, x, y, logY, logColor, valRng = plotInfo
         x = x - self.tickOffset
         plotInfo = (grid, x, y, logY, logColor, valRng)
 
         # Generate plot item
-        vb = MagPyViewBox(self, self.pltGrd.numPlots if index is None else index)
+        vb = MagPyViewBox(self, self.pltGrd.numPlots)
         axisItems = {'left':LinkedAxis('left')}
         plt = SimpleColorPlot(self.epoch, logY, vb=vb, axItems=axisItems)
         plt.getAxis('bottom').tickOffset = self.tickOffset
@@ -1705,17 +1717,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Generate gradient legend and its axis label
         gradLegend = plt.getGradLegend(logColor)
-        gradLbl = StackedAxisLabel(gradLbl)
-        gradLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
 
-        # If plot index is given (already in grid), replace it
-        # Otherwise, add it to the end of the plot grid
-        if index is not None:
-            self.plotItems[index] = plt
-            self.pltGrd.replaceColorPlot(index, plt, name, gradLegend, gradLbl, units)
+        if labelTxt is not None:
+            gradLbl = StackedAxisLabel(labelTxt)
+            gradLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
         else:
-            self.pltGrd.addColorPlt(plt, name, gradLegend, gradLbl, units)
-            self.plotItems.append(plt)
+            gradLbl = None
+
+        return plt, gradLegend, gradLbl
 
     def plotData(self, dataStrings, links, heightFactors):
         self.closeTraceStats() # Clear any regions
@@ -1763,9 +1772,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     colorPltName = dstr
 
             if colorPlt:
-                plotInfo, gradLbl, units = self.colorPlotInfo[colorPltName]
+                # Save old color plot info
                 newColorPlotInfo[colorPltName] = self.colorPlotInfo[colorPltName]
-                self.loadColorPlot(plotInfo, colorPltName, gradLbl, units)
+                # Extract plot info and generate new plot items/legends
+                plotInfo, gradLbl, units = self.colorPlotInfo[colorPltName]
+                plt, grad, gradLbl = self.loadColorPlot(plotInfo, gradLbl)
+                self.pltGrd.addColorPlt(plt, colorPltName, grad, gradLbl, units)
+                self.plotItems.append(plt)
                 self.plotTracePens.append([None])
                 continue
 
@@ -2349,6 +2362,9 @@ class MagPyViewBox(SelectableViewBox): # custom viewbox event handling
         xAction, yAction, mouseAction = actions[1:4]
         for a in [xAction, mouseAction]:
             self.menu.removeAction(a)
+    
+    def setPlotIndex(self, index):
+        self.plotIndex = index
 
 # Wrapper class for Flat File FID functions
 class FF_FD():

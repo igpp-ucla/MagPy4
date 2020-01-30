@@ -804,6 +804,9 @@ class StackedAxisLabel(pg.GraphicsLayout):
             self.layout.setContentsMargins(0, 0, 0, 0)
         self.setupLabels(lbls)
 
+    def getLabelText(self):
+        return self.lblTxt
+
     def setupLabels(self, lbls):
         if self.angle > 0:
             lbls = lbls[::-1]
