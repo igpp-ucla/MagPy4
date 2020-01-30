@@ -195,7 +195,7 @@ class Edit(QtWidgets.QFrame, EditUI):
             labels = []
             colors = previousLabel.colors[:]
             units = previousLabel.units
-            if self.window.plotItems[plotNum] in self.window.pltGrd.colorPlts:
+            if self.window.pltGrd.colorPltKws[plotNum] is not None:
                 plotNum += 1
                 continue
             for (dstr,editNum), pen in zip(dstrs,pens):
