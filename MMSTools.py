@@ -99,7 +99,7 @@ class MMSTools():
         positionDstrs = []
         fieldDstrs = []
         for dstr in self.window.DATASTRINGS:
-            if dstr in self.window.newVars:
+            if dstr in self.window.cstmVars:
                 continue
             for pk in posKeys:
                 if pk.lower() == dstr.lower()[:len(pk)] and 'b'+pk.lower() not in dstr.lower():
@@ -386,9 +386,9 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         self.window = window
 
         self.ui.setupUI(self, window)
-        self.ui.updateBtn.clicked.connect(self.calculate)
+        self.ui.updateBtn.clicked.connect(self.update)
         self.ui.avgBtn.clicked.connect(self.openRangeSelect)
-        self.ui.axisComboBox.currentIndexChanged.connect(self.calculate)
+        self.ui.axisComboBox.currentIndexChanged.connect(self.update)
 
         self.state = 0 # Startup state, nothing has been calculated yet
 
@@ -535,7 +535,7 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         else:
             return False
 
-    def calculate(self):
+    def update(self):
         axis = self.ui.axisComboBox.currentText()
         dataRanges, maxMin, minMax = self.getDataRange(axis)
 

@@ -64,6 +64,22 @@ class GeneralSelect(object):
                 region.plotItems.pop(index)
                 region.regionItems.pop(index)
 
+    def getSelectionInfo(self):
+        regions = [region.getRegion() for region in self.regions]
+        return (self.name, regions)
+
+    def isFullySelected(self):
+        val = False
+        if self.mode in ['Line', 'Adjusting'] and len(self.regions) >= 1:
+            val = True
+        elif len(self.regions) > 1:
+            val = True
+        elif len(self.regions) == 1:
+            if not self.regions[-1].fixedLine:
+                val = True
+
+        return val
+
     def setStepTrigger(self, func):
         self.stepFunc = func
 
@@ -80,10 +96,6 @@ class GeneralSelect(object):
 
     def setLabelPos(self, pos):
         self.lblPos = pos
-
-    def autoSetRegion(self, a, b):
-        self.leftClick(a, 0)
-        self.leftClick(b, 0)
 
     def setSubRegionsVisible(self, pltNum, visible=True):
         for region in self.regions:
@@ -122,9 +134,6 @@ class GeneralSelect(object):
         elif self.stepsLeft():
             self.addRegion(x)
 
-        if self.name == 'Stats':
-            self.updtFunc()
-
     def isLine(self):
         if len(regions) < 1:
             return False
@@ -160,24 +169,53 @@ class GeneralSelect(object):
         for region in self.regions:
             region.removeRegionItems()
 
-    def addRegion(self, x):
+    def addRegion(self, x, y=None, update=True):
         # Adds a new region/line to all plots and connects it to the timeEdit
         linkRegion = self.addLinkedItem(x)
-        linkRegion.fixedLine = True
+        self.regions.append(linkRegion)
+
+        # If adding a single line, fix it so dragging only moves the line
+        # instead of extending it
+        if y is None:
+            linkRegion.setFixedLine(True)
+        else:
+            linkRegion.setRegion((x, y))
+
+        # Set default move / visibility properties
         linkRegion.setMovable(self.movable)
         linkRegion.setAllRegionsVisible(not self.hidden)
 
-        if self.timeEdit:
-            self.connectLinesToTimeEdit(self.timeEdit, linkRegion, self.mode == 'Line')
-        self.regions.append(linkRegion)
+        # Connect to time edit since this region is new
+        self.connectLinesToTimeEdit(self.timeEdit, linkRegion, self.mode == 'Line')
 
-        if self.mode == 'Line' or self.mode == 'Adjusting':
-            if self.func is not None:
-                self.openFunc()
-            if self.updtFunc:
-                self.updtFunc()
-        
+        if update:
+            # Call any update functions if necessary
+            if y is None:
+                if self.mode in ['Line', 'Adjusting']:
+                    self.openTool(linkRegion)
+            else:
+                self.openTool(linkRegion)
+
         return linkRegion
+
+    def updateTimeEdit(self, region=None):
+        if region is None:
+            region = self.regions[-1]
+        if self.timeEdit:
+            region.updateTimeEditByLines(self.timeEdit)
+
+    def openTool(self, region):
+        self.updateTimeEdit()
+        self.callOpenFunc()
+        self.callUpdateFunc()
+
+    def callOpenFunc(self):
+        if self.func:
+            self.openFunc()
+
+    def callUpdateFunc(self):
+        if self.updtFunc:
+            self.updtFunc()
 
     def addLinkedItem(self, x):
         # Initializes the linked region object
@@ -228,17 +266,9 @@ class GeneralSelect(object):
             return
         x0, x1 = region.getRegion()
         region.setRegion((x0-self.window.tickOffset, x))
-        region.fixedLine = False
+        region.setFixedLine(False)
 
-        if self.timeEdit:
-            region.updateTimeEditByLines(self.timeEdit)
-
-        # Calls open/update functions now that full region is selected
-        if self.func is not None:
-            self.openFunc()
-
-        if self.updtFunc:
-            self.updtFunc()
+        self.openTool(region)
 
     def setLabelText(self, txt, regionNum=None):
         # Set label text for all regions if none is specified
@@ -247,10 +277,6 @@ class GeneralSelect(object):
                 region.setLabelText(txt)
         else:
             self.regions[regionNum].setLabelText(txt)
-    
-    def addFullRegion(self, t0, t1):
-        region = self.addRegion(t0-self.window.tickOffset)
-        self.extendRegion(t1-self.window.tickOffset, region, True)
 
     def removeRegion(self, regionNum):
         # Remove the specified linked region
@@ -266,6 +292,13 @@ class GeneralSelect(object):
         else:
             self.regions[regNum].setMovable(val)
         self.movable = val
+
+    def getRegionTicks(self):
+        ticks = []
+        for region in self.regions:
+            ticks.append(region.getRegion())
+
+        return ticks
 
 class SelectableViewBox(pg.ViewBox):
     # Viewbox that calls its window's GeneralSelect object in response to clicks
@@ -283,46 +316,21 @@ class SelectableViewBox(pg.ViewBox):
 
         ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
 
-        if self.window.currSelect:
-            self.window.currSelect.leftClick(x, self.plotIndex, ctrlPressed)
-        else:
-            self.window.openTraceStats()
-            self.window.currSelect = GeneralSelect(self.window, 'Adjusting', 
-                'Stats', None, self.window.traceStats.ui.timeEdit,
-                None, self.window.updateTraceStats,
-                closeFunc=self.window.closeTraceStats, maxSteps=-1)
-            self.window.traceStats.ui.timeEdit.linesConnected = False
-            self.window.currSelect.leftClick(x, self.plotIndex, ctrlPressed)
+        tool = self.window.getCurrentTool()
 
-    def defaultLeftClick(self, x, ctrlPressed=False):
-        return
-
-    # check if either of lines are visible for this viewbox
-    def anyLinesVisible(self):
-        isVisible = False
-        for region in self.window.regions:
-            if region.isVisible(self.plotIndex):
-                isVisible = True
-        return isVisible
-
-    # sets the lines of this viewbox visible
-    def setMyLinesVisible(self, isVisible):
-        for region in self.window.regions:
-            region.setVisible(isVisible, self.plotIndex)
+        if tool:
+            tool.leftClick(x, self.plotIndex, ctrlPressed)
 
     def onRightClick(self, ev):
-        if self.window.currSelect:
-            self.window.currSelect.rightClick(self.plotIndex)
+        tool = self.window.getCurrentTool(False)
+        if tool:
+            tool.rightClick(self.plotIndex)
         else:
             pg.ViewBox.mouseClickEvent(self, ev)
 
     def mouseClickEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
-            if ev.double(): # double clicking will do same as right click
-                #self.onRightClick(ev)
-                pass # this seems to confuse people so disabling for now
-            else:
-               self.onLeftClick(ev)
+            self.onLeftClick(ev)
 
         else: # asume right click i guess, not sure about middle mouse button click
             self.onRightClick(ev)
@@ -383,14 +391,14 @@ class FixedSelection(QtWidgets.QFrame, FixedSelectionUI):
         self.ui.timeEdit.end.setDateTime(end)
 
     def getTimeEditValues(self):
-        strt = self.ui.timeEdit.start.dateTime()
-        end = self.ui.timeEdit.end.dateTime()
+        strt = self.ui.timeEdit.start.dateTime().toPyDateTime()
+        end = self.ui.timeEdit.end.dateTime().toPyDateTime()
         return strt, end
 
     def closeEvent(self, ev):
         self.close()
         self.window.closeFixSelection()
-
+    
 class TimeRegionSelector(QtWidgets.QFrame):
     def __init__(self, window, parent=None):
         QtWidgets.QFrame.__init__(self, parent)
@@ -673,11 +681,13 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
         self.updateRegionLabels()
     
     def getRegion(self, rowNum):
-        # Get item from interface and split text into times
-        item = self.ui.regionList.removeRow(rowNum)
-        text = item.text()
-        splitText = item.split(' ')
-        return (splitText[0], splitText[-1])
+        return self.timeRegions[self.regions[rowNum]]
+    
+    def getRegions(self, ticks=True):
+        if ticks:
+            return [self.getRegion(rowNum) for rowNum in range(0, len(self.regions))]
+        else:
+            return self.timeRegions
 
     def mapTimestamp(self, timestmp):
         # Map UTC timestamp into a time (library) tuple/struct
@@ -708,7 +718,7 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
         tO, tE = min(tO, tE), max(tO, tE)
 
         # Create region and save time region info in dict/list
-        self.linkedRegion.addFullRegion(tO, tE)
+        self.linkedRegion.addRegion(tO-self.window.tickOffset, tE-self.window.tickOffset)
         self.timeRegions[timestamps] = (tO, tE)
         self.regions.append(timestamps)
 

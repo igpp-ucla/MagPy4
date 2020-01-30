@@ -51,7 +51,7 @@ from mth import Mth
 from tests import Tests
 import bisect
 from timeManager import TimeManager
-from selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect
+from selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect, SelectableViewBox
 from layoutTools import BaseLayout
 
 import time
@@ -113,9 +113,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
 
         # Main menu action connections
-        self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True))
-        self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False))
-        self.ui.actionOpenASCII.triggered.connect(functools.partial(self.openFileDialog, False, True))
+        self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True, None))
+        self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False, None))
+        self.ui.actionOpenASCII.triggered.connect(functools.partial(self.openFileDialog, False, True, None))
 
         self.ui.actionExportFF.triggered.connect(self.exportFlatFile)
         self.ui.actionExit.triggered.connect(self.close)
@@ -155,29 +155,18 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.antialiasAction.triggered.connect(self.toggleAntialiasing)
         self.ui.bridgeDataGaps.triggered.connect(self.replotDataCallback)
         self.ui.drawPoints.triggered.connect(self.replotDataCallback)
-        self.ui.enableMouseAction.triggered.connect(self.enableMouseDrag)
 
         # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
         self.DATASTRINGS = []
         self.enableToolsAndOptionsMenus(False)
 
-        self.dataDisplay = None
-        self.plotMenu = None
-        self.spectra = None
-        self.dynSpectra = None
-        self.dynCohPha = None
-        self.dynWave = None
-        self.traj = None
         self.plotAppr = None
         self.addTickLbls = None
-        self.edit = None
-        self.traceStats = None
         self.helpWindow = None
         self.aboutDialog = None
         self.FIDs = []
         self.tickOffset = 0 # Smallest tick in data, used when plotting x data
         self.smoothing = None
-        self.detrendWin = None
         self.currSelect = None
         self.savedRegion = None
         self.fixedSelect = None
@@ -185,12 +174,28 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.asc = None
         self.batchSelect = None
 
-        # MMS Tools
-        self.planeNormal = None
-        self.curlometer = None
-        self.curvature = None
-        self.electronPAD = None
-        self.electronOMNI = None
+        self.toolNames = ['Data', 'Edit', 'Plot Menu', 'Detrend', 'Spectra',
+            'Dynamic Spectra', 'Dynamic Coh/Pha', 'Wave Analysis',
+            'Trajectory Analysis', 'Stats', 'Electron/Ion Spectrum',
+            'Electron PAD', 'Plane Normal', 'Curlometer', 'Curvature']
+
+        self.toolAbbrv = ['Data', 'Edit', 'PlotMenu', 'Detrend', 'Spectra',
+            'DynSpectra', 'DynCohPha', 'DynWave', 'Traj', 'Stats',
+            'EOMNI', 'EPAD', 'PlaneNormal', 'Curlometer', 'Curvature']
+
+        self.toolInitFuncs  = [self.showData, self.openEdit, self.openPlotMenu,
+            self.startDetrend, self.startSpectra, self.startDynamicSpectra,
+            self.startDynamicCohPha, self.startDynWave, self.openTraj,
+            self.startTraceStats, self.startEOMNI, self.startEPAD,
+            self.openPlaneNormal, self.openCurlometer, self.openCurlometer]
+
+        self.tools = {}
+        self.toolNameMap = {}
+        self.toolFuncs = {}
+        for name, abbrv, f in zip(self.toolNames, self.toolAbbrv, self.toolInitFuncs):
+            self.toolNameMap[name] = abbrv
+            self.tools[abbrv] = None
+            self.toolFuncs[abbrv] = f
 
         # these are saves for options for program lifetime
         self.plotMenuTableMode = True
@@ -238,11 +243,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.startUp = True
 
-    def openBatchSelect(self):
-        self.closeTimeSelect()
-        self.closeFixSelection()
-        self.closeBatchSelect()
-        self.closePlotTools()
+    def openBatchSelect(self, sigHand=False, closeTools=True):
+        if closeTools:
+            self.closeTimeSelect()
+            self.closeFixSelection()
+            self.closeBatchSelect()
+            self.closePlotTools()
         self.batchSelect = BatchSelect(self)
         self.batchSelect.show()
         self.updateSelectionMenu()
@@ -288,9 +294,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             newTO, newTE = self.chkBoundaries(newTO, newTE, winWidth)
 
         self.setNewWindowTicks(newTO, newTE)
-
-    def enableMouseDrag(self, val):
-        self.mouseEnabled = val
 
     def shiftWinRgt(self):
         self.shiftWindow('R')
@@ -416,7 +419,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.customPens = []
         self.pltGrd = None
         self.regions = []
-        self.newVars = []
+        self.cstmVars = []
 
     def updateSelectionMenu(self):
         # Set certain selection tools visible/hidden depending on
@@ -450,29 +453,29 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionFixSelection.setVisible(fixSelectVisible)
 
     def closePlotMenu(self):
-        if self.plotMenu:
-            self.plotMenu.close()
-            self.plotMenu = None
+        if self.tools['PlotMenu']:
+            self.tools['PlotMenu'].close()
+            self.tools['PlotMenu'] = None
 
     def closeEdit(self):
-        if self.edit:
-            self.edit.close()
-            self.edit = None
+        if self.tools['Edit']:
+            self.tools['Edit'].close()
+            self.tools['Edit'] = None
 
     def closeData(self):
-        if self.dataDisplay:
-            self.dataDisplay.close()
-            self.dataDisplay = None
+        if self.tools['Data']:
+            self.tools['Data'].close()
+            self.tools['Data'] = None
 
     def closeTraceStats(self):
-        if self.traceStats:
-            self.traceStats.close()
-            self.traceStats = None
+        if self.tools['Stats']:
+            self.tools['Stats'].close()
+            self.tools['Stats'] = None
 
     def closeSpectra(self):
-        if self.spectra:
-            self.spectra.close()
-            self.spectra = None
+        if self.tools['Spectra']:
+            self.tools['Spectra'].close()
+            self.tools['Spectra'] = None
 
     def closeHelp(self):
         if self.helpWindow:
@@ -493,26 +496,26 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def startEOMNI(self):
         self.closeEOMNI()
-        if self.electronOMNI is None or self.electronOMNI.wasClosed:
-            self.electronOMNI = ElectronOmni(self)
-            self.initGeneralSelect('Electron/Ion Spectrum', None, self.electronOMNI.ui.timeEdit,
+        if self.tools['EOMNI'] is None or self.tools['EOMNI'].wasClosed:
+            self.tools['EOMNI'] = ElectronOmni(self)
+            self.initGeneralSelect('Electron/Ion Spectrum', None, self.tools['EOMNI'].ui.timeEdit,
             'Single', self.showEOMNI, closeFunc=self.closeEOMNI)
 
     def showEOMNI(self):
-        if self.electronOMNI:
-            self.electronOMNI.show()
-            self.electronOMNI.update()
+        if self.tools['EOMNI']:
+            self.tools['EOMNI'].show()
+            self.tools['EOMNI'].update()
 
     def closeEOMNI(self):
-        if self.electronOMNI:
-            self.electronOMNI.close()
-            self.electronOMNI = None
+        if self.tools['EOMNI']:
+            self.tools['EOMNI'].close()
+            self.tools['EOMNI'] = None
 
     def startEPAD(self):
         self.closeEPAD()
-        if self.electronPAD is None or self.electronPAD.wasClosed:
-            self.electronPAD = ElectronPitchAngle(self)
-            self.initGeneralSelect('Electron PAD', '#0a22ff', self.electronPAD.ui.timeEdit, 
+        if self.tools['EPAD'] is None or self.tools['EPAD'].wasClosed:
+            self.tools['EPAD'] = ElectronPitchAngle(self)
+            self.initGeneralSelect('Electron PAD', '#0a22ff', self.tools['EPAD'].ui.timeEdit, 
             'Single', self.showEPAD, closeFunc=self.closeEPAD)
 
     def editEPAD(self):
@@ -603,74 +606,74 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.currSelect.leftClick(plotTimes[-1], 0)
 
     def closeEPAD(self):
-        if self.electronPAD:
-            self.electronPAD.close()
-            self.electronPAD = None
+        if self.tools['EPAD']:
+            self.tools['EPAD'].close()
+            self.tools['EPAD'] = None
     
     def showEPAD(self):
-        if self.electronPAD:
+        if self.tools['EPAD']:
             self.clearStatusMsg()
-            self.electronPAD.show()
-            self.electronPAD.update()
+            self.tools['EPAD'].show()
+            self.tools['EPAD'].update()
 
     def openCurlometer(self):
         self.closeMMSTools()
-        self.curlometer = Curlometer(self)
-        self.initGeneralSelect('Curlometer', '#ffa500', self.curlometer.ui.timeEdit, 
+        self.tools['Curlometer'] = Curlometer(self)
+        self.initGeneralSelect('Curlometer', '#ffa500', self.tools['Curlometer'].ui.timeEdit, 
             'Adjusting', self.showCurlometer, self.updateCurlometer, 
             closeFunc=self.closeCurlometer, maxSteps=-1)
 
     def showCurlometer(self):
-        if self.curlometer:
-            self.curlometer.show()
-            self.curlometer.calculate()
+        if self.tools['Curlometer']:
+            self.tools['Curlometer'].show()
+            self.tools['Curlometer'].calculate()
 
     def closeCurlometer(self):
-        if self.curlometer:
-            self.curlometer.close()
-            self.curlometer = None
+        if self.tools['Curlometer']:
+            self.tools['Curlometer'].close()
+            self.tools['Curlometer'] = None
 
     def openCurvature(self):
         self.closeMMSTools()
-        self.curvature = Curvature(self)
-        self.initGeneralSelect('Curvature', '#ff4242', self.curvature.ui.timeEdit,
+        self.tools['Curvature'] = Curvature(self)
+        self.initGeneralSelect('Curvature', '#ff4242', self.tools['Curvature'].ui.timeEdit,
             'Adjusting', self.showCurvature, self.updateCurvature, self.closeCurvature,
             maxSteps=-1)
 
     def showCurvature(self):
-        if self.curvature:
-            self.curvature.show()
-            self.curvature.updateCalculations()
+        if self.tools['Curvature']:
+            self.tools['Curvature'].show()
+            self.tools['Curvature'].updateCalculations()
 
     def closeCurvature(self):
-        if self.curvature:
+        if self.tools['Curvature']:
             self.endGeneralSelect()
-            self.curvature.close()
+            self.tools['Curvature'].close()
 
     def openPlaneNormal(self):
         self.closeMMSTools()
-        self.planeNormal = PlaneNormal(self)
+        self.tools['PlaneNormal'] = PlaneNormal(self)
         self.initGeneralSelect('Plane Normal', '#42f495', None, 'Single',
-            self.showNormal, closeFunc=self.closePlaneNormal)
+            startFunc=self.showNormal, closeFunc=self.closePlaneNormal)
 
     def showNormal(self):
-        if self.planeNormal:
-            self.planeNormal.show()
-            self.planeNormal.calculate()
+        if self.tools['PlaneNormal']:
+            self.tools['PlaneNormal'].show()
+            self.tools['PlaneNormal'].update()
 
     def closePlaneNormal(self):
-        if self.planeNormal:
-            self.planeNormal.close()
-            self.planeNormal = None
+        if self.tools['PlaneNormal']:
+            self.tools['PlaneNormal'].close()
+            self.tools['PlaneNormal'] = None
             self.endGeneralSelect()
 
     def openPlotMenu(self):
         self.closePlotMenu()
-        self.plotMenu = PlotMenu(self)
+        self.tools['PlotMenu'] = PlotMenu(self)
 
         geo = self.geometry()
-        self.plotMenu.move(geo.x() + 200, geo.y() + 100)
-        self.plotMenu.show()
+        self.tools['PlotMenu'].move(geo.x() + 200, geo.y() + 100)
+        self.tools['PlotMenu'].show()
 
     def openPlotAppr(self):
         self.closePlotAppr()
@@ -695,34 +698,34 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def openEdit(self):
         self.closeTraceStats()
         self.closeEdit()
-        self.edit = Edit(self)
-        self.edit.show()
+        self.tools['Edit'] = Edit(self)
+        self.tools['Edit'].show()
 
     def openTraj(self):
         self.closeTraceStats()
         self.closeTraj()
-        self.traj = TrajectoryAnalysis(self)
+        self.tools['Traj'] = TrajectoryAnalysis(self)
 
-        if not self.traj.validState():
-            self.traj.close()
-            self.traj = None
+        if not self.tools['Traj'].validState():
+            self.tools['Traj'].close()
+            self.tools['Traj'] = None
             errMsg = 'Error: Cannot open trajectory analysis window without position data'
             self.ui.statusBar.showMessage(errMsg)
             return
 
-        self.initGeneralSelect('Trajectory Analysis', '#34ebdc', self.traj.ui.timeEdit, 'Single',
+        self.initGeneralSelect('Trajectory Analysis', '#34ebdc', self.tools['Traj'].ui.timeEdit, 'Single',
             self.startTraj, closeFunc=self.closeTraj)
 
     def startTraj(self):
-        if self.traj:
-            self.traj.show()
-            self.traj.ui.altFrame.updatePlot()
-            self.traj.ui.orbitFrame.updatePlot()
+        if self.tools['Traj']:
+            self.tools['Traj'].show()
+            self.tools['Traj'].ui.altFrame.updatePlot()
+            self.tools['Traj'].ui.orbitFrame.updatePlot()
     
     def closeTraj(self):
-        if self.traj is not None:
-            self.traj.close()
-            self.traj = None
+        if self.tools['Traj'] is not None:
+            self.tools['Traj'].close()
+            self.tools['Traj'] = None
 
     def fixSelection(self):
         if self.currSelect is None or self.currSelect.regions == []:
@@ -730,19 +733,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Initialize interface
         self.closeFixSelection()
-        self.fixedSelect = FixedSelection(self)
-
-        # Create a linked region object
-        self.savedRegion = GeneralSelect(self, 'Single', 'Saved Selection', '#595959', 
-            self.fixedSelect.ui.timeEdit, None, closeFunc=self.closeFixSelection)
-        self.savedRegion.setLabelPos('bottom')
-        self.savedRegion.autoSetRegion(0,0)
+        self.openFixedSelection()
 
         # Adjust the time/lines to match current selection
         strt = self.currSelect.timeEdit.start.dateTime()
         end = self.currSelect.timeEdit.end.dateTime()
         self.fixedSelect.setTimeEdit(strt, end)
 
+    def openFixedSelection(self):
+        self.fixedSelect = FixedSelection(self)
+
+        # Create a linked region object
+        self.savedRegion = GeneralSelect(self, 'Single', 'Saved Selection', '#595959', 
+            self.fixedSelect.ui.timeEdit, None, closeFunc=self.closeFixSelection)
+        self.savedRegion.setLabelPos('bottom')
+        self.savedRegion.addRegion(0, 0)
         self.fixedSelect.show()
 
     def closeSavedRegion(self):
@@ -770,11 +775,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def selectTimeRegion(self, t0, t1):
         if self.currSelect is None:
-            self.openTraceStats()
-            self.setTraceAsSelect()
+            self.startTraceStats()
 
         if self.currSelect:
-            self.currSelect.autoSetRegion(t0-self.tickOffset, t1-self.tickOffset)
+            self.currSelect.addRegion(t0-self.tickOffset, t1-self.tickOffset)
 
     def showData(self):
         # show error message for when loading cdfs because not ported yet
@@ -787,117 +791,123 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             return
 
         self.closeData() # this isnt actually needed it still closes somehow?
-        self.dataDisplay = DataDisplay(self, self.FIDs, Title='Flatfile Data')
-        self.dataDisplay.show()
+        self.tools['Data'] = DataDisplay(self, self.FIDs, Title='Flatfile Data')
+        self.tools['Data'].show()
 
     def openTraceStats(self):
+        if self.tools['Stats']:
+            self.tools['Stats'].show()
+
+    def startTraceStats(self):
         self.closePlotTools()
-        self.traceStats = TraceStats(self)
-        self.traceStats.show()
+        self.closeTraceStats()
+        self.tools['Stats'] = TraceStats(self)
+        self.initGeneralSelect('Stats', None, self.tools['Stats'].ui.timeEdit,
+            'Adjusting', self.openTraceStats, self.updateTraceStats, closeFunc=self.closeTraceStats, 
+            maxSteps=-1)
 
     def startDynamicSpectra(self):
         self.closePlotTools()
-        if not self.dynSpectra or self.dynSpectra.wasClosed:
-            self.dynSpectra = DynamicSpectra(self)
-            self.initGeneralSelect('Dynamic Spectra', '#c700ff', self.dynSpectra.ui.timeEdit,
+        if not self.tools['DynSpectra'] or self.tools['DynSpectra'].wasClosed:
+            self.tools['DynSpectra'] = DynamicSpectra(self)
+            self.initGeneralSelect('Dynamic Spectra', '#c700ff', self.tools['DynSpectra'].ui.timeEdit,
                 'Single', self.showDynamicSpectra, self.updateDynamicSpectra,
                 closeFunc=self.closeDynamicSpectra)
             self.showStatusMsg('Selecting dynamic spectrogram range...')
 
     def showDynamicSpectra(self):
-        if self.dynSpectra:
+        if self.tools['DynSpectra']:
             self.clearStatusMsg()
-            self.dynSpectra.show()
-            self.dynSpectra.updateParameters()
-            self.dynSpectra.update()
+            self.tools['DynSpectra'].show()
+            self.tools['DynSpectra'].update()
 
     def closeDynamicSpectra(self):
-        if self.dynSpectra:
+        if self.tools['DynSpectra']:
             self.clearStatusMsg()
-            self.dynSpectra.close()
-            self.dynSpectra = None
+            self.tools['DynSpectra'].close()
+            self.tools['DynSpectra'] = None
 
     def startDynamicCohPha(self):
         self.closePlotTools()
-        if not self.dynCohPha or self.dynCohPha.wasClosed:
-            self.dynCohPha = DynamicCohPha(self)
+        if not self.tools['DynCohPha'] or self.tools['DynCohPha'].wasClosed:
+            self.tools['DynCohPha'] = DynamicCohPha(self)
             self.showStatusMsg('Selecting dynamic coherence/phase range...')
-            self.initGeneralSelect('Dynamic Coh/Pha', '#c551ff', self.dynCohPha.ui.timeEdit,
+            self.initGeneralSelect('Dynamic Coh/Pha', '#c551ff', self.tools['DynCohPha'].ui.timeEdit,
                 'Single', self.showDynamicCohPha, self.updateDynCohPha, 
                 closeFunc=self.closeDynamicCohPha)
 
     def showDynamicCohPha(self):
-        if self.dynCohPha:
+        if self.tools['DynCohPha']:
             self.clearStatusMsg()
-            self.dynCohPha.show()
-            self.dynCohPha.updateParameters()
-            self.dynCohPha.update()
+            self.tools['DynCohPha'].show()
+            self.tools['DynCohPha'].update()
 
     def closeDynamicCohPha(self):
-        if self.dynCohPha:
+        if self.tools['DynCohPha']:
             self.clearStatusMsg()
-            self.dynCohPha.close()
-            self.dynCohPha = None
+            self.tools['DynCohPha'].close()
+            self.tools['DynCohPha'] = None
 
     def startSpectra(self):
         self.closePlotTools()
-        if not self.spectra or self.spectra.wasClosed:
-            self.spectra = Spectra(self)
+        if not self.tools['Spectra'] or self.tools['Spectra'].wasClosed:
+            self.tools['Spectra'] = Spectra(self)
+            spectra = self.tools['Spectra']
             self.showStatusMsg('Selecting spectra range...')
-            self.initGeneralSelect('Spectra', '#c551ff', self.spectra.ui.timeEdit,
+            self.initGeneralSelect('Spectra', '#c551ff', spectra.ui.timeEdit,
                 'Single', self.showSpectra, closeFunc=self.closeSpectra)
 
     def showSpectra(self):
-        if self.spectra:
+        if self.tools['Spectra']:
             self.clearStatusMsg()
-            self.spectra.show()
-            self.spectra.update()
-            PyQtUtils.moveToFront(self.spectra)
-            QtCore.QTimer.singleShot(100, self.spectra.setAspect)
+            self.tools['Spectra'].show()
+            self.tools['Spectra'].update()
+            PyQtUtils.moveToFront(self.tools['Spectra'])
+            QtCore.QTimer.singleShot(100, self.tools['Spectra'].setAspect)
 
     def startDynWave(self):
         self.closeDynWave()
-        if not self.dynWave or self.dynWave.wasClosed:
-            self.dynWave = DynamicWave(self)
-            self.dynWave.showPreSelectWin()
-            self.initGeneralSelect('Wave Analysis', None, self.dynWave.ui.timeEdit,
+        if not self.tools['DynWave'] or self.tools['DynWave'].wasClosed:
+            self.tools['DynWave'] = DynamicWave(self)
+            self.tools['DynWave'].showPreSelectWin()
+            self.initGeneralSelect('Wave Analysis', None, self.tools['DynWave'].ui.timeEdit,
                 'Single', self.showDynWave, self.updateDynWave,
                 closeFunc=self.closeDynWave)
 
     def showDynWave(self):
-        if self.dynWave:
-            self.dynWave.show()
-            self.dynWave.setUserSelections()
-            self.dynWave.update()
+        if self.tools['DynWave']:
+            self.tools['DynWave'].show()
+            self.tools['DynWave'].setUserSelections()
+            self.tools['DynWave'].update()
 
     def closeDynWave(self):
-        if self.dynWave:
-            self.dynWave.close()
-            self.dynWave = None
+        if self.tools['DynWave']:
+            self.tools['DynWave'].close()
+            self.tools['DynWave'] = None
 
     def startDetrend(self):
         self.closePlotTools()
-        self.detrendWin = DetrendWindow(self)
+        self.tools['Detrend'] = DetrendWindow(self)
         self.showStatusMsg('Selecting region of data to detrend...')
-        self.initGeneralSelect('Detrend', '#00d122', self.detrendWin.ui.timeEdit,
+        self.initGeneralSelect('Detrend', '#00d122', self.tools['Detrend'].ui.timeEdit,
             'Single', self.showDetrend, closeFunc=self.closeDetrend)
 
     def showDetrend(self):
-        if self.detrendWin:
+        if self.tools['Detrend']:
             self.clearStatusMsg()
-            self.detrendWin.update()
-            self.detrendWin.show()
+            self.tools['Detrend'].update()
+            self.tools['Detrend'].show()
 
     def closeDetrend(self):
-        if self.detrendWin:
-            self.detrendWin.close()
-            self.detrendWin = None
+        if self.tools['Detrend']:
+            self.tools['Detrend'].close()
+            self.tools['Detrend'] = None
 
     def startSmoothing(self):
         self.closeSmoothing()
-        if self.edit:
-            self.edit.showMinimized()
-            self.smoothing = SmoothingTool(self, self.edit)
+        if self.tools['Edit']:
+            self.tools['Edit'].showMinimized()
+            self.smoothing = SmoothingTool(self, self.tools['Edit'])
             self.smoothing.restartSelect()
             self.smoothing.show()
 
@@ -919,8 +929,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def toggleAntialiasing(self):
         pg.setConfigOption('antialias', self.ui.antialiasAction.isChecked())
         self.replotData()
-        if self.spectra:
-            self.spectra.update()
+        if self.tools['Spectra']:
+            self.tools['Spectra'].update()
 
     def getPrunedData(self, dstr, en, a, b):
         """returns data with error values removed and nothing put in their place (so size reduces)"""
@@ -1004,7 +1014,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         return filename
 
-    def openFileDialog(self, isFlatfile, clearCurrent):
+    def openFileDialog(self, isFlatfile, clearCurrent, ascState=None):
         fileNames = []
         if isFlatfile:
             fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='Flat Files (*.ffd)')[0]
@@ -1017,10 +1027,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if isFlatfile:
             self.openFileList(fileNames, isFlatfile, clearCurrent)
         else:
-            self.openAscDialog(fileNames)
+            self.openAscDialog(fileNames, ascState)
 
     def validFilenames(self, fileNames):
-        fileNames = list(fileNames)
         for fileName in fileNames:
             if '.' not in fileName: # lazy extension check
                 print(f'Bad file found, cancelling open operation')
@@ -1038,7 +1047,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.FIDs = []
             self.initDataStorageStructures()
 
-        for fileName in fileNames:
+        for i in range(0, len(fileNames)):
+            fileName = fileNames[i]
             if isFlatfile:        
                 fileName = fileName.rsplit(".", 1)[0] #remove extension
                 self.openFF(fileName)
@@ -1134,11 +1144,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             d.pop(dstr)
 
     def setPlotAttrs(self, pi):
-        # add some lines used to show where time series sliders will zoom to
-        # trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=self.trackerPen)
-        # pi.addItem(trackerLine)
-        # self.trackerLines.append(trackerLine)
-
         # add horizontal zero line
         zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
         zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
@@ -1162,8 +1167,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def initNewVar(self, dstr, dta, units='', times=None):
         # Add new variable name to list of datastrings
-        if dstr not in self.newVars:
-            self.newVars.append(dstr)
+        if dstr not in self.cstmVars:
+            self.cstmVars.append(dstr)
             self.DATASTRINGS.append(dstr)
         self.ABBRV_DSTR_DICT[dstr] = dstr
 
@@ -1774,9 +1779,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def loadColorPlot(self, plotInfo, name, gradLbl, units, index=None):
         # Extract specific plot info and offset times by main window's tick offset
-        grid, x, y, grad, logY, logColor, valRng = plotInfo
+        grid, x, y, logY, logColor, valRng = plotInfo
         x = x - self.tickOffset
-        plotInfo = (grid, x, y, grad, logY, logColor, valRng)
+        plotInfo = (grid, x, y, logY, logColor, valRng)
 
         # Generate plot item
         vb = MagPyViewBox(self, self.pltGrd.numPlots if index is None else index)
@@ -2001,6 +2006,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             j = 0
             while j < len(plotStrs):
                 dstr, editNum = plotStrs[j]
+                prevEdit = editNum
                 if editNum < 0:
                     subPltStrs.append((dstr, editNum))
                     j += 1
@@ -2020,6 +2026,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 plotStrs[j] = dstr,editNum #save incase changes were made (so this reflects elsewhere)
 
                 self.plotTrace(pi, dstr, editNum, pens[j])
+
+                # Update custom pens
+                if i < len(self.customPens):
+                    cstmPenIndex = 0
+                    for cstmDstr, cstmEn, cstmPen in self.customPens[i]:
+                        if cstmDstr == dstr and cstmEn == prevEdit:
+                            self.customPens[i][cstmPenIndex] = (dstr, editNum, cstmPen)
+                        cstmPenIndex += 1
+
                 subPltStrs.append((dstr, editNum))
 
                 j+=1
@@ -2192,28 +2207,28 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.updateYRange()
 
     def updateTraceStats(self):
-        if self.traceStats:
-            self.traceStats.update()
+        if self.tools['Stats']:
+            self.tools['Stats'].update()
 
     def updateCurlometer(self):
-        if self.curlometer:
-            self.curlometer.calculate()
+        if self.tools['Curlometer']:
+            self.tools['Curlometer'].calculate()
 
     def updateDynCohPha(self):
-        if self.dynCohPha:
-            self.dynCohPha.updateParameters()
+        if self.tools['DynCohPha']:
+            self.tools['DynCohPha'].updateParameters()
 
     def updateDynamicSpectra(self):
-        if self.dynSpectra:
-            self.dynSpectra.updateParameters()
+        if self.tools['DynSpectra']:
+            self.tools['DynSpectra'].updateParameters()
 
     def updateDynWave(self):
-        if self.dynWave:
-            self.dynWave.updateParameters()
+        if self.tools['DynWave']:
+            self.tools['DynWave'].updateParameters()
 
     def updateCurvature(self):
-        if self.curvature:
-            self.curvature.updateCalculations()
+        if self.tools['Curvature']:
+            self.tools['Curvature'].updateCalculations()
 
     def mouseDragPlots(self, ev):
         # Allow mouse dragging only in stats mode
@@ -2258,25 +2273,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             timeEdit.linesConnected = False
         self.currSelect = GeneralSelect(self, mode, name, color, timeEdit,
             func=startFunc, updtFunc=updtFunc, closeFunc=closeFunc, maxSteps=maxSteps)
-
+        
         # Enable selection menu
         self.currSelect.setFullSelectionTrigger(self.updateSelectionMenu)
 
         # Apply a saved region if there is one
         if self.savedRegion:
             a, b = self.savedRegion.regions[0].getRegion()
-            self.currSelect.autoSetRegion(a-self.tickOffset,b-self.tickOffset)
+            self.currSelect.addRegion(a-self.tickOffset,b-self.tickOffset)
         elif self.batchSelect:
             # If batch select is open and one of the following tools
             tools = ['Spectra', 'Dynamic Spectra', 'Dynamic Coh/Pha',
                 'Wave Analysis', 'Detrend']
-            toolObjs = [self.spectra, self.dynSpectra, self.dynCohPha, self.dynWave,
-                self.detrendWin]
-            toolDict = {}
-            for k, v in zip(tools, toolObjs):
-                toolDict[k] = v
 
             if name in tools:
+                abbrv = self.toolNameMap[name]
                 # Auto-select an empty region
                 self.currSelect.leftClick(0, 0)
                 self.currSelect.leftClick(0, 0)
@@ -2284,17 +2295,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 # Bring batch select to the top and set the function it will
                 # call to update the tool window
                 self.batchSelect.raise_()
-                self.batchSelect.setUpdateInfo(timeEdit, toolDict[name].update)
+                self.batchSelect.setUpdateInfo(timeEdit, self.tools[abbrv].update)
                 self.batchSelect.update()
 
                 # Show tool window
-                toolDict[name].show()
+                self.tools[abbrv].show()
 
     def endGeneralSelect(self):
         if self.currSelect:
             self.currSelect.closeAllRegions()
             self.currSelect = None
-
             self.updateSelectionMenu()
 
         elif self.batchSelect:
@@ -2399,21 +2409,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Automatically select the section currently being viewed
         t0, t1 = self.tO-self.tickOffset, self.tE-self.tickOffset
         if self.currSelect == None:
-            self.openTraceStats()
-            self.setTraceAsSelect()
-        self.currSelect.leftClick(t0, 0, False)
-        self.currSelect.leftClick(t1, 0, False)
+            self.startTraceStats()
+        self.currSelect.addRegion(t0, t1)
 
-    def setTraceAsSelect(self):
-        self.initGeneralSelect('Stats', None, self.traceStats.ui.timeEdit,
-            'Adjusting', None, self.updateTraceStats, closeFunc=self.closeTraceStats, 
-            maxSteps=-1)
+    def getCurrentTool(self, setTrace=True):
+        if self.currSelect:
+            return self.currSelect
+        elif setTrace:
+            self.startTraceStats()
+            return self.currSelect
+        else:
+            return None
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
-class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
+class MagPyViewBox(SelectableViewBox): # custom viewbox event handling
     def __init__(self, window, plotIndex, *args, **kwds):
-        pg.ViewBox.__init__(self, *args, **kwds)
+        SelectableViewBox.__init__(self, window, plotIndex, *args, **kwds)
         self.window = window
         self.plotIndex = plotIndex
         self.menuSetup()
@@ -2424,75 +2436,6 @@ class MagPyViewBox(pg.ViewBox): # custom viewbox event handling
         xAction, yAction, mouseAction = actions[1:4]
         for a in [xAction, mouseAction]:
             self.menu.removeAction(a)
-
-    def onLeftClick(self, ev):
-        # map the mouse click to data coordinates
-        mc = self.mapToView(ev.pos())
-        x = mc.x()
-        y = mc.y()
-
-        if self.window.currSelect == None:
-            self.window.openTraceStats()
-            self.window.initGeneralSelect('Stats', None, self.window.traceStats.ui.timeEdit,
-                'Adjusting', None, self.window.updateTraceStats, 
-                closeFunc=self.window.closeTraceStats, maxSteps=-1)
-
-        ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
-        self.window.currSelect.leftClick(x, self.plotIndex, ctrlPressed)
-
-        if self.window.savedRegion:
-            self.window.savedRegion.leftClick(x, self.plotIndex, ctrlPressed)
-
-    # check if either of lines are visible for this viewbox
-    def anyLinesVisible(self):
-        isVisible = False
-        for region in self.window.regions:
-            if region.isVisible(self.plotIndex):
-                isVisible = True
-        return isVisible
-
-    # sets the lines of this viewbox visible
-    def setMyLinesVisible(self, isVisible):
-        for region in self.window.regions:
-            region.setVisible(isVisible, self.plotIndex)
-
-    def onRightClick(self, ev):
-        if self.window.currSelect:
-            self.window.currSelect.rightClick(self.plotIndex)
-            if self.window.savedRegion:
-                self.window.savedRegion.rightClick(self.plotIndex)
-        elif self.window.savedRegion:
-            self.window.savedRegion.rightClick(self.plotIndex)
-        else:
-            pg.ViewBox.mouseClickEvent(self, ev)
-
-    def mouseClickEvent(self, ev):
-        if ev.button() == QtCore.Qt.LeftButton:
-            if ev.double(): # double clicking will do same as right click
-                #self.onRightClick(ev)
-                pass # this seems to confuse people so disabling for now
-            else:
-               self.onLeftClick(ev)
-
-        else: # asume right click i guess, not sure about middle mouse button click
-            self.onRightClick(ev)
-
-        ev.accept()
-
-    def mouseDragEvent(self, ev, axis=None):
-        if self.window.mouseEnabled and (self.window.currSelect is None
-            or self.window.currSelect.name == 'Stats'): # If enabled in main window
-            self.window.mouseDragPlots(ev)
-            return
-        else: # Otherwise default to a click event
-            if ev.isFinish() and ev.button() == QtCore.Qt.LeftButton:
-                self.onLeftClick(ev)
-            elif ev.button() == QtCore.Qt.RightButton:
-                self.onRightClick(ev)
-        ev.accept()
-
-    def wheelEvent(self, ev, axis=None):
-        ev.ignore()
 
 # Wrapper class for Flat File FID functions
 class FF_FD():
@@ -2534,7 +2477,6 @@ def myexepthook(type, value, tb):
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
 
-    #appName = f'{appName} {version}';
     app.setOrganizationName('IGPP UCLA')
     app.setOrganizationDomain('igpp.ucla.edu')
     app.setApplicationName('MagPy4')

@@ -849,22 +849,21 @@ class SimpleColorPlot(pg.PlotItem):
         # Additional plot adjustments to tick lengths, axis z-values, etc.
         self.plotSetup()
 
-
     def isSpecialPlot(self):
         return True
 
     def getPlotInfo(self):
-        info = (self.mappedGrid, self.xTicks, self.yTicks, self.gradient, 
-            self.logYScale, self.logColor, self.valueRange)
+        info = (self.mappedGrid, self.xTicks, self.yTicks, self.logYScale, 
+            self.logColor, self.valueRange)
         return info
     
     def loadPlotInfo(self, plotInfo):
-        grid, x, y, grad, logY, logColor, valRng = plotInfo
+        grid, x, y, logY, logColor, valRng = plotInfo
         self.valueRange = valRng
         self.logColor = logColor
         self.setMappedGrid(grid, y, x)
         self.fillPlot()
-    
+
     def getColor(self, rgb):
         r, g, b = rgb
         return QtGui.QColor(r, g, b)

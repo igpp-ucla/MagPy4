@@ -98,11 +98,12 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
 
     def viewData(self):
         self.window.showData()
+        dataObj = self.window.tools['Data']
         if self.window.currentEdit > 0:
-            self.window.dataDisplay.ui.viewEdtdDta.setChecked(True)
+            dataObj.ui.viewEdtdDta.setChecked(True)
         startDt = self.ui.timeEdit.start.dateTime()
-        self.window.dataDisplay.ui.dateTimeEdit.setDateTime(startDt)
-        self.window.dataDisplay.moveByTime()
+        dataObj.ui.dateTimeEdit.setDateTime(startDt)
+        dataObj.moveByTime()
 
     def update(self):
         plotInfo = self.window.getSelectedPlotInfo()

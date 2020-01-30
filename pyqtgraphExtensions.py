@@ -62,6 +62,8 @@ class LinkedRegion(pg.LinearRegionItem):
         if self.linkedTE:
             self.updateTimeEditByLines(self.linkedTE)
 
+        self.updateEnabled = True
+
     def setLabelText(self, lbl):
         if len(self.regionItems) < 1:
             return
@@ -127,6 +129,12 @@ class LinkedRegion(pg.LinearRegionItem):
             return 0
         return self.regionItems[0].lines[lineNum].value()
 
+    def setFixedLine(self, val=True):
+        self.fixedLine = val
+    
+    def isFixedLine(self):
+        return self.fixedLine
+
     def isLine(self):
         # Returns True if region lines are at same position
         return (self.linePos(0) == self.linePos(1))
@@ -173,6 +181,9 @@ class LinkedRegion(pg.LinearRegionItem):
             subRegion.setVisible(val)
 
     def updateWindowInfo(self):
+        if not self.updateEnabled:
+            return
+
         if self.updateFunc and ((not self.fixedLine) or self.labelText == 'Curlometer'
             or self.labelText == 'Curvature' or self.labelText == 'Stats'):
             self.updateFunc()
@@ -193,6 +204,14 @@ class LinkedRegion(pg.LinearRegionItem):
     def setMovable(self, val):
         for item in self.regionItems:
             item.setMovable(val)
+
+    def setUpdateEnabled(self, val):
+        self.updateEnabled = val
+    
+    def mouseClickEvent(self, ev):
+        if self.labelText == 'Stats':
+            self.updateTimeEditByLines(self.linkedTE)
+            self.updateWindowInfo()
 
 class LinkedSubRegion(pg.LinearRegionItem):
     def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):
@@ -220,6 +239,10 @@ class LinkedSubRegion(pg.LinearRegionItem):
     def mouseDragEvent(self, ev):
         # If this sub-region is dragged, move all other sub-regions accordingly
         self.grp.mouseDragEvent(ev)
+    
+    def mouseClickEvent(self, ev):
+        self.grp.mouseClickEvent(ev)
+        pg.LinearRegionItem.mouseClickEvent(self ,ev)
 
 class MagPyPlotItem(pg.PlotItem):
     def isSpecialPlot(self):
@@ -568,7 +591,7 @@ class DateAxis(pg.AxisItem):
         # First check for override tick spacing
         if self._tickSpacing is not None:
             return self._tickSpacing
-        
+
         dif = abs(maxVal - minVal)
         if dif == 0:
             return []

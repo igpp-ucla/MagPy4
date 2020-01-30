@@ -116,18 +116,94 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         self.modifier = '_DT' # String appended to variable names
 
         # Analysis tools
-        self.spectra = None
-        self.dynSpectra = None
-        self.dynCohPha = None
-        self.traceStats = None
+        self.tools = {}
+        self.tools['Spectra'] = None
+        self.tools['DynSpectra'] = None
+        self.tools['DynCohPha'] = None
+        self.tools['Stats'] = None
+        self.selectState = None
 
-        # Connect buttons to functions
-        btnFuncs = [self.startSpectra,self.startDynSpectra,self.startDynCohPha]
-        for btn, btnFunc in zip(self.ui.btns, btnFuncs):
-            btn.clicked.connect(btnFunc)
+        # List of abbreviated versions of tool names
+        self.abbrvNames = ['Spectra', 'DynSpectra', 'DynCohPha', 'Stats']
+        self.toolFuncs = {} # Functions for starting up tools
+        self.abbrvs = {} # Maps selection name to abbreviated version of tool name
+
+        # List of tool names + their start functions
+        self.toolNames = ['Spectra', 'Dynamic Spectra', 'Dynamic Coh/Pha', 'Stats']
+        startFuncs = [self.startSpectra, self.startDynSpectra,
+            self.startDynCohPha, self.startTraceStats]
+
+        # Map tool names to abbreviations and start functions
+        for toolName, abbrv, func in zip(self.toolNames, self.abbrvNames, startFuncs):
+            self.abbrvs[toolName] = abbrv
+            self.toolFuncs[abbrv] = func
+
+        # Connect buttons to start functions
+        for btn, func in zip(self.ui.btns, startFuncs[:-1]):
+            btn.clicked.connect(func)
 
         self.ui.updtBtn.clicked.connect(self.update)
         self.ui.timeEdit.setupMinMax(self.window.getMinAndMaxDateTime())
+
+    def getState(self):
+        state = {}
+        tool = self.getCurrentTool(False)
+        if tool:
+            name, regions = tool.getSelectionInfo()
+            abbrv = self.abbrvs[name]
+            toolObj = self.tools[abbrv]
+
+            toolState = None
+            if toolObj and hasattr(toolObj, 'getState'):
+                toolState = toolObj.getState()
+            tool = (abbrv, regions, toolState)
+
+        state['tool'] = tool
+        state['mode'] = self.getDetrendType()
+        state['link'] = self.getLinkMode()
+        return state
+
+    def getToolObj(self, name):
+        tool = None
+        if name in self.abbrvs:
+            tool = self.tools[self.abbrvs[name]]
+        elif name in self.tools:
+            tool = self.tools[name]
+
+        return tool
+
+    def loadState(self, state):
+        # Set user-interface parameters
+        self.setDetrendType(state['mode'])
+        self.setLinkMode(state['link'])
+
+        # Set tools to be loaded after initial update
+        self.selectState = state['tool']
+
+    def loadToolsFromState(self):
+        # Loads tools from state information provided
+        if self.selectState is None:
+            return
+
+        # Re-open tools and adjust regions
+        name, regions, toolState = self.selectState
+        self.toolFuncs[name](select=False)
+        self.currSelect.loadToolFromState(regions, self.tools[name], toolState)
+
+        # Clear state after initial update
+        self.selectState = None
+
+    def getDetrendType(self):
+        return self.ui.detrendTypeBox.currentText()
+
+    def setDetrendType(self, mode):
+        self.ui.detrendTypeBox.setCurrentText(mode)
+
+    def setLinkMode(self, link):
+        self.ui.linkPlotsChk.setChecked(link)
+
+    def getLinkMode(self):
+        return self.ui.linkPlotsChk.isChecked()
 
     def closeEvent(self, event):
         self.closeSubWindows()
@@ -139,101 +215,119 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
             self.currSelect.closeAllRegions()
             self.currSelect = None
 
+    def getCurrentTool(self, setTrace=True):
+        if self.currSelect:
+            return self.currSelect
+        elif setTrace:
+            self.openTraceStats()
+            return self.currSelect
+        else:
+            return None
+
     def closeSubWindows(self):
         self.closeSpectra()
         self.closeDynSpectra()
         self.closeDynCohPha()
         self.closeTraceStats()
 
-    def startSpectra(self):
+    def startTraceStats(self):
+        self.openTraceStats(show=False)
+
+    def startSpectra(self, sigHand=False, select=True):
         self.closeSubWindows()
-        self.spectra = Spectra(self)
+        self.tools['Spectra'] = Spectra(self)
         self.currSelect = GeneralSelect(self, 'Single', 'Spectra', '#0000d1',
-            self.spectra.ui.timeEdit, self.openSpectra, 
+            self.tools['Spectra'].ui.timeEdit, self.openSpectra, 
             closeFunc=self.closeSpectra)
-        self.autoSelect()
+        if select:
+            self.autoSelect()
 
     def openSpectra(self):
-        if self.spectra:
-            self.spectra.update()
-            self.spectra.show()
+        if self.tools['Spectra']:
+            self.tools['Spectra'].update()
+            self.tools['Spectra'].show()
 
     def closeSpectra(self):
-        if self.spectra:
+        if self.tools['Spectra']:
             self.endGeneralSelect()
-            self.spectra.close()
-            self.spectra = None
+            self.tools['Spectra'].close()
+            self.tools['Spectra'] = None
 
-    def startDynSpectra(self):
+    def startDynSpectra(self, sigHand=False, select=True):
         self.closeSubWindows()
-        self.dynSpectra = DynamicSpectra(self)
+        self.tools['DynSpectra'] = DynamicSpectra(self)
         self.currSelect = GeneralSelect(self, 'Single', 'Dynamic Spectra', 
-            '#cc0000', self.dynSpectra.ui.timeEdit, self.openDynSpectra, 
+            '#cc0000', self.tools['DynSpectra'].ui.timeEdit, self.openDynSpectra, 
             self.updateDynSpectra, closeFunc=self.closeDynSpectra)
-        self.autoSelect()
+        if select:
+            self.autoSelect()
 
     def openDynSpectra(self):
-        if self.dynSpectra:
-            self.dynSpectra.updateParameters()
-            self.dynSpectra.update()
-            self.dynSpectra.show()
+        if self.tools['DynSpectra']:
+            self.tools['DynSpectra'].update()
+            self.tools['DynSpectra'].show()
 
     def closeDynSpectra(self):
-        if self.dynSpectra:
+        if self.tools['DynSpectra']:
             self.endGeneralSelect()
-            self.dynSpectra.close()
-            self.dynSpectra = None
+            self.tools['DynSpectra'].close()
+            self.tools['DynSpectra'] = None
 
-    def startDynCohPha(self):
+    def startDynCohPha(self, sigHand=False, select=True):
         self.closeSubWindows()
-        self.dynCohPha = DynamicCohPha(self)
+        self.tools['DynCohPha'] = DynamicCohPha(self)
         self.currSelect = GeneralSelect(self, 'Single', 'Dynamic Coh/Pha', 
-            '#00d643', self.dynCohPha.ui.timeEdit, self.openDynCohPha, 
+            '#00d643', self.tools['DynCohPha'].ui.timeEdit, self.openDynCohPha, 
             self.updateDynCohPha, closeFunc=self.closeDynCohPha)
-        self.autoSelect()
+        if select:
+            self.autoSelect()
 
     def openDynCohPha(self):
-        if self.dynCohPha:
-            self.dynCohPha.updateParameters()
-            self.dynCohPha.update()
-            self.dynCohPha.show()
+        if self.tools['DynCohPha']:
+            self.tools['DynCohPha'].update()
+            self.tools['DynCohPha'].show()
 
     def closeDynCohPha(self):
-        if self.dynCohPha:
+        if self.tools['DynCohPha']:
             self.endGeneralSelect()
-            self.dynCohPha.close()
-            self.dynCohPha = None
+            self.tools['DynCohPha'].close()
+            self.tools['DynCohPha'] = None
 
-    def openTraceStats(self):
+    def openTraceStats(self, show=True):
         self.closeSubWindows()
-        self.traceStats = TraceStats(self)
+        self.tools['Stats'] = TraceStats(self)
 
         # Remove buttons unnecessary for detrend window
-        viewBtn = self.traceStats.ui.dispRangeBtn
-        dtaBtn = self.traceStats.ui.dtaBtn
+        viewBtn = self.tools['Stats'].ui.dispRangeBtn
+        dtaBtn = self.tools['Stats'].ui.dtaBtn
         for elem in [viewBtn, dtaBtn]:
-            self.traceStats.ui.layout.removeWidget(elem)
+            self.tools['Stats'].ui.layout.removeWidget(elem)
             elem.deleteLater()
 
-        self.traceStats.show()
+        self.currSelect = GeneralSelect(self, 'Adjusting', 'Stats', None,
+            self.tools['Stats'].ui.timeEdit, updtFunc=self.updateTraceStats, 
+            closeFunc=self.closeTraceStats, maxSteps=-1)
+
+        if show:
+            self.tools['Stats'].show()
 
     def closeTraceStats(self):
-        if self.traceStats:
+        if self.tools['Stats']:
             self.endGeneralSelect()
-            self.traceStats.close()
-            self.traceStats = None
+            self.tools['Stats'].close()
+            self.tools['Stats'] = None
 
     def updateTraceStats(self):
-        if self.traceStats:
-            self.traceStats.update()
+        if self.tools['Stats']:
+            self.tools['Stats'].update()
 
     def updateDynCohPha(self):
-        if self.dynCohPha:
-            self.dynCohPha.updateParameters()
+        if self.tools['DynCohPha']:
+            self.tools['DynCohPha'].updateParameters()
 
     def updateDynSpectra(self):
-        if self.dynSpectra:
-            self.dynSpectra.updateParameters()
+        if self.tools['DynSpectra']:
+            self.tools['DynSpectra'].updateParameters()
 
     def autoSelect(self):
         # Auto-selects the entire range of detrended data
@@ -254,7 +348,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         self.ui.glw.addItem(self.pltGrd)
         self.pltGrd.addItem(pg.LabelItem('Detrended Data'), 0, 1, 1, 1)
 
-        detrendType = self.ui.detrendTypeBox.currentText().lower()
+        detrendType = self.getDetrendType().lower()
 
         plotNum = 0
         plotDataLists = []
@@ -344,9 +438,12 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         ba.setStyle(showValues=True)
 
         # Link plots if necessary
-        if self.ui.linkPlotsChk.isChecked():
+        if self.getLinkMode():
             dtas = [i for k, i in self.dtDatas.items()]
             self.linkPlots(plotDataLists, self.plotItems)
+
+        if self.selectState:
+            self.loadToolsFromState()
 
     def clearStatusMsg(self):
         return

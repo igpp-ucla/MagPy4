@@ -77,3 +77,9 @@ class TimeManager(object):
     
     def getTickFromTimestamp(self, ts):
         return FFTIME(ts, Epoch=self.epoch)._tick
+    
+    def setTimeEditByTicks(self, t0, t1, timeEdit):
+        dt0 = self.getDateTimeFromTick(t0)
+        dt1 = self.getDateTimeFromTick(t1)
+        timeEdit.start.setDateTime(dt0)
+        timeEdit.end.setDateTime(dt1)

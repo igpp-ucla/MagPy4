@@ -137,8 +137,6 @@ class MagPy4UI(object):
         self.bridgeDataGaps.setStatusTip('')
         self.drawPoints = QtWidgets.QAction('&Draw Points (Unoptimized)', checkable=True, checked=False)
         self.drawPoints.setStatusTip('')
-        self.enableMouseAction = QtWidgets.QAction('Enable Mouse Drags', checkable=True, checked=False)
-        self.enableMouseAction.setStatusTip('Enables standard panning and scaling of plots in x-direction')
 
         self.actionHelp = QtWidgets.QAction(window)
         self.actionHelp.setText('MagPy4 &Help')
@@ -201,7 +199,6 @@ class MagPy4UI(object):
         self.optionsMenu.addAction(self.antialiasAction)
         self.optionsMenu.addAction(self.bridgeDataGaps)
         self.optionsMenu.addAction(self.drawPoints)
-        self.optionsMenu.addAction(self.enableMouseAction)
 
         self.helpMenu = self.menuBar.addMenu('&Help')
         self.helpMenu.addAction(self.actionHelp)
