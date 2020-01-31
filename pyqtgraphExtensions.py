@@ -1386,3 +1386,59 @@ def vbMenu_UpdateState(self):
     self.valid = True
 
 pg.ViewBoxMenu.ViewBoxMenu.updateState = vbMenu_UpdateState
+
+from pyqtgraph.parametertree import Parameter
+class PDFExporter(pg.exporters.ImageExporter):
+    Name = "PDF Document"
+    allowCopy = False
+
+    def __init__(self, item):
+        pg.exporters.ImageExporter.__init__(self, item)
+
+        # Orientation option
+        self.params = Parameter(name='params', type='group', children=[
+            {'name':'Orientation: ', 'type':'list', 'values':['Portrait',
+                'Landscape']}
+        ])
+
+    def parameters(self):
+        return self.params
+
+    def export(self, fileName=None, toBytes=False, copy=False):
+        # Get a filename and add extension if it is missing
+        if fileName is None and not toBytes and not copy:
+            self.fileSaveDialog(filter='*.pdf')
+            return
+
+        if '.pdf' not in fileName:
+            fileName = f"{fileName}.pdf"
+
+        # Initialize PDF Writer paint device
+        self.pdfFile = QtGui.QPdfWriter(fileName)
+
+        # Set page orientation if user selected 'Landscape' mode
+        horzLt = self.params['Orientation: '] == 'Landscape'
+        if horzLt:
+            self.pdfFile.setPageOrientation(QtGui.QPageLayout.Landscape)
+
+        # Get the device resolution and set resolution for the PDF Writer
+        res = QtGui.QDesktopWidget().logicalDpiX()
+        self.pdfFile.setResolution(res)
+
+        # Get the source rect and the paintRect for the page w.r.t. the
+        # resolution given above
+        pageLt = self.pdfFile.pageLayout()
+        targetRect = pageLt.paintRectPixels(res)
+        sourceRect = self.getSourceRect()
+
+        # Start painter and render scene
+        painter = QtGui.QPainter(self.pdfFile)
+        try:
+            self.setExportMode(True, {'painter': painter})
+            self.getScene().render(painter, QtCore.QRectF(targetRect), QtCore.QRectF(sourceRect))
+        finally:
+            self.setExportMode(False)
+        painter.end()
+
+# Add PDF exporter to list of exporters
+PDFExporter.register()
