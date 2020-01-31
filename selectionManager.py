@@ -68,6 +68,22 @@ class GeneralSelect(object):
         regions = [region.getRegion() for region in self.regions]
         return (self.name, regions)
 
+    def loadToolFromState(self, regions, tool, state):
+        # Add in selected regions
+        ofst = self.window.tickOffset
+        for start, stop in regions:
+            self.addRegion(start-ofst, stop-ofst, update=False)
+
+        # Make any minor state updates
+        self.updateTimeEdit()
+        self.callUpdateFunc()
+
+        # Load tool state
+        if state is not None:
+            tool.loadState(state)
+
+        self.callOpenFunc()
+
     def isFullySelected(self):
         val = False
         if self.mode in ['Line', 'Adjusting'] and len(self.regions) >= 1:
@@ -394,6 +410,15 @@ class FixedSelection(QtWidgets.QFrame, FixedSelectionUI):
         strt = self.ui.timeEdit.start.dateTime().toPyDateTime()
         end = self.ui.timeEdit.end.dateTime().toPyDateTime()
         return strt, end
+
+    def getState(self):
+        state = {}
+        state['TimeEdit'] = self.getTimeEditValues()
+        return state
+
+    def loadState(self, state):
+        start, end = state['TimeEdit']
+        self.setTimeEdit(start, end)
 
     def closeEvent(self, ev):
         self.close()
@@ -770,6 +795,16 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
 
         if updateFunc:
             updateFunc()
+
+    def getState(self):
+        state = {}
+        state['Regions'] = self.getRegions(ticks=False)
+        return state
+
+    def loadState(self, state):
+        regions = state['Regions']
+        for start, stop in regions:
+            self.addRegion(start, stop)
 
     def closeEvent(self, ev):
         self.linkedRegion.closeAllRegions()

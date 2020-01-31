@@ -7,7 +7,6 @@ import numpy as np
 import datetime, time
 import bisect, functools
 import os
-# from tqdm import tqdm
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8

@@ -81,18 +81,19 @@ class Edit(QtWidgets.QFrame, EditUI):
             self.ui.smoothBtn.clicked.connect(window.startSmoothing)
 
     def closeEvent(self, event):
-        # save edit history
-        hist = []
-        for i in range(len(self.history)):
-            hist.append((self.history[i],self.ui.history.item(i).text()))
-            #print(f'{hist[i][0]} {hist[i][1]}' )
-        hist.append(([], self.ui.history.currentRow())) # save row that was selected as last element
-
-        self.window.editHistory = hist
+        # Save edit history
+        self.window.editHistory = self.getEditHistory()
 
         self.closeCustomRot()
         self.closeMinVar()
         self.closeSimpleCalc()
+    
+    def getEditHistory(self):
+        hist = []
+        for i in range(len(self.history)):
+            hist.append((self.history[i],self.ui.history.item(i).text()))
+        hist.append(([], self.ui.history.currentRow())) # save row that was selected as last element
+        return hist
 
     def closeSubWindows(self):
         self.closeCustomRot()

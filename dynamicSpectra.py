@@ -151,11 +151,11 @@ class DynamicSpectraUI(BaseLayout):
         minTip = 'Minimum power level represented by color gradient'
         maxTip = 'Maximum power level represented by color gradient'
 
-        self.powerMin = QtWidgets.QDoubleSpinBox()
-        self.powerMax = QtWidgets.QDoubleSpinBox()
+        self.valueMin = QtWidgets.QDoubleSpinBox()
+        self.valueMax = QtWidgets.QDoubleSpinBox()
 
         # Set spinbox defaults
-        for box in [self.powerMax, self.powerMin]:
+        for box in [self.valueMax, self.valueMin]:
             box.setPrefix('10^')
             box.setMinimum(-100)
             box.setMaximum(100)
@@ -164,16 +164,16 @@ class DynamicSpectraUI(BaseLayout):
         spc = '       ' # Spaces that keep spinbox lbls aligned w/ chkbx lbl
 
         rangeLt.addWidget(self.selectToggle, 0, 0, 1, 2)
-        self.maxLbl = self.addPair(rangeLt, spc+'Max: ', self.powerMax, 1, 0, 1, 1, maxTip)
-        self.minLbl = self.addPair(rangeLt, spc+'Min: ', self.powerMin, 2, 0, 1, 1, minTip)
+        self.maxLbl = self.addPair(rangeLt, spc+'Max: ', self.valueMax, 1, 0, 1, 1, maxTip)
+        self.minLbl = self.addPair(rangeLt, spc+'Min: ', self.valueMin, 2, 0, 1, 1, minTip)
 
         # Connects checkbox to func that enables/disables rangeLt's items
         self.selectToggle.toggled.connect(self.powerRngSelectToggled)
         return rangeLt
 
     def powerRngSelectToggled(self, val):
-        self.powerMax.setEnabled(val)
-        self.powerMin.setEnabled(val)
+        self.valueMax.setEnabled(val)
+        self.valueMin.setEnabled(val)
         self.minLbl.setEnabled(val)
         self.maxLbl.setEnabled(val)
 
@@ -215,8 +215,6 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.ui.setupUI(self, window)
         self.ui.updateBtn.clicked.connect(self.update)
         self.ui.addLineBtn.clicked.connect(self.openLineTool)
-        self.ui.timeEdit.start.dateTimeChanged.connect(self.updateParameters)
-        self.ui.timeEdit.end.dateTimeChanged.connect(self.updateParameters)
         self.ui.maskBtn.clicked.connect(self.openMaskTool)
 
     def closeEvent(self, ev):
@@ -246,6 +244,9 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
 
     def getVarInfo(self):
         return self.ui.dstrBox.currentText()
+
+    def setVarParams(self, var):
+        self.ui.dstrBox.setCurrentText(var)
 
     def update(self):
         # Determine data indices from lines
@@ -286,11 +287,16 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
 
         if self.savedLineInfo:
             self.addSavedLine()
+        elif len(self.lineInfoHist) > 0 and len(self.lineHistory) == 0:
+            self.savedLineInfo = self.lineInfoHist
+            self.lineInfoHist = []
+            self.addSavedLine()
+            self.savedLineInfo = None
 
     def getGradRange(self):
         if self.ui.selectToggle.isChecked():
-            minGradPower = self.ui.powerMin.value()
-            maxGradPower = self.ui.powerMax.value()
+            minGradPower = self.ui.valueMin.value()
+            maxGradPower = self.ui.valueMax.value()
             # Adjust order if flipped
             minGradPower = min(minGradPower, maxGradPower)
             maxGradPower = max(minGradPower, maxGradPower)
@@ -305,8 +311,8 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         minPower = np.min(grid[grid>0])
         maxPower = np.max(grid[grid>0])
         if not self.ui.selectToggle.isChecked():
-            self.ui.powerMin.setValue(np.log10(minPower))
-            self.ui.powerMax.setValue(np.log10(maxPower))
+            self.ui.valueMin.setValue(np.log10(minPower))
+            self.ui.valueMax.setValue(np.log10(maxPower))
 
     def enableDataExport(self, interval, shift, bw, detrend):
         # Enable exporting plot data
@@ -656,8 +662,6 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         self.ui.updtBtn.clicked.connect(self.update)
         self.ui.addLineBtn.clicked.connect(self.openLineTool)
         self.ui.maskBtn.clicked.connect(self.openMaskTool)
-        self.ui.timeEdit.start.dateTimeChanged.connect(self.updateParameters)
-        self.ui.timeEdit.end.dateTimeChanged.connect(self.updateParameters)
 
     def closeEvent(self, ev):
         self.closeLineTool()
@@ -685,6 +689,11 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
 
     def getVarInfo(self):
         return (self.ui.boxA.currentText(), self.ui.boxB.currentText())
+
+    def setVarParams(self, varPair):
+        varA, varB = varPair
+        self.ui.boxA.setCurrentText(varA)
+        self.ui.boxB.setCurrentText(varB)
 
     def update(self):
         # Extract parameters from UI elements
@@ -720,7 +729,11 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
 
         if self.savedLineInfo: # Add any saved lines
             self.addSavedLine()
-
+        elif len(self.lineInfoHist) > 0 and len(self.lineHistory) == 0:
+            self.savedLineInfo = self.lineInfoHist
+            self.lineInfoHist = []
+            self.addSavedLine()
+            self.savedLineInfo = None
     def setupPlotLayout(self, plt, plotType, varPair, times, logScaling):
         # Create gradient legend and add it to the graphics layout
         gradLegend = plt.getGradLegend(logMode=False)

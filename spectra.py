@@ -45,6 +45,76 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.plotAppr = None
         self.linearMode = False
         self.bTotalKw = '-bt'
+        self.ffts = {}
+
+        self.savedData = None
+        self.waveState = None # Vec/freq info to use when loading wave analysis
+                                  # window from state
+
+    def getCheckboxes(self):
+        boxes = [self.ui.logModeCheckBox, self.ui.separateTracesCheckBox, 
+            self.ui.aspectLockedCheckBox, self.ui.unitRatioCheckbox]
+        return boxes
+    
+    def isSumPlotsChecked(self):
+        return self.ui.combinedFrame.isChecked()
+
+    def setSumPlotsChecked(self, val=True):
+        self.ui.combinedFrame.setChecked(val)
+
+    def getAxisBoxes(self):
+        return self.ui.axisBoxes
+    
+    def getAxisValues(self):
+        return [box.currentText() for box in self.getAxisBoxes()]
+
+    def getState(self):
+        state = {}
+        # User-selected parameters
+        state['pair'] = self.getPair()
+        state['bandwidth'] = self.getBw()
+
+        # Only save sum plots info if checked and also visible
+        sumPlots = self.isSumPlotsChecked() and self.ui.tabs.isTabEnabled(3)
+        if sumPlots:
+            sumPlots = self.getVecDstrs()
+        else:
+            sumPlots = None
+        state['sumPlots'] = sumPlots
+
+        # Checkboxes values
+        state['checkVals'] = [box.isChecked() for box in self.getCheckboxes()]
+
+        # Get wave analysis state info
+        waveState = None
+        if self.waveAnalysis:
+            waveState = self.waveAnalysis.getState()
+        state['waveState'] = waveState
+
+        return state
+
+    def loadState(self, state):
+        c0, c1 = state['pair']
+        self.setCohPhaPair(c0, c1)
+        self.setBandwidth(state['bandwidth'])
+
+        for box, val in zip(self.getCheckboxes(), state['checkVals']):
+            box.setChecked(val)
+
+        if state['sumPlots'] is not None:
+            self.setSumPlotsChecked(True)
+            for box, (dstr, en) in zip(self.getAxisBoxes(), state['sumPlots']):
+                box.setCurrentText(dstr)
+
+        if state['waveState'] is not None:
+            self.waveState = state['waveState']
+
+    def setCohPhaPair(self, c0, c1):
+        self.ui.cohPair0.setCurrentText(c0)
+        self.ui.cohPair1.setCurrentText(c1)
+
+    def setBandwidth(self, bw):
+        self.ui.bandWidthSpinBox.setValue(bw)
 
     def closeWaveAnalysis(self):
         if self.waveAnalysis:
@@ -191,6 +261,11 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
             for pi in self.plotItems + self.sumPlots:
                 pi.setAspectLocked(False)
 
+    def getPair(self):
+        c0 = self.ui.cohPair0.currentText()
+        c1 = self.ui.cohPair1.currentText()
+        return c0, c1
+
     def updateCalculations(self):
         plotInfos = self.window.getSelectedPlotInfo()
 
@@ -208,15 +283,14 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 power = self.calculatePower(self.getBw(), fft, N)
                 self.powers[dstr] = power
 
-        # calculate coherence and phase from pairs
-        c0 = self.ui.cohPair0.currentText()
-        c1 = self.ui.cohPair1.currentText()
+        # Calculate coherence and phase from pairs
+        c0, c1 = self.getPair()
         coh,pha = self.calculateCoherenceAndPhase(self.getBw(), self.getfft(c0,0), self.getfft(c1,0), self.getPoints(c0,0))
         self.coh = coh
         self.pha = pha
 
         # Additional updates for sum of powers
-        if self.ui.combinedFrame.isChecked():
+        if self.isSumPlotsChecked():
             vecDstrs = self.getVecDstrs()
             self.powers[self.bTotalKw] = self.calcMagPower(vecDstrs)
 
@@ -282,6 +356,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         # Get max label width and use it to align the info for
         # the file, frequency bands, and start/end times
         lbl = self.ui.labelLayout.getItem(0, 2)
+        if lbl is None:
+            return
         maxLabelWidth = BaseLayout.getMaxLabelWidth(lbl, self.ui.grid)
         t0,t1 = self.window.getSelectionStartEndTimes()
         startDate = UTCQDate.removeDOY(FFTIME(t0, Epoch=self.window.epoch).UTC)
@@ -325,6 +401,13 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.updateCombined()
         self.updateScaling()
 
+        # Open wave analysis if loading from state
+        if self.waveState is not None:
+            self.openWaveAnalysis()
+            self.waveAnalysis.loadState(self.waveState)
+            self.waveAnalysis.updateCalculations()
+            self.waveState = None # Clear state after loading
+
     def buildPlotItem(self):
         ba = LogAxis(orientation='bottom')
         la = LogAxis(orientation='left')
@@ -362,7 +445,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
     def getVecDstrs(self):
         # Get list of dstrs from vector combo boxes
-        dstrs = [box.currentText() for box in self.ui.axisBoxes]
+        dstrs = self.getAxisValues()
 
         # Make a dictionary of the plotted dstrs and the maximum edit number shown
         enDict = {}
@@ -486,8 +569,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.ui.bandWidthSpinBox.setMaximum(99)
     
     def updateCohPha(self):
-        c0 = self.ui.cohPair0.currentText()
-        c1 = self.ui.cohPair1.currentText()
+        c0, c1 = self.getPair()
         abbrv0 = self.window.getAbbrvDstr(c0)
         abbrv1 = self.window.getAbbrvDstr(c1)
         freqs = self.getFreqs(c0,0)

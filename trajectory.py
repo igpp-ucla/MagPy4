@@ -75,7 +75,7 @@ class TrajectoryUI(BaseLayout):
         self.radiusBox.setMaximum(1e9)
         self.radiusBox.setMinimum(0.0001)
         self.radiusBox.setValue(1)
-        self.radiusBox.setDecimals(4)
+        self.radiusBox.setDecimals(7)
         self.addPair(layout, ' Radius: ', self.radiusBox, 0, 4, 1, 1)
 
         # Radius units
@@ -110,6 +110,30 @@ class TrajectoryAnalysis(QtGui.QFrame, TrajectoryUI):
 
         self.ui.setupUI(self, window)
         self.ui.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
+    
+    def getState(self):
+        generalState = {}
+        generalState['Vecs'] = (self.getFieldVec(), self.getPosVec())
+        generalState['Radius'] = (self.getRadius(), self.getRadiusUnits())
+        generalState['Altitude'] = self.ui.altFrame.getState()
+        generalState['Orbit'] = self.ui.orbitFrame.getState()
+        return generalState
+
+    def loadState(self, state):
+        # Load selected position and field vectors
+        fieldVec, posVec = state['Vecs']
+        for i, fdstr, pdstr in zip([0,1,2], fieldVec, posVec):
+            self.ui.vecBoxes[i].setCurrentText(fdstr)
+            self.ui.posBoxes[i].setCurrentText(pdstr)
+
+        # Load specified radius and units
+        radius, units = state['Radius']
+        self.ui.radUnitBox.setText(units)
+        self.ui.radiusBox.setValue(radius)
+
+        # Load tool data
+        self.ui.altFrame.loadState(state['Altitude'])
+        self.ui.orbitFrame.loadState(state['Orbit'])
 
     def validState(self):
         # Checks if at least one field vec and pos vec could be identified
@@ -264,9 +288,22 @@ class AltitudePlotter(QtWidgets.QFrame, AltitudeUI):
         self.ui.linkBox.clicked.connect(self.linkAxes)
         self.ui.updtBtn.clicked.connect(self.updatePlot)
 
+    def linkChecked(self):
+        return self.ui.linkBox.isChecked()
+
+    def getState(self):
+        plotType = self.getPlotType()
+        linkedAxes = self.linkChecked()
+        return (plotType, linkedAxes)
+
+    def loadState(self, state):
+        plotType, linkedAxes = state
+        self.ui.dstrBox.setCurrentText(plotType)
+        self.ui.linkBox.setChecked(linkedAxes)
+
     def linkAxes(self, val=None):
         if val is None:
-            val = self.ui.linkBox.isChecked()
+            val = self.linkChecked()
 
         if val:
             xDta = []
@@ -730,6 +767,110 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         for btn in [self.ui.projBtn, self.ui.viewPlaneBtn]:
             btn.toggled.connect(self.plotTypeChanged)
 
+    def getState(self):
+        state = {}
+
+        # General settings
+        origin = self.ui.pltOriginBox.isChecked()
+        title = self.ui.plotTitleBox.text()
+        unitRatio = self.ui.aspectBox.isChecked()
+        state['General'] = (origin, title, unitRatio)
+        state['MagnetoModel'] = self.getMagnetosphereState()
+
+        # Plot type / view axes if not a terminator plane proj plot
+        projMode = self.inProjMode()
+        if projMode:
+            state['viewAxes'] = None
+            state['tickSpacing'] = self.ui.projIntBox.value()
+            state['colorMap'] = self.ui.colorMapBox.isChecked()
+            return state
+        else:
+            ax_a = self.ui.planeBox1.currentText()
+            ax_b = self.ui.planeBox2.currentText()
+            state['viewAxes'] = (ax_a, ax_b)
+
+            # Field line parameters
+            fieldLines = self.ui.fieldLineBox.isChecked()
+            if fieldLines:
+                spacing = self.ui.intervalBox.value()
+                scale = self.ui.magLineScaleBox.value()
+                center = self.ui.centerLinesBox.isChecked()
+                state['Field'] = (spacing, scale, center)
+            else:
+                state['Field'] = None
+
+            # Time tick parameters (interval value for 'auto' mode is None)
+            timeTicks = self.ui.timeTickBox.isChecked()
+            state['Time'] = (timeTicks, self.getTimeInterval())
+
+        return state
+
+    def loadState(self, state):
+        self.initValues()
+        axes = state['viewAxes']
+
+        # Set spacing + color map box for projection-type plots
+        if axes is None:
+            self.ui.projBtn.setChecked(True)
+            spacing, colorMap = state['tickSpacing'], state['colorMap']
+            self.ui.projIntBox.setValue(spacing)
+            self.ui.colorMapBox.setChecked(colorMap)
+        else:
+            # Set default view axes
+            ax_a, ax_b = axes
+            self.ui.planeBox1.setCurrentText(ax_a)
+            self.ui.planeBox2.setCurrentText(ax_b)
+
+            # Set field line parameters
+            if state['Field'] is not None:
+                self.ui.fieldLineBox.setChecked(True)
+                spacing, scale, center = state['Field']
+                self.ui.intervalBox.setValue(spacing)
+                self.ui.magLineScaleBox.setValue(scale)
+                self.ui.centerLinesBox.setChecked(center)
+            else:
+                self.ui.fieldLineBox.setChecked(False)
+
+            # Time tick parameters
+            timeTicks, timeInterval = state['Time']
+            if timeTicks:
+                if timeInterval is None:
+                    self.ui.autoBtn.setChecked(True)
+                else:
+                    self.ui.customBtn.setChecked(True)
+                    dt = QtWidgets.QTimeEdit().minimumDateTime().toPyDateTime() 
+                    dt = dt + timeInterval
+                    self.ui.timeBox.setDateTime(dt)
+            else:
+                self.ui.timeTickBox.setChecked(False)
+
+        # Additional general plot parameters
+        origin, title, unitRatio = state['General']
+        self.ui.pltOriginBox.setChecked(origin)
+        self.ui.aspectBox.setChecked(unitRatio)
+        if title != '':
+            self.ui.plotTitleBox.blockSignals(True)
+            self.ui.plotTitleBox.setText(title)
+            self.ui.plotTitleBox.blockSignals(False)
+
+        # Load magnetosphere model settings and state
+        magnetoState = state['MagnetoModel']
+        if magnetoState:
+            val, modelState = magnetoState
+            self.ui.modelBox.setChecked(val)
+
+            # Initialize magnetosphere tool and set model params state
+            self.initMagTool()
+            self.magTool.loadState(modelState)
+
+    def getMagnetosphereState(self):
+        if self.magTool is None:
+            return None
+        else:
+            check = self.ui.modelBox.isChecked()
+            modelState = self.magTool.getState()
+            return (check, modelState)
+
     def openMagTool(self):
         if self.magTool:
             self.magTool.show()
@@ -902,11 +1043,14 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         yVals = zDta - (xDta*zField/xField)
 
         return xVals, yVals
+    
+    def getViewAxes(self):
+        return (self.getAxisNum(1), self.getAxisNum(2))
 
     def getPosAndField(self, posDstrs, vecDstrs, sI, eI):
         # Get the plot's x,y coordinates in the plane chosen by user
         en = self.outerFrame.getEditNum()
-        aAxisNum, bAxisNum = self.getAxisNum(1), self.getAxisNum(2)
+        aAxisNum, bAxisNum = self.getViewAxes()
 
         if aAxisNum < 0:
             yzDta = self.getYZDta(posDstrs, vecDstrs, sI, eI, en)
@@ -1115,8 +1259,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         # Get the axis numbers to plot and pass them to the magnetosphere tool
         # to calculate the field line coordinates
-        aAxisNum = self.getAxisNum(1)
-        bAxisNum = self.getAxisNum(2)
+        aAxisNum, bAxisNum = self.getViewAxes()
         xcoords, ycoords, coords, tiltAngle = self.magTool.getFieldLines(aAxisNum, bAxisNum)
 
         # Plot each trace and print out the dipole tilt angle
@@ -1583,6 +1726,30 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
 
         # Connect close button to closeWindow event
         self.ui.closeBtn.clicked.connect(self.close)
+
+    def getState(self):
+        modelParams = self.getModelParameters()
+        otherParams = self.getOtherParameters()
+        return (modelParams, otherParams)
+
+    def loadState(self, state):
+        modelParams, otherParams = state
+
+        # Load model parameters
+        swrp, dstIndex, imfBy, imfBz = modelParams
+        self.ui.swrPressureBox.setValue(swrp)
+        self.ui.dstIndexBox.setValue(dstIndex)
+        self.ui.imfByBox.setValue(imfBy)
+        self.ui.imfBzBox.setValue(imfBz)
+
+        # Load general parameters
+        dt, gsmSystem, rLim = otherParams
+        self.ui.refTimeBox.setDateTime(dt)
+        self.ui.rlimBox.setValue(rLim)
+        if gsmSystem:
+            self.ui.coordBox.setCurrentText('GSM')
+        else:
+            self.ui.coordBox.setCurrentText('GSE')
 
     def updtTime(self):
         # Update time if it hasn't been set or if the set time is out of

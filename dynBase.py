@@ -144,6 +144,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         # Create line from user input and add it to the plot item
         lineItem = self.createLine(dta, times, color, lineStyle, width)
         self.spectraFrame.addLineToPlot(lineItem)
+        self.spectraFrame.lineInfoHist.add(self.getLineInfo())
         self.saveLineInfo()
 
     def clearPlot(self):
@@ -171,13 +172,17 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
     def keepMode(self):
         return self.ui.keepPrevLines.isChecked()
 
-    def saveLineInfo(self):
-        # Extract parameters used to plot current line
+    def getLineInfo(self):
         expr = self.ui.textBox.toPlainText()
         color = self.ui.lineColor
         width = self.ui.lineWidth.value()
         style = self.ui.lineStyles[self.ui.lineStyle.currentText()]
         lineTuple = (expr, color, width, style)
+        return lineTuple
+
+    def saveLineInfo(self):
+        # Extract parameters used to plot current line
+        lineTuple = self.getLineInfo()
 
         if self.keepMode(): # Append to list if keeping previous lines on plot
             self.plottedLines.append(lineTuple)
@@ -431,8 +436,59 @@ class DynamicAnalysisTool(SpectraBase):
         self.maskTool = None
         self.savedLineInfo = None
         self.lineHistory = set()
+        self.lineInfoHist = set()
         self.fftBins = [32, 64, 128, 256, 512, 1024, 2048, 4096]
         self.fftBinBound = 131072
+
+    def getState(self):
+        state = {}
+        state['fftParams'] = self.getFFTParam()
+        state['scaleMode'] = self.getAxisScaling()
+        state['detrend'] = self.getDetrendMode()
+        state['lineInfo'] = self.lineInfoHist
+        state['varInfo'] = self.getVarInfo()
+        state['gradRange'] = self.getGradRange()
+        state['plotType'] = self.getToolType()
+
+        return state
+
+    def loadState(self, state):
+        self.setParams(state['fftParams'], state['scaleMode'], state['detrend'])
+        self.setGradRange(state['gradRange'])
+        self.setVarParams(state['varInfo'])
+        self.savedLineInfo = state['lineInfo']
+
+    def setParams(self, fftParams, scale, detrend):
+        # Set FFT parameters
+        fftBoxes = [self.ui.fftInt, self.ui.fftShift, self.ui.bwBox]
+        for box, val in zip(fftBoxes, list(fftParams)):
+            box.setValue(val)
+
+        # Set detrend mode and plot scale
+        self.setDetrendMode(detrend)
+        self.setAxisScaling(scale)
+
+    def setGradRange(self, rng):
+        if rng is None:
+            return
+
+        # Check gradient range checkbox
+        self.ui.selectToggle.setChecked(True)
+
+        # Scale values according to spinbox type (linear vs log scale)
+        minVal, maxVal = rng
+        if self.ui.valueMin.prefix() == '10^':
+            minVal, maxVal = np.log10(minVal), np.log10(maxVal)
+
+        # Set min/max values
+        self.ui.valueMin.setValue(minVal)
+        self.ui.valueMax.setValue(maxVal)
+
+    def setVarParams(self, varInfo):
+        pass
+
+    def getGradRange(self):
+        return None
 
     def getFFTParam(self):
         interval = self.ui.fftInt.value()
@@ -444,7 +500,13 @@ class DynamicAnalysisTool(SpectraBase):
         return self.ui.scaleModeBox.currentText()
 
     def getDetrendMode(self):
-        return self.ui.detrendCheck.isChecked()    
+        return self.ui.detrendCheck.isChecked()
+    
+    def setDetrendMode(self, val):
+        self.ui.detrendCheck.setChecked(val)
+
+    def setAxisScaling(self, mode):
+        self.ui.scaleModeBox.setCurrentText(mode)
 
     def getGradTickSpacing(self, plotType=None):
         return None

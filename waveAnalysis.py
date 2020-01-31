@@ -206,6 +206,20 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
 
         self.updateCalculations() # should add update button later
 
+    def getState(self):
+        state = {}
+        state['minFreqIndex'] = self.ui.minFreqIndex.value()
+        state['maxFreqIndex'] = self.ui.maxFreqIndex.value()
+        state['Vector'] = self.getVector()
+        return state
+
+    def loadState(self, state):
+        self.ui.minFreqIndex.setValue(state['minFreqIndex'])
+        self.ui.maxFreqIndex.setValue(state['maxFreqIndex'])
+        vecDstrs = state['Vector']
+        for dstr, box in zip(vecDstrs, self.ui.axesDropdowns):
+            box.setCurrentText(dstr)
+
     def getTableData(self):
         # Create a dictionary of matrix titles and their arrays
         matrixBoxes = [self.ui.rpMat, self.ui.ipMat, self.ui.trpMat, self.ui.tipMat, 
@@ -305,11 +319,15 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
     def getDefaultFreqs(self):
         return self.spectra.getFreqs(self.ui.axesDropdowns[0].currentText(), 0)
 
+    def getVector(self):
+        dstrs = [dd.currentText() for dd in self.ui.axesDropdowns]
+        return dstrs
+
     def updateCalculations(self):
         """ Update all wave analysis values and corresponding UI elements """
 
         en = self.window.currentEdit
-        dstrs = [dd.currentText() for dd in self.ui.axesDropdowns]
+        dstrs = self.getVector()
         ffts = [self.spectra.getfft(dstr,en) for dstr in dstrs]
 
         fO = self.ui.minFreqIndex.value()
@@ -754,8 +772,6 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.ui.updtBtn.clicked.connect(self.update)
         self.ui.addLineBtn.clicked.connect(self.openLineTool)
         self.ui.maskBtn.clicked.connect(self.openMaskTool)
-        self.ui.timeEdit.start.dateTimeChanged.connect(self.updateParameters)
-        self.ui.timeEdit.end.dateTimeChanged.connect(self.updateParameters)
 
         self.preWindow = None # Window used to pre-select information
 
@@ -774,6 +790,21 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
     def getVarInfo(self):
         return [box.currentText() for box in self.ui.vectorBoxes]
 
+    def setVarParams(self, varInfo):
+        for box, var in zip(self.ui.vectorBoxes, varInfo):
+            box.setCurrentText(var)
+
+    def loadState(self, state):
+        # Makes sure default selections do not override loaded state info
+        self.closePreSelectWin()
+
+        # Range settings are reset if plot type is set after loading rest of state
+        self.setPlotType(state['plotType'])
+        DynamicAnalysisTool.loadState(self, state)
+
+    def setPlotType(self, pltType):
+        self.ui.waveParam.setCurrentText(pltType)
+
     def setUserSelections(self):
         if self.preWindow:
             # Set UI's values to match those in the preselect window & close it
@@ -789,6 +820,20 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         dstr = self.ui.vectorBoxes[0].currentText()
         return self.window.calcDataIndicesFromLines(dstr, 0)
 
+    def getGradRange(self):
+        if self.ui.selectToggle.isChecked():
+            minVal = self.ui.valueMin.value()
+            maxVal = self.ui.valueMax.value()
+            # Adjust order if flipped
+            minVal, maxVal = min(minVal, maxVal), max(minVal, maxVal)
+            if self.ui.valueMin.prefix() == '10^':
+                minVal = 10 ** minVal
+                maxVal = 10 ** maxVal
+            gradRange = (minVal, maxVal)
+        else:
+            gradRange = None
+        return gradRange
+
     def checkIfPlotTypeChanged(self):
         # If plot type is changed and a mask tool is open,
         # close the mask tool
@@ -799,16 +844,14 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
     def update(self):
         self.checkIfPlotTypeChanged()
-        fftInt = self.ui.fftInt.value()
-        fftShift = self.ui.fftShift.value()
+        fftInt, fftShift, bw = self.getFFTParam()
         plotType = self.ui.waveParam.currentText()
         dtaRng = self.getDataRange()
-        bw = self.ui.bwBox.value()
-        logScale = False if self.ui.scaleModeBox.currentText() == 'Linear' else True
-        detrendMode = self.ui.detrendCheck.isChecked()
+        logScale = False if self.getAxisScaling() == 'Linear' else True
+        detrendMode = self.getDetrendMode()
 
         fftParam = (fftInt, fftShift, bw)
-        vecDstrs = [box.currentText() for box in self.ui.vectorBoxes]
+        vecDstrs = self.getVarInfo()
 
         # Error checking for user parameters
         if self.checkParameters(fftInt, fftShift, bw, dtaRng[1]-dtaRng[0]) == False:
@@ -831,6 +874,11 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
         if self.savedLineInfo: # Add any saved lines
             self.addSavedLine()
+        elif len(self.lineInfoHist) > 0 and len(self.lineHistory) == 0:
+            self.savedLineInfo = self.lineInfoHist
+            self.lineInfoHist = []
+            self.addSavedLine()
+            self.savedLineInfo = None
 
     def getLabels(self, plotType, logScaling):
         # Determine plot title and y axis label

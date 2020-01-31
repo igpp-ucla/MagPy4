@@ -48,6 +48,8 @@ class MagPy4UI(object):
         self.actionExit = QtWidgets.QAction(window)
         self.actionExit.setText('E&xit')
         self.actionExit.setStatusTip('Closes the program\'s window and quits the program')
+        self.actionOpenWs = QtWidgets.QAction('Open Workspace...')
+        self.actionSaveWs = QtWidgets.QAction('Save Workspace As...')
 
         self.actionShowData = QtWidgets.QAction(window)
         self.actionShowData.setText('&Data...')
@@ -166,6 +168,9 @@ class MagPy4UI(object):
         self.fileMenu.addAction(self.actionOpenASCII)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.switchMode)
+        self.fileMenu.addSeparator()
+        self.fileMenu.addAction(self.actionOpenWs)
+        self.fileMenu.addAction(self.actionSaveWs)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.actionExit)
 
@@ -294,7 +299,8 @@ class MagPy4UI(object):
         # Enable/disable all elems for interacting w/ plots
         elems = [self.startSlider, self.endSlider, self.shftPrcntBox, self.mvLftBtn,
                 self.mvRgtBtn, self.timeEdit.start, self.timeEdit.end,
-                self.mvLftShrtct, self.mvRgtShrtct, self.switchMode, self.MMSMenu]
+                self.mvLftShrtct, self.mvRgtShrtct, self.switchMode, self.MMSMenu,
+                self.actionSaveWs]
         for e in elems:
             e.setEnabled(enabled)
 
@@ -443,6 +449,8 @@ class TimeEdit():
         self.end.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
         self.start.editingFinished.connect(functools.partial(self.enforceMinMax, self.start))
         self.end.editingFinished.connect(functools.partial(self.enforceMinMax, self.end))
+
+        self.linesConnected = False
 
     def setupMinMax(self, minmax):
         min,max = minmax
@@ -722,7 +730,7 @@ class PlotGrid(pg.GraphicsLayout):
     def getFontSize(self, height, numPlots):
         # Hard-coded method for determing label font sizes based on window size
         fontSize = height / numPlots * 0.0775
-        fontSize = min(18, max(fontSize,4))
+        fontSize = min(18, max(fontSize, 4))
         return fontSize
 
     def getMaxLabelWidth(self, maxFontSize):
@@ -1004,7 +1012,7 @@ class StackedLabel(pg.GraphicsLayout):
         font.setPointSizeF(maxFontSize)
         fontInfo = QtGui.QFontMetricsF(font)
         while (fontInfo.height() * numRows + 4) > rowHeight:
-            font.setPointSizeF(font.pointSizeF() - 1)
+            font.setPointSizeF(font.pointSizeF() - 0.5)
             fontInfo = QtGui.QFontMetricsF(font)
             if font.pointSize() <= 2:
                 break

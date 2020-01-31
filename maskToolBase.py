@@ -106,8 +106,8 @@ class MaskToolUI(BaseLayout):
         minVal, maxVal = 0, 1
         logMode = False
         if plotType == 'Spectra':
-            minVal = plotTool.ui.powerMin.minimum()
-            maxVal = plotTool.ui.powerMax.maximum()
+            minVal = plotTool.ui.valueMin.minimum()
+            maxVal = plotTool.ui.valueMax.maximum()
             logMode = True
         elif plotType in ['Coherence', 'Phase']:
             if plotType == 'Coherence':

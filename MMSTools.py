@@ -537,7 +537,7 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         return self.avgInfo
 
     def update(self):
-        axis = self.ui.axisComboBox.currentText()
+        axis = self.getAxis()
         dataRanges, maxMin, minMax = self.getDataRange(axis)
 
         # If can't calculate normal vector, do nothing

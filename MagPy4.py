@@ -6,6 +6,7 @@ handles data, plotting and main window management
 # python 3.6
 import os
 import sys
+import pickle
 
 # so python looks in paths for these folders too
 # maybe make this into actual modules in future
@@ -119,6 +120,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.ui.actionExportFF.triggered.connect(self.exportFlatFile)
         self.ui.actionExit.triggered.connect(self.close)
+        self.ui.actionOpenWs.triggered.connect(self.openWsOpenDialog)
+        self.ui.actionSaveWs.triggered.connect(self.openWsSaveDialog)
         self.ui.actionShowData.triggered.connect(self.showData)
         self.ui.actionPlotMenu.triggered.connect(self.openPlotMenu)
         self.ui.actionSpectra.triggered.connect(self.startSpectra)
@@ -151,10 +154,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.addTickLblsAction.triggered.connect(self.openAddTickLbls)
 
         # options menu dropdown
-        self.ui.scaleYToCurrentTimeAction.triggered.connect(self.updateYRange)
-        self.ui.antialiasAction.triggered.connect(self.toggleAntialiasing)
-        self.ui.bridgeDataGaps.triggered.connect(self.replotDataCallback)
-        self.ui.drawPoints.triggered.connect(self.replotDataCallback)
+        self.ui.scaleYToCurrentTimeAction.toggled.connect(self.updateYRange)
+        self.ui.antialiasAction.toggled.connect(self.toggleAntialiasing)
+        self.ui.bridgeDataGaps.toggled.connect(self.replotDataCallback)
+        self.ui.drawPoints.toggled.connect(self.replotDataCallback)
 
         # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
         self.DATASTRINGS = []
@@ -242,6 +245,24 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.regions = []
 
         self.startUp = True
+        self.workspace = None
+
+    def getPenInfo(self, pen):
+        color = pen.color().name()
+        width = pen.width()
+        style = pen.style()
+        return (color, width, style)
+    
+    def makePen(self, color, width, style):
+        pen = pg.mkPen(color)
+        pen.setWidth(width)
+        pen.setStyle(style)
+        return pen
+
+    def bringToolsToFront(self):
+        for toolName, toolObj in self.tools.items():
+            if toolObj:
+                toolObj.raise_()
 
     def openBatchSelect(self, sigHand=False, closeTools=True):
         if closeTools:
@@ -375,6 +396,342 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     # this should also get called if flatfile changes
     def closeEvent(self, event):
         self.closeAllSubWindows()
+
+    def openWsOpenDialog(self):
+        # Opens file dialog for user to select a workspace file to open
+        fd = QtWidgets.QFileDialog(self)
+        fd.setAcceptMode(QtWidgets.QFileDialog.AcceptOpen)
+        fd.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+        fd.setNameFilters(['MagPy Files (*.mp)', 'Any files (*)'])
+        fd.fileSelected.connect(self.openWorkspace)
+        fd.open()
+
+    def openWsSaveDialog(self):
+        # Opens dialog for user to select a file to save the workspace to
+        fd = QtWidgets.QFileDialog(self)
+        fd.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
+        fd.setFileMode(QtWidgets.QFileDialog.AnyFile)
+        fd.setDefaultSuffix('.mp')
+        fd.fileSelected.connect(self.saveWorkspace)
+        fd.open()
+
+    def openWorkspace(self, filename):
+        if filename is None:
+            return
+
+        # Attempt to open workspace file and check if it is empty
+        errMsg = 'Error: Could not open workspace'
+        try:
+            wsf = open(filename, 'rb')
+        except:
+            self.ui.statusBar.showMessage(errMsg, 5000)
+            return
+
+        if os.path.getsize(filename) <= 0:
+            self.ui.statusBar.showMessage('Error: Workspace file is empty', 5000)
+            return
+
+        # Load the state dictionary and close the worksapce file
+        winDict = pickle.load(wsf)
+        wsf.close()
+
+        # Load the correct MarsPy/MagPy mode
+        mode = winDict['Mode']
+        if mode != self.insightMode:
+            self.insightMode = mode
+            if not self.startUp: # Update UI if not opening at startup screen
+                self.swapModeUI()
+
+        # Load saved files
+        savedFiles = winDict['Files']
+        res = True
+        try:
+            res = self.loadFileState(savedFiles)
+            if not res: # File loading failed
+                raise
+        except:
+            # If file loading fails, show an error msg and stop here
+            self.ui.statusBar.showMessage(errMsg, 5000)
+            return
+
+        # Load state information for main window, plot grid, and tools
+        self.loadDataState(winDict['Data'])
+        self.loadEditState(winDict['Edits'])
+        self.loadTimeState(winDict['Time'])
+        self.loadPlotState(winDict['Plots'])
+        self.loadToolState(winDict['Tools'])
+        self.loadSelectState(winDict['Select'])
+        self.loadGridOptions(winDict['GridOptions'])
+
+        # Make sure tools are on top of main window and save workspace filename
+        QtCore.QTimer.singleShot(50, self.bringToolsToFront)
+        self.workspace = filename
+
+    def loadFileState(self, state):
+        # Extract state info
+        fileNames = state['Names']
+        fileType = state['FileType']
+
+        # Check if loading flat files v. ASCII files
+        ffMode = True if fileType == 'FLAT FILE' else False
+        if ffMode: # Add correction extension to flat file names
+            fileNames = [ff+'.ffd' for ff in fileNames]
+
+        # Initialize ASCII_Importer instance if not loading flat files and pass in
+        # state info about the file format
+        if not ffMode:
+            self.openAscDialog(fileNames, state['Desc'])
+
+        # Open files from state
+        res = self.openFileList(fileNames, ffMode, True)
+        return res # Return whether all files were successfully opened or not
+
+    def loadDataState(self, dataDict):
+        # Load state info related to DATADICT, DATASTRINGS, custom variables, etc.
+        for kw in dataDict:
+            setattr(self, kw, dataDict[kw])
+
+    def loadTimeState(self, timeDict):
+        self.TIMES = timeDict['TIMES']
+        self.TIMEINDEX = timeDict['TIMEINDEX']
+        self.resolution = timeDict['RESOLUTION']
+        (minTime, maxTime), (tO, tE) = timeDict['WIN_TIMES']
+        (minTick, maxTick), (iO, iE) = timeDict['WIN_TICKS']
+        self.minTime = minTime
+        self.maxTime = maxTime
+        self.setNewWindowTicks(iO, iE)
+
+    def saveWorkspace(self, filename):
+        if filename is None: # Do nothing if no filename given
+            return
+
+        # Save the state information into a dictionary
+        data = self.saveWindowState()
+
+        # Open the specified file
+        try:
+            wsf = open(filename, 'wb')
+        except: # Report an error message if could not open file
+            self.ui.statusBar.showMessage('Erorr: Could not open file', 5000)
+            return
+
+        # Write the pickled state dictionary into the file and close it
+        pickle.dump(data, wsf)
+        wsf.close()
+
+    def getDataState(self):
+        dataDict = {}
+        dataDict['DATASTRINGS'] = self.DATASTRINGS
+        dataDict['ABBRV_DSTR_DICT'] = self.ABBRV_DSTR_DICT
+        dataDict['DATADICT'] = self.DATADICT
+        dataDict['UNITDICT'] = self.UNITDICT
+        dataDict['cstmVars'] = self.cstmVars
+        dataDict['colorPlotInfo'] = self.colorPlotInfo
+        return dataDict
+
+    def getTimeState(self):
+        timeDict = {}
+        timeDict['TIMES'] = self.TIMES
+        timeDict['TIMEINDEX'] = self.TIMEINDEX
+        timeDict['RESOLUTION'] = self.resolution
+        timeDict['WIN_TIMES'] = ((self.minTime, self.maxTime), (self.tO, self.tE))
+        timeDict['WIN_TICKS'] = ((0, self.iiE), (self.iO, self.iE))
+
+        return timeDict
+
+    def getSelectState(self):
+        # Get state information for each object if it is open
+        savedRegionState = None
+        batchSelectState = None
+        if self.fixedSelect is not None:
+            savedRegionState = self.fixedSelect.getState()
+        if self.batchSelect is not None:
+            batchSelectState = self.batchSelect.getState()
+
+        # Store state info in dictionaries
+        state = {}
+        state['SavedRegion'] = savedRegionState
+        state['BatchSelect'] = batchSelectState
+
+        return state
+
+    def getToolState(self):
+        toolsInfo = {}
+
+        # Save selection info / state info for tools requiring user time selections
+        if self.currSelect and self.currSelect.isFullySelected():
+            # Get currently selected tool and regions selected
+            name, regions = self.currSelect.getSelectionInfo()
+            abbrv = self.toolNameMap[name] # Abbreviated tool name
+
+            # Get the tool associated with this selection and 
+            # if applicable, save any state information
+            tool = self.tools[abbrv]
+            toolState = None
+            if tool and hasattr(tool, 'getState'):
+                toolState = tool.getState()
+
+            # Store in state dictionary
+            toolsInfo['SelectTool'] = (abbrv, regions, toolState)
+
+        # Save information related to stand-alone tools
+        genTools = []
+        for tool in ['Edit', 'Data', 'PlotMenu']:
+            toolObj = self.tools[tool]
+            toolState = None
+            if toolObj and not toolObj.isHidden():
+                genTools.append((tool, toolState))
+        toolsInfo['General Tools'] = genTools
+
+        return toolsInfo
+
+    def getFileState(self):
+        # Save info about open files, their file type, and if they are ASCII
+        # files, save information about the text formatting
+        state = {}
+        fileType = self.FIDs[-1].getFileType()
+        stateInfo = self.FIDs[-1].stateInfo if fileType == 'ASCII' else None 
+        state['Names'] = [fd.getName() for fd in self.FIDs]
+        state['FileType'] = fileType
+        state['Desc'] = stateInfo
+        return state
+
+    def getGridOptions(self):
+        # Save bool values indicating whether each option in the 'Options' menu
+        # is checked
+        opts = {}
+        opts['Antialias'] = self.ui.antialiasAction.isChecked()
+        opts['BridgeGaps'] = self.ui.bridgeDataGaps.isChecked()
+        opts['Points'] = self.ui.drawPoints.isChecked()
+        opts['AutoScale'] = self.ui.scaleYToCurrentTimeAction.isChecked()
+
+        return opts
+
+    def getEditState(self):
+        # Edit names, window edit #, and edit history info
+        state = {}
+        state['editHistory'] = self.editHistory
+        state['currentEdit'] = self.currentEdit
+        state['editNames'] = self.editNames
+
+        # If edit window is open, get edit history directly from here since
+        # it is not updated until the window is closed
+        if self.tools['Edit'] is not None:
+            state['editHistory'] = self.tools['Edit'].getEditHistory()
+
+        return state
+
+    def getPlotState(self):
+        state = {}
+        # Get information about plotted variables, linked plots, heights,
+        # and custom pens used
+        state['lastPlotStrings'] = self.lastPlotStrings
+        state['lastPlotLinks'] = self.lastPlotLinks
+        state['lastPlotHeightFactors'] = self.lastPlotHeightFactors
+        state['customPens'] = self.mapCustomPens(self.customPens)
+
+        # Check if there are any label sets being displayed and save
+        # the list of variables
+        pltGrdLblSet = self.pltGrd.labelSetLabel
+        lblSet = pltGrdLblSet.dstrs if pltGrdLblSet else []
+        state['LabelSets'] = lblSet
+
+        return state
+
+    def saveWindowState(self):
+        state = {}
+        state['Mode'] = self.insightMode
+
+        # State info keywords and functions to call to get the appropr. state info
+        kws = ['Data', 'Time', 'Files', 'Plots', 'Tools', 'Edits',
+            'Select', 'GridOptions']
+        funcs = [self.getDataState, self.getTimeState, self.getFileState,
+            self.getPlotState, self.getToolState, self.getEditState,
+            self.getSelectState, self.getGridOptions]
+
+        # Fill dictionary using the keywords and functions above
+        for kw, func in zip(kws, funcs):
+            state[kw] = func()
+
+        return state
+
+    def mapCustomPens(self, customPens):
+        # Maps pens to information about the pen, such as color, style, width, etc.
+        # instead of storing the pen directly
+        newList = []
+        for penList in customPens:
+            newPenList = []
+            for dstr, en, pen in penList:
+                newPenList.append((dstr, en, self.getPenInfo(pen)))
+            newList.append(newPenList)
+
+        return newList
+
+    def loadCustomPens(self, customPens):
+        # Maps all pen information to pen objects
+        newList = []
+        for penList in customPens:
+            newPenList = []
+            for dstr, en, penInfo in penList:
+                newPenList.append((dstr, en, self.makePen(*penInfo)))
+            newList.append(newPenList)
+        return newList
+
+    def loadEditState(self, state):
+        # Load in information about previous edits, edit names, & current edit
+        for kw in state:
+            setattr(self, kw, state[kw])
+
+    def loadPlotState(self, plotState):
+        # Set plot info and map custom pens to objects
+        self.customPens = self.loadCustomPens(plotState['customPens'])
+        for kw in ['lastPlotStrings', 'lastPlotLinks', 'lastPlotHeightFactors']:
+            setattr(self, kw, plotState[kw])
+
+        # Plot data using plot info
+        pltFactors = self.lastPlotHeightFactors
+        self.plotData(self.lastPlotStrings, self.lastPlotLinks, pltFactors)
+
+        # Add in any label sets that were visible
+        for label in plotState['LabelSets']:
+            self.pltGrd.addLabelSet(label)
+
+    def loadGridOptions(self, opts):
+        actions = [self.ui.antialiasAction, self.ui.bridgeDataGaps,
+            self.ui.drawPoints, self.ui.scaleYToCurrentTimeAction]
+        kws = ['Antialias', 'BridgeGaps', 'Points', 'AutoScale']
+        for kw, act in zip(kws, actions):
+            act.setChecked(opts[kw])
+
+    def loadSelectState(self, state):
+        if state['SavedRegion'] is not None:
+            self.openFixedSelection()
+            self.fixedSelect.loadState(state['SavedRegion'])
+        elif state['BatchSelect'] is not None:
+            self.openBatchSelect(closeTools=False)
+            self.batchSelect.loadState(state['BatchSelect'])
+
+    def loadToolState(self, toolStateInfo):
+        # Load tools that require user selections
+        if 'SelectTool' in toolStateInfo:
+            # Extract tool state info
+            name, regions, toolState = toolStateInfo['SelectTool']
+
+            # Start up tool (initialize object without opening)
+            startFunc = self.toolFuncs[name]
+            startFunc()
+
+            # Set up selection, loading tool state after minor updates based
+            # on time edits but before plots are updated / opened
+            self.currSelect.loadToolFromState(regions, self.tools[name], toolState)
+
+        # Load stand-alone tools like Edit, Plot Menu, etc.
+        if 'General Tools' in toolStateInfo:
+            for toolName, toolState in toolStateInfo['General Tools']:
+                startFunc = self.toolFuncs[toolName]
+                startFunc()
+                if toolState:
+                    self.tools[toolName].loadState(toolState)
 
     def closeAllSubWindows(self):
         self.closePlotMenu()
@@ -852,15 +1209,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def swapMode(self): #todo: add option to just compile to one version or other with a bool swap as well
         """swaps default settings between marspy and magpy"""
-        txt = self.ui.switchMode.text()
         self.insightMode = not self.insightMode
+        self.swapModeUI() # Update user interface and menus based on new mode
+        self.plotDataDefault() # Replot data according to defaults for new mode
+
+    def swapModeUI(self):
+        # Swap action text
         txt = 'Switch to MMS' if self.insightMode else 'Switch to MarsPy'
-        # Hide or show MMS tools menu
-        self.ui.showMMSMenu(not self.insightMode)
         tooltip = 'Loads various presets specific to the MMS mission and better for general use cases' if self.insightMode else 'Loads various presets specific to the Insight mission'
         self.ui.switchMode.setText(txt)
         self.ui.switchMode.setToolTip(tooltip)
-        self.plotDataDefault()
+
+        # Hide or show MMS tools menu
+        self.ui.showMMSMenu(not self.insightMode)
+
+        # Set window title and icons
         self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
         self.app.setWindowIcon(self.marsIcon if self.insightMode else self.magpyIcon)
 
@@ -960,19 +1323,26 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.FIDs = []
             self.initDataStorageStructures()
 
+        res = True
         for i in range(0, len(fileNames)):
             fileName = fileNames[i]
             if isFlatfile:        
                 fileName = fileName.rsplit(".", 1)[0] #remove extension
-                self.openFF(fileName)
+                res = res and self.openFF(fileName)
             else:
-                self.openTextFile(fileName)
-        
+                res = res and self.openTextFile(fileName)
+
+        if res is False: # If a file was not successfully opened, return
+            self.ui.statusBar.showMessage('Error: Could not open file', 5000)
+            return res
+
         # Close any opened ASCII file format dialog windows
         self.closeAscDialog() 
 
         # Update other state information and finish setup
         self.finishOpenFileSetup()
+
+        return res
 
     def finishOpenFileSetup(self):
         # Set up view if first set of files has been opened
@@ -989,18 +1359,24 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeAllSubWindows()
         self.initVariables()
         self.plotDataDefault()
+        self.workspace = None
 
-    def openAscDialog(self, filenames):
+    def openAscDialog(self, filenames, ascState=None):
         # Open a dialog box to specify settings for opening this ASCII file
         # and link its apply btn to the openTextFile function
         self.closeAscDialog()
         self.asc = Asc_Importer(self, filenames[-1], self)
-        openFunc = functools.partial(self.openFileList, filenames, False, True)
-        self.asc.linkApplyBtn(openFunc)
-        self.asc.show()
 
-        # Bring to front
-        self.asc.activateWindow()
+        # If opening from user-interface, open dialog
+        if ascState is None:
+            openFunc = functools.partial(self.openFileList, filenames, False, True)
+            self.asc.linkApplyBtn(openFunc)
+            self.asc.show()
+
+            # Bring to front
+            self.asc.activateWindow()
+        else: # Otherwise load file state info into dialog and open files directly
+            self.asc.loadStateInfo(ascState)
 
     def closeAscDialog(self):
         if self.asc:
@@ -1016,7 +1392,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             times, data, info = self.asc.readFile()
         except:
             self.ui.statusBar.showMessage('Error: Could not open ASCII file')
-            return
+            return False
 
         # Extract other file info from tuple
         labels, units, epoch, errFlag, fd = info
@@ -1030,11 +1406,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Load data into appropriate structures
         res = self.loadData(times, labels, data, units)
         if res is None:
-            return
+            return False
 
         # Update FD list
         self.FIDs.append(fd)
         self.updateAfterOpening()
+        return True
 
     def updateAfterOpening(self):
         self.calculateAbbreviatedDstrs()
@@ -2211,7 +2588,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # If batch select is open and one of the following tools
             tools = ['Spectra', 'Dynamic Spectra', 'Dynamic Coh/Pha',
                 'Wave Analysis', 'Detrend']
-
             if name in tools:
                 abbrv = self.toolNameMap[name]
                 # Auto-select an empty region
@@ -2371,6 +2747,12 @@ class FF_FD():
     def __init__(self, filename, FID):
         self.FID = FID
         self.name = filename
+
+    def getFileType(self):
+        return 'FLAT FILE'
+
+    def getName(self):
+        return self.name
 
     def getEpoch(self):
         return self.FID.getEpoch()

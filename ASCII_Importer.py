@@ -22,13 +22,20 @@ class TextFD():
         self.records = self.ancInfo['Records']
         self.numRows = len(self.times)
         self.sources = []*len(self.units)
+        self.stateInfo = self.ancInfo['StateInfo']
 
         self.fd = None
+
+    def getFileType(self):
+        return 'ASCII'
+
+    def getName(self):
+        return self.name
 
     def open(self):
         if self.fd is None:
             self.fd = open(self.filename, 'r')
-    
+
     def getEpoch(self):
         return self.epoch
 
@@ -355,6 +362,28 @@ class Asc_Importer(QtWidgets.QDialog, Asc_UI):
     def linkApplyBtn(self, openFunc):
         self.ui.applyBtn.clicked.connect(openFunc)
 
+    def getStateInfo(self):
+        # Information used to reload a file from state
+        fileType = self.getFileFormat()
+        epoch = None if self.getTimeMode() != 'Seconds' else self.getRefYear()
+
+        state = {}
+        state['FileType'] = fileType
+        state['Epoch'] = epoch
+        return state
+
+    def loadStateInfo(self, state):
+        # Set the file type
+        fileType = state['FileType']
+        self.ui.fileTypeBox.setCurrentText(fileType)
+
+        # Set the time format and if necessary, the epoch year
+        if state['Epoch'] is None:
+            self.ui.timeModeBox.setCurrentText('UTC Timestamp')
+        else:
+            self.ui.timeModeBox.setCurrentText('Seconds')
+            self.ui.epochBox.setValue(state['Epoch'])
+
     def readFile(self):
         # Read in times, data, labels, and units, 
         hdr, lines = self.header, self.lines
@@ -367,6 +396,7 @@ class Asc_Importer(QtWidgets.QDialog, Asc_UI):
         ancInfo['Units'] = units
         ancInfo['Labels'] = labels
         ancInfo['Epoch'] = epoch
+        ancInfo['StateInfo'] = self.getStateInfo()
         fileType = self.getFileFormat()
         fd = TextFD(self.filename, fileType, ancInfo)
 
