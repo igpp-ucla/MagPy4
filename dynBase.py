@@ -1220,7 +1220,11 @@ class SpectrogramPlotItem(SimpleColorPlot):
         # Add in mask outlines
         if maskInfo and maskOutline:
             pen = pg.mkPen(maskColor)
-            maskOutline = MaskOutline(mask, list(yVals), timeVals, pen=pen)
+            maskYVals = yVals
+            if self.logYScale:
+                maskYVals = np.log10(maskYVals)
+
+            maskOutline = MaskOutline(mask, list(maskYVals), timeVals, pen=pen)
             self.addItem(maskOutline)
 
         # Link tool's statusBar to clicks on the plot
