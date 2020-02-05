@@ -439,21 +439,19 @@ class TimeEdit():
     def __init__(self, font):
         self.start = QtWidgets.QDateTimeEdit()
         self.end = QtWidgets.QDateTimeEdit()
-        self.start.setFont(font)
-        self.end.setFont(font)
-        self.start.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.end.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        #self.start.setToolTip('Start Time'); # not always true if they get reversed...
-        #self.end.setToolTip('End Time');
-        self.start.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
-        self.end.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
+
+        for edit in [self.start, self.end]:
+            edit.setFont(font)
+            edit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+            edit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
+
         self.start.editingFinished.connect(functools.partial(self.enforceMinMax, self.start))
         self.end.editingFinished.connect(functools.partial(self.enforceMinMax, self.end))
 
-        self.linesConnected = False
+        self.linkedRegion = None
 
     def setupMinMax(self, minmax):
-        min,max = minmax
+        min, max = minmax
         self.minDateTime = min
         self.maxDateTime = max
         self.setStartNoCallback(min)
@@ -469,6 +467,33 @@ class TimeEdit():
 
     def setEndNoCallback(self, dt):
         TimeEdit.setWithNoCallback(self.end, dt)
+
+    def setLinkedRegion(self, region):
+        ''' 
+        Set the linked region that should be updated when this time edit's
+        values are changed
+        '''
+        self.linkedRegion = region
+
+    def getLinkedRegion(self):
+        return self.linkedRegion
+
+    def removeLinkToSelect(self, func):
+        ''' 
+        Disconnects this time edit from its linked GeneralSelect object
+        '''
+        self.linkedRegion = None
+        self.start.dateTimeChanged.disconnect(func)
+        self.end.dateTimeChanged.disconnect(func)
+
+    def linkToSelect(self, func):
+        ''' 
+        Link this time edit to a GeneralSelect object that will respond
+        to changes in this time edit's values and apply them to
+        this time edit's linked region if it has one
+        '''
+        self.start.dateTimeChanged.connect(func)
+        self.end.dateTimeChanged.connect(func)
 
     # done this way to avoid mid editing corrections
     def enforceMinMax(self, dte):

@@ -21,6 +21,9 @@ COPYRIGHT = f'Copyright © 2019 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
+from PyQt5.QtCore import pyqtRemoveInputHook
+
+pyqtRemoveInputHook()
 
 import numpy as np
 import pyqtgraph as pg
@@ -38,7 +41,7 @@ from edit import Edit
 from traceStats import TraceStats
 from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
-from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotDataItemBDS, BLabelItem, LinkedRegion, MagPyPlotItem, MagPyPlotDataItem, StackedAxisLabel
+from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotDataItemBDS, BLabelItem, MagPyPlotItem, MagPyPlotDataItem, StackedAxisLabel
 from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
 from dynBase import SimpleColorPlot
 from detrendWin import DetrendWindow
@@ -2591,8 +2594,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             if name in tools:
                 abbrv = self.toolNameMap[name]
                 # Auto-select an empty region
-                self.currSelect.leftClick(0, 0)
-                self.currSelect.leftClick(0, 0)
+                self.currSelect.addRegion(0, 0, update=False)
 
                 # Bring batch select to the top and set the function it will
                 # call to update the tool window
@@ -2722,6 +2724,31 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             return self.currSelect
         else:
             return None
+
+    def gridLeftClick(self, x, plotIndex, ctrlPressed):
+        # Get current tool selection (or set trace as select tool if batch select
+        # is not open) and pass the left click to it
+        batchOpen = self.batchSelect is not None
+        tool = self.getCurrentTool(setTrace=(not batchOpen))
+        if tool:
+            tool.leftClick(x, plotIndex, ctrlPressed)
+
+        # If batch select is open and the selections are not locked, then
+        # pass the left click to it as well
+        if batchOpen and not self.batchSelect.isLocked():
+            tool = self.batchSelect.linkedRegion
+            tool.leftClick(x, plotIndex, ctrlPressed)
+
+    def gridRightClick(self, plotIndex):
+        # Apply right click to current tool
+        tool = self.getCurrentTool(setTrace=False) # Don't set trace as select
+        if tool:
+            tool.rightClick(plotIndex)
+
+        # Return whether this click was applied to a selection or not so the viewbox
+        # can determine whether to apply the default right click action instead
+        res = True if tool is not None else False
+        return res
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox

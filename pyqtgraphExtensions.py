@@ -32,6 +32,13 @@ class RegionLabel(pg.InfLineLabel):
         self.setPos(QtCore.QPointF(pt.x(), -diff))
 
 class LinkedRegion(pg.LinearRegionItem):
+    '''
+        Generates and manages a group of linear sub regions for a set of plots
+    '''
+
+    # sigRegionActivated is emitted when the region is changed or clicked on
+    sigRegionActivated = QtCore.pyqtSignal(object)
+
     def __init__(self, window, plotItems, values=(0, 1), mode=None, color=None,
         updateFunc=None, linkedTE=None, lblPos='top'):
         self.window = window
@@ -62,12 +69,13 @@ class LinkedRegion(pg.LinearRegionItem):
         if self.linkedTE:
             self.updateTimeEditByLines(self.linkedTE)
 
-        self.updateEnabled = True
+    def setLinkedTE(self, te):
+        self.linkedTE = te
 
     def setLabelText(self, lbl):
         if len(self.regionItems) < 1:
             return
-        self.regionItems[self.labelPltIndex].lines[0].label.setText(lbl)
+        self.regionItems[self.labelPltIndex].lines[0].label.setFormat(lbl)
         self.labelText = lbl
 
     def setLabel(self, plotNum, pos=0.95):
@@ -91,7 +99,13 @@ class LinkedRegion(pg.LinearRegionItem):
         # Called by sub-regions to drag all regions at same time
         for regIt in self.regionItems:
             pg.LinearRegionItem.mouseDragEvent(regIt, ev)
-        self.updateWindowInfo()
+
+        # Activate current region if starting a mouse drag
+        if ev.isStart():
+            self.onRegionActivated()
+
+        # Signal that region has changed
+        self.onRegionChanged()
 
     def linesChanged(self, line, lineNum, extra):
         # Update all lines on same side of region as the original 'sub-line'
@@ -99,12 +113,21 @@ class LinkedRegion(pg.LinearRegionItem):
         for regItem in self.regionItems:
             lines = regItem.lines
             lines[lineNum].setValue(pos)
-
-            # Update other line as well if region width is fixed to 0
-            if self.fixedLine:
+            if self.isFixedLine():
                 lines[int(not lineNum)].setValue(pos)
-        # Update trace stats / timeEdits accordingly
-        self.updateWindowInfo()
+            regItem.prepareGeometryChange()
+        self.onRegionChanged()
+
+    def onRegionActivated(self):
+        # Update time edit and emit signal
+        self.updateTimeEditByLines(self.linkedTE)
+        self.sigRegionActivated.emit(self)
+
+    def onRegionChanged(self):
+        # Update time edit and call update function
+        self.updateTimeEditByLines(self.linkedTE)
+        if self.updateFunc:
+            self.updateFunc()
 
     def setRegion(self, rgn):
         for regIt in self.regionItems:
@@ -180,20 +203,10 @@ class LinkedRegion(pg.LinearRegionItem):
         for subRegion in self.regionItems:
             subRegion.setVisible(val)
 
-    def updateWindowInfo(self):
-        if not self.updateEnabled:
+    def updateTimeEditByLines(self, timeEdit):
+        if timeEdit is None:
             return
 
-        if self.updateFunc and ((not self.fixedLine) or self.labelText == 'Curlometer'
-            or self.labelText == 'Curvature' or self.labelText == 'Stats'):
-            self.updateFunc()
-        # Update trace stats, connect lines to time edit, and update time edit
-        if self.labelText == 'Stats':
-            self.window.currSelect.connectLinesToTimeEdit(self.linkedTE, self)
-        if self.linkedTE:
-            self.updateTimeEditByLines(self.linkedTE)
-
-    def updateTimeEditByLines(self, timeEdit):
         x0, x1 = self.getRegion()
         t0 = UTCQDate.UTC2QDateTime(FFTIME(x0, Epoch=self.window.epoch).UTC)
         t1 = UTCQDate.UTC2QDateTime(FFTIME(x1, Epoch=self.window.epoch).UTC)
@@ -205,17 +218,14 @@ class LinkedRegion(pg.LinearRegionItem):
         for item in self.regionItems:
             item.setMovable(val)
 
-    def setUpdateEnabled(self, val):
-        self.updateEnabled = val
-    
     def mouseClickEvent(self, ev):
-        if self.labelText == 'Stats':
-            self.updateTimeEditByLines(self.linkedTE)
-            self.updateWindowInfo()
+        # Signal this region to be set as the active region
+        self.onRegionActivated()
 
 class LinkedSubRegion(pg.LinearRegionItem):
     def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):
         self.grp = grp
+
         pg.LinearRegionItem.__init__(self, values=values)
 
         # Set region fill color to chosen color with some transparency
@@ -236,13 +246,18 @@ class LinkedSubRegion(pg.LinearRegionItem):
             line.setHoverPen(pen)
             line.setPen(linePen)
 
+    def mouseClickEvent(self, ev):
+        pg.LinearRegionItem.mouseClickEvent(self, ev)
+        self.grp.mouseClickEvent(ev)
+
     def mouseDragEvent(self, ev):
         # If this sub-region is dragged, move all other sub-regions accordingly
         self.grp.mouseDragEvent(ev)
     
     def mouseClickEvent(self, ev):
         self.grp.mouseClickEvent(ev)
-        pg.LinearRegionItem.mouseClickEvent(self ,ev)
+        pg.LinearRegionItem.mouseClickEvent(self, ev)
+
 
 class MagPyPlotItem(pg.PlotItem):
     def isSpecialPlot(self):

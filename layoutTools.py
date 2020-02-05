@@ -115,24 +115,27 @@ class TableWidget(QtWidgets.QTableWidget):
     def setHeader(self, colNames):
         if len(colNames) != self.columnCount():
             return
-        
+
         self.setHorizontalHeaderLabels(colNames)
     
-    def addRowItem(self, item):
+    def addRowItem(self, item, row=None):
         if len(item) != self.columnCount():
             return
         
-        row = self.rowCount()
-        self.insertRow(self.rowCount())
+        row = self.rowCount() if row is None else row
+        self.insertRow(row)
+        self.setRowItem(row, item)
+
+    def setRowItem(self, row, item):
+        if len(item) != self.columnCount() or row < 0 or row >= self.count():
+            return
 
         for col in range(0, self.columnCount()):
             itemText = str(item[col])
             tableItem = QtWidgets.QTableWidgetItem()
             tableItem.setText(itemText)
             self.setItem(row, col, tableItem)
-        
-        self.resizeColumnsToContents()
-    
+
     def count(self):
         return self.rowCount()
     
@@ -152,3 +155,9 @@ class TableWidget(QtWidgets.QTableWidget):
             rows.extend([i for i in range(botmRow, topRow+1)])
 
         return list(set(rows)) # Remove duplicates
+
+    def getRowItem(self, row):
+        rowItems = []
+        for col in range(0, self.columnCount()):
+            rowItems.append(self.item(row, col).text())
+        return rowItems

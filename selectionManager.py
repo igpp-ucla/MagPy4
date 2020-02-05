@@ -1,9 +1,9 @@
-from pyqtgraphExtensions import LinkedRegion
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtGui import QSizePolicy
 from MagPy4UI import TimeEdit
 import pyqtgraph as pg
 from dataDisplay import UTCQDate
+from pyqtgraphExtensions import LinkedRegion
 from FF_File import FFTIME
 import functools
 import re
@@ -52,7 +52,30 @@ class GeneralSelect(object):
         # after a region is fully selected
         self.stepFunc = None
         self.fullStepFunc = None
-    
+
+        # Link time edit to lines
+        self.linkLinesToTimeEdit()
+
+    def numRegions(self):
+        return len(self.regions)
+
+    def setTimeEdit(self, newTimeEdit):
+        # Remove link to any previously set time edits and vice versa
+        if self.timeEdit:
+            self.timeEdit.removeLinkToSelect(self.updateLinesByTimeEdit)
+
+        # Set new time edit and link lines to it if newTimeEdit is not None
+        self.timeEdit = newTimeEdit
+        self.linkLinesToTimeEdit()
+        for region in self.regions:
+            region.setLinkedTE(self.timeEdit)
+
+    def linkLinesToTimeEdit(self):
+        # Links changes in time edit datetime values to this selection's
+        # function for updating lines to match the time edit values
+        if self.timeEdit:
+            self.timeEdit.linkToSelect(self.updateLinesByTimeEdit)
+
     def onPlotRemoved(self, plt):
         # For every linked region
         for region in self.regions:
@@ -201,16 +224,19 @@ class GeneralSelect(object):
         linkRegion.setMovable(self.movable)
         linkRegion.setAllRegionsVisible(not self.hidden)
 
-        # Connect to time edit since this region is new
-        self.connectLinesToTimeEdit(self.timeEdit, linkRegion, self.mode == 'Line')
-
+        # Call any open & update functions if necessary
         if update:
-            # Call any update functions if necessary
             if y is None:
                 if self.mode in ['Line', 'Adjusting']:
                     self.openTool(linkRegion)
             else:
                 self.openTool(linkRegion)
+
+        # Link this region's 'activated' signal to regionActivated function
+        linkRegion.sigRegionActivated.connect(self.regionActivated)
+
+        # Link newly added region's lines to time edit
+        self.regionActivated(linkRegion)
 
         return linkRegion
 
@@ -231,45 +257,50 @@ class GeneralSelect(object):
 
     def callUpdateFunc(self):
         if self.updtFunc:
-            self.updtFunc()
+            if self.mode in ['Adjusting', 'Line']:
+                self.updtFunc()
+            elif len(self.regions) > 0 and not self.regions[-1].isFixedLine():
+                self.updtFunc()
+
+    def setUpdateFunc(self, f):
+        self.updtFunc = f
+
+    def setOpenFunc(self, f):
+        self.func = f
 
     def addLinkedItem(self, x):
         # Initializes the linked region object
         plts = self.window.plotItems
         linkRegion = LinkedRegion(self.window, plts, (x, x), mode=self.name, 
-            color=self.color, updateFunc=self.updtFunc, linkedTE=self.timeEdit, 
+            color=self.color, updateFunc=self.callUpdateFunc, linkedTE=self.timeEdit, 
             lblPos=self.lblPos)
         return linkRegion
 
-    def connectLinesToTimeEdit(self, timeEdit, region, single=False):
-        # Makes sure changing time edit updates lines
-        if timeEdit == None:
+    def updateLinesByTimeEdit(self):
+        # Skip if no linked time edit or no regions selected
+        if self.timeEdit is None or len(self.regions) < 1:
             return
-        elif single:
-            timeEdit.start.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
-            return
-        if self.name == 'Stats' and timeEdit.linesConnected:
-            # Disconnect from any previously connected regions (only in Stats mode)
-            timeEdit.start.dateTimeChanged.disconnect()
-            timeEdit.end.dateTimeChanged.disconnect()
-        # Connect timeEdit to currently being moved / recently added region
-        timeEdit.start.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
-        timeEdit.end.dateTimeChanged.connect(functools.partial(self.updateLinesByTimeEdit, timeEdit, region))
-        timeEdit.linesConnected = True
 
-    def updateLinesByTimeEdit(self, timeEdit, region, single=False):
-        x0, x1 = region.getRegion()
-        t0, t1 = self.window.getTimeTicksFromTimeEdit(timeEdit)
-        if self.mode == 'Line':
-            t0 = self.window.getTimeFromTick(i0)
-            self.updateLinesPos(region, t0, t0)
+        # Make sure connected region is still in set of regions
+        region = self.timeEdit.getLinkedRegion()
+        if region is None or region not in self.regions:
+            self.timeEdit.setLinkedRegion(None) # Remove old linked region
             return
-        self.updateLinesPos(region, t0 if x0 < x1 else t1, t1 if x0 < x1 else t0)
+
+        # Get new time ticks + use old time ticks from region to determine
+        # what order they should be in (w.r.t. line ordering)
+        x0, x1 = region.getRegion()
+        t0, t1 = self.window.getTimeTicksFromTimeEdit(self.timeEdit)
+        if x1 >= x0:
+            t0, t1 = t1, t0
+
+        # Set line positions
+        self.updateLinesPos(region, t0, t1)
 
     def updateLinesPos(self, region, t0, t1):
+        # Set the linked region's start/stop values and call the update function
         region.setRegion((t0-self.window.tickOffset, t1-self.window.tickOffset))
-        if self.updtFunc:
-            self.updtFunc()
+        self.callUpdateFunc()
 
     def openFunc(self):
         if self.func:
@@ -315,6 +346,57 @@ class GeneralSelect(object):
             ticks.append(region.getRegion())
 
         return ticks
+    
+    def regionActivated(self, region):
+        if self.timeEdit:
+            self.timeEdit.setLinkedRegion(region)
+
+class BatchSelectRegions(GeneralSelect):
+    '''
+        Custom GeneralSelect object for BatchSelect tool:
+        Keeps track of active region and makes calls to open and update functions
+        differently than the default GeneralSelect implementation
+    '''
+    def __init__(self, window, mode, *args, **kwargs):
+        GeneralSelect.__init__(self, window, mode, *args, **kwargs)
+        self.activeRegion = None
+
+    def addRegion(self, x, y=None, update=False):
+        GeneralSelect.addRegion(self, x, y, update=False)
+        self.callOpenFunc() # Adds region to Batch Select table
+
+    def regionActivated(self, region):
+        GeneralSelect.regionActivated(self, region)
+        self.activeRegion = region
+
+    def getActiveRegion(self):
+        # Get active region and make sure it is still in list of regions
+        if self.activeRegion is None or self.activeRegion not in self.regions:
+            self.activeRegion = None
+            return None
+        else: # Otherwise, find the index corresponding to the active region
+            regionIndex = self.regions.index(self.activeRegion)
+            return regionIndex
+
+    def extendRegion(self, x, region, ctrlPressed):
+        # Extends previously added region (that hasn't been expanded yet)
+        if self.regions == []:
+            return
+
+        x0, x1 = region.getRegion()
+        region.setRegion((x0-self.window.tickOffset, x))
+        region.setFixedLine(False)
+
+        # Updates the item in the batch select table to match region times
+        self.callUpdateFunc()
+        self.updateTimeEdit()
+
+    def updateLinesByTimeEdit(self):
+        # Setting region by time edit should automatically remove
+        # the fixed line property for batch select linked regions
+        GeneralSelect.updateLinesByTimeEdit(self)
+        if len(self.regions) > 0:
+            self.regions[-1].setFixedLine(False)
 
 class SelectableViewBox(pg.ViewBox):
     # Viewbox that calls its window's GeneralSelect object in response to clicks
@@ -330,18 +412,14 @@ class SelectableViewBox(pg.ViewBox):
         x = mc.x()
         y = mc.y()
 
+        # Apply left click to plot grid; Window manages behavior
         ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
-
-        tool = self.window.getCurrentTool()
-
-        if tool:
-            tool.leftClick(x, self.plotIndex, ctrlPressed)
+        self.window.gridLeftClick(x, self.plotIndex, ctrlPressed)
 
     def onRightClick(self, ev):
-        tool = self.window.getCurrentTool(False)
-        if tool:
-            tool.rightClick(self.plotIndex)
-        else:
+        # Attempt to apply right click to plot grid
+        res = self.window.gridRightClick(self.plotIndex)
+        if not res: # No selections currently active, use default right click method
             pg.ViewBox.mouseClickEvent(self, ev)
 
     def mouseClickEvent(self, ev):
@@ -458,22 +536,25 @@ class BatchSelectUI(BaseLayout):
         frame.resize(425, 350)
         frame.move(1000, 100)
 
-        layout = QtWidgets.QGridLayout(frame)
-        timeLt = self.setupTimeSelect()
-        layout.addLayout(timeLt, 0, 0, 1, 1)
+        frameLt = QtWidgets.QGridLayout(frame)
+        self.layout = self.setupTimeSelect()
+        frameLt.addLayout(self.layout, 0, 0, 1, 1)
 
-    def setupTimeSelect(self):
-        layout = QtWidgets.QGridLayout()
+        # Connect input type box to function that updates layout
+        self.inputTypeBox.currentTextChanged.connect(self.inputMethodChanged)
 
+    def getTextInputFrame(self):
         # Set up user input text box
-        placeText = '[2016 Feb 21 01:00:30.250, 2016 Feb 21 02:00:00.000], '
-        placeText += '[2001 Mar 1 23:15:00.000, 2001 Mar 1 23:45:00.500]'
-
         self.inputBox = QtWidgets.QPlainTextEdit()
-        self.inputBox.setPlaceholderText(placeText)
         self.inputBox.setWindowFlag(QtCore.Qt.Window)
         self.inputBox.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
 
+        # Set the placeholder text to indicate format
+        placeText = '[2016 Feb 21 01:00:30.250, 2016 Feb 21 02:00:00.000], '
+        placeText += '[2001 Mar 1 23:15:00.000, 2001 Mar 1 23:45:00.500]'
+        self.inputBox.setPlaceholderText(placeText)
+
+        # Add an 'instructions' label
         inputLbl = QtWidgets.QLabel('Enter a list of UTC-formatted times:')
         inputLbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
 
@@ -484,54 +565,186 @@ class BatchSelectUI(BaseLayout):
         textLt.addWidget(inputLbl, 0, 0, 1, 1)
         textLt.addWidget(self.inputBox, 1, 0, 1, 1)
 
-        # Set up item history box and add/rmv buttons
-        self.regionList = TableWidget(2)
-        self.regionList.setHeader(['Start Time', 'End Time'])
-        self.regionList.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        return textFrm
 
-        btnLt = QtWidgets.QHBoxLayout()
+    def getMouseInputFrame(self):
+        # Set up a horizontal layout with a pair of time edits indicating the
+        # start/end times for a region
+        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit.setupMinMax(self.frame.window.getMinAndMaxDateTime())
+
+        frame = QtWidgets.QFrame()
+        layout = QtWidgets.QHBoxLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        layout.addStretch()
+        layout.addWidget(self.timeEdit.start)
+        layout.addWidget(self.timeEdit.end)
+        layout.addStretch()
+
+        return frame
+
+    def getOptionsLt(self):
+        layout = QtWidgets.QGridLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Set up options checkboxes
+        self.highlightChk = QtWidgets.QCheckBox(' Highlight')
+        self.highlightChk.setChecked(True)
+
+        self.lockCheck = QtWidgets.QCheckBox(' Lock')
+
+        self.autoDisp = QtWidgets.QCheckBox(' Auto Display')
+        self.autoDisp.setChecked(True)
+
+        hltt = 'Shows selected regions in plot grid'
+        locktt = 'Disables modifying selections by time edits or mouse clicks'
+        disptt = 'Automatically sets the displayed region to the selected time region'
+
+        boxes = [self.highlightChk, self.lockCheck, self.autoDisp]
+        tooltips = [hltt, locktt, disptt]
+        for chk, tt in zip(boxes, tooltips):
+            chk.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+            chk.setToolTip(tt)
+
+        # Add items to layout
+        lbl = 'Options: '
+        self.addPair(layout, lbl, self.highlightChk, 0, 0, 1, 1)
+        layout.addWidget(self.lockCheck, 0, 2, 1, 1)
+        layout.addWidget(self.autoDisp, 0, 3, 1, 1)
+
+        # Add in spacer
+        spacer = QtWidgets.QSpacerItem(0, 0, hPolicy=QSizePolicy.Expanding)
+        layout.addItem(spacer, 0, 4, 1, 1)
+
+        return layout
+
+    def getInputFrame(self, mode='List'):
+        if mode == 'List':
+            return self.getTextInputFrame()
+        else:
+            return self.getMouseInputFrame()
+
+    def setupInputTypeLt(self):
+        # Set up input type box
+        self.inputTypeBox = QtWidgets.QComboBox()
+        self.inputTypeBox.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        self.inputTypeBox.addItems(['List', 'Mouse Select'])
+        self.inputTypeBox.setCurrentIndex(1)
+
+        # Tooltip
+        inputTt = 'Method for selecting times: \nList - Enter a list of UTC-'
+        inputTt += 'formatted times\nMouse: Select time ranges directly on plot grid'
+
+        # Add in combo box, its label, and a spacer item
+        inputTypeLt = QtWidgets.QGridLayout()
+        inputTypeLt.setContentsMargins(0, 0, 0, 0)
+
+        lbl = 'Input Method: '
+        self.addPair(inputTypeLt, lbl, self.inputTypeBox, 0, 0, 1, 1, inputTt)
+
+        spacer = QtWidgets.QSpacerItem(0, 0, hPolicy=QSizePolicy.Expanding)
+        inputTypeLt.addItem(spacer, 0, 2, 1, 1)
+
+        return inputTypeLt
+
+    def setupBtnLt(self):
+        # Initialize buttons for navigating and modifying items in the
+        # table widget
         self.addBtn = QtWidgets.QPushButton('+')
-        self.rmvBtn = QtWidgets.QPushButton('-')
+        self.rmvBtn = QtWidgets.QPushButton('–')
         self.moveLowerBtn = QtWidgets.QPushButton('<')
         self.moveUpperBtn = QtWidgets.QPushButton('>')
+
+        # Add buttons to a horizontal layout and center them
+        btnLt = QtWidgets.QHBoxLayout()
         btnLt.addStretch()
         for btn in [self.addBtn, self.rmvBtn, self.moveLowerBtn, self.moveUpperBtn]:
             btn.setSizePolicy(self.getSizePolicy('Max', 'Max'))
             btnLt.addWidget(btn)
         btnLt.addStretch()
 
-        # Map remove connections
+        # Map button connections
         self.rmvBtn.clicked.connect(self.removeItems)
         self.moveLowerBtn.clicked.connect(self.moveLower)
         self.moveUpperBtn.clicked.connect(self.moveUpper)
 
+        return btnLt
+
+    def setupStatusBarLt(self):
         # Keep On Top checkbox
         self.keepOnTopChk = QtWidgets.QCheckBox('Keep On Top')
         self.keepOnTopChk.setChecked(True)
         self.keepOnTopChk.setSizePolicy(self.getSizePolicy('Max', 'Max'))
 
-        # Status bar and highlight selections checkbox layout
+        # Status bar
         self.statusBar = QtWidgets.QStatusBar()
-        self.highlightChk = QtWidgets.QCheckBox('Highlight Selections')
-        self.highlightChk.setSizePolicy(self.getSizePolicy('Max', 'Max'))
-        self.highlightChk.setChecked(True)
 
+        # Add items to a horizontal layout
         statusLt = QtWidgets.QHBoxLayout()
-        statusLt.addWidget(self.highlightChk)
+        statusLt.addWidget(self.keepOnTopChk)
         statusLt.addWidget(self.statusBar)
 
-        # Add everything to layout
-        layout.addWidget(textFrm, 0, 0, 1, 1)
-        layout.addLayout(btnLt, 1, 0, 1, 1)
-        layout.addWidget(self.regionList, 2, 0, 1, 1)
-        layout.addLayout(statusLt, 3, 0, 1, 1)
+        return statusLt
 
-        # Set row stretch factors so input box is smaller than list view
-        layout.setRowStretch(0, 3)
-        layout.setRowStretch(1, 1)
-        layout.setRowStretch(2, 5)
+    def setupTimeSelect(self):
+        layout = QtWidgets.QGridLayout()
+
+        # Get input type box layout
+        inputTypeLt = self.setupInputTypeLt()
+
+        # Get selection options layout
+        optionsLt = self.getOptionsLt()
+
+        # Set up add/remove button layout
+        btnLt = self.setupBtnLt()
+
+        # Set up input frame (mouse-mode is default)
+        self.inputFrm = self.getInputFrame(self.inputTypeBox.currentText())
+        self.addBtn.setVisible(False)
+
+        # Set up item history box
+        self.regionList = TableWidget(2)
+        self.regionList.setHeader(['Start Time', 'End Time'])
+        self.regionList.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
+        # Get status bar and keepOnTop checkbox layout
+        statusLt = self.setupStatusBarLt()
+
+        # Add everything to layout
+        layout.addLayout(inputTypeLt, 0, 0, 1, 1)
+        layout.addWidget(self.inputFrm, 1, 0, 1, 1)
+        layout.addLayout(optionsLt, 4, 0, 1, 1)
+        layout.addLayout(btnLt, 2, 0, 1, 1)
+        layout.addWidget(self.regionList, 3, 0, 1, 1)
+        layout.addLayout(statusLt, 5, 0, 1, 1)
 
         return layout
+
+    def inputMethodChanged(self):
+        # Get current input method
+        mode = self.inputTypeBox.currentText()
+
+        # Get old frame and remove/delete it
+        self.layout.removeWidget(self.inputFrm)
+        self.inputFrm.deleteLater()
+
+        # Generate new frame and place it in the layout
+        self.inputFrm = self.getInputFrame(mode)
+        self.layout.addWidget(self.inputFrm, 1, 0, 1, 1)
+
+        # Enable/disable related buttons
+        lockEnabled = True
+        addEnabled = False
+        if mode == 'List':
+            lockEnabled = False
+            addEnabled = True
+
+        self.lockCheck.setEnabled(lockEnabled)
+        self.addBtn.setVisible(addEnabled)
+
+        # Modify state in main frame
+        self.frame.inputModeChanged()
 
     def removeItems(self):
         # Get selected rows, sort them, and convert to numpy array
@@ -557,7 +770,7 @@ class BatchSelectUI(BaseLayout):
     def removeItem(self, row):
         if row >= 0:
             self.regionList.removeRow(row)
-            self.frame.removeRegionFromGrid(row)
+            self.frame.rmvRegion(row)
     
     def moveLower(self):
         row = self.getCurrentRow()
@@ -583,17 +796,24 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
     def __init__(self, window, parent=None):
         QtWidgets.QFrame.__init__(self, parent)
         self.window = window
-
         self.ui = BatchSelectUI()
         self.ui.setupUI(self)
+
+        # Button and checkbox connections
         self.ui.addBtn.clicked.connect(self.addRegionsToList)
         self.ui.regionList.currentCellChanged.connect(self.update)
         self.ui.highlightChk.toggled.connect(self.setRegionsVisible)
+        self.ui.lockCheck.toggled.connect(self.lockSelections)
 
-        self.linkedRegion = GeneralSelect(window, 'Multi', )
+        self.ui.keepOnTopChk.clicked.connect(self.toggleWindowOnTop)
+        self.toggleWindowOnTop(self.ui.keepOnTopChk.isChecked())
+
+        # Initialize linked region and state information lists
+        self.linkedRegion = BatchSelectRegions(window, 'Multi', 
+            func=self.mouseAddedRegion, maxSteps=-1)
         self.linkedRegion.setLabelPos('bottom')
         self.linkedRegion.setMovable(False)
-        self.setRegionsVisible(self.ui.highlightChk.isChecked())
+        self.setRegionsVisible(self.highlightChecked())
         self.timeRegions = {} # Key = timestamp tuples, value = tick values
         self.regions = []
 
@@ -603,7 +823,101 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
 
         # Timestamp regex string
         self.timeRegex = self.getTimestampRegex()
+        self.inputModeChanged()
 
+    def toggleWindowOnTop(self, val):
+        # Keeps window on top of main window while user updates lines
+        dialogFlag = QtCore.Qt.Dialog
+        if self.window.OS == 'posix':
+            dialogFlag = QtCore.Qt.Tool
+        flags = self.windowFlags()
+        flags = flags | dialogFlag if val else flags & ~dialogFlag
+        self.setWindowFlags(flags)
+        self.show()
+
+    def lockSelections(self, val):
+        # Disable mouse drags + line moving for linked regions if locked
+        self.linkedRegion.setMovable(not val)
+
+        if self.getInputMode() != 'List':
+            if val: # Remove link to time edit if locked
+                self.linkedRegion.setTimeEdit(None)
+            else: # Set link to time edit if unlocked
+                self.linkedRegion.setTimeEdit(self.ui.timeEdit)
+
+    def getInputMode(self):
+        return self.ui.inputTypeBox.currentText()
+
+    def lockChecked(self):
+        return self.ui.lockCheck.isChecked()
+
+    def highlightChecked(self):
+        return self.ui.highlightChk.isChecked()
+
+    def autoDispChecked(self):
+        return self.ui.autoDisp.isChecked()
+
+    def isLocked(self):
+        # Used by main window to determine whether mouse drags/clicks
+        # should have an effect on the batch select linked region
+        if self.getInputMode() == 'List':
+            return True
+        else: # Ignore if not visible or lock is checked
+            locked = self.lockChecked()
+            visible = self.highlightChecked()
+            res = (locked or (not visible))
+            return res
+
+    def inputModeChanged(self):
+        # Default settings for list mode, regions are locked and unlinked
+        newTimeEdit = None
+        updtFunc = None
+        openFunc = None
+        lockSelect = True
+
+        # Link region to time edit and updateTableRegions function
+        if self.getInputMode() != 'List':
+            newTimeEdit = self.ui.timeEdit
+            lockSelect = False
+            updtFunc = self.updateTableRegions
+            openFunc = self.mouseAddedRegion
+
+        # Take into account whether lock checkbox is checked
+        lockSelect = (self.lockChecked() and lockSelect)
+        self.lockSelections(lockSelect)
+
+        # Update the linked region's settings
+        self.linkedRegion.setOpenFunc(openFunc)
+        self.linkedRegion.setUpdateFunc(updtFunc)
+        self.linkedRegion.setTimeEdit(newTimeEdit)
+
+    def updateTableRegions(self):
+        # Do not modify if regions are locked or there are no regions selected
+        if self.lockChecked() or self.linkedRegion.numRegions() < 1:
+            return
+
+        # Get the currently active linked region
+        regionNum = self.linkedRegion.getActiveRegion()
+        if regionNum is None:
+            return
+
+        # Map region to timestamps/ticks
+        regionItem = self.linkedRegion.regions[regionNum]
+        ticks, timestamps = self.mapRegionToInfo(regionItem)
+        oldTimestamps = self.regions[regionNum]
+
+        # Do not modify table if region is the same as before
+        if oldTimestamps == timestamps:
+            return
+
+        # Remove region from internal state and add new region info in its place
+        self.rmvRegion(regionNum, rmvFromGrid=False)
+        self.timeRegions[timestamps] = ticks
+        self.regions.insert(regionNum, timestamps)
+
+        # Update the table item
+        self.ui.regionList.setRowItem(regionNum, list(timestamps))
+    
     def getTimestampRegex(self):
         # Get months in abbreviated format and generate regular expr for this group
         months = [datetime(2000, mon, 1).strftime('%b') for mon in range(1, 12+1)]
@@ -696,15 +1010,41 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
             return True
         return False
 
-    def addRegion(self, startTime, endTime):
+    def addRegion(self, startTime, endTime, addToGrid=True):
+        # Check if region was previously added; If so, ignore it
         pair = (startTime, endTime)
         if pair in self.timeRegions:
             return
 
+        # Update table
         self.ui.regionList.addRowItem([startTime, endTime])
-        self.addRegionToGrid(startTime, endTime)
+
+        # Internal state updates
+        # Map regions to formatted timestamps and time ticks
+        startTime = self.mapTimestamp(startTime)
+        endTime = self.mapTimestamp(endTime)
+        tO = self.window.getTickFromTimestamp(startTime)
+        tE = self.window.getTickFromTimestamp(endTime)
+        tO, tE = min(tO, tE), max(tO, tE)
+
+        self.timeRegions[(startTime, endTime)] = (tO, tE)
+        self.regions.append((startTime, endTime))
+
+        # Add to plot grid if new region was not added through mouse selection
+        if addToGrid:
+            self.addRegionToGrid(tO, tE)
+
+        # Update labels for all of the regions in the plot grid
         self.updateRegionLabels()
-    
+
+    def rmvRegion(self, regionNum, rmvFromGrid=True):
+        # Get corresponding region and remove it from list + dictionary
+        region = self.regions.pop(regionNum)
+        del self.timeRegions[region]
+
+        if rmvFromGrid:
+            self.removeRegionFromGrid(regionNum)
+
     def getRegion(self, rowNum):
         return self.timeRegions[self.regions[rowNum]]
     
@@ -733,30 +1073,33 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
         ffUtcTime = time.strftime(ffFmtStr, utcTime)+msStr
         return ffUtcTime
 
-    def addRegionToGrid(self, startTime, endTime):
-        timestamps = (startTime, endTime)
-        # Map timestamps to FFTime format and then to (ordered) time ticks
-        startTime = self.mapTimestamp(startTime)
-        endTime = self.mapTimestamp(endTime)
-        tO = self.window.getTickFromTimestamp(startTime)
-        tE = self.window.getTickFromTimestamp(endTime)
-        tO, tE = min(tO, tE), max(tO, tE)
-
-        # Create region and save time region info in dict/list
-        self.linkedRegion.addRegion(tO-self.window.tickOffset, tE-self.window.tickOffset)
-        self.timeRegions[timestamps] = (tO, tE)
-        self.regions.append(timestamps)
+    def addRegionToGrid(self, tO, tE):
+        # Create a new linked region for the added region
+        ofst = self.window.tickOffset
+        self.linkedRegion.addRegion(tO-ofst, tE-ofst)
 
     def removeRegionFromGrid(self, regionNum):
-        # Get corresponding region and remove it from list + dictionary
-        region = self.regions.pop(regionNum)
-        del self.timeRegions[region]
-
         # Remove the linked region
         self.linkedRegion.removeRegion(regionNum)
         self.updateRegionLabels()
 
+    def mapRegionToInfo(self, region):
+        # Map linked region selection to timestamps and time ticks
+        start, stop = region.getRegion()
+        fmtTime = lambda s : s[0:5] + s[9:]
+        startTime = self.window.getTimestampFromTick(start)
+        stopTime = self.window.getTimestampFromTick(stop)
+        startTime, stopTime = fmtTime(startTime), fmtTime(stopTime)
+        timestamps = (startTime, stopTime)
+        return (start, stop), timestamps
+
+    def mouseAddedRegion(self):
+        region = self.linkedRegion.regions[-1]
+        (start, stop), (startTime, stopTime) = self.mapRegionToInfo(region)
+        self.addRegion(startTime, stopTime, False)
+
     def updateRegionLabels(self):
+        # Update region labels to match their row index in the table
         for i in range(0, len(self.regions)):
             self.linkedRegion.setLabelText('Region ' + str(i+1), i)
     
@@ -771,28 +1114,37 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
         region = self.getCurrentRegion()
         if not region:
             return
+
+        # Set current row to zero if none are currently selected
         if self.ui.regionList.currentRow() < 0:
             self.ui.regionList.blockSignals(True)
             self.ui.regionList.setCurrentRow(0)
             self.ui.regionList.blockSignals(False)
-        
-        self.updateByTimeEdit(self.window.ui.timeEdit, region)
 
+        # Set view range in the plot grid to current selection
+        if self.autoDispChecked():
+            self.updateByTimeEdit(self.window.ui.timeEdit, region)
+
+        # Update the time edit for the currently linked tool, if there is one,
+        # and also call its update function
         if self.linkedTimeEdit:
             self.updateByTimeEdit(self.linkedTimeEdit, region, self.updateFunc)
  
     def setUpdateInfo(self, timeEdit, updateFunc=None):
         self.linkedTimeEdit = timeEdit
         self.updateFunc = updateFunc
-
+    
     def updateByTimeEdit(self, timeEdit, region, updateFunc=None):
+        # Extract region and map to datetime objects
         tO, tE = region
-
         startDt = self.window.getDateTimeFromTick(tO)
         endDt = self.window.getDateTimeFromTick(tE)
+
+        # Set time edit values
         timeEdit.start.setDateTime(startDt)
         timeEdit.end.setDateTime(endDt)
 
+        # Call an update function if necessary
         if updateFunc:
             updateFunc()
 

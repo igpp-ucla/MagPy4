@@ -567,3 +567,16 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
     def findPlottedVecGroups(self):
         return self.window.findPlottedVecGroups()
+
+    def gridLeftClick(self, x, plotIndex, ctrlPressed):
+        tool = self.getCurrentTool()
+        if tool:
+            tool.leftClick(x, plotIndex, ctrlPressed)
+    
+    def gridRightClick(self, plotIndex):
+        tool = self.getCurrentTool()
+        if tool:
+            tool.rightClick(plotIndex)
+            return True
+        else:
+            return False
