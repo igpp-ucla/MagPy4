@@ -2104,7 +2104,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         return plt, gradLegend, gradLbl
 
     def plotData(self, dataStrings, links, heightFactors):
-        self.closeTraceStats() # Clear any regions
+        # Remove any saved linked regions from plots and save their state
+        selectState = self.getSelectState()
+        self.closeFixSelection()
+        self.closeBatchSelect()
+
+        # Clear any selected tools
+        self.closeTraceStats()
         self.endGeneralSelect()
 
         # save what the last plotted strings and links are for other modules
@@ -2268,6 +2274,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 item.viewRangeChanged()
             
         self.colorPlotInfo = newColorPlotInfo
+
+        # Rebuild any saved selections
+        self.loadSelectState(selectState)
 
     def genRandomPen(self):
         r = np.random.randint(low=0, high=255)
