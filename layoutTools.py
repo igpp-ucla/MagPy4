@@ -112,6 +112,10 @@ class TableWidget(QtWidgets.QTableWidget):
         header.setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
         header.setHighlightSections(False)
 
+        # Add a copy shortcut
+        copyShrtct = QtWidgets.QShortcut('Ctrl+c', self)
+        copyShrtct.activated.connect(self.copyData)
+
     def setHeader(self, colNames):
         if len(colNames) != self.columnCount():
             return
@@ -161,3 +165,17 @@ class TableWidget(QtWidgets.QTableWidget):
         for col in range(0, self.columnCount()):
             rowItems.append(self.item(row, col).text())
         return rowItems
+
+    def copyData(self):
+        rows = self.getSelectedRows()
+        rows.sort()
+
+        data = []
+        for row in rows:
+            rowItems = self.getRowItem(row)
+            if len(rowItems) > 0:
+                data.append(', '.join(rowItems))
+
+        if len(data) > 0:
+            data = '\n'.join(data)
+            QtGui.QApplication.clipboard().setText(data)

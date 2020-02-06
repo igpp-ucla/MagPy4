@@ -21,9 +21,6 @@ COPYRIGHT = f'Copyright © 2019 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from PyQt5.QtCore import pyqtRemoveInputHook
-
-pyqtRemoveInputHook()
 
 import numpy as np
 import pyqtgraph as pg

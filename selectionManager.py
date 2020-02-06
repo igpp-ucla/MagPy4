@@ -1021,14 +1021,15 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
 
         # Internal state updates
         # Map regions to formatted timestamps and time ticks
+        timestamps = (startTime, endTime)
         startTime = self.mapTimestamp(startTime)
         endTime = self.mapTimestamp(endTime)
         tO = self.window.getTickFromTimestamp(startTime)
         tE = self.window.getTickFromTimestamp(endTime)
         tO, tE = min(tO, tE), max(tO, tE)
 
-        self.timeRegions[(startTime, endTime)] = (tO, tE)
-        self.regions.append((startTime, endTime))
+        self.timeRegions[timestamps] = (tO, tE)
+        self.regions.append(timestamps)
 
         # Add to plot grid if new region was not added through mouse selection
         if addToGrid:
@@ -1151,12 +1152,39 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
     def getState(self):
         state = {}
         state['Regions'] = self.getRegions(ticks=False)
+        state['Options'] = self.getOptionsState()
+        state['Mode'] = self.getInputMode()
+        return state
+
+    def getOptionsState(self):
+        state = {}
+        state['KeepOnTop'] = self.ui.keepOnTopChk.isChecked()
+        state['Lock'] = self.lockChecked()
+        state['Highlight'] = self.highlightChecked()
+        state['AutoDisplay'] = self.autoDispChecked()
         return state
 
     def loadState(self, state):
+        # Temporarily set input mode to list so items are not added twice
+        # because of signals
+        self.ui.inputTypeBox.setCurrentText('List')
+
+        # Add all previous regions
         regions = state['Regions']
         for start, stop in regions:
             self.addRegion(start, stop)
+
+        # Set correct input mode here
+        if 'Mode' in state:
+            self.ui.inputTypeBox.setCurrentText(state['Mode'])
+
+        # Set selection options
+        if 'Options' in state:
+            boxes = [self.ui.keepOnTopChk, self.ui.lockCheck, self.ui.highlightChk,
+                self.ui.autoDisp]
+            kws = ['KeepOnTop', 'Lock', 'Highlight', 'AutoDisplay']
+            for kw, box in zip(kws, boxes):
+                box.setChecked(state['Options'][kw])
 
     def closeEvent(self, ev):
         self.linkedRegion.closeAllRegions()
