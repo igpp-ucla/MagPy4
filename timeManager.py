@@ -67,7 +67,12 @@ class TimeManager(object):
 
     def getDateTimeFromTick(self, tick):
         return UTCQDate.UTC2QDateTime(self.getTimestampFromTick(tick))
-    
+
+    def getTickFromDateTime(self, dt):
+        fmt = '%Y %j %b %d %H:%M:%S'
+        ts = datetime.strftime(dt, fmt)
+        return self.getTickFromTimestamp(ts)
+
     def getDateTimeObjFromTick(self, tick):
         dt = UTCQDate.UTC2QDateTime(self.getTimestampFromTick(tick))
         date = dt.date()

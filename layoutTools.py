@@ -115,6 +115,12 @@ class TableWidget(QtWidgets.QTableWidget):
         # Add a copy shortcut
         copyShrtct = QtWidgets.QShortcut('Ctrl+c', self)
         copyShrtct.activated.connect(self.copyData)
+    
+    def setTableData(self, table):
+        table = np.array(table)
+        rows, cols = table.shape
+        for i in range(0, rows):
+            self.addRowItem(table[row])
 
     def setHeader(self, colNames):
         if len(colNames) != self.columnCount():

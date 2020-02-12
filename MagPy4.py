@@ -40,6 +40,7 @@ from helpWindow import HelpWindow
 from AboutDialog import AboutDialog
 from pyqtgraphExtensions import DateAxis, LinkedAxis, PlotDataItemBDS, BLabelItem, MagPyPlotItem, MagPyPlotDataItem, StackedAxisLabel
 from MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
+import mms_orbit
 from dynBase import SimpleColorPlot
 from detrendWin import DetrendWindow
 from ASCII_Importer import Asc_Importer
@@ -143,6 +144,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionCurvature.triggered.connect(self.openCurvature)
         self.ui.actionEPAD.triggered.connect(self.startEPAD)
         self.ui.actionEOmni.triggered.connect(self.startEOMNI)
+        self.ui.actionMMSOrbit.triggered.connect(self.openMMSOrbit)
 
         # Selection menu actions
         self.ui.actionFixSelection.triggered.connect(self.fixSelection)
@@ -180,17 +182,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.toolNames = ['Data', 'Edit', 'Plot Menu', 'Detrend', 'Spectra',
             'Dynamic Spectra', 'Dynamic Coh/Pha', 'Wave Analysis',
             'Trajectory Analysis', 'Stats', 'Electron/Ion Spectrum',
-            'Electron PAD', 'Plane Normal', 'Curlometer', 'Curvature']
+            'Electron PAD', 'Plane Normal', 'Curlometer', 'Curvature',
+            'MMS Orbit']
 
         self.toolAbbrv = ['Data', 'Edit', 'PlotMenu', 'Detrend', 'Spectra',
             'DynSpectra', 'DynCohPha', 'DynWave', 'Traj', 'Stats',
-            'EOMNI', 'EPAD', 'PlaneNormal', 'Curlometer', 'Curvature']
+            'EOMNI', 'EPAD', 'PlaneNormal', 'Curlometer', 'Curvature',
+            'MMSOrbit']
 
         self.toolInitFuncs  = [self.showData, self.openEdit, self.openPlotMenu,
             self.startDetrend, self.startSpectra, self.startDynamicSpectra,
             self.startDynamicCohPha, self.startDynWave, self.openTraj,
             self.startTraceStats, self.startEOMNI, self.startEPAD,
-            self.openPlaneNormal, self.openCurlometer, self.openCurlometer]
+            self.openPlaneNormal, self.openCurlometer, self.openCurlometer,
+            self.openMMSOrbit]
 
         self.tools = {}
         self.toolNameMap = {}
@@ -231,6 +236,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # setup pens
         self.pens = []
+        self.mmsColors = ['000005', 'd55e00', '009e73', '56b4e9']
         # Blue, Green, Red, Yellow, Magenta, Cyan, Purple, Black
         colors = ['#0000ff','#00ad05','#ea0023', '#fc9f00', '#ff00e1', '#00ddb1',
             '#9400ff', '#191919']
@@ -752,6 +758,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeFixSelection()
         self.closeTimeSelect()
         self.closeBatchSelect()
+        self.closeMMSOrbit()
 
     def closePlotTools(self):
         self.closeDetrend()
@@ -936,6 +943,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.tools['PlaneNormal'].close()
             self.tools['PlaneNormal'] = None
             self.endGeneralSelect()
+
+    def openMMSOrbit(self):
+        self.closeMMSOrbit()
+        self.tools['MMSOrbit'] = mms_orbit.MMS_Orbit(self)
+        self.tools['MMSOrbit'].show()
+
+    def closeMMSOrbit(self):
+        if self.tools['MMSOrbit']:
+            self.tools['MMSOrbit'].close()
+            self.tools['MMSOrbit'] = None
 
     def openPlotMenu(self):
         self.closePlotMenu()
@@ -1943,10 +1960,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # MMS trace pen presets
         lstLens = list(map(len, dstrs))
         if not self.insightMode and lstLens != [] and min(lstLens) == 4 and max(lstLens) == 4:
-            mmsColors = ['000005', 'd55e00', '009e73', '56b4e9']
             for dstrLst in dstrs:
                 penLst = []
-                for (currDstr, en), color in zip(dstrLst, mmsColors):
+                for (currDstr, en), color in zip(dstrLst, self.mmsColors):
                     penLst.append((currDstr, en, pg.mkPen(color)))
                 self.customPens.append(penLst)
         else: # Reset custom pens in case previously set

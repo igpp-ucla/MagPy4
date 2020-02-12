@@ -51,6 +51,13 @@ class MMSTools():
     def getVec(self, scNum, index, grp='Field'):
         return self.vecArrays[grp][scNum][:,index]
 
+    def getPosData(self, scNum, startIndex=None, endIndex=None):
+        if startIndex is None:
+            startIndex = 0
+        if endIndex is None:
+            endIndex = len(self.vecArrays['Pos'][scNum][0])
+        return self.vecArrays['Pos'][scNum][:,startIndex:endIndex]
+
     def initArrays(self):
         # Creates dictionary of arrays s.t. a column within the array
         # corresponds to a field/position vector at a given data index

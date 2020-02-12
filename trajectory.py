@@ -2240,6 +2240,12 @@ class OriginGraphic(pg.PlotCurveItem):
         center = QtCore.QPointF(self.originX, self.originY)
         p.drawPoint(center)
 
+    def setDownsampling(self, ds, auto, method):
+        pass
+
+    def setClipToView(self, clip):
+        pass
+
 class FieldScaleBar(pg.ScaleBar):
     def __init__(self, vb, size, width=1, brush=None, pen=None, suffix='m', offset=None):
         # Set up scale bins

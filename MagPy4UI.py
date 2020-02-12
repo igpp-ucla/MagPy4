@@ -2,6 +2,7 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from addTickLabels import LabelSetGrid
+import importlib.util
 
 import numpy as np
 import pyqtgraph as pg
@@ -108,6 +109,10 @@ class MagPy4UI(object):
         self.actionEOmni.setText('Plot Electron/Ion Spectrum...')
         self.actionEOmni.setStatusTip('Plots a color-mapped representation of omni-directional electron/ion energy spectrum')
 
+        self.actionMMSOrbit = QtWidgets.QAction(window)
+        self.actionMMSOrbit.setText('MMS Orbit...')
+        self.actionMMSOrbit.setStatusTip('Plots MMS spacecraft orbit')
+
         # Selection menu actions
         self.actionFixSelection = QtWidgets.QAction(window)
         self.actionFixSelection.setText('Fix Selection...')
@@ -192,6 +197,9 @@ class MagPy4UI(object):
         self.MMSMenu.addAction(self.actionCurvature)
         self.MMSMenu.addAction(self.actionEPAD)
         self.MMSMenu.addAction(self.actionEOmni)
+
+        if checkForOrbitLibs():
+            self.MMSMenu.addAction(self.actionMMSOrbit)
 
         self.selectMenu = self.menuBar.addMenu('Selection Tools')
         self.selectMenu.addAction(self.actionFixSelection)
@@ -1046,3 +1054,14 @@ class StackedLabel(pg.GraphicsLayout):
         # Determines new font size and updates all labels accordingly
         for lbl, txt, clr in zip(self.subLabels, self.dstrs, self.colors):
             lbl.setText(txt, color=clr, size=str(fontSize)+'pt')
+
+# Checks if libraries required to use MMS Orbit tool are installed
+def checkForOrbitLibs():
+    installed = True
+    pkgs = ['requests', 'cdflib']
+    for pkg in pkgs:
+        spec = importlib.util.find_spec(pkg)
+        if spec is None:
+            installed = False
+    
+    return installed
