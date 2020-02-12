@@ -1294,7 +1294,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         return offsets
 
-    def getTimeTickValues(self, times, epoch, gaps, td=None):
+    def getTimeTickValues(times, epoch, gaps, td=None):
         # Initialize a datetime axis to generate ticks
         minTime, maxTime = times[0], times[-1]
         ta = DateAxis(epoch, orientation='bottom')
@@ -1304,13 +1304,15 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             ta.setCstmTickSpacing(td)
 
             # Determine which time units need to be included in labels
-            uiTime = self.ui.timeBox.time()
             refLst = []
-            for val, itemStr in zip([uiTime.hour(),uiTime.minute(), uiTime.second()],
+            hours = int(td.total_seconds() / (60 * 60))
+            minutes = int((td.total_seconds() - (hours*60*60))/ 60)
+            seconds = int(td.total_seconds() - (hours*60*60 + minutes*60))
+            for val, itemStr in zip([hours, minutes, seconds],
                 ['HH', 'MM', 'SS']):
                 if val != 0:
                     refLst.append(itemStr)
-            
+
             refStr = refLst[0] if len(refLst) > 0 else ''
             for i in range(1, len(refLst)):
                 refStr = refStr + ':' + refLst[i]
@@ -1354,6 +1356,42 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
 
         return vals, ta
 
+    def getTimeTickPositions(xFull, yFull, times, epoch, gaps=None, td=None):
+        ticks, axis = OrbitPlotter.getTimeTickValues(times, epoch, gaps, td)
+        if len(ticks) < 1:
+            return None
+
+        # Interpolate position data along the evenly spaced time tick values
+        # and plot points at these coordinates
+        csX = interpolate.CubicSpline(times, xFull)
+        csY = interpolate.CubicSpline(times, yFull)
+
+        xInterp = csX(ticks)
+        yInterp = csY(ticks)
+
+        return xInterp, yInterp, ticks, axis
+
+    def plotTimeTickLabels(plt, posDta, tickVals, timeAxis, window, anchInfo=None):
+        xInterp, yInterp = posDta
+        anchor, angle, ofst = (0, 0.5), 0, (2, 0)
+        if anchInfo is not None:
+            anchor, angle, ofst = anchInfo
+
+        # Generate labels for each time tick and add to plot
+        labels = []
+        for x, y, t in zip(xInterp, yInterp, tickVals):
+            # Format timestamp
+            timestamp = window.getTimestampFromTick(t)
+            timestamp = timeAxis.fmtTimeStmp(timestamp)
+
+            lbl = TimeTickLabel(timestamp, color='#000000', anchor=anchor, angle=angle)
+            labels.append(lbl)
+
+            plt.addItem(lbl)
+            lbl.setPos(x,y)
+            lbl.setOffset(ofst)
+        return labels
+
     def plotTimesAlongOrbit(self, plt, posDta, magDta, timeDta, gaps, td=None):
         # Extract data and parameters
         epoch = self.outerFrame.epoch
@@ -1370,17 +1408,11 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         plt.scatterPlot([xFull[-1]], [yFull[-1]], symbol='o', pen=pen, size=8, brush=brush)
 
         # Initialize a datetime axis and generate the tick values to plot
-        tickValues, timeAxis = self.getTimeTickValues(fullTimes, epoch, gaps, td)
-        if len(tickValues) < 1:
+        res = OrbitPlotter.getTimeTickPositions(xFull, yFull, fullTimes, epoch, gaps, td)
+        if res is None:
             return
-
-        # Interpolate position data along the evenly spaced time tick values
-        # and plot points at these coordinates
-        csX = interpolate.CubicSpline(fullTimes, xFull)
-        csY = interpolate.CubicSpline(fullTimes, yFull)
-
-        xInterp = csX(tickValues)
-        yInterp = csY(tickValues)
+        ## Unpack time tick positions, time ticks, and a datetime axis
+        xInterp, yInterp, tickValues, timeAxis = res
 
         plt.scatterPlot(xInterp, yInterp, symbol='o', size=6, pen=pen, brush=brush)
 
@@ -1390,19 +1422,11 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         anchor = self.getTextAnchor((xDta, yDta), angle, fieldDta)
         ofst = self.calcOffset(angle, anchor, centerLines)
 
-        # Generate labels for each time tick and add to plot
-        labels = []
-        for x, y, t in zip(xInterp, yInterp, tickValues):
-            # Format timestamp
-            timestamp = self.outerFrame.getTimestampFromTick(t)
-            timestamp = timeAxis.fmtTimeStmp(timestamp)
-
-            lbl = TimeTickLabel(timestamp, color='#000000', anchor=anchor, angle=angle)
-            labels.append(lbl)
-
-            plt.addItem(lbl)
-            lbl.setOffset(ofst)
-            lbl.setPos(x,y)
+        # Plot time tick labels using given tick values/positions and anchoring
+        # information
+        anchInfo = (anchor, angle, ofst)
+        labels = OrbitPlotter.plotTimeTickLabels(plt, (xInterp, yInterp), 
+            tickValues, timeAxis, self.outerFrame, anchInfo=anchInfo)
 
         # Add an additional label to indicate the timestamp format
         axisLabel = timeAxis.getDefaultLabel() if timeAxis.labelFormat is None else timeAxis.labelFormat

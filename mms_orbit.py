@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QSizePolicy
 from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, checkForOrbitLibs
 from FF_Time import FFTIME, leapFile
 from layoutTools import BaseLayout
-from trajectory import OriginGraphic
+from trajectory import OriginGraphic, OrbitPlotter
 
 import os
 import sys
@@ -102,21 +102,56 @@ class MMS_OrbitUI(BaseLayout):
         self.mmsColorChk = QtWidgets.QCheckBox('Use MMS Colors')
         miscOptionsLt.addWidget(self.mmsColorChk)
 
+        # Set up 'Plot Time Ticks' layout
+        self.timeTickFrm = self.getTimeTickFrm()
+
         # Update button and layout setup
         self.updateBtn = QtWidgets.QPushButton(' Update ')
         self.updateBtn.setSizePolicy(self.getSizePolicy('Max', 'Max'))
 
         # Add layouts into grid, wrapping in an hboxlayout w/ a stretch
         # factor at the end to keep the UI elements aligned to the left
-        for lt in [plotTypeLt, timeLt, axisLt, optionsLt, miscOptionsLt]:
+        for lt in [plotTypeLt, timeLt, axisLt, optionsLt, miscOptionsLt, self.timeTickFrm]:
+            if lt == self.timeTickFrm:
+                layout.addWidget(self.timeTickFrm)
+                continue
+
             subLt = QtWidgets.QHBoxLayout()
             subLt.addLayout(lt)
             subLt.addStretch()
             layout.addLayout(subLt)
+
         layout.addWidget(self.updateBtn, alignment=QtCore.Qt.AlignLeft)
         layout.addStretch()
 
         return layout
+
+    def getTimeTickFrm(self):
+        frame = QtWidgets.QGroupBox(' Plot Time Ticks')
+        frame.setCheckable(True)
+        frame.setChecked(False)
+        lt = QtWidgets.QHBoxLayout(frame)
+
+        # Set up radio buttons
+        self.autoBtn = QtWidgets.QRadioButton('Auto')
+        self.autoBtn.setChecked(True)
+        self.cstmBtn = QtWidgets.QRadioButton('Custom')
+
+        # Set up time box for custom time tick intervals
+        self.tickTimeBox = QtWidgets.QTimeEdit()
+        self.tickTimeBox.setMinimumDateTime(datetime(2000, 1, 1, 0, 0, 1))
+        self.tickTimeBox.setDisplayFormat("HH:mm:ss '(HH:MM:SS)'")
+
+        # Add everything to layout
+        lt.addWidget(self.autoBtn)
+        lt.addWidget(self.cstmBtn)
+        lt.addWidget(self.tickTimeBox)
+
+        # Set minimal size policies
+        for btn in [self.autoBtn, self.cstmBtn]:
+            btn.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+
+        return frame
 
     def plotTypeChanged(self):
         # Get new plot type
@@ -127,6 +162,7 @@ class MMS_OrbitUI(BaseLayout):
         showEndTime = True # Show 'End Time' time edit
         showOriginChk = False # Hide 'Plot Origin' checkbox
         startLbl = 'Start Time: ' # Default label for 'start' time edit
+        showTimeTickChk = True
 
         # If partial orbit plot, show 'Trace Full Orbit' and 'Plot Origin' boxes
         if plotType == 'Partial Orbit':
@@ -136,6 +172,8 @@ class MMS_OrbitUI(BaseLayout):
         elif plotType == 'Full Orbit':
             showEndTime = False
             startLbl = 'Time: '
+        else:
+            showTimeTickChk = False
 
         # Hide/show 'Trace Full Orbit' checkbox
         self.pltRestOrbit.setVisible(showRestChk)
@@ -149,6 +187,29 @@ class MMS_OrbitUI(BaseLayout):
         self.plotOrigin.setVisible(showOriginChk)
         if plotType != 'Partial Orbit':
             self.plotOrigin.setChecked(True)
+
+        # Hide/show time tick frame/check
+        self.timeTickFrm.setVisible(showTimeTickChk)
+
+    def getTimeTickSpacing(self):
+        # Gets the time tick interval displayed next to the 'custom' radio
+        # button in the 'Plot Time Ticks' layout
+        plotType = self.pltTypeBox.currentText()
+        timeTicksChk = self.timeTickFrm.isChecked()
+
+        # Returns whether time ticks should be plotted and the spacing
+        # if it is specified by the user
+        chk = False
+        spacing = None
+        if timeTicksChk and plotType in ['Partial Orbit', 'Full Orbit']:
+            chk = True
+            if self.autoBtn.isChecked():
+                spacing = None
+            else:
+                currTime = self.tickTimeBox.dateTime().toPyDateTime()
+                spacing = currTime - datetime(2000, 1, 1, 0, 0, 0)
+
+        return (chk, spacing)
 
     def pltOrbitChecked(self, val):
         # Auto-check 'Plot Origin' box if 'Trace Full Orbit' is checked
@@ -166,7 +227,6 @@ class MMS_OrbitUI(BaseLayout):
             self.glw.addItem(self.plt, 0, 0, 1, 1)
             self.glw.addItem(self.timeInfoLbl, 1, 0, 1, 1)
             self.layout.addWidget(self.gview, 0, 1, 1, 1)
-
 
 class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
     def __init__(self, window, parent=None):
@@ -209,6 +269,7 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         opts = {}
         opts['OrbitTrace'] = self.ui.pltRestOrbit.isChecked()
         opts['MMSColors'] = self.ui.mmsColorChk.isChecked()
+        opts['TimeTicks'] = self.ui.getTimeTickSpacing()
 
         # Plot orbit trace
         self.plotOrbit(plotType, probeNum, timeRng, viewPlane, opts)
@@ -299,6 +360,13 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         # Plot selected orbit data
         plt.plot(xDta, yDta, pen=pen)
 
+        # Plot optional time ticks
+        if opts['TimeTicks'][0]:
+            chk, spacing = opts['TimeTicks']
+            # Plot ticks along main trace line (partial orbit only for 
+            # 'Partial Orbit' plots)
+            self.plotTimeTicks(xDta, yDta, times[startIndex:endIndex], pen, spacing)
+
         # Add starting/ending markers to partial orbit trace
         if plotType == 'Partial Orbit':
             pen = pg.mkPen(pen.color())
@@ -322,6 +390,34 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         self.ui.timeInfoLbl.setText(lbl)
 
         return plt
+
+    def plotTimeTicks(self, xDta, yDta, times, pen, td=None):
+        # Check that tick spacing is reasonable before plotting
+        if td is not None:
+            totSecs = td.total_seconds()
+            totDiff = times[-1] - times[0]
+            if totDiff / totSecs > 150:
+                msg = 'Error: Time tick spacing too small'
+                self.ui.statusBar.showMessage(msg)
+                return
+
+        # Get time ticks and positions corresponding them
+        plt = self.ui.plt
+        epoch = 'J2000'
+        gaps = np.zeros(len(times)) + 1 # Assume there are no time gaps for now
+        res = OrbitPlotter.getTimeTickPositions(xDta, yDta, times, epoch, gaps, td)
+        if res is None:
+            return
+
+        # Plot tick markers
+        pen = pg.mkPen(pen.color())
+        brush = pg.mkBrush((255, 255, 255))
+        xInterp, yInterp, ticks, axis = res
+        plt.scatterPlot(xInterp, yInterp, symbol='o', size=6, pen=pen, brush=brush)
+
+        # Plot time tick labels
+        OrbitPlotter.plotTimeTickLabels(plt, (xInterp, yInterp), ticks, axis,
+            self.window)
 
     def getOrbitPosDta(self, probeNum, timeRng):
         # Map start/end time to time ticks
