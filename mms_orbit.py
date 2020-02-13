@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QSizePolicy
 from MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, checkForOrbitLibs
 from FF_Time import FFTIME, leapFile
 from layoutTools import BaseLayout
-from trajectory import OriginGraphic, OrbitPlotter
+from trajectory import OriginGraphic, OrbitPlotter, MagnetosphereTool
 
 import os
 import sys
@@ -105,21 +105,27 @@ class MMS_OrbitUI(BaseLayout):
         # Set up 'Plot Time Ticks' layout
         self.timeTickFrm = self.getTimeTickFrm()
 
+        # Set up magnetosphere model button/layout
+        self.modelFrm = self.getMagnetModelFrm()
+
         # Update button and layout setup
         self.updateBtn = QtWidgets.QPushButton(' Update ')
         self.updateBtn.setSizePolicy(self.getSizePolicy('Max', 'Max'))
 
         # Add layouts into grid, wrapping in an hboxlayout w/ a stretch
         # factor at the end to keep the UI elements aligned to the left
-        for lt in [plotTypeLt, timeLt, axisLt, optionsLt, miscOptionsLt, self.timeTickFrm]:
-            if lt == self.timeTickFrm:
-                layout.addWidget(self.timeTickFrm)
-                continue
-
+        settingsFrm = QtWidgets.QGroupBox('Settings')
+        settingsLt = QtWidgets.QVBoxLayout(settingsFrm)
+        for lt in [plotTypeLt, timeLt, axisLt, optionsLt, miscOptionsLt]:
             subLt = QtWidgets.QHBoxLayout()
             subLt.addLayout(lt)
             subLt.addStretch()
-            layout.addLayout(subLt)
+            settingsLt.addLayout(subLt)
+        layout.addWidget(settingsFrm)
+
+        # Add time tick and magnetosphere model options frames
+        layout.addWidget(self.timeTickFrm)
+        layout.addWidget(self.modelFrm)
 
         layout.addWidget(self.updateBtn, alignment=QtCore.Qt.AlignLeft)
         layout.addStretch()
@@ -130,7 +136,7 @@ class MMS_OrbitUI(BaseLayout):
         frame = QtWidgets.QGroupBox(' Plot Time Ticks')
         frame.setCheckable(True)
         frame.setChecked(False)
-        lt = QtWidgets.QHBoxLayout(frame)
+        lt = QtWidgets.QGridLayout(frame)
 
         # Set up radio buttons
         self.autoBtn = QtWidgets.QRadioButton('Auto')
@@ -143,15 +149,31 @@ class MMS_OrbitUI(BaseLayout):
         self.tickTimeBox.setDisplayFormat("HH:mm:ss '(HH:MM:SS)'")
 
         # Add everything to layout
-        lt.addWidget(self.autoBtn)
-        lt.addWidget(self.cstmBtn)
-        lt.addWidget(self.tickTimeBox)
+        lt.addWidget(self.autoBtn, 0, 0, 1, 1)
+        lt.addWidget(self.cstmBtn, 1, 0, 1, 1)
+        lt.addWidget(self.tickTimeBox, 1, 1, 1, 1)
 
         # Set minimal size policies
         for btn in [self.autoBtn, self.cstmBtn]:
             btn.setSizePolicy(self.getSizePolicy('Max', 'Max'))
 
         return frame
+    
+    def getMagnetModelFrm(self):
+        frm = QtWidgets.QGroupBox(' Plot Magnetosphere Model')
+        frm.setCheckable(True)
+        frm.setChecked(False)
+        frm.toggled.connect(self.plotModelChecked)
+
+        # Button for accessing model parameters widget
+        self.modelBtn = QtWidgets.QPushButton('Set Model Parameters')
+        self.modelBtn.setMaximumWidth(250)
+
+        # Add single button to layout
+        lt = QtWidgets.QGridLayout(frm)
+        lt.addWidget(self.modelBtn, 0, 0, 1, 1)
+
+        return frm
 
     def plotTypeChanged(self):
         # Get new plot type
@@ -216,6 +238,11 @@ class MMS_OrbitUI(BaseLayout):
         if val:
             self.plotOrigin.setChecked(True)
 
+    def plotModelChecked(self, val):
+        # Auto-check 'Plot Origin' box if 'Plot Magnetosphere Model' is checked
+        if val:
+            self.plotOrigin.setChecked(True)
+
     def showGrid(self):
         # Initializes grid, plot item, and time info label if it hasn't been
         # shown yet
@@ -235,6 +262,10 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         self.ui = MMS_OrbitUI()
         self.ui.setupUI(self)
         self.ui.updateBtn.clicked.connect(self.updatePlot)
+        self.ui.modelBtn.clicked.connect(self.openMagModelTool)
+
+        self.magModelTool = None
+        self.earthRadius = 6371.2
 
         # Get min/max datetime in orbit table and set as min/max time edit values
         orbitTool = Orbit_MMS()
@@ -247,8 +278,8 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         self.ui.timeEdit.start.setDateTime(minDt)
         self.ui.timeEdit.end.setDateTime(maxDt)
 
+        # Set up dictionaries for storing orbit data and mapping axes to rows
         self.orbitData = {}
-
         self.axMap = {'X':0, 'Y':1, 'Z':2}
 
     def updatePlot(self):
@@ -277,6 +308,10 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         # Plot origin if necessary
         if self.ui.plotOrigin.isChecked() or plotType in ['Full Orbit', 'Multiple Orbits']:
             self.plotOrigin()
+
+        # Plot magnetosphere model if checked
+        if self.ui.modelFrm.isChecked():
+            self.plotMagnetosphere(viewPlane)
     
         # Update plot labels and view range
         units = 'KM'
@@ -499,11 +534,17 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         endIndex = bisect.bisect(times, endTick)
         return (startIndex, endIndex)
 
+    def getEarthRadius(self):
+        return self.earthRadius
+
+    def getMinMaxDt(self):
+        return self.window.getMinAndMaxDateTime()
+
     def plotOrigin(self):
         if self.ui.glw is None:
             return
         pen = pg.mkPen((0, 0, 0))
-        origin = OriginGraphic(radius=6371.2, origin=(0, 0), pen=pen)
+        origin = OriginGraphic(radius=self.earthRadius, origin=(0, 0), pen=pen)
         self.ui.plt.addItem(origin)
 
     def getParameters(self):
@@ -522,6 +563,44 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         pen.setDashPattern([3, 4])
         pen.setWidthF(1.5)
         return pen
+
+    def openMagModelTool(self):
+        self.initMagModelTool()
+        self.magModelTool.show()
+
+    def initMagModelTool(self):
+        if self.magModelTool is None:
+            self.magModelTool = MagnetosphereTool(self)
+
+    def plotMagnetosphere(self, viewPlane):
+        # Open magnetosphere tool if it hasn't been opened
+        self.initMagModelTool()
+
+        # Map view axes to data rows
+        y_ax, x_ax = viewPlane[1], viewPlane[0]
+        y_axNum, x_axNum = self.axMap[y_ax], self.axMap[x_ax]
+
+        # Update status bar to
+        self.ui.statusBar.showMessage('Calculating magnetosphere field line coordinates...')
+        self.ui.processEvents()
+
+        # Calculate field line coordinates and plot each line
+        xDta, yDta, tiltAngle = self.magModelTool.getFieldLines(y_axNum, x_axNum)
+        pen = pg.mkPen('ff910d')
+
+        for x, y in zip(xDta, yDta):
+            item = self.ui.plt.plot(x, y, pen=pen)
+            # Set z value so it's beneath origin graphic and orbit lines
+            z = item.zValue()
+            item.setZValue(z-3)
+
+        self.ui.statusBar.clearMessage()
+
+    def closeEvent(self, ev):
+        if self.magModelTool:
+            self.magModelTool.close()
+            self.magModelTool = None
+        self.close()
 
 class Orbit_MMS():
     '''

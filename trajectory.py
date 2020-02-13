@@ -1260,7 +1260,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         # Get the axis numbers to plot and pass them to the magnetosphere tool
         # to calculate the field line coordinates
         aAxisNum, bAxisNum = self.getViewAxes()
-        xcoords, ycoords, coords, tiltAngle = self.magTool.getFieldLines(aAxisNum, bAxisNum)
+        xcoords, ycoords, tiltAngle = self.magTool.getFieldLines(aAxisNum, bAxisNum)
 
         # Plot each trace and print out the dipole tilt angle
         pen = pg.mkPen('#d47f00')
@@ -1458,6 +1458,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             lbl.setPos(xFull[0], yFull[0])
 
     def getTimeInterval(self):
+        # Returns the custom time tick spacing set by the user
         if self.ui.autoBtn.isChecked():
             return None
         value = self.ui.timeBox.time()
@@ -1487,6 +1488,18 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             return False
         
         return True
+
+    def getStartEndTimes(self):
+        # Returns the overall region selected for the Trajectory Analysis tool
+        startDt = self.outerFrame.ui.timeEdit.start.dateTime()
+        endDt = self.outerFrame.ui.timeEdit.end.dateTime()
+        return (startDt, endDt)
+
+    def getEarthRadius(self):
+        return self.outerFrame.getEarthRadius()
+
+    def getMinMaxDt(self):
+        return self.outerFrame.window.getMinAndMaxDateTime()
 
     def updatePlot(self):
         # Initialize plot parameters/scales if first plot
@@ -1686,7 +1699,7 @@ class MagnetosphereToolUI(BaseLayout):
         layout = QtWidgets.QGridLayout(settingsFrm)
         te = TimeEdit(QtGui.QFont())
         self.refTimeBox = te.start
-        te.setupMinMax(outerFrame.outerFrame.window.getMinAndMaxDateTime())
+        te.setupMinMax(outerFrame.getMinMaxDt())
 
         # Coordinate system box
         self.coordBox = QtWidgets.QComboBox()
@@ -1724,7 +1737,7 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
         self.ui.setupUI(self, outerFrame)
 
         # Constants
-        self.earthRadius = self.outerFrame.outerFrame.getEarthRadius()
+        self.earthRadius = self.outerFrame.getEarthRadius()
         self.unitCoords = self.getUnitCoords()
 
         # Determine number of threads available
@@ -1778,8 +1791,7 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
     def updtTime(self):
         # Update time if it hasn't been set or if the set time is out of
         # the selected time range
-        frameTime = self.outerFrame.outerFrame.ui.timeEdit.start.dateTime()
-        frameEnd = self.outerFrame.outerFrame.ui.timeEdit.end.dateTime()
+        frameTime, frameEnd = self.outerFrame.getStartEndTimes()
         currTime = self.ui.refTimeBox.dateTime()
         outOfRange = (self.ui.fixedTime and (frameTime > currTime) or (frameEnd < currTime))
         if not self.ui.fixedTime or outOfRange:
@@ -1823,10 +1835,10 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
 
     def getFieldLines(self, axisNum1, axisNum2):
         # Update time if selection is out of plot time range
-        self.updtTime() 
+        self.updtTime()
 
         # Extract parameters and other plot settings
-        self.earthRadius = self.outerFrame.outerFrame.getEarthRadius()
+        self.earthRadius = self.outerFrame.getEarthRadius()
         dt, gsmSystem, rLim = self.getOtherParameters()
         swrp, dstIndex, imfBy, imfBz = self.getModelParameters()
 
@@ -1853,9 +1865,10 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
         if self.numThreads == 1 or len(plotCoords) < self.numThreads:
             for vecDir in [1, -1]:
                 for p in plotCoords:
-                    line = MagnetosphereTool.calcFieldLine(p, parmod, vecDir, rLim, r0)
-                    for lst, axisLine in zip(coordLists, line):
-                        lst.append(line)
+                    x, y, z = MagnetosphereTool.getFieldLine(p, parmod, vecDir,
+                    rLim, r0, [axisNum1, axisNum2])
+                    for lst, axisLine in zip(coordLists, [x,y,z]):
+                        lst.append(np.array(axisLine))
         else:
             coordLists = self.multiProcFieldLines(plotCoords, parmod, r0, rLim)
 
@@ -1869,7 +1882,7 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
 
         # Dipole tilt angle returned should be in degrees
         dipoleTilt = np.degrees(dipoleTilt)
-        return coordLists[axisNum2], coordLists[axisNum1], plotCoords, dipoleTilt
+        return coordLists[axisNum2], coordLists[axisNum1], dipoleTilt
 
     def multiProcFieldLines(self, plotCoords, parmod, r0, rLim):
         # Multiprocessed calculation of the field lines
