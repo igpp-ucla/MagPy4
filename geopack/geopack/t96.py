@@ -336,6 +336,7 @@ def tailrc96(sps, x,y,z):
 
     return bxrc,byrc,bzrc, bxt2,byt2,bzt2, bxt3,byt3,bzt3
 
+
 def shlcar3x3(a, x,y,z, sps):
     """
     This code returns the shielding field represented by  2x3x3=18 "cartesian" harmonics
