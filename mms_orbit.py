@@ -88,6 +88,15 @@ class MMS_OrbitUI(BaseLayout):
             axisLt.addWidget(item)
         axisLt.addLayout(probeLt)
 
+        # Set up coordinate system combo box
+        coordLt = QtWidgets.QHBoxLayout()
+        coordLbl = QtWidgets.QLabel('Coordinate System: ')
+        coordLbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        self.coordBox = QtWidgets.QComboBox()
+        self.coordBox.addItems(['GSM', 'GSE', 'SM'])
+        coordLt.addWidget(coordLbl)
+        coordLt.addWidget(self.coordBox)
+
         # Set up options layout
         optionsLt = QtWidgets.QHBoxLayout()
         self.pltRestOrbit = QtWidgets.QCheckBox('Trace Full Orbit')
@@ -116,7 +125,7 @@ class MMS_OrbitUI(BaseLayout):
         # factor at the end to keep the UI elements aligned to the left
         settingsFrm = QtWidgets.QGroupBox('Settings')
         settingsLt = QtWidgets.QVBoxLayout(settingsFrm)
-        for lt in [plotTypeLt, timeLt, axisLt, optionsLt, miscOptionsLt]:
+        for lt in [plotTypeLt, timeLt, axisLt, coordLt, optionsLt, miscOptionsLt]:
             subLt = QtWidgets.QHBoxLayout()
             subLt.addLayout(lt)
             subLt.addStretch()
@@ -264,7 +273,13 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         self.ui.updateBtn.clicked.connect(self.updatePlot)
         self.ui.modelBtn.clicked.connect(self.openMagModelTool)
 
+        # Keeps track of magnetosphere model tool
         self.magModelTool = None
+
+        # Update model coordinate system if main coord system changed
+        self.ui.coordBox.currentTextChanged.connect(self.updateModelCoordSys)
+
+        # Earth radius in km
         self.earthRadius = 6371.2
 
         # Get min/max datetime in orbit table and set as min/max time edit values
@@ -284,7 +299,7 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
 
     def updatePlot(self):
         # Extract UI parameters
-        plotType, probeNum, timeRng, viewPlane = self.getParameters()
+        plotType, probeNum, timeRng, viewPlane, coordSys = self.getParameters()
 
         # Make sure time range is not too large (> 180 days) to work
         # with download limits
@@ -303,7 +318,7 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         opts['TimeTicks'] = self.ui.getTimeTickSpacing()
 
         # Plot orbit trace
-        self.plotOrbit(plotType, probeNum, timeRng, viewPlane, opts)
+        self.plotOrbit(plotType, probeNum, timeRng, viewPlane, coordSys, opts)
 
         # Plot origin if necessary
         if self.ui.plotOrigin.isChecked() or plotType in ['Full Orbit', 'Multiple Orbits']:
@@ -311,16 +326,16 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
 
         # Plot magnetosphere model if checked
         if self.ui.modelFrm.isChecked():
-            self.plotMagnetosphere(viewPlane)
+            self.plotMagnetosphere(viewPlane, coordSys)
     
         # Update plot labels and view range
         units = 'KM'
-        self.setPlotLabels(viewPlane, probeNum, units)
+        self.setPlotLabels(viewPlane, probeNum, units, coordSys)
 
         if self.ui.glw:
             self.ui.plt.getViewBox().autoRange()
 
-    def setPlotLabels(self, viewPlane, scNum, units):
+    def setPlotLabels(self, viewPlane, scNum, units, coordSys):
         if self.ui.glw is None:
             return
 
@@ -328,14 +343,14 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         units = f'({units})' if units != '' else ''
 
         x_ax, y_ax = viewPlane[0], viewPlane[1]
-        y_lbl = f'{y_ax} GSM {units}'
-        x_lbl = f'{x_ax} GSM {units}'
+        y_lbl = f'{y_ax} {coordSys.upper()} {units}'
+        x_lbl = f'{x_ax} {coordSys.upper()} {units}'
 
         plt.setTitle(f'MMS {scNum} Orbit')
         plt.getAxis('left').setLabel(y_lbl)
         plt.getAxis('bottom').setLabel(x_lbl)
 
-    def plotOrbit(self, plotType, probeNum, timeRng, viewPlane, opts):
+    def plotOrbit(self, plotType, probeNum, timeRng, viewPlane, coordSys, opts):
         # Adjust time range for full orbit plots since using a single reference time
         startTime, endTime = timeRng
         if plotType == 'Full Orbit':
@@ -348,7 +363,7 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         y_axNum, x_axNum = self.axMap[y_ax], self.axMap[x_ax]
 
         # Get full position data
-        times, posDta = self.getOrbitPosDta(probeNum, timeRng)
+        times, posDta = self.getOrbitPosDta(probeNum, timeRng, coordSys)
         if len(times) == 0 or len(posDta) == 0:
             return
 
@@ -454,7 +469,7 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         OrbitPlotter.plotTimeTickLabels(plt, (xInterp, yInterp), ticks, axis,
             self.window)
 
-    def getOrbitPosDta(self, probeNum, timeRng):
+    def getOrbitPosDta(self, probeNum, timeRng, coordSys):
         # Map start/end time to time ticks
         startTime, endTime = timeRng
 
@@ -474,7 +489,7 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         # Check if the saved orbits fully cover the time range
         if orbitNums == set(savedOrbits):
             # Concatenate times and position data across all necessary orbits
-            times, data = self.mergeOrbitData(savedOrbits, probeNum)
+            times, data = self.mergeOrbitData(savedOrbits, probeNum, coordSys)
             return times, data
 
         # Show message in status bar and update UI
@@ -490,26 +505,35 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
 
         orbitNums, timeDict, dataDict = res
         for orbit in orbitNums:
-            orbitDta = dataDict[orbit]
+            # posDta is a dictionary of the orbit data in the different
+            # coordinate systems
+            posDta = {}
+            for kw in ['gsm', 'gse', 'sm']:
+                posDta[kw] = dataDict[(orbit, kw)]
             orbitTimes = timeDict[orbit]
-            self.orbitData[(orbit, probeNum)] = (orbitTimes, orbitDta)
+            # orbitData stores the orbit data described above, and
+            # the corresponding time ticks, with the keys being the 
+            # orbit number and the probe number
+            self.orbitData[(orbit, probeNum)] = (orbitTimes, posDta)
 
         # Clear status bar and update UI
         self.ui.statusBar.clearMessage()
         self.ui.processEvents()
 
         # Concatenate orbit times and data now that they are in the dictionary
-        times, data = self.mergeOrbitData(orbitNums, probeNum)
+        times, data = self.mergeOrbitData(orbitNums, probeNum, coordSys)
 
         return times, data
 
-    def mergeOrbitData(self, orbitNums, scNum):
+    def mergeOrbitData(self, orbitNums, scNum, coordSys='gsm'):
         # Concatenate the times and position data (3xN format) for each orbit
         times = []
         data = [[],[],[]]
         for orbit in orbitNums:
             if (orbit, scNum) in self.orbitData:
                 orbitTimes, orbitDta = self.orbitData[(orbit, scNum)]
+                # Extract the data for the right coordinate system
+                orbitDta = orbitDta[coordSys]
                 times = np.concatenate([times, orbitTimes])
                 data = np.concatenate([data, orbitDta], axis=1)
 
@@ -555,7 +579,9 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         timeRng = self.getStartEndTimes()
 
         viewPlane = self.ui.axisBox.currentText()
-        return (plotType, probeNum, timeRng, viewPlane)
+        coordSys = self.ui.coordBox.currentText().lower()
+
+        return (plotType, probeNum, timeRng, viewPlane, coordSys)
 
     def getDashPen(self, color='#000000'):
         # Pen used for tracing full orbit silhouette in partial orbit plots
@@ -572,7 +598,15 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         if self.magModelTool is None:
             self.magModelTool = MagnetosphereTool(self)
 
-    def plotMagnetosphere(self, viewPlane):
+            # Set default coordinate system to selected coordinate system
+            coordSys = self.ui.coordBox.currentText()
+            self.magModelTool.ui.coordBox.setCurrentText(coordSys)
+
+    def updateModelCoordSys(self, txt):
+        if self.magModelTool:
+            self.magModelTool.ui.coordBox.setCurrentText(txt)
+
+    def plotMagnetosphere(self, viewPlane, coordSys):
         # Open magnetosphere tool if it hasn't been opened
         self.initMagModelTool()
 
@@ -771,10 +805,11 @@ class Orbit_MMS():
 
         # Read in data from CDFs into dicts and extract position data
         timeKw = 'Epoch'
-        kw = f'mms{scNum}_mec_r_gsm'
+        kw = f'mms{scNum}_mec_r_'
         times = []
         dateTimes = []
-        posDta = [[],[],[]]
+        coordKws = ['gsm', 'gse', 'sm']
+        posDta = {coordKw:[[],[],[]] for coordKw in coordKws}
         for f in paths:
             d = self.readCDF(f)
 
@@ -783,8 +818,11 @@ class Orbit_MMS():
             times = np.concatenate([times, cdfTimes])
 
             # Concatenate position data (3xn format)
-            cdfPosDta = np.array(d[kw]).T
-            posDta = np.concatenate([posDta, cdfPosDta], axis=1)
+            for coordKw in coordKws:
+                cdfPosDta = np.array(d[kw+coordKw]).T
+                oldPosDta = posDta[coordKw]
+                newPosDta = np.concatenate([oldPosDta, cdfPosDta], axis=1)
+                posDta[coordKw] = newPosDta
 
             # Remove files after done reading
             os.remove(f)
@@ -804,7 +842,8 @@ class Orbit_MMS():
             endIndex = bisect.bisect(times, endTime)
 
             # Store data between start/end indices in dictionaries
-            dataDict[orbitNum] = posDta[:,startIndex:endIndex+1]
+            for coordKw in coordKws:
+                dataDict[(orbitNum, coordKw)] = posDta[coordKw][:,startIndex:endIndex+1]
             timeDict[orbitNum] = times[startIndex:endIndex+1]
 
         return self.orbitNum, timeDict, dataDict
@@ -832,7 +871,7 @@ class Orbit_MMS():
 
         # Create a dictionary of data
         timeKw = 'Epoch'
-        kw = f'_mec_r_gsm'
+        kw = f'_mec_r_'
         varNames = cdf.cdf_info()['zVariables']
         for v in varNames:
             if kw in v or timeKw in v:

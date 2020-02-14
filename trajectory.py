@@ -1703,7 +1703,7 @@ class MagnetosphereToolUI(BaseLayout):
 
         # Coordinate system box
         self.coordBox = QtWidgets.QComboBox()
-        self.coordBox.addItems(['GSM', 'GSE'])
+        self.coordBox.addItems(['GSM', 'GSE', 'SM'])
         self.coordBox.setCurrentIndex(0)
 
         # Boundary radius / rLim parameter box
@@ -1780,13 +1780,10 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
         self.ui.imfBzBox.setValue(imfBz)
 
         # Load general parameters
-        dt, gsmSystem, rLim = otherParams
+        dt, coordSys, rLim = otherParams
         self.ui.refTimeBox.setDateTime(dt)
         self.ui.rlimBox.setValue(rLim)
-        if gsmSystem:
-            self.ui.coordBox.setCurrentText('GSM')
-        else:
-            self.ui.coordBox.setCurrentText('GSE')
+        self.ui.coordBox.setCurrentText(coordSys)
 
     def updtTime(self):
         # Update time if it hasn't been set or if the set time is out of
@@ -1829,9 +1826,9 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
 
     def getOtherParameters(self):
         dt = self.ui.refTimeBox.dateTime().toPyDateTime()
-        gsmSystem = self.ui.coordBox.currentText() == 'GSM'
+        coordSys = self.ui.coordBox.currentText()
         rLim = self.ui.rlimBox.value()
-        return dt, gsmSystem, rLim
+        return dt, coordSys, rLim
 
     def getFieldLines(self, axisNum1, axisNum2):
         # Update time if selection is out of plot time range
@@ -1839,7 +1836,7 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
 
         # Extract parameters and other plot settings
         self.earthRadius = self.outerFrame.getEarthRadius()
-        dt, gsmSystem, rLim = self.getOtherParameters()
+        dt, coordSys, rLim = self.getOtherParameters()
         swrp, dstIndex, imfBy, imfBz = self.getModelParameters()
 
         r0 = 1 # All lines stop on surface of earth (1 RE)
@@ -1877,8 +1874,10 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
         plotCoords = [(x*self.earthRadius, y*self.earthRadius, z*self.earthRadius) for x,y,z in plotCoords]
 
         # Change coordinates if output is GSE
-        if not gsmSystem:
+        if coordSys == 'GSE':
             coordLists = self.coordsToGSE(coordLists[0], coordLists[1], coordLists[2])
+        elif coordSys == 'SM': # Convert to SM coordinates
+            coordLists = self.coordsToSM(coordLists[0], coordLists[1], coordLists[2])
 
         # Dipole tilt angle returned should be in degrees
         dipoleTilt = np.degrees(dipoleTilt)
@@ -1923,18 +1922,30 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
 
     def coordsToGSE(self, xCoords, yCoords, zCoords):
         # Convert coordinates from GSM to GSE
-        xGSE, yGSE, zGSE = [], [], []
+        return self.convertCoords(xCoords, yCoords, zCoords, 'GSE')
+
+    def coordsToSM(self, xCoords, yCoords, zCoords):
+        return self.convertCoords(xCoords, yCoords, zCoords, 'SM')
+
+    def convertCoords(self, xCoords, yCoords, zCoords, coordSys):
+        if coordSys == 'GSE': # Map from GSM to GSE
+            mapFunc = lambda v : geopack.gsmgse(v[0], v[1], v[2], 100)
+        else: # Map from GSM to SM
+            mapFunc = lambda v : geopack.smgsm(v[0], v[1], v[2], -100)
+
+        # Convert coordinates from GSM to either GSM or SM
+        xNew, yNew, zNew = [], [], []
         for lineX, lineY, lineZ in zip(xCoords, yCoords, zCoords):
             newX, newY, newZ = [], [], []
             for x, y, z in zip(lineX, lineY, lineZ):
-                xgse, ygse, zgse = geopack.gsmgse(x,y,z,100)
-                newX.append(xgse)
-                newY.append(ygse)
-                newZ.append(zgse)
-            xGSE.append(newX)
-            yGSE.append(newY)
-            zGSE.append(newZ)
-        return [xGSE, yGSE, zGSE]
+                xconv, yconv, zconv = mapFunc((x, y, z))
+                newX.append(xconv)
+                newY.append(yconv)
+                newZ.append(zconv)
+            xNew.append(newX)
+            yNew.append(newY)
+            zNew.append(newZ)
+        return [xNew, yNew, zNew]
 
     def getCoords(self, axis1, axis2, tiltAngle, rScale=3.5):
         otherAxis = (set([0,1,2]) - set([axis1, axis2])).pop()
