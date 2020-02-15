@@ -1867,7 +1867,7 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
                     for lst, axisLine in zip(coordLists, [x,y,z]):
                         lst.append(np.array(axisLine))
         else:
-            coordLists = self.multiProcFieldLines(plotCoords, parmod, r0, rLim)
+            coordLists = self.multiProcFieldLines(plotCoords, parmod, r0, rLim, univTime)
 
         # Scale the coordinates if the plot units are in kilometers instead of RE
         self.scaleCoords(coordLists[0], coordLists[1], coordLists[2])
@@ -1883,14 +1883,14 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
         dipoleTilt = np.degrees(dipoleTilt)
         return coordLists[axisNum2], coordLists[axisNum1], dipoleTilt
 
-    def multiProcFieldLines(self, plotCoords, parmod, r0, rLim):
+    def multiProcFieldLines(self, plotCoords, parmod, r0, rLim, univTime):
         # Multiprocessed calculation of the field lines
         # Get number of lines to calculate per process and split coords into groups
         grpSize = int(len(plotCoords) / self.numThreads)
         grps = []
         lastIndex = 0
         for startIndex in range(0, len(plotCoords), grpSize):
-            parmList = (parmod[:], rLim, r0)
+            parmList = (parmod[:], rLim, r0, univTime)
             grps.append((plotCoords[startIndex:startIndex+grpSize], parmList))
             lastIndex = startIndex + grpSize
 
@@ -1987,8 +1987,9 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
     def calcFieldLinesForCoords(args):
         # Unpack arguments for the multiprocessed version of the calculations
         coordList, parmList = args
-        parmod, rLim, r0 = parmList
+        parmod, rLim, r0, univTime = parmList
         # Get line at each coordinate in both directions
+        geopack.recalc(univTime)
         lines = []
         for vecDir in [-1, 1]:
             for p0 in coordList:
