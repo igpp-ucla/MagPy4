@@ -97,6 +97,15 @@ class MMS_OrbitUI(BaseLayout):
         coordLt.addWidget(coordLbl)
         coordLt.addWidget(self.coordBox)
 
+        # Set up scaling mode box
+        scaleLt = QtWidgets.QHBoxLayout()
+        scaleLbl = QtWidgets.QLabel('Scale: ')
+        scaleLbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        self.scaleBox = QtWidgets.QComboBox()
+        self.scaleBox.addItems(['Kilometers', 'Earth Radii'])
+        for item in [scaleLbl, self.scaleBox]:
+            scaleLt.addWidget(item)
+
         # Set up options layout
         optionsLt = QtWidgets.QHBoxLayout()
         self.pltRestOrbit = QtWidgets.QCheckBox('Trace Full Orbit')
@@ -125,7 +134,8 @@ class MMS_OrbitUI(BaseLayout):
         # factor at the end to keep the UI elements aligned to the left
         settingsFrm = QtWidgets.QGroupBox('Settings')
         settingsLt = QtWidgets.QVBoxLayout(settingsFrm)
-        for lt in [plotTypeLt, timeLt, axisLt, coordLt, optionsLt, miscOptionsLt]:
+        for lt in [plotTypeLt, timeLt, axisLt, coordLt, scaleLt, optionsLt,
+            miscOptionsLt]:
             subLt = QtWidgets.QHBoxLayout()
             subLt.addLayout(lt)
             subLt.addStretch()
@@ -299,7 +309,7 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
 
     def updatePlot(self):
         # Extract UI parameters
-        plotType, probeNum, timeRng, viewPlane, coordSys = self.getParameters()
+        plotType, scNum, timeRng, viewPlane, coordSys = self.getParameters()
 
         # Make sure time range is not too large (> 180 days) to work
         # with download limits
@@ -316,24 +326,25 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         opts['OrbitTrace'] = self.ui.pltRestOrbit.isChecked()
         opts['MMSColors'] = self.ui.mmsColorChk.isChecked()
         opts['TimeTicks'] = self.ui.getTimeTickSpacing()
+        opts['Scale'] = self.ui.scaleBox.currentText()
 
         # Plot orbit trace
-        self.plotOrbit(plotType, probeNum, timeRng, viewPlane, coordSys, opts)
+        self.plotOrbit(plotType, scNum, timeRng, viewPlane, coordSys, opts)
 
         # Plot origin if necessary
         if self.ui.plotOrigin.isChecked() or plotType in ['Full Orbit', 'Multiple Orbits']:
-            self.plotOrigin()
+            self.plotOrigin(opts['Scale'])
 
         # Plot magnetosphere model if checked
         if self.ui.modelFrm.isChecked():
-            self.plotMagnetosphere(viewPlane, coordSys)
+            self.plotMagnetosphere(viewPlane, coordSys, opts['Scale'])
     
         # Update plot labels and view range
-        units = 'KM'
-        self.setPlotLabels(viewPlane, probeNum, units, coordSys)
+        units = 'KM' if opts['Scale'] == 'Kilometers' else 'RE'
+        self.setPlotLabels(viewPlane, scNum, units, coordSys)
 
         if self.ui.glw:
-            self.ui.plt.getViewBox().autoRange()
+            QtCore.QTimer.singleShot(100, self.ui.plt.getViewBox().autoRange)
 
     def setPlotLabels(self, viewPlane, scNum, units, coordSys):
         if self.ui.glw is None:
@@ -366,6 +377,10 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         times, posDta = self.getOrbitPosDta(probeNum, timeRng, coordSys)
         if len(times) == 0 or len(posDta) == 0:
             return
+
+        # Scale position data if necessary
+        if opts['Scale'] == 'Earth Radii':
+            posDta = posDta / self.earthRadius
 
         # Get starting/ending indices based on time range
         startTime, endTime = timeRng
@@ -564,11 +579,18 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
     def getMinMaxDt(self):
         return self.window.getMinAndMaxDateTime()
 
-    def plotOrigin(self):
+    def plotOrigin(self, scale='Kilometers'):
         if self.ui.glw is None:
             return
+        # Determine which radius to use based on scale mode
+        if scale != 'Kilometers':
+            radius = 1.0
+        else:
+            radius = self.earthRadius
+
+        # Add graphic with given radius
         pen = pg.mkPen((0, 0, 0))
-        origin = OriginGraphic(radius=self.earthRadius, origin=(0, 0), pen=pen)
+        origin = OriginGraphic(radius=radius, origin=(0, 0), pen=pen)
         self.ui.plt.addItem(origin)
 
     def getParameters(self):
@@ -606,7 +628,7 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         if self.magModelTool:
             self.magModelTool.ui.coordBox.setCurrentText(txt)
 
-    def plotMagnetosphere(self, viewPlane, coordSys):
+    def plotMagnetosphere(self, viewPlane, coordSys, scale='Kilometers'):
         # Open magnetosphere tool if it hasn't been opened
         self.initMagModelTool()
 
@@ -621,6 +643,11 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
         # Calculate field line coordinates and plot each line
         xDta, yDta, tiltAngle = self.magModelTool.getFieldLines(y_axNum, x_axNum)
         pen = pg.mkPen('ff910d')
+
+        ## Scale coordinates to RE if selected by user
+        if scale != 'Kilometers':
+            xDta = np.array(xDta) / self.earthRadius
+            yDta = np.array(yDta) / self.earthRadius
 
         for x, y in zip(xDta, yDta):
             item = self.ui.plt.plot(x, y, pen=pen)
