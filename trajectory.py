@@ -1863,7 +1863,7 @@ class MagnetosphereTool(QtWidgets.QFrame, MagnetosphereToolUI):
             for vecDir in [1, -1]:
                 for p in plotCoords:
                     x, y, z = MagnetosphereTool.getFieldLine(p, parmod, vecDir,
-                    rLim, r0, [axisNum1, axisNum2])
+                    rLim, r0)
                     for lst, axisLine in zip(coordLists, [x,y,z]):
                         lst.append(np.array(axisLine))
         else:
