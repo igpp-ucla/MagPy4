@@ -574,7 +574,9 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
             tool.leftClick(x, plotIndex, ctrlPressed)
     
     def gridRightClick(self, plotIndex):
-        tool = self.getCurrentTool()
+        tool = self.getCurrentTool(setTrace=False)
+
+        # Apply right click to given tool general select object
         if tool:
             tool.rightClick(plotIndex)
             return True
