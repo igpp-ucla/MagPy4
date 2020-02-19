@@ -1403,12 +1403,12 @@ def vbMenu_UpdateState(self):
 pg.ViewBoxMenu.ViewBoxMenu.updateState = vbMenu_UpdateState
 
 from pyqtgraph.parametertree import Parameter
-class PDFExporter(pg.exporters.ImageExporter):
+class PDFExporter(pg.exporters.Exporter):
     Name = "PDF Document"
     allowCopy = False
 
     def __init__(self, item):
-        pg.exporters.ImageExporter.__init__(self, item)
+        pg.exporters.Exporter.__init__(self, item)
 
         # Orientation option
         self.params = Parameter(name='params', type='group', children=[
@@ -1440,17 +1440,24 @@ class PDFExporter(pg.exporters.ImageExporter):
         res = QtGui.QDesktopWidget().logicalDpiX()
         self.pdfFile.setResolution(res)
 
-        # Get the source rect and the paintRect for the page w.r.t. the
-        # resolution given above
+        # Get the paintRect for the page in pixels
         pageLt = self.pdfFile.pageLayout()
         targetRect = pageLt.paintRectPixels(res)
+
+        ## Map to QRectF and remove margins
+        targetRect = QtCore.QRectF(targetRect)
+        margins = QtCore.QMarginsF(pageLt.marginsPixels(res))
+        targetRect.moveTopLeft(QtCore.QPointF(0, 0))
+        targetRect = targetRect.marginsRemoved(margins)
+
+        # Get the source rect
         sourceRect = self.getSourceRect()
 
         # Start painter and render scene
         painter = QtGui.QPainter(self.pdfFile)
         try:
             self.setExportMode(True, {'painter': painter})
-            self.getScene().render(painter, QtCore.QRectF(targetRect), QtCore.QRectF(sourceRect))
+            self.getScene().render(painter, targetRect, QtCore.QRectF(sourceRect))
         finally:
             self.setExportMode(False)
         painter.end()
