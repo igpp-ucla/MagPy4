@@ -799,6 +799,9 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
         self.ui = BatchSelectUI()
         self.ui.setupUI(self)
 
+        # Window flags settings
+        self.normFlags = self.windowFlags()
+
         # Button and checkbox connections
         self.ui.addBtn.clicked.connect(self.addRegionsToList)
         self.ui.regionList.currentCellChanged.connect(self.update)
@@ -827,11 +830,11 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
 
     def toggleWindowOnTop(self, val):
         # Keeps window on top of main window while user updates lines
-        dialogFlag = QtCore.Qt.Dialog
-        if self.window.OS == 'posix':
-            dialogFlag = QtCore.Qt.Tool
-        flags = self.windowFlags()
-        flags = flags | dialogFlag if val else flags & ~dialogFlag
+        if val:
+            flag = QtCore.Qt.WindowStaysOnTopHint
+            flags = self.normFlags | flag
+        else:
+            flags = self.normFlags
         self.setWindowFlags(flags)
         self.show()
 
