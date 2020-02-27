@@ -1,3 +1,9 @@
 [submodule "ffPy"]
 	path = ffPy
 	url = https://github.com/igpp-ucla/ffPy.git
+[submodule "MagPy4/MagPy4/ffPy"]
+	path = MagPy4/MagPy4/ffPy
+	url = https://github.com/igpp-ucla/ffPy
+[submodule "MagPy4/ffPy"]
+	path = MagPy4/ffPy
+	url = https://github.com/igpp-ucla/ffPy
