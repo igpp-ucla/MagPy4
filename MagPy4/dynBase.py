@@ -743,6 +743,111 @@ class SpectraLegend(GradLegend):
     def logModeSetting(self):
         return self.logMode
 
+class SpectraGridItem(pg.PlotCurveItem):
+    '''
+    Grid version of a set of SpectraLine items; Optimized for performance
+    '''
+    def __init__(self, freqs, colors, times, window=None, *args, **kargs):
+        # Takes the y-values, mapped color values, and time ticks
+        self.freqs = freqs
+        self.times = times
+
+        # Attributes used when drawing as an SVG image
+        self.drawEdges = False # Draw corners so they are visible
+        self.offset = 0 # Tick offset for x-axis
+
+        # Flatten colors into a list so they can be zipped with the pre-generated
+        # subpaths in the paint method
+        self.flatColors = []
+        for row in colors:
+            self.flatColors.extend(row)
+
+        # Used to update window's status bar w/ the clicked value if passed
+        self.window = window
+        self.prevPaths = []
+
+        times = list(times) * len(self.freqs)
+        freqs = list(freqs) * len(self.times)
+        pg.PlotCurveItem.__init__(self, x=times, y=freqs, *args, **kargs)
+
+    def getGridData(self):
+        return (self.freqs, self.flatColors, self.times)
+
+    def setEdgeMode(self, val=True):
+        '''
+        Enables/disables drawing edge paths
+        '''
+        self.drawEdges = val
+
+    def setOffset(self, ofst=None):
+        '''
+        Sets the value offset for time ticks
+        '''
+        self.times = np.array(self.times) + self.offset
+        if ofst is None:
+            self.offset = 0
+        else:
+            self.times -= ofst
+            self.offset = ofst
+
+        times = list(self.times) * len(self.freqs)
+        self.prevPaths = []
+        self.setData(x=times, y=self.yData)
+
+    def setupPath(self, p):
+        # Creates subpath for each rect in the grid
+        pt = QtCore.QPointF(0, 0)
+        for r in range(0, len(self.freqs)-1):
+            y0 = self.freqs[r]
+            y1 = self.freqs[r+1]
+            height = y1 - y0
+            for c in range(0, len(self.times)-1):
+                x0 = self.times[c]
+                x1 = self.times[c+1]
+
+                # Upper left corner
+                p2 = QtGui.QPainterPath(pt)
+                p2.addRect(x0, y0, x1-x0, height)
+                yield p2
+
+    def paint(self, p, opt, widget):
+        if self.xData is None or len(self.xData) == 0:
+            return
+
+        p.setRenderHint(p.Antialiasing, False)
+
+        # Generate subpaths if they haven't been generated yet
+        if self.prevPaths == []:
+            self.prevPaths = list(self.setupPath(p))
+
+        # Draw edges and fill rects for every point if exporting image
+        if self.drawEdges:
+            for color, subpath in zip(self.flatColors, self.prevPaths):
+                p.setBrush(color)
+                p.setPen(pg.mkPen(color))
+                p.drawPath(subpath)
+            return
+
+        # Draws filled rects for every point using designated colors
+        for color, subpath in zip(self.flatColors, self.prevPaths):
+            p.fillPath(subpath, color)
+
+    def linkToStatusBar(self, window):
+        self.window = window
+
+    def mouseClickEvent(self, ev):
+        if self.window is None:
+            return
+
+        # If window argument was passed, show value in its status bar
+        if ev.button() == QtCore.Qt.LeftButton:
+            time = ev.pos().x()
+            yVal = ev.pos().y()
+            self.window.showPointValue(yVal, time)
+            ev.accept()
+        else:
+            pg.PlotCurveItem.mouseClickEvent(self, ev)
+
 class SpectraLine(pg.PlotCurveItem):
     def __init__(self, freq, colors, times, window=None, *args, **kargs):
         # Takes the y-values, mapped color values, and time ticks
@@ -884,7 +989,7 @@ class SimpleColorPlot(pg.PlotItem):
         self.yTicks = None # n-length
         self.logYScale = logYScale # Y-axis scaling mode
         self.logColor = False # Color scaling mode
-        self.lines = []
+        self.gridItem = None # Grid PlotCurveItem
         self.valueRange = (0, 1) # Gradient legend value range
         self.baseOffset = None # Parameter used when exporting as SVG
 
@@ -1014,13 +1119,9 @@ class SimpleColorPlot(pg.PlotItem):
         if self.logYScale:
             yTicks = np.log10(yTicks)
 
-        for i in range(0, len(yTicks)-1):
-            y0 = yTicks[i]
-            y1 = yTicks[i+1]
-            colors = list(map(self.getColor, self.mappedGrid[i]))
-            line = SpectraLine(y1, colors, self.xTicks, fillLevel=y0)
-            self.addItem(line)
-            self.lines.append(line)
+        colorGrid = [list(map(self.getColor, self.mappedGrid[i])) for i in range(0, len(yTicks)-1)]
+        self.gridItem = SpectraGridItem(yTicks, colorGrid, self.xTicks)
+        self.addItem(self.gridItem)
 
         # Set x and y ranges to min/max values of each range w/ no padding
         self.enableAutoRange(x=False, y=False)
@@ -1073,13 +1174,13 @@ class SimpleColorPlot(pg.PlotItem):
     def prepareForExport(self):
         # Offset times for each data tiem
         pdis = self.listDataItems()
-        self.baseOffset = self.lines[0].times[0]
+        self.baseOffset = self.xTicks[0]
         for pdi in pdis:
-            if pdi in self.lines:
-                pdi.times = pdi.times - self.baseOffset
-                pdi.prevPaths = []
-                pdi.drawEdges = True
-            pdi.setData(x=pdi.xData-self.baseOffset, y=pdi.yData)
+            if pdi == self.gridItem:
+                pdi.setEdgeMode(True)
+                pdi.setOffset(self.baseOffset)
+            else:
+                pdi.setData(x=pdi.xData - self.baseOffset, y=pdi.yData)
             pdi.update()
 
         # Adjust time tick offset
@@ -1099,11 +1200,11 @@ class SimpleColorPlot(pg.PlotItem):
         pdis = self.listDataItems()
         if self.baseOffset:
             for pdi in pdis:
-                if pdi in self.lines:
-                    pdi.times = pdi.times + self.baseOffset
-                    pdi.drawEdges = False
-                pdi.setData(x=pdi.xData+self.baseOffset, y=pdi.yData)
-                pdi.prevPaths = []
+                if pdi == self.gridItem:
+                    pdi.setEdgeMode(False)
+                    pdi.setOffset(None)
+                else:
+                    pdi.setData(x=pdi.xData+self.baseOffset, y=pdi.yData)
                 pdi.path = None
 
         # Reset tick offset
@@ -1144,8 +1245,6 @@ class SpectrogramViewBox(pg.ViewBox):
 class SpectrogramPlotItem(SimpleColorPlot):
     def __init__(self, epoch, logMode=False):
         super().__init__(epoch, logMode)
-        self.baseOffset = None
-        self.lines = []
         self.savedPlot = None
 
         # Initialize default pg.PlotItem settings
@@ -1244,8 +1343,7 @@ class SpectrogramPlotItem(SimpleColorPlot):
     def linkToStatusBar(self, window):
         # Link clicks on this plot to the window's statusBar to display
         # relevant values
-        for line in self.lines:
-            line.linkToStatusBar(window)
+        self.gridItem.linkToStatusBar(window)
 
 class PhaseSpectrogram(SpectrogramPlotItem):
     def __init__(self, epoch, logMode=True):
