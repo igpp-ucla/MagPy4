@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.2.0 (February 28, 2020)'
+VERSION = f'Version 1.2.3.0 (March 2, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -1509,7 +1509,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Pad rest of datadict to have same length
         length = len(self.editHistory)
-        while len(self.DATADICT[dstr]) < length:
+        while len(self.DATADICT[dstr]) <= length:
             self.DATADICT[dstr].append([])
 
     def initDataStorageStructures(self):
@@ -1995,7 +1995,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             i = len(edits) - 1 
         else:
             i = editNumber
-
         while len(edits[i]) == 0: # if empty list go back one
             i -= 1
         return edits[i]
@@ -2003,6 +2002,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def getLabel(self, dstr, editNumber=None):
         edits = self.DATADICT[dstr]
         i = self.currentEdit if editNumber is None else editNumber
+
+        if len(edits) <= i:
+            i = len(edits) - 1 
+        else:
+            i = editNumber
+
         while len(edits[i]) == 0: # if empty list go back one
             i -= 1
         return dstr if i == 0 else f'{dstr} {self.editNames[i][:8]}'

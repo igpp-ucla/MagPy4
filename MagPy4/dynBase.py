@@ -102,14 +102,13 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
     def evalExpr(self, exprStr, sI, eI):
         # Attempt to evaluate expression, print error if an exception occurs
         try:
-            expEval = ExpressionEvaluator(exprStr, self.window, (sI, eI))
-            name, exprLst = expEval.splitString()
-            stack = expEval.createStack(exprLst)
-            res = stack.evaluate()
-            dta = res.evaluate()
+            rng = (sI, eI)
+            name, dta = ExpressionEvaluator.evaluate(exprStr, self.window, rng)
+            if dta is None:
+                return None
 
             # Reshape constants to match times length
-            if res.isNum():
+            if isinstance(dta, (float, int)):
                 dta = [dta] * (eI-sI)
 
             # Adjust values if plot is in log scale

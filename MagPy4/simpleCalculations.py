@@ -139,164 +139,43 @@ class ExpressionEvaluator():
     '''  Encapsulates tools used for creating and evaluating an expression
         from a user-provided string
     '''
-    def __init__(self, exprStr, window, dataRange=None):
-        self.exprStr = exprStr
-        self.window = window
-        self.dataRange = dataRange # Optional data range limits Var element data ranges
+    def evaluate(exprStr, window, dataRange=None):
+        # Split expression into left/right-hand sides
+        varName, expr = exprStr.split('=')
+        varName = varName.strip(' ')
 
-    def splitByOp(self, s):
-        # Looks for every operand and splits the previously cleaned expression 
-        # string by the operands into a list
-        dstrs = self.window.DATADICT.keys()
+        # Replace '^' with numpy equivalent
+        expr = expr.replace('^', '**')
 
-        # Create a new list of strings with variable names replaced by Vec objects
-        currLst = [s]
-        for dstr in dstrs:
-            newLst = []
-            for subStr in currLst:
-                if type(subStr) != str or dstr not in subStr:
-                    newLst.append(subStr)
-                    continue
+        # Create a dictionary of the arrays associated with each variable,
+        # using the current edit number
+        varDict = {}
+        en = window.currentEdit
+        for kw in window.DATADICT:
+            data = window.getData(kw, en)
 
-                subLst = subStr.split(dstr)
-                modSubLst = []
-                for z in range(0, len(subLst)-1):
-                    if subLst[z] != '':
-                        modSubLst.append(subLst[z])
-                    vecObj = Var(self.window, dstr, self.dataRange)
-                    modSubLst.append(vecObj)
-                if subLst[-1] != '':
-                    modSubLst.append(subLst[-1])
-                newLst.extend(modSubLst)
-            currLst = newLst
+            # Limit to data range if passed
+            if dataRange:
+                iO, iE = dataRange
+                data = data[iO:iE]
 
-        # Remove whitespace
-        newLst = []
-        for subStr in currLst:
-            if type(subStr) == str and subStr.strip(' ') == '':
-                continue
-            elif type(subStr) == str:
-                newLst.append(subStr.replace(' ', ''))
-            else:
-                newLst.append(subStr)
-        currLst = newLst
+            varDict[kw] = np.array(data)
 
-        # Replace numbers in list with Num objects
-        patterns = ['[0-9]+\.[0-9]+', '\.[0-9]+', '[0-9]+']
-        for p in patterns:
-            newLst = []
-            for subStr in currLst:
-                if type(subStr) != str:
-                    newLst.append(subStr)
-                    continue
-                nums = re.findall(p, subStr)
-                subLst = re.split(p, subStr)
-                if len(nums) == 0:
-                    newLst.append(subStr)
-                    continue
-                for z in range(0, len(nums)):
-                    if subLst[z] != '':
-                        newLst.append(subLst[z])
-                    numObj = Num(float(nums[z]))
-                    newLst.append(numObj)
-                if subLst[-1] != '':                    
-                    newLst.append(subLst[-1])
-            currLst = newLst
+        # Add in pi constant
+        varDict['pi'] = np.pi
 
-        # Find all operands and replace them with Operand objects
-        for opStr in ['+', '-', '*', '/', '^']:
-            newLst = []
-            for subStr in currLst:
-                if type(subStr) != str or opStr not in subStr:
-                    newLst.append(subStr)
-                    continue
-                if subStr == opStr:
-                    newLst.append(Operand(opStr))
-                    continue
-                subLst = subStr.split(opStr)
-                if len(subLst) == 1:
-                    newLst.append(subStr)
-                    continue
-                for z in range(0, len(subLst)-1):
-                    if subLst[z] != '':                    
-                        newLst.append(subLst[z])
-                    newLst.append(Operand(opStr))
-                if subLst[-1] != '':                    
-                    newLst.append(subLst[-1])
-            currLst = newLst
+        # Add in some basic trig functions
+        for trigFunc in ['sin', 'cos', 'tan', 'arccos', 'arcsin', 'arctan']:
+            varDict[trigFunc] = getattr(np, trigFunc)
 
-        # Break apart any consecutive brackets
-        for opStr in ['(', ')']:
-            newLst = []
-            for subStr in currLst:
-                if type(subStr) != str or opStr not in subStr:
-                    newLst.append(subStr)
-                    continue
-                if subStr == opStr:
-                    newLst.append(opStr)
-                    continue
-                subLst = subStr.split(opStr)
-                if len(subLst) == 1:
-                    newLst.append(subStr)
-                    continue
-                for z in range(0, len(subLst)-1):
-                    if subLst[z] != '':                    
-                        newLst.append(subLst[z])
-                    newLst.append(opStr)
-                if subLst[-1] != '':                    
-                    newLst.append(subLst[-1])
-            currLst = newLst
-        return currLst
+        # Add in square root and natural log functions
+        varDict['sqrt'] = np.sqrt
+        varDict['log'] = np.log
 
-    def splitString(self):
-        expStr = self.exprStr
+        # Evaluate the expression
+        res = eval(expr, varDict)
 
-        # Split expression into list of strings for each op/parenthesis and variable name or number
-        cleanExpr = expStr.strip('\n')
-
-        # Make sure there is a variable to be set
-        if cleanExpr.count('=') != 1:
-            return None, self.exprStr
-
-        # Extract the var name from left hand side of eq sign and break
-        # down the expression into operators, numbers, and variable names
-        varName, expStr = cleanExpr.split('=')
-        exprLst = self.splitByOp(expStr)
-
-        # Return storage variable, ordered list of ops/nums/vars in main expression
-        return varName, exprLst
-
-    def createStack(self, exprLst):
-        exprStack = []
-        listLen = len(exprLst)
-
-        if exprLst.count('(') != exprLst.count(')'):
-            raise Exception('Unmatched parentheses!')
-        # Creates a stack of ExprElem objects from split expression string
-        for i in range(0, listLen):
-            c = exprLst[i]
-            if c == '(':
-                exprStack.append(c)
-            elif c == ')':
-                # If closing parens found, pop eveything off stack until
-                # an open parens is found and create a subExpr from popped items
-                subStack = []
-                for z in range(i, 0, -1):
-                    currOp = exprStack.pop()
-                    if currOp == '(':
-                        break
-                    subStack.append(currOp)
-                subStack.reverse()
-
-                if len(subStack) == 1:
-                    exprStack.append(subStack[0])
-                else:
-                    subExpr = Expr(subStack)
-                    exprStack.append(subExpr)
-            else:
-                # Otherwise, just map the element to an ExprElem object
-                exprStack.append(c)
-        return Expr(exprStack)
+        return varName, res
 
 class simpleCalcUI(object):
     def setupUI(self, Frame, window):
@@ -335,22 +214,16 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
         exprStr = self.ui.textBox.toPlainText()
         if exprStr == '':
             return
+
         # Break down expression into list of var/num/op strings and create an Expr obj
-        expEval = ExpressionEvaluator(exprStr, self.window)
-        self.varName, exprLst = expEval.splitString()
-        self.varName = self.varName.strip(' ')
-        exprObj = expEval.createStack(exprLst)
+        self.varName, res = ExpressionEvaluator.evaluate(exprStr, self.window)
 
         # Try evaluating exprObj, catch exceptions by printing error message to user
-        try:
-            result = exprObj.evaluate()
-            if result.isNum():
-                raise Exception('Setting array to a number')
-            dta = result.evaluate()
+        if res is not None:
             self.ui.statusBar.showMessage('Successfully evaluated...', 1000)
             # If successfully evaluted, add to edit history
-            self.applyEdit(dta, exprStr)
-        except:
+            self.applyEdit(res, exprStr)
+        else:
             self.ui.statusBar.showMessage('Invalid expression!', 2000)
 
     def applyEdit(self, dta, exprStr):
