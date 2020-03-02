@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.3.0 (March 2, 2020)'
+VERSION = f'Version 1.2.4.0 (March 3, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -2845,36 +2845,43 @@ def myexepthook(type, value, tb):
     traceback.print_tb(tb,limit=5)
     os.system('pause')
 
-def startMagPy(insightMode=False):
+def startMagPy(ffLst=None):
     '''
     Main function for creating MagPy4Window object and starting program
     '''
+    # Set up application
     app = QtWidgets.QApplication(sys.argv)
 
     app.setOrganizationName('IGPP UCLA')
     app.setOrganizationDomain('igpp.ucla.edu')
     app.setApplicationName('MagPy4')
 
+    # Set fusion as default style if found
     keys = QtGui.QStyleFactory().keys()
     if 'Fusion' in keys:
         app.setStyle(QtGui.QStyleFactory.create('Fusion'))
 
+    # Create the MagPy4 window
     main = MagPy4Window(app)
     main.showMaximized()
+
+    # Initialize any files passed
+    if ffLst is not None:
+        main.openFileList(ffLst, True, True)
 
     args = sys.argv
     sys.excepthook = myexepthook
     sys.exit(app.exec_())
 
 def runMarsPy():
-    res = readArgs()
-    if res:
-        startMagPy(insightMode=True)
+    runMagPy()
 
 def runMagPy():
-    res = readArgs()
+    # Read in arguments, opening MagPy if the update flag was not passed,
+    # and passing along any the names of any files to open at startup
+    res, ffLst = readArgs()
     if res:
-        startMagPy(insightMode=False)
+        startMagPy(ffLst=ffLst)
 
 def updateMagPy():
     '''
@@ -2893,17 +2900,31 @@ def updateMagPy():
 
 def readArgs():
     '''
-    Runs additional actions and returns a bool indicating whether the full
-    program should be opened/ran
+    Reads commandline arguments and runs additional actions based on flags
+    Returns a tuple;
+        - A bool indicating whether the full program should be opened/ran
+        - A list of filenames the user passed, if any; Otherwise, returns None
     '''
     args = setupParser()
+
+    runFlag = True # Determines whether to run MagPy or not
+    ffLst = None # A list of files to load at runtime, None if no filenames passed
 
     # Skip loading if updating MagPy; run update script instead
     if args.update:
         updateMagPy()
-        return False
+        runFlag = False
 
-    return True
+    # Check if any filenames were passed
+    if args.ffName != []:
+        ffLst = []
+        for ffPath in args.ffName:
+            # If path is relative, replace with the absolute path
+            if not os.path.isabs(ffPath):
+                ffPath = os.path.join(os.getcwd(), ffPath)
+            ffLst.append(ffPath)
+
+    return runFlag, ffLst
 
 def setupParser():
     '''
@@ -2915,6 +2936,11 @@ def setupParser():
     # Update argument
     updtHlp = 'Updates MagPy to the latest version from GitHub'
     parser.add_argument('--update', help=updtHlp, action='store_true')
+
+    # Add option to pass in a list of flat file names
+    info = 'Flat File(s) to load at start up'
+    parser.add_argument('ffName', help=info, metavar='FF', type=str, const=None, 
+        nargs='*')
 
     # Results of parsed arguments
     args = parser.parse_args()
