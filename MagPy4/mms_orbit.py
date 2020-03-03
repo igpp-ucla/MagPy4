@@ -794,7 +794,7 @@ class Orbit_MMS():
 
         # Unzip files
         with zipfile.ZipFile(fileName, 'r') as f:
-            f.extractall()
+            f.extractall(path=getRelPath())
         f.close()
 
         # Sort the list of filenames by start date
@@ -825,14 +825,22 @@ class Orbit_MMS():
 
         # Files are split among different subdirectories, get bottom-most
         # directories and set path for the corresponding file
-        for dirpath, dirnames, filenames in os.walk('mms'):
+        directories = []
+        mms_zip_path = getRelPath('mms')
+        for dirpath, dirnames, filenames in os.walk(mms_zip_path):
             if dirnames:
                 continue
+
+            filesFound = False
             for f in filenames:
                 if f not in files:
                     continue
+                filesFound = True
                 index = files.index(f)
                 paths[index] = os.path.join(dirpath, f)
+
+            if filesFound:
+                directories.append(dirpath)
 
         # Read in data from CDFs into dicts and extract position data
         timeKw = 'Epoch'
@@ -858,11 +866,17 @@ class Orbit_MMS():
             # Remove files after done reading
             os.remove(f)
 
+        # Remove the unzipped file folders
+        try:
+            for path in directories:
+                os.removedirs(path)
+        except:
+            print ('Error: Could not remove temporarily downloaded files')
+
         # Store times and data for each orbit in dictionaries w/ the key being
         # the orbit number
         dataDict = {}
         timeDict = {}
-        base = (10 ** 9)
         for orbitNum, (startTime, endTime) in zip(self.orbitNum, self.orbitTimes):
             # Map datetime objects to seconds since epoch
             startTime = self.mapTTNanoseconds(self.dateTimeToTT(startTime))
