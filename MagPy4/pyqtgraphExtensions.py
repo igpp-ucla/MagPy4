@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from .timeManager import TimeManager
 from math import ceil
 import functools
+from bisect import bisect
 
 # Label item placed at top
 class RegionLabel(pg.InfLineLabel):
@@ -909,14 +910,152 @@ class RowGridLayout(pg.GraphicsLayout):
 
         return rowItems
 
-# same as pdi but with better down sampling (bds)
-class PlotDataItemBDS(pg.PlotDataItem):
-    def __init__(self, *args, **kwargs):
-        pg.PlotDataItem.__init__(self, *args, **kwargs)
-
 class MagPyPlotDataItem(pg.PlotDataItem):
     def __init__(self, *args, **kwargs):
+        self.connectSegments = None
         pg.PlotDataItem.__init__(self, *args, **kwargs)
+
+        if isinstance(self.opts['connect'], (list, np.ndarray)):
+            self.connectSegments = self.opts['connect']
+
+    def getSegs(self, segs, ds, n=None):
+        # Splits connection vals by ds, setting values to zero if there is a break
+        # in between each segment
+        n = int(len(segs)/ds) if n is None else n
+
+        # Get indices where there are breaks
+        zeroIndices = np.where(segs == 0)[0]
+
+        # Split connection values by ds
+        segs = segs[:n*ds:ds]
+
+        # Find the segments from original connection list where there are breaks 
+        # in and set the new connection value to zero
+        for z in zeroIndices:
+            i = int(z/ds)
+            segs[i] = 0
+
+        return segs
+
+    def getData(self):
+        if self.xData is None:
+            return (None, None)
+
+        if self.xDisp is None:
+            x = self.xData
+            y = self.yData
+
+            if self.connectSegments is not None:
+                segs = self.connectSegments[:]
+            else:
+                segs = self.connectSegments
+
+            if self.opts['fftMode']:
+                x,y = self._fourierTransform(x, y)
+                # Ignore the first bin for fft data if we have a logx scale
+                if self.opts['logMode'][0]:
+                    x=x[1:]
+                    y=y[1:]
+            if self.opts['logMode'][0]:
+                x = np.log10(x)
+            if self.opts['logMode'][1]:
+                y = np.log10(y)
+
+            ds = self.opts['downsample']
+            if not isinstance(ds, int):
+                ds = 1
+
+            if self.opts['autoDownsample']:
+                range = self.viewRect()
+                if range is not None:
+                    dx = float(x[-1]-x[0]) / (len(x)-1)
+                    x0 = (range.left()-x[0]) / dx
+                    x1 = (range.right()-x[0]) / dx
+                    width = self.getViewBox().width()
+                    if width != 0.0:
+                        ds = int(max(1, int((x1-x0) / (width*self.opts['autoDownsampleFactor']))))
+
+            if self.opts['clipToView']:
+                view = self.getViewBox()
+                if view is None or not view.autoRangeEnabled()[0]:
+                    # this option presumes that x-values have uniform spacing
+                    range = self.viewRect()
+                    if range is not None and len(x) > 1:
+                        lft = range.left() - x[0]
+                        rght = range.right() - x[0]
+                        x0 = bisect(x, lft)
+                        x1 = bisect(x, rght)
+                        x = x[x0:x1]
+                        y = y[x0:x1]
+                        if self.connectSegments is not None:
+                            segs = segs[x0:x1]
+
+            if ds > 1:
+                if self.opts['downsampleMethod'] == 'subsample':
+                    x = x[::ds]
+                    y = y[::ds]
+                    if self.connectSegments is not None:
+                        segs = list(self.getSegs(segs, ds))
+
+                elif self.opts['downsampleMethod'] == 'mean':
+                    n = len(x) // ds
+                    x = x[:n*ds:ds]
+                    y = y[:n*ds].reshape(n,ds).mean(axis=1)
+
+                    if self.connectSegments is not None:
+                        segs = np.array(list(self.getSegs(segs, ds, n)))
+
+                elif self.opts['downsampleMethod'] == 'peak':
+                    n = len(x) // ds
+                    # Reshape x values
+                    x1 = np.empty((n,2))
+                    x1[:] = x[:n*ds:ds,np.newaxis]
+                    x = x1.reshape(n*2)
+
+                    # Reshape y values
+                    y1 = np.empty((n,2))
+                    y2 = y[:n*ds].reshape((n, ds))
+                    y1[:,0] = y2.max(axis=1)
+                    y1[:,1] = y2.min(axis=1)
+                    y = y1.reshape(n*2)
+
+                    # Reshape connection list
+                    if self.connectSegments is not None:
+                        segs = np.array(list(self.getSegs(segs, ds, n)))
+                        segs_new = np.empty((n, 2))
+                        segs_new[:] = segs[::,np.newaxis]
+                        segs = segs_new.reshape(n*2)
+
+            self.xDisp = x
+            self.yDisp = y
+
+            if self.connectSegments is not None:
+                self.opts['connect'] = segs
+
+        return self.xDisp, self.yDisp
+
+    def updateItems(self):
+        x, y = self.getData()
+        curveArgs = {}
+        for k,v in [('pen','pen'), ('shadowPen','shadowPen'), ('fillLevel','fillLevel'), ('fillBrush', 'brush'), ('antialias', 'antialias'), ('connect', 'connect'), ('stepMode', 'stepMode')]:
+            curveArgs[v] = self.opts[k]
+
+        scatterArgs = {}
+        for k,v in [('symbolPen','pen'), ('symbolBrush','brush'), ('symbol','symbol'), ('symbolSize', 'size'), ('data', 'data'), ('pxMode', 'pxMode'), ('antialias', 'antialias')]:
+            if k in self.opts:
+                scatterArgs[v] = self.opts[k]
+
+        if curveArgs['pen'] is not None or (curveArgs['brush'] is not None and curveArgs['fillLevel'] is not None):
+            self.curve.setData(x=x, y=y, **curveArgs)
+            self.curve.show()
+        else:
+            self.curve.hide()
+
+        if scatterArgs['symbol'] is not None:
+            self.scatter.setData(x=x, y=y, **scatterArgs)
+            self.scatter.show()
+        else:
+            self.scatter.hide()
 
 class LinkedAxis(MagPyAxisItem):
     def calcDesiredWidth(self):

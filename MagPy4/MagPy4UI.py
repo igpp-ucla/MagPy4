@@ -144,6 +144,8 @@ class MagPy4UI(object):
         self.bridgeDataGaps.setStatusTip('')
         self.drawPoints = QtWidgets.QAction('&Draw Points (Unoptimized)', checkable=True, checked=False)
         self.drawPoints.setStatusTip('')
+        self.downsampleAction = QtWidgets.QAction('Downsample Plot Data', checkable=True)
+        self.downsampleAction.setStatusTip('Reduces number of visible samples; improves performance for large datasets')
 
         self.actionHelp = QtWidgets.QAction(window)
         self.actionHelp.setText('MagPy4 &Help')
@@ -214,6 +216,7 @@ class MagPy4UI(object):
         self.optionsMenu.addAction(self.antialiasAction)
         self.optionsMenu.addAction(self.bridgeDataGaps)
         self.optionsMenu.addAction(self.drawPoints)
+        self.optionsMenu.addAction(self.downsampleAction)
 
         self.helpMenu = self.menuBar.addMenu('&Help')
         self.helpMenu.addAction(self.actionHelp)

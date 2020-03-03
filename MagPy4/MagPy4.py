@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.4.0 (March 3, 2020)'
+VERSION = f'Version 1.2.5.0 (March 3, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -38,7 +38,7 @@ from .edit import Edit
 from .traceStats import TraceStats
 from .helpWindow import HelpWindow
 from .AboutDialog import AboutDialog
-from .pyqtgraphExtensions import DateAxis, LinkedAxis, PlotDataItemBDS, BLabelItem, MagPyPlotItem, MagPyPlotDataItem, StackedAxisLabel
+from .pyqtgraphExtensions import DateAxis, LinkedAxis, BLabelItem, MagPyPlotItem, MagPyPlotDataItem, StackedAxisLabel
 from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
 from . import mms_orbit
 from .dynBase import SimpleColorPlot
@@ -155,6 +155,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.antialiasAction.toggled.connect(self.toggleAntialiasing)
         self.ui.bridgeDataGaps.toggled.connect(self.replotDataCallback)
         self.ui.drawPoints.toggled.connect(self.replotDataCallback)
+        self.ui.downsampleAction.toggled.connect(self.enableDownsampling)
 
         # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
         self.DATASTRINGS = []
@@ -2200,7 +2201,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             pi = MagPyPlotItem(viewBox = vb, axisItems={'bottom': axis, 
                 'left': LinkedAxis(orientation='left'), 'top': topAxis,
                 'right':rightAxis})
-            #pi.setClipToView(True) # sometimes cuts off part of plot so kinda trash?
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
 
             pi.ctrl.logYCheck.toggled.connect(functools.partial(self.updateLogScaling, plotIndex))
@@ -2289,6 +2289,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         ## end of main for loop
 
+        # Downsample data if checked
+        self.enableDownsampling(self.ui.downsampleAction.isChecked())
+
         # Add in all previous label sets, if there are any
         for labelSetDstr in prevLabelSets:
             self.pltGrd.addLabelSet(labelSetDstr)
@@ -2304,6 +2307,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Rebuild any saved selections
         self.loadSelectState(selectState)
+
+    def enableDownsampling(self, val):
+        if val:
+            for plt in self.plotItems:
+                plt.setDownsampling(ds=None, auto=True, mode='peak')
+        else:
+            for plt in self.plotItems:
+                plt.setDownsampling(ds=False)
 
     def genRandomPen(self):
         r = np.random.randint(low=0, high=255)
@@ -2403,7 +2414,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         Y = self.getData(dstr, editNumber)
         if len(Y) <= 1: # not sure if this can happen but just incase
             print(f'Error: insufficient Y data for column "{dstr}"')
-            return
+            return 0
         errMask = abs(Y) < abs(self.errorFlag)
 
         times,resolutions,avgRes = self.getTimes(dstr, editNumber)
@@ -2440,6 +2451,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             else:
                 pdi = MagPyPlotDataItem(ofstTimes, Y, pen=pen)
                 pi.addItem(pdi)
+
+        return len(Y)
 
     def getPointsOutlinePen(self, pen):
         color = pen.color()
