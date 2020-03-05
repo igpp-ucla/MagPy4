@@ -664,6 +664,172 @@ class MMS_Orbit(QtWidgets.QFrame, MMS_OrbitUI):
             self.magModelTool = None
         self.close()
 
+class MMS_Data_Tool():
+    '''
+    Downloads position data for a given time range from the LASP MMS Science 
+    Data Center website
+    '''
+    ttDenom = 10 ** 9
+    timeFmt = '%Y-%m-%dT%H:%M:%S.%f'
+
+    def getQueryURL(scNums, orbitRng):
+        # Default query parameters
+        base_url = 'https://lasp.colorado.edu/mms/sdc/public/files/api/v1/file_info/science?'
+        rate = 'data_rate_mode=srvy'
+        level = 'data_level=l2'
+        instr = 'instrument_id=mec'
+
+        # Specify spacecraft number(s)
+        scIds = ','.join([f'mms{scNum}' for scNum in scNums])
+        sc = f'sc_ids={scIds}'
+
+        # Specify start and end date
+        fmtDt = lambda d: d.strftime('%Y-%m-%d')
+        startDt, endDt = orbitRng
+        startDt = f'start_date={fmtDt(startDt)}'
+        endDt = f'end_date={fmtDt(endDt)}'
+
+        url = '&'.join([base_url, instr, sc, rate, level, startDt, endDt])
+        return url
+
+    def downloadFiles(files):
+        # Form the download query from the list of files and download zip file
+        base_url = 'https://lasp.colorado.edu/mms/sdc/public/files/api/v1/download/science?files='
+        file_query = ','.join(files)
+        url = base_url + file_query
+        res = requests.get(url)
+
+        # Write response contents to a zip folder
+        zipName = 'files.zip'
+        zipPath = getRelPath(zipName)
+        fd = open(zipPath, 'wb')
+        fd.write(res.content)
+        fd.close()
+        return zipPath
+
+    def mapTimestampToDt(s, fmt):
+        return datetime.strptime(s, fmt)
+
+    def getFiles(scNums, orbitRng):
+        url = MMS_Data_Tool.getQueryURL(scNums, orbitRng)
+
+        # Query server and convert to dictionary
+        try:
+            res = requests.get(url)
+        except: # Returns None if could not establish a connection
+            return None 
+        res = json.loads(res.text)
+
+        # Download files as zip
+        files = [f['file_name'] for f in res['files'] if 'epht89d' in f['file_name']]
+        fileName = MMS_Data_Tool.downloadFiles(files)
+
+        # Unzip files
+        with zipfile.ZipFile(fileName, 'r') as f:
+            f.extractall(path=getRelPath())
+        f.close()
+
+        # Sort the list of filenames by start date
+        timeFmt = MMS_Data_Tool.timeFmt
+        mapTsToDt = lambda s : MMS_Data_Tool.mapTimestampToDt(s, timeFmt[:-3])
+        resFiles = []
+        resTimestamps = []
+        resSpacecrafts = [int(f[3]) for f in files]
+        for d in res['files']:
+            if d['file_name'] not in files:
+                continue
+            resFiles.append(d['file_name'])
+            resTimestamps.append(mapTsToDt(d['timetag']))
+
+        sortMask = np.argsort(resTimestamps)
+
+        return [resFiles[i] for i in sortMask], resSpacecrafts
+
+    def getPosDta(timeRng, scNums):
+        # Download and get the list of files within the orbit range for given 
+        # spacecraft number
+        files, fileScNums = MMS_Data_Tool.getFiles(scNums, timeRng)
+
+        # Return None if URL request failed (no connection)
+        if files is None: 
+            return None
+
+        paths = ['']*len(files)
+
+        # Files are split among different subdirectories, get bottom-most
+        # directories and set path for the corresponding file
+        directories = []
+        mms_zip_path = getRelPath('mms')
+        for dirpath, dirnames, filenames in os.walk(mms_zip_path):
+            if dirnames:
+                continue
+
+            filesFound = False
+            for f in filenames:
+                if f not in files:
+                    continue
+                filesFound = True
+                index = files.index(f)
+                paths[index] = os.path.join(dirpath, f)
+
+            if filesFound:
+                directories.append(dirpath)
+
+        # Read in data from CDFs into dicts and extract position data
+        timeKw = 'Epoch'
+        scTimes = {scNum:[] for scNum in scNums}
+        coordKws = ['gsm', 'gse', 'sm']
+        scDta = {scNum:{coordKw:[[],[],[]] for coordKw in coordKws} for scNum in scNums}
+        for f, fScNum in zip(paths, fileScNums):
+            kw = f'mms{fScNum}_mec_r_'
+            d = MMS_Data_Tool.readCDF(f)
+
+            # Concatenate times
+            cdfTimes = d[timeKw]
+            scTimes[fScNum] = np.concatenate([scTimes[fScNum], cdfTimes])
+
+            # Concatenate position data (3xn format)
+            for coordKw in coordKws:
+                cdfPosDta = np.array(d[kw+coordKw]).T
+                oldPosDta = scDta[fScNum][coordKw]
+                newPosDta = np.concatenate([oldPosDta, cdfPosDta], axis=1)
+                scDta[fScNum][coordKw] = newPosDta
+
+            # Remove files after done reading
+            os.remove(f)
+
+        # Remove the unzipped file folders
+        try:
+            for path in directories:
+                os.removedirs(path)
+        except:
+            print ('Error: Could not remove temporarily downloaded files')
+
+        return scDta, scTimes
+
+    def readCDF(fn):
+        # Open CDF
+        cdf = cdflib.CDF(fn)
+        d = {}
+
+        # Create a dictionary of data
+        timeKw = 'Epoch'
+        kw = f'_mec_r_'
+        varNames = cdf.cdf_info()['zVariables']
+        for v in varNames:
+            if kw in v or timeKw in v:
+                d[v] = cdf.varget(v)
+
+        # Map epoch times
+        d['Epoch'] = MMS_Data_Tool.mapTTNanoseconds(d['Epoch'])
+
+        return d
+
+    def mapTTNanoseconds(t):
+        # Converts TT2000 time in nanoseconds to seconds since J2000
+        dt = 32.184
+        return (t / MMS_Data_Tool.ttDenom) - dt
+
 class Orbit_MMS():
     '''
         Finds orbit number corresponding to given time range and downloads
@@ -692,7 +858,7 @@ class Orbit_MMS():
         # Returns the start/end time covering all the orbits listed
         # in self.orbitNum
         return self.fullRange
-    
+
     def getOrbitTimes(self):
         # List of start/end times for each individual orbit in self.orbitNums
         return self.orbitTimes
@@ -741,142 +907,28 @@ class Orbit_MMS():
 
         return orbitNum, orbitRange, orbitRanges
 
-    def getQueryURL(self, scNum, orbitRng):
-        # Default query parameters
-        base_url = 'https://lasp.colorado.edu/mms/sdc/public/files/api/v1/file_info/science?'
-        rate = 'data_rate_mode=srvy'
-        level = 'data_level=l2'
-        instr = 'instrument_id=mec'
-
-        # Specify spacecraft number
-        sc = f'sc_ids=mms{scNum}'
-
-        # Specify start and end date
-        fmtDt = lambda d: d.strftime('%Y-%m-%d')
-        startDt, endDt = orbitRng
-        startDt = f'start_date={fmtDt(startDt)}'
-        endDt = f'end_date={fmtDt(endDt)}'
-
-        url = '&'.join([base_url, instr, sc, rate, level, startDt, endDt])
-        return url
-
-    def downloadFiles(self, files):
-        # Form the download query from the list of files and download zip file
-        base_url = 'https://lasp.colorado.edu/mms/sdc/public/files/api/v1/download/science?files='
-        file_query = ','.join(files)
-        url = base_url + file_query
-        res = requests.get(url)
-
-        # Write response contents to a zip folder
-        zipName = 'files.zip'
-        zipPath = getRelPath(zipName)
-        fd = open(zipPath, 'wb')
-        fd.write(res.content)
-        fd.close()
-        return zipPath
-
     def mapTimestampToDt(self, s, fmt):
         return datetime.strptime(s, fmt)
-
-    def getFiles(self, scNum, orbitRng):
-        url = self.getQueryURL(scNum, orbitRng)
-
-        # Query server and convert to dictionary
-        try:
-            res = requests.get(url)
-        except: # Returns None if could not establish a connection
-            return None 
-        res = json.loads(res.text)
-
-        # Download files as zip
-        files = [f['file_name'] for f in res['files'] if 'epht89d' in f['file_name']]
-        fileName = self.downloadFiles(files)
-
-        # Unzip files
-        with zipfile.ZipFile(fileName, 'r') as f:
-            f.extractall(path=getRelPath())
-        f.close()
-
-        # Sort the list of filenames by start date
-        mapTsToDt = lambda s : self.mapTimestampToDt(s, self.timeFmt[:-3])
-        resFiles = []
-        resTimestamps = []
-        for d in res['files']:
-            if d['file_name'] not in files:
-                continue
-            resFiles.append(d['file_name'])
-            resTimestamps.append(mapTsToDt(d['timetag']))
-
-        sortMask = np.argsort(resTimestamps)
-
-        return [resFiles[i] for i in sortMask]
 
     def getPosDta(self, scNum):
         # Download and get the list of files within the orbit range for given 
         # spacecraft number
         orbitRng = self.getFullRange()
-        files = self.getFiles(scNum, orbitRng)
+        scDta, scTimes = MMS_Data_Tool.getPosDta(orbitRng, [scNum])
 
         # Return None if URL request failed (no connection)
-        if files is None: 
+        if scDta is None: 
             return None
 
-        paths = ['']*len(files)
-
-        # Files are split among different subdirectories, get bottom-most
-        # directories and set path for the corresponding file
-        directories = []
-        mms_zip_path = getRelPath('mms')
-        for dirpath, dirnames, filenames in os.walk(mms_zip_path):
-            if dirnames:
-                continue
-
-            filesFound = False
-            for f in filenames:
-                if f not in files:
-                    continue
-                filesFound = True
-                index = files.index(f)
-                paths[index] = os.path.join(dirpath, f)
-
-            if filesFound:
-                directories.append(dirpath)
-
-        # Read in data from CDFs into dicts and extract position data
-        timeKw = 'Epoch'
-        kw = f'mms{scNum}_mec_r_'
-        times = []
-        dateTimes = []
-        coordKws = ['gsm', 'gse', 'sm']
-        posDta = {coordKw:[[],[],[]] for coordKw in coordKws}
-        for f in paths:
-            d = self.readCDF(f)
-
-            # Concatenate times
-            cdfTimes = d[timeKw]
-            times = np.concatenate([times, cdfTimes])
-
-            # Concatenate position data (3xn format)
-            for coordKw in coordKws:
-                cdfPosDta = np.array(d[kw+coordKw]).T
-                oldPosDta = posDta[coordKw]
-                newPosDta = np.concatenate([oldPosDta, cdfPosDta], axis=1)
-                posDta[coordKw] = newPosDta
-
-            # Remove files after done reading
-            os.remove(f)
-
-        # Remove the unzipped file folders
-        try:
-            for path in directories:
-                os.removedirs(path)
-        except:
-            print ('Error: Could not remove temporarily downloaded files')
+        # Extract position data for this specific spacecraft
+        posDta = scDta[scNum]
+        times = scTimes[scNum]
 
         # Store times and data for each orbit in dictionaries w/ the key being
         # the orbit number
         dataDict = {}
         timeDict = {}
+        coordKws = ['gsm', 'gse', 'sm']
         for orbitNum, (startTime, endTime) in zip(self.orbitNum, self.orbitTimes):
             # Map datetime objects to seconds since epoch
             startTime = self.mapTTNanoseconds(self.dateTimeToTT(startTime))
@@ -909,20 +961,3 @@ class Orbit_MMS():
         dt = 32.184
         return (t / self.ttDenom) - dt
 
-    def readCDF(self, fn):
-        # Open CDF
-        cdf = cdflib.CDF(fn)
-        d = {}
-
-        # Create a dictionary of data
-        timeKw = 'Epoch'
-        kw = f'_mec_r_'
-        varNames = cdf.cdf_info()['zVariables']
-        for v in varNames:
-            if kw in v or timeKw in v:
-                d[v] = cdf.varget(v)
-
-        # Map epoch times
-        d['Epoch'] = self.mapTTNanoseconds(d['Epoch'])
-
-        return d

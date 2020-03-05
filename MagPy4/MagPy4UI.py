@@ -113,6 +113,10 @@ class MagPy4UI(object):
         self.actionMMSOrbit.setText('MMS Orbit...')
         self.actionMMSOrbit.setStatusTip('Plots MMS spacecraft orbit')
 
+        self.actionMMSFormation = QtWidgets.QAction(window)
+        self.actionMMSFormation.setText('MMS Formation...')
+        self.actionMMSFormation.setStatusTip('Plots spacecraft formation in 3D view or as a 2D projection')
+
         # Selection menu actions
         self.actionFixSelection = QtWidgets.QAction(window)
         self.actionFixSelection.setText('Fix Selection...')
@@ -204,6 +208,7 @@ class MagPy4UI(object):
 
         if checkForOrbitLibs():
             self.MMSMenu.addAction(self.actionMMSOrbit)
+            self.MMSMenu.addAction(self.actionMMSFormation)
 
         self.selectMenu = self.menuBar.addMenu('Selection Tools')
         self.selectMenu.addAction(self.actionFixSelection)

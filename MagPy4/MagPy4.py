@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.5.0 (March 3, 2020)'
+VERSION = f'Version 1.2.6.0 (March 3, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -41,6 +41,7 @@ from .AboutDialog import AboutDialog
 from .pyqtgraphExtensions import DateAxis, LinkedAxis, BLabelItem, MagPyPlotItem, MagPyPlotDataItem, StackedAxisLabel
 from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
 from . import mms_orbit
+from . import mms_formation
 from .dynBase import SimpleColorPlot
 from .detrendWin import DetrendWindow
 from .ASCII_Importer import Asc_Importer
@@ -140,6 +141,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionEPAD.triggered.connect(self.startEPAD)
         self.ui.actionEOmni.triggered.connect(self.startEOMNI)
         self.ui.actionMMSOrbit.triggered.connect(self.openMMSOrbit)
+        self.ui.actionMMSFormation.triggered.connect(self.openMMSFormation)
 
         # Selection menu actions
         self.ui.actionFixSelection.triggered.connect(self.fixSelection)
@@ -179,19 +181,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             'Dynamic Spectra', 'Dynamic Coh/Pha', 'Wave Analysis',
             'Trajectory Analysis', 'Stats', 'Electron/Ion Spectrum',
             'Electron PAD', 'Plane Normal', 'Curlometer', 'Curvature',
-            'MMS Orbit']
+            'MMS Orbit', 'MMSFormation']
 
         self.toolAbbrv = ['Data', 'Edit', 'PlotMenu', 'Detrend', 'Spectra',
             'DynSpectra', 'DynCohPha', 'DynWave', 'Traj', 'Stats',
             'EOMNI', 'EPAD', 'PlaneNormal', 'Curlometer', 'Curvature',
-            'MMSOrbit']
+            'MMSOrbit', 'MMSFormation']
 
         self.toolInitFuncs  = [self.showData, self.openEdit, self.openPlotMenu,
             self.startDetrend, self.startSpectra, self.startDynamicSpectra,
             self.startDynamicCohPha, self.startDynWave, self.openTraj,
             self.startTraceStats, self.startEOMNI, self.startEPAD,
             self.openPlaneNormal, self.openCurlometer, self.openCurlometer,
-            self.openMMSOrbit]
+            self.openMMSOrbit, self.openMMSFormation]
 
         self.tools = {}
         self.toolNameMap = {}
@@ -233,7 +235,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # setup pens
         self.pens = []
-        self.mmsColors = ['000005', 'd55e00', '009e73', '56b4e9']
+        self.mmsColors = ['#000005', '#d55e00', '#009e73', '#56b4e9']
         # Blue, Green, Red, Yellow, Magenta, Cyan, Purple, Black
         colors = ['#0000ff','#00ad05','#ea0023', '#fc9f00', '#ff00e1', '#00ddb1',
             '#9400ff', '#191919']
@@ -766,6 +768,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeTimeSelect()
         self.closeBatchSelect()
         self.closeMMSOrbit()
+        self.closeMMSFormation()
 
     def closePlotTools(self):
         self.closeDetrend()
@@ -955,6 +958,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeMMSOrbit()
         self.tools['MMSOrbit'] = mms_orbit.MMS_Orbit(self)
         self.tools['MMSOrbit'].show()
+
+    def openMMSFormation(self):
+        self.closeMMSFormation()
+        self.tools['MMSFormation'] = mms_formation.MMS_Formation(self)
+        self.tools['MMSFormation'].show()
+
+    def closeMMSFormation(self):
+        if self.tools['MMSFormation']:
+            self.tools['MMSFormation'].close()
+            self.tools['MMSFormation'] = None
 
     def closeMMSOrbit(self):
         if self.tools['MMSOrbit']:
