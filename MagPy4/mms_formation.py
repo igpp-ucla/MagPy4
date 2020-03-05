@@ -205,6 +205,8 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
         return min(startDt, endDt), max(startDt, endDt)
 
     def _tickInRange(self, refTick, startTick, endTick):
+        startTick = np.around(startTick, 3)
+        endTick = np.around(endTick, 3)
         if refTick >= startTick and refTick <= endTick:
             return True
 
