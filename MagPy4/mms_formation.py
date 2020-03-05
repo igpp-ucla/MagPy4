@@ -326,8 +326,8 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
         # Maps start/end dates to timestamps
         startDt, endDt = self.getStartEndTime()
         fmtStr = '%Y %b %d %H:%M:%S.%f'
-        startTs = startDt.strftime(fmtStr)[:-3]
-        endTs = endDt.strftime(fmtStr)[:-3]
+        startTs = startDt.strftime(fmtStr)
+        endTs = endDt.strftime(fmtStr)
 
         return f'Time Range: {startTs} to {endTs}'
 
