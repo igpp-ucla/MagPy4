@@ -17,6 +17,7 @@ import numpy as np
 import bisect
 from datetime import datetime, date
 import pyqtgraph as pg
+import os
 
 class MMS_FormationUI(BaseLayout):
     def setupUI(self, frame):
@@ -49,7 +50,10 @@ class MMS_FormationUI(BaseLayout):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Set up figure/canvas
-        self.figure = Figure(figsize=(6, 5.5))
+        figsize = (6, 5.5)
+        if os.name not in ['posix', 'nt']:
+            figsize = (3, 3)
+        self.figure = Figure(figsize=figsize)
         self.canvas = FigureCanvas(self.figure)
 
         # Set up toolbar
@@ -136,6 +140,11 @@ class MMS_FormationUI(BaseLayout):
         scaleLt.addWidget(scaleLbl, 0, 0, 1, 1)
         scaleLt.addWidget(self.scaleBox, 0, 1, 1, 1)
 
+        # Plot barycenter check
+        optionsLt = QtWidgets.QGridLayout()
+        self.plotBarycenter = QtWidgets.QCheckBox(' Plot barycenter')
+        optionsLt.addWidget(self.plotBarycenter)
+
         # Update button
         self.updateBtn = QtWidgets.QPushButton('Update')
         self.updateBtn.setSizePolicy(self.getSizePolicy('Max', 'Max'))
@@ -150,6 +159,7 @@ class MMS_FormationUI(BaseLayout):
         layout.addLayout(pltTypeLt, 0, 0, 1, 1)
         layout.addLayout(timeLt, 1, 0, 1, 1)
         layout.addLayout(scaleLt, 2, 0, 1, 1)
+        layout.addLayout(optionsLt, 3, 0, 1, 1)
 
         return layout
 
@@ -184,6 +194,7 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
         # Colors/pairs constants
         self.colors = self.window.mmsColors[:]
         self.pairs = [(1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)]
+        self.earthRadius = 6371.2
 
         # Save time-averaged position data to use if time range not updated
         self.cachedData = None
@@ -222,7 +233,7 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
             (tO, tE), posDta = self.cachedData
             if startTick == tO and endTick == tE:
                 if units == 'RE':
-                    posDta = [dta/6371.2 for dta in posDta]
+                    posDta = [dta/self.earthRadius for dta in posDta]
                 return posDta
 
         # Compare time range to time range in loaded data
@@ -270,9 +281,13 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
 
         # Adjust units
         if units == 'RE':
-            posDta = [dta/6371.2 for dta in posDta]
+            posDta = [dta/self.earthRadius for dta in posDta]
 
         return posDta
+
+    def getBarycenter(self, posDta):
+        barycenterVec = np.mean(posDta, axis=0)
+        return barycenterVec
 
     def plot3D(self):
         # Clear previous figure
@@ -313,6 +328,18 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
             yProj = [yDta[a-1], yDta[b-1]]
             zProj = [zDta[a-1], zDta[b-1]]
             ax.plot(xProj, yProj, zProj, c='#000000')
+
+        # Plot barycenter
+        if self.ui.plotBarycenter.isChecked():
+            xc, yc, zc = self.getBarycenter(posDta)
+            ax.scatter([xc], [yc], [zc], s=125, c='#474747', marker='+')
+
+            # Add text label
+            scaleFactor = self.earthRadius if units == 'KM' else 1
+            lbls = [str(np.around(v/scaleFactor, 3)) for v in [xc, yc, zc]]
+            lblStr = ', '.join(lbls) + ' RE\n'
+            fontDict = {'horizontalalignment':'center', 'verticalalignment':'bottom'}
+            ax.text(xc, yc, zc, lblStr, fontdict=fontDict)
 
         # Add items to legend
         handles = []
@@ -384,6 +411,27 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
             y = [yDta[a-1], yDta[b-1]]
             pdi = plt.plot(x, y, pen=pen)
             pdi.setZValue(-100)
+
+        # Draw barycenter
+        if self.ui.plotBarycenter.isChecked():
+            centerVec = self.getBarycenter(posDta)
+            x, y = centerVec[axisBottom], centerVec[axisLeft]
+
+            # Create scatter plot object
+            penColor = '#474747'
+            pen = pg.mkPen(penColor)
+            brush = pg.mkBrush(penColor)
+            plt.scatterPlot([x], [y], pen=pen, brush=brush, pxMode=True, 
+                symbol='+', size=12)
+
+            # Draw text label near it
+            scaleFactor = self.earthRadius if units == 'KM' else 1
+            xLbl = np.around(x/scaleFactor, 3)
+            yLbl = np.around(y/scaleFactor, 3)
+            lbl = f'{xLbl}, {yLbl} RE\n'
+            lbl = pg.TextItem(lbl, anchor=(0.5, 0.75), color='#000000')
+            lbl.setPos(x, y)
+            plt.addItem(lbl)
 
         # Create time label
         lbl = pg.LabelItem(self.getTimeLabel())
