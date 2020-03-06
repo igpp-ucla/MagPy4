@@ -274,7 +274,7 @@ class MagPyPlotItem(pg.PlotItem):
         self.getAxis('top').setLogMode(x)
         self.getAxis('left').setLogMode(y)
         self.getAxis('right').setLogMode(y)
-    
+
 class MagPyColorPlot(MagPyPlotItem):
     def __init__(self, *args, **kwargs):
         MagPyPlotItem.__init__(self, *args, **kwargs)
@@ -972,7 +972,14 @@ class MagPyPlotDataItem(pg.PlotDataItem):
                     x0 = (range.left()-x[0]) / dx
                     x1 = (range.right()-x[0]) / dx
                     width = self.getViewBox().width()
+
+                    # If plot not visible yet, try using the screen width
+                    if width == 0:
+                        screenSize = QtGui.QGuiApplication.primaryScreen().geometry()
+                        width = screenSize.width()
+
                     if width != 0.0:
+                        width *= 2 # Prefer smaller downsampling factors
                         ds = int(max(1, int((x1-x0) / (width*self.opts['autoDownsampleFactor']))))
 
             if self.opts['clipToView']:

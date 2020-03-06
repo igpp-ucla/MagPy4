@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.8.0 (March 6, 2020)'
+VERSION = f'Version 1.2.9.0 (March 6, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -1998,9 +1998,17 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         return dstrs, links
 
     def plotDataDefault(self):
-        dstrs,links = self.getDefaultPlotInfo()
+        dstrs, links = self.getDefaultPlotInfo()
 
-        self.plotData(dstrs, links, [])
+        numPts = self.plotData(dstrs, links, [])
+
+        # If a large number of points are plotted, enable downsampling for the plots
+        if numPts > 2500000:
+            self.ui.downsampleAction.setChecked(True)
+            msg = "Plot data downsampled; disable under 'Options' Menu"
+            self.ui.statusBar.showMessage(msg, 10000)
+        else: # Otherwise, disable downsampling
+            self.ui.downsampleAction.setChecked(False)
 
     def getData(self, dstr, editNumber=None):
         edits = self.DATADICT[dstr]
@@ -2186,6 +2194,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.trackerLines = []
         newColorPlotInfo = {} # Keep track of which color plots are re-plotted
 
+        numPts = 0
         for plotIndex, dstrs in enumerate(dataStrings):
             # Check if special plot
             colorPlt = False
@@ -2284,7 +2293,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 #save pens so spectra can stay synced with main plot
                 tracePens.append(pen)
 
-                self.plotTrace(pi, dstr, editNum, pen)
+                pts = self.plotTrace(pi, dstr, editNum, pen)
+                numPts += pts
                 dstrList.append(dstr)
                 colorsList.append(pen.color().name())
 
@@ -2321,13 +2331,18 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Rebuild any saved selections
         self.loadSelectState(selectState)
 
+        # Return the total number of points plotted through plotTrace function
+        return numPts
+
     def enableDownsampling(self, val):
         if val:
             for plt in self.plotItems:
                 plt.setDownsampling(ds=None, auto=True, mode='peak')
+                plt.setClipToView(True)
         else:
             for plt in self.plotItems:
                 plt.setDownsampling(ds=False)
+                plt.setClipToView(False)
 
     def genRandomPen(self):
         r = np.random.randint(low=0, high=255)
