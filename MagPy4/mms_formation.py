@@ -29,12 +29,12 @@ class MMS_FormationUI(BaseLayout):
 
         # Set up settings layout
         self.settingsLt = self.setupSettingsLt()
-        self.layout.addLayout(self.settingsLt, 0, 0, 1, 1)
+        self.layout.addWidget(self.settingsLt, 0, 0, 1, 1)
 
         # Status bar
         self.statusBar = QtWidgets.QStatusBar()
         self.statusBar.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
-        self.layout.addWidget(self.statusBar, 2, 0, 1, 1)
+        self.layout.addWidget(self.statusBar, 1, 0, 1, 1)
 
         # Variable indicating which plot type mode is active
         self.currentMode = None
@@ -88,6 +88,7 @@ class MMS_FormationUI(BaseLayout):
         return frame
 
     def plotTypeChanged(self, plotType):
+        # Sets whether 'View' options box for projection-type plots is visible
         val = True
         if plotType == '3D':
             val = False
@@ -95,12 +96,33 @@ class MMS_FormationUI(BaseLayout):
         self.viewPairLbl.setVisible(val)
         self.viewPairBox.setVisible(val)
 
+    def timeModeChanged(self, mode):
+        # Sets whether both time edits are visible or not + sets the label accordingly
+        lbl = 'Start Time: '
+        startLbl, endLbl = self.timeLbls
+        endVisible = True
+
+        if mode == 'Reference Time':
+            lbl = 'Time: '
+            endVisible = False
+
+        startLbl.setText(lbl)
+        self.timeEdit.end.setVisible(endVisible)
+        endLbl.setVisible(endVisible)
+
     def setupSettingsLt(self):
-        layout = QtWidgets.QGridLayout()
+        # Wrapper layout includes update button, regular layout encapsulates
+        # all settings boxes/options
+        wrapperFrame = QtWidgets.QFrame()
+        wrapperLt = QtWidgets.QVBoxLayout(wrapperFrame)
+        wrapperLt.setContentsMargins(0, 0, 0, 0)
+
+        frame = QtWidgets.QGroupBox('Settings')
+        layout = QtWidgets.QGridLayout(frame)
 
         # Set up plot type selection layout
         pltTypeLt = QtWidgets.QHBoxLayout()
-        pltTypeLbl = QtWidgets.QLabel('Plot Type:   ')
+        pltTypeLbl = QtWidgets.QLabel('Plot Type: ')
         pltTypeLbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
         self.plotTypeBox = QtWidgets.QComboBox()
         self.plotTypeBox.addItems(['3D', 'Projection'])
@@ -118,25 +140,39 @@ class MMS_FormationUI(BaseLayout):
 
         # Add view pair layout to plot type layout
         pltTypeLt.addLayout(viewPairLt)
-        pltTypeLt.addStretch()
 
         # Connect changes in plot type to setting viewPairLt visible/hidden
         self.plotTypeBox.currentTextChanged.connect(self.plotTypeChanged)
         self.plotTypeChanged(self.plotTypeBox.currentText())
 
+        # Time mode layout
+        modeLt = QtWidgets.QHBoxLayout()
+        modeLbl = QtWidgets.QLabel('Mode: ')
+        modeLbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        self.modeBox = QtWidgets.QComboBox()
+        self.modeBox.addItems(['Time-Averaged', 'Reference Time'])
+        modeLt.addWidget(modeLbl)
+        modeLt.addWidget(self.modeBox)
+
         # Set up start/end time layout
         timeLt = QtWidgets.QGridLayout()
         self.timeEdit = TimeEdit(QtGui.QFont())
-        self.addPair(timeLt, 'Start Time: ', self.timeEdit.start, 0, 0, 1, 1)
-        self.addPair(timeLt, 'End Time: ', self.timeEdit.end, 1, 0, 1, 1)
-        spacer = QtWidgets.QSpacerItem(0, 0, hPolicy=QSizePolicy.MinimumExpanding)
-        timeLt.addItem(spacer, 0, 2, 2, 1)
+        l1 = self.addPair(timeLt, 'Start Time: ', self.timeEdit.start, 0, 0, 1, 1)
+        l2 = self.addPair(timeLt, 'End Time: ', self.timeEdit.end, 1, 0, 1, 1)
+        l1.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        self.timeEdit.start.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
+        self.timeLbls = (l1, l2)
+
+        # Connect changes in mode to setting end time hidden/visible
+        self.modeBox.currentTextChanged.connect(self.timeModeChanged)
+        self.timeModeChanged(self.modeBox.currentText())
 
         # Set up scale layout
         scaleLt = QtWidgets.QGridLayout()
         scaleLbl = QtWidgets.QLabel('Units: ')
+        scaleLbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
         self.scaleBox = QtWidgets.QComboBox()
-        self.scaleBox.addItems(['RE', 'KM'])
+        self.scaleBox.addItems(['KM', 'RE'])
         scaleLt.addWidget(scaleLbl, 0, 0, 1, 1)
         scaleLt.addWidget(self.scaleBox, 0, 1, 1, 1)
 
@@ -146,22 +182,23 @@ class MMS_FormationUI(BaseLayout):
         optionsLt.addWidget(self.plotBarycenter)
 
         # Update button
-        self.updateBtn = QtWidgets.QPushButton('Update')
-        self.updateBtn.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        updtLt = QtWidgets.QHBoxLayout()
+        self.updateBtn = QtWidgets.QPushButton('  Update  ')
+        updtLt.addStretch()
+        updtLt.addWidget(self.updateBtn)
 
-        ## Add spacers to scaleLt so update button is positioned properly
-        spacer = QtWidgets.QSpacerItem(100, 0)
-        scaleLt.addItem(spacer, 0, 2, 1, 1)
-        scaleLt.addWidget(self.updateBtn, 0, 3, 1, 1)
-        spacer = QtWidgets.QSpacerItem(0, 0, hPolicy=QSizePolicy.MinimumExpanding)
-        scaleLt.addItem(spacer, 0, 4, 1, 1)
-
+        # Set up layouts
         layout.addLayout(pltTypeLt, 0, 0, 1, 1)
-        layout.addLayout(timeLt, 1, 0, 1, 1)
-        layout.addLayout(scaleLt, 2, 0, 1, 1)
-        layout.addLayout(optionsLt, 3, 0, 1, 1)
+        layout.addLayout(modeLt, 1, 0, 1, 1)
+        layout.addLayout(timeLt, 2, 0, 1, 1)
+        layout.addLayout(scaleLt, 3, 0, 1, 1)
+        layout.addLayout(optionsLt, 4, 0, 1, 1)
 
-        return layout
+        wrapperLt.addWidget(frame)
+        wrapperLt.addLayout(updtLt)
+        wrapperLt.addStretch()
+
+        return wrapperFrame
 
     def switchMode(self):
         # Get the current plot type and build the layout
@@ -172,13 +209,13 @@ class MMS_FormationUI(BaseLayout):
             frm = self.getProjFrm()
 
         # Remove old plot layout if there is any
-        oldFrm = self.layout.itemAtPosition(1, 0)
+        oldFrm = self.layout.itemAtPosition(0, 1)
         if oldFrm is not None:
             self.layout.removeItem(oldFrm)
             oldFrm.widget().deleteLater()
 
         # Add new layout to outer frame's layout
-        self.layout.addWidget(frm, 1, 0, 1, 1)
+        self.layout.addWidget(frm, 0, 1, 2, 1)
 
 class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
     def __init__(self, window, parent=None):
@@ -213,11 +250,20 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
     def getStartEndTime(self):
         startDt = self.ui.timeEdit.start.dateTime().toPyDateTime()
         endDt = self.ui.timeEdit.end.dateTime().toPyDateTime()
+
+        # Use start date only if not using time-averaged data
+        mode = self.ui.modeBox.currentText()
+        if mode == 'Reference Time':
+            endDt = startDt
+
         return min(startDt, endDt), max(startDt, endDt)
 
     def _tickInRange(self, refTick, startTick, endTick):
-        startTick = np.around(startTick, 3)
+        # Round ranges to 3 decimal places to work properly with ticks
+        # mapped from time edits
+        startTick = min(np.around(startTick, 3), startTick)
         endTick = np.around(endTick, 3)
+        refTick = np.around(refTick, 3)
         if refTick >= startTick and refTick <= endTick:
             return True
 
@@ -250,7 +296,7 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
             # Get averaged position vector for each spacecraft
             posDta = []
             for scNum in [1, 2, 3, 4]:
-                data = self.getPosData(scNum, startIndex, endIndex)
+                data = self.getPosData(scNum, startIndex, endIndex+1)
                 avgPos = np.mean(data, axis=1)
                 posDta.append(avgPos)
 
@@ -270,7 +316,7 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
                 endIndex = bisect.bisect(times, endTick)
 
                 # Get averaged position vector
-                data = scDta[scNum][:,startIndex:endIndex]
+                data = scDta[scNum][:,startIndex:endIndex+1]
                 avgPos = np.mean(data, axis=1)
                 posDta.append(avgPos)
         self.ui.statusBar.clearMessage()
@@ -289,12 +335,20 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
         barycenterVec = np.mean(posDta, axis=0)
         return barycenterVec
 
+    def getTitle(self, mode):
+        title = 'MMS Formation'
+        if mode == 'Time-Averaged':
+            title = title + ' (Time-Averaged)'
+
+        return title
+
     def plot3D(self):
         # Clear previous figure
         self.ui.figure.clf()
 
         # Get averaged position data and scale according to units
         units = self.ui.scaleBox.currentText()
+        mode = self.ui.modeBox.currentText()
         posDta = self.getPlotData(units)
 
         xDta = [x for x, y, z in posDta]
@@ -313,7 +367,8 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
             f(axisLabel, labelpad=10)
 
         ## Set plot title
-        self.ui.figure.suptitle('MMS Formation (Time-Averaged)')
+        title = self.getTitle(mode)
+        self.ui.figure.suptitle(title)
 
         ## Adjust whitespace
         ax.margins(0.1, 0.1, 0.1, tight=True)
@@ -351,14 +406,19 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
         # Update plot
         self.ui.canvas.draw()
 
-    def getTimeLabel(self):
+    def getTimeLabel(self, mode):
         # Maps start/end dates to timestamps
         startDt, endDt = self.getStartEndTime()
         fmtStr = '%Y %b %d %H:%M:%S.%f'
-        startTs = startDt.strftime(fmtStr)
-        endTs = endDt.strftime(fmtStr)
+        startTs = startDt.strftime(fmtStr)[:-3]
+        endTs = endDt.strftime(fmtStr)[:-3]
 
-        return f'Time Range: {startTs} to {endTs}'
+        if mode == 'Time-Averaged':
+            lbl = f'Time Range: {startTs} to {endTs}'
+        else:
+            lbl = f'Time: {startTs}'
+
+        return lbl
 
     def plotProj(self):
         # Clear previous plot
@@ -366,6 +426,7 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
 
         # Get time-averaged position data
         units = self.ui.scaleBox.currentText()
+        mode = self.ui.modeBox.currentText()
         viewPair = self.ui.viewPairBox.currentText()
 
         posDta = self.getPlotData(units)
@@ -390,7 +451,8 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
         ## Set axis labels and title
         plt.getAxis('left').setLabel(f'{viewPair[1]} GSM ({units})')
         plt.getAxis('bottom').setLabel(f'{viewPair[0]} GSM ({units})')
-        plt.setTitle('MMS Formation (Time-Averaged)', size='13pt')
+        title = self.getTitle(mode)
+        plt.setTitle(title, size='13pt')
 
         # Draw points
         pens = [pg.mkPen(color) for color in self.colors]
@@ -434,7 +496,7 @@ class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
             plt.addItem(lbl)
 
         # Create time label
-        lbl = pg.LabelItem(self.getTimeLabel())
+        lbl = pg.LabelItem(self.getTimeLabel(mode))
         lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
 
         # Add to grid layout
