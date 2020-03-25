@@ -113,7 +113,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         rowStrs = []
 
         grid = []
-        prec = 6
+        prec = 7
         for dstrs,pens in plotInfo:
             group = []
             for i,(dstr,en) in enumerate(dstrs):

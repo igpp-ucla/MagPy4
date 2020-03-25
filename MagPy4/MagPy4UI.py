@@ -109,6 +109,10 @@ class MagPy4UI(object):
         self.actionEOmni.setText('Plot Electron/Ion Spectrum...')
         self.actionEOmni.setStatusTip('Plots a color-mapped representation of omni-directional electron/ion energy spectrum')
 
+        self.actionMMSPressure = QtWidgets.QAction(window)
+        self.actionMMSPressure.setText('Pressure...')
+        self.actionMMSPressure.setStatusTip('Calculates magnetic, thermal, and total pressure')
+
         self.actionMMSOrbit = QtWidgets.QAction(window)
         self.actionMMSOrbit.setText('MMS Orbit...')
         self.actionMMSOrbit.setStatusTip('Plots MMS spacecraft orbit')
@@ -205,6 +209,8 @@ class MagPy4UI(object):
         self.MMSMenu.addAction(self.actionCurvature)
         self.MMSMenu.addAction(self.actionEPAD)
         self.MMSMenu.addAction(self.actionEOmni)
+        self.MMSMenu.addAction(self.actionMMSPressure)
+        self.MMSMenu.addSeparator()
 
         if checkForOrbitLibs():
             self.MMSMenu.addAction(self.actionMMSOrbit)

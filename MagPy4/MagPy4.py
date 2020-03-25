@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.9.0 (March 6, 2020)'
+VERSION = f'Version 1.2.10.0 (March 25, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -39,7 +39,7 @@ from .traceStats import TraceStats
 from .helpWindow import HelpWindow
 from .AboutDialog import AboutDialog
 from .pyqtgraphExtensions import DateAxis, LinkedAxis, BLabelItem, MagPyPlotItem, MagPyPlotDataItem, StackedAxisLabel
-from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni
+from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni, PressureTool
 from . import mms_orbit
 from . import mms_formation
 from .dynBase import SimpleColorPlot
@@ -140,6 +140,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionCurvature.triggered.connect(self.openCurvature)
         self.ui.actionEPAD.triggered.connect(self.startEPAD)
         self.ui.actionEOmni.triggered.connect(self.startEOMNI)
+        self.ui.actionMMSPressure.triggered.connect(self.openPressure)
         self.ui.actionMMSOrbit.triggered.connect(self.openMMSOrbit)
         self.ui.actionMMSFormation.triggered.connect(self.openMMSFormation)
 
@@ -181,19 +182,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             'Dynamic Spectra', 'Dynamic Coh/Pha', 'Wave Analysis',
             'Trajectory Analysis', 'Stats', 'Electron/Ion Spectrum',
             'Electron PAD', 'Plane Normal', 'Curlometer', 'Curvature',
-            'MMS Orbit', 'MMSFormation']
+            'MMS Orbit', 'MMSFormation', 'MMS Pressure']
 
         self.toolAbbrv = ['Data', 'Edit', 'PlotMenu', 'Detrend', 'Spectra',
             'DynSpectra', 'DynCohPha', 'DynWave', 'Traj', 'Stats',
             'EOMNI', 'EPAD', 'PlaneNormal', 'Curlometer', 'Curvature',
-            'MMSOrbit', 'MMSFormation']
+            'MMSOrbit', 'MMSFormation', 'Pressure']
 
         self.toolInitFuncs  = [self.showData, self.openEdit, self.openPlotMenu,
             self.startDetrend, self.startSpectra, self.startDynamicSpectra,
             self.startDynamicCohPha, self.startDynWave, self.openTraj,
             self.startTraceStats, self.startEOMNI, self.startEPAD,
             self.openPlaneNormal, self.openCurlometer, self.openCurlometer,
-            self.openMMSOrbit, self.openMMSFormation]
+            self.openMMSOrbit, self.openMMSFormation, self.openPressure]
 
         self.tools = {}
         self.toolNameMap = {}
@@ -867,6 +868,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeCurvature()
         self.closeEPAD()
         self.closeEOMNI()
+        self.closeMMSFormation()
+        self.closeMMSOrbit()
+        self.closePressure()
 
     def startEOMNI(self):
         self.closeEOMNI()
@@ -953,6 +957,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.tools['PlaneNormal'].close()
             self.tools['PlaneNormal'] = None
             self.endGeneralSelect()
+
+    def openPressure(self):
+        self.closePressure()
+        self.tools['Pressure'] = PressureTool(self)
+        self.initGeneralSelect('Pressure', '#9200EE', 
+            self.tools['Pressure'].ui.timeEdit, 'Single', 
+            startFunc=self.showPressure, closeFunc=self.closePressure)
+
+    def showPressure(self):
+        if self.tools['Pressure']:
+            self.tools['Pressure'].show()
+            self.tools['Pressure'].update()
+
+    def closePressure(self):
+        if self.tools['Pressure']:
+            self.tools['Pressure'].close()
+            self.tools['Pressure'] = None
 
     def openMMSOrbit(self):
         self.closeMMSOrbit()
@@ -2151,6 +2172,46 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             gradLbl = None
 
         return plt, gradLegend, gradLbl
+    
+    def addPlot(self, plt, label, pltStrs, links=None, hf=None, pens=None):
+        # Close any selected tools
+        self.closeFixSelection()
+        self.closeBatchSelect()
+        self.closeTraceStats()
+        self.endGeneralSelect()
+
+        # Add plot to grid
+        self.pltGrd.addPlt(plt, label)
+
+        # Add tracker line to plot item
+        trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=self.trackerPen)
+        plt.addItem(trackerLine)
+        self.trackerLines.append(trackerLine)
+
+        # Update selectable viewbox information
+        vb = plt.getViewBox()
+        vb._lastScene = None
+        vb.window = self
+        vb.plotIndex = len(self.plotItems)
+
+        # Adjust datetime offsets
+        for pdi in plt.listDataItems():
+            times = pdi.xData
+            pdi.setData(times-self.tickOffset, pdi.yData)
+        plt.getAxis('bottom').tickOffset = self.tickOffset
+
+        # Update state info for plotItems, plotStrings, plotLinks, 
+        # heightFactors, and plotPens
+        self.plotItems.append(plt)
+        self.lastPlotStrings.append(pltStrs)
+
+        if links is not None:
+            self.lastPlotLinks.append(links)
+
+        if hf is None:
+            self.lastPlotHeightFactors.append(1)
+
+        self.plotTracePens.append(pens)
 
     def plotData(self, dataStrings, links, heightFactors):
         # Remove any saved linked regions from plots and save their state

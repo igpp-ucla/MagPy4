@@ -1,13 +1,15 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel
+from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, PlotGrid
+
 from FF_Time import FFTIME, leapFile
 from .dataDisplay import DataDisplay, UTCQDate
 
 from .dynBase import SpectrogramPlotItem, SpectraLine, SpectraLegend, SimpleColorPlot
-from .pyqtgraphExtensions import StackedAxisLabel, MagPyColorPlot, LinkedAxis, DateAxis
+from .pyqtgraphExtensions import StackedAxisLabel, MagPyColorPlot, LinkedAxis, DateAxis, MagPyPlotItem
 from .selectionManager import SelectableViewBox
 from .layoutTools import BaseLayout
+from .plotAppearance import PressurePlotApp
 
 import scipy
 from scipy import constants
@@ -28,6 +30,7 @@ class MMSTools():
         # Dicts mapping field/pos kws to datastrings
         self.grps = {} # Internally maps by field axis (bx1, bx2, ...)
         self.scGrps = {} # Internally maps by spacecraft number (bx1, by1, ...)
+        self.btotDstrs = []
         self.initGroups()
 
         if self.mmsState == False:
@@ -57,6 +60,13 @@ class MMSTools():
         if endIndex is None:
             endIndex = len(self.vecArrays['Pos'][scNum][0])
         return self.vecArrays['Pos'][scNum][:,startIndex:endIndex]
+
+    def getMagData(self, scNum, startIndex=None, endIndex=None, btot=False):
+        if startIndex is None:
+            startIndex = 0
+        if endIndex is None:
+            endIndex = len(self.vecArrays['Field'][scNum][0])
+        return self.vecArrays['Field'][scNum][:,startIndex:endIndex]
 
     def initArrays(self):
         # Creates dictionary of arrays s.t. a column within the array
@@ -182,6 +192,13 @@ class MMSTools():
 
         self.scGrps['Pos'] = scPosDict
         self.scGrps['Field'] = scFieldDict
+
+        # Identify and B_TOTAL keywords
+        for dstr in self.window.DATASTRINGS:
+            if dstr.startswith('BT'):
+                self.btotDstrs.append(dstr)
+
+        self.btotDstrs.sort()
 
 class PlaneNormalUI(object):
     def setupUI(self, Frame, window):
@@ -2277,4 +2294,268 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
         for plt in self.plotItems:
             plt.closePlotAppearance()
         self.wasClosed = True
+        self.close()
+
+class PressureToolUI(BaseLayout):
+    def setupUI(self, frame):
+        frame.setWindowTitle('Pressure')
+        frame.resize(1200, 700)
+        layout = QtWidgets.QGridLayout(frame)
+        layout.setContentsMargins(0, 5, 0, 5)
+
+        # Set up grid and default plots
+        self.glw = self.getGraphicsGrid()
+        self.gview.setMinimumHeight(500)
+        layout.addWidget(self.gview, 0, 0, 1, 1)
+
+        self.setupPlots(frame)
+
+        # Set up settings layout/frame
+        settingsFrm = self.setupSettingsFrm(frame)
+        layout.addWidget(settingsFrm, 1, 0, 1, 1)
+
+    def setupSettingsFrm(self, mainFrame):
+        frame = QtWidgets.QFrame()
+        frame.setMaximumHeight(50)
+        layout = QtWidgets.QHBoxLayout(frame)
+
+        # Set up time edits
+        self.timeEdit = TimeEdit(QtGui.QFont())
+        layout.addWidget(self.timeEdit.start)
+        layout.addWidget(self.timeEdit.end)
+
+        layout.addStretch()
+
+        # Set up variable checkboxes
+        self.boxes = []
+        boxLt = QtWidgets.QHBoxLayout()
+        for kw in mainFrame.plot_labels:
+            box = QtWidgets.QCheckBox(' ' + kw.split(' ')[0])
+            box.setChecked(True)
+            boxLt.addWidget(box)
+            self.boxes.append(box)
+        layout.addLayout(boxLt)
+
+        # Add 'Add To Main Window' button
+        self.addBtn = QtWidgets.QPushButton('Add To Main Window')
+        self.addBtn.setMaximumWidth(200)
+        layout.addWidget(self.addBtn)
+
+        # Add update button
+        self.updtBtn = QtWidgets.QPushButton('Update')
+        self.updtBtn.setMaximumWidth(100)
+        layout.addWidget(self.updtBtn)
+
+        return frame
+
+    def setupPlots(self, frame):
+        # Create plot grid and add to grid graphics layout
+        grid = PlotGrid()
+        self.glw.addItem(grid)
+        self.pltGrd = grid
+
+        # Create plot appearance menu action
+        apprAct = QtWidgets.QAction('Plot Appearance...')
+        apprAct.triggered.connect(frame.openPlotAppr)
+
+        # Generate each plot
+        for i in range(0, 3):
+            # Set up axis items and viewbox
+            la = LinkedAxis('left')
+            ra = LinkedAxis('right')
+            ba = DateAxis(frame.window.epoch, 'bottom')
+            ta = DateAxis(frame.window.epoch, 'top')
+            vb = SelectableViewBox(None, i)
+            vb.addMenuAction(apprAct)
+            ba.enableAutoSIPrefix(False)
+
+            plt = MagPyPlotItem(viewBox=vb, axisItems={'left':la, 'bottom':ba, 
+                'right':ra, 'top':ta})
+
+            # Get plot label, trace pen, and units
+            pen = frame.pens[i]
+            lbl = frame.plot_labels[i]
+            units = frame.plot_info[lbl][1]
+
+            # Create stacked label and add plot + label to grid
+            label = StackedLabel(lbl.split(' '), [pen.color().name()]*2, units=units)
+            grid.addPlt(plt, label)
+
+            frame.labels.append(label)
+            frame.plotItems.append(plt)
+
+            # Hide buttons and set top/right axes visible
+            plt.hideButtons()
+            for ax in ['top', 'right']:
+                plt.showAxis(ax)
+                plt.getAxis(ax).setStyle(showValues=False)
+
+class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
+    def __init__(self, window, *args, **kwargs):
+        super(PressureTool, self).__init__(parent=None)
+        MMSTools.__init__(self, window)
+        self.window = window
+
+        # Plot item objects
+        self.labels = []
+        self.plotItems = []
+        self.pens = window.pens[0:3]
+
+        # Constants
+        self.mu0 = constants.mu_0
+        self.k_b = constants.physical_constants['Boltzmann constant in eV/K'][0]
+        self.nt_to_T = 1 / (10 ** 9)
+        self.cm3_to_m3 = 1 / (10 ** 6)
+
+        # Plot label maps to variable name and units
+        self.plot_labels = ['Magnetic Pressure', 'Thermal Pressure', 'Total Pressure']
+        self.plot_info = {
+            self.plot_labels[0]: ('magn_press', 'Pa'), 
+            self.plot_labels[1]: ('therm_press', 'Pa'),
+            self.plot_labels[2]: ('total_press', 'Pa')
+        }
+
+        # Setup UI
+        self.ui = PressureToolUI()
+        self.ui.setupUI(self)
+        self.plotAppr = None
+
+        # Connect buttons to functions
+        self.ui.updtBtn.clicked.connect(self.update)
+        self.ui.addBtn.clicked.connect(self.addToMain)
+
+        # Stores last calculation
+        self.lastCalc = None
+
+    def calcMagneticPress(self, scNum, index):
+        # Compute magnetic pressure as |B|^2/(2*mu0)
+        btot_dstr = self.btotDstrs[scNum-1]
+        btot_val = self.window.getData(btot_dstr, 0)[index]
+        btot_val *= self.nt_to_T
+
+        pressure = (btot_val ** 2) / (2 * self.mu0)
+        return pressure
+
+    def getNumDensity(self, kw='N_Dens', index=0):
+        n_dens = self.window.getData(kw, 0)[index]
+        return n_dens * self.cm3_to_m3
+
+    def getTemperature(self, kw='TempPer', index=0):
+        temp = self.window.getData(kw, 0)[index]
+        return temp
+
+    def convertTemp(self, temperature):
+        # Temperature in eV -> Kelvin
+        temperature = temperature / self.k_b
+        return temperature
+
+    def calcThermalPress(self, index):
+        # Convert temp per to Kelvin
+        temp_eV = self.getTemperature(index=index)
+        temp_K = self.convertTemp(temp_eV)
+
+        # Get number density
+        n_dens = self.getNumDensity(index=index)
+
+        # Compute thermal pressure as 
+        # (number density) * (temperature in Kelvin) * (Boltzmann constant)
+        therm_press = n_dens * temp_K * self.k_b
+        return therm_press
+
+    def calcPressure(self, mag_index, part_index):
+        magn_press = self.calcMagneticPress(1, mag_index)
+        therm_press = self.calcThermalPress(part_index)
+        return magn_press, therm_press
+
+    def update(self):
+        # Get magnetic field start/end indices and times
+        mag_dstr = self.getDstrsBySpcrft(1, grp='Field')[0]
+        sI_mag, eI_mag = self.window.calcDataIndicesFromLines(mag_dstr, 0)
+        mag_times = self.window.getTimes(mag_dstr, 0)[0][sI_mag:eI_mag]
+
+        # Get particle data start/end indices and times
+        part_dstr = 'N_Dens'
+        sI_part, eI_part = self.window.calcDataIndicesFromLines(part_dstr, 0)
+        part_times = self.window.getTimes(part_dstr, 0)[0][sI_part:eI_part]
+
+        # Calculate the magnetic pressure and thermal pressure at each index
+        magn_press = np.empty(eI_mag - sI_mag)
+        therm_press = np.empty(eI_part - sI_part)
+
+        for i in range(sI_mag, eI_mag):
+            magn_press[i-sI_mag] = self.calcMagneticPress(1, i)
+
+        for i in range(sI_part, eI_part):
+            therm_press[i-sI_part] = self.calcThermalPress(i)
+
+        # Interpolate (cubic splines) thermal pressure calculation
+        cs = scipy.interpolate.CubicSpline(part_times, therm_press, extrapolate=True)
+        interp_therm_press = cs(mag_times)
+
+        # Calculate total pressure using interpolated data
+        total_press = magn_press + interp_therm_press
+
+        # Plot calculated data
+        times = (mag_times, part_times, mag_times)
+        pressures = (magn_press, therm_press, total_press)
+        self.lastCalc = (times, pressures)
+        self.plotData(times, pressures)
+
+    def plotData(self, times, pressures):
+        # Use same time range for all plots
+        t0, t1 = times[0][0], times[0][-1]
+        plts = self.plotItems
+
+        # Clear each plot and plot corresponding time v. dta trace
+        for t, dta, plt, pen in zip(times, pressures, plts, self.pens):
+            plt.clear()
+            plt.plot(t, dta, pen=pen)
+            plt.setXRange(t0, t1, padding=0.0)
+
+    def openPlotAppr(self):
+        self.closePlotAppr()
+        self.plotAppr = PressurePlotApp(self, self.plotItems, links=[[0],[1],[2]])
+        self.plotAppr.show()
+
+    def closePlotAppr(self):
+        if self.plotAppr:
+            self.plotAppr.close()
+            self.plotAppr = None
+
+    def addToMain(self):
+        if self.lastCalc is None:
+            return
+
+        # Get times and pressure values from last calculation
+        times, pressures = self.lastCalc
+
+        # For each plot in grid
+        for plt, lbl, pen, kw, t, dta, check in zip(self.plotItems, self.labels, 
+            self.pens, self.plot_labels, times, pressures, self.ui.boxes):
+            if not check.isChecked():
+                continue
+
+            # Remove plot item and label from grid
+            self.ui.pltGrd.removeItem(plt)
+            self.ui.pltGrd.removeItem(lbl)
+
+            # Get the variable name and units
+            var_name, units = self.plot_info[kw]
+
+            # Generate the time info for this variable
+            t_diff = np.diff(t)
+            timeInfo = (t, t_diff, t[1] - t[0])
+
+            # Add plot to main window and initialize a new variable in main window
+            self.window.addPlot(plt, lbl, [(var_name, 0)], pens=[pen])
+            self.window.initNewVar(var_name, dta, units=units, times=timeInfo)
+
+        # Update plot grid ranges and appearance
+        self.window.updateXRange()
+        self.window.pltGrd.resizeEvent(None)
+        self.close()
+
+    def closeEvent(self, ev):
+        self.closePlotAppr()
+        self.window.endGeneralSelect()
         self.close()

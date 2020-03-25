@@ -404,6 +404,7 @@ class SelectableViewBox(pg.ViewBox):
         pg.ViewBox.__init__(self, *args, **kwds)
         self.window = window
         self.plotIndex = plotIndex
+        self.add_menu_act = None
         self.setMouseEnabled(x=False, y=False)
 
     def onLeftClick(self, ev):
@@ -423,6 +424,10 @@ class SelectableViewBox(pg.ViewBox):
             pg.ViewBox.mouseClickEvent(self, ev)
 
     def mouseClickEvent(self, ev):
+        if self.window is None:
+            pg.ViewBox.mouseClickEvent(self, ev)
+            return
+
         if ev.button() == QtCore.Qt.LeftButton:
             self.onLeftClick(ev)
 
@@ -434,16 +439,28 @@ class SelectableViewBox(pg.ViewBox):
     # mouse drags for now just get turned into clicks, like on release basically, feels nicer
     # technically only need to do this for spectra mode but not being used otherwise so whatever
     def mouseDragEvent(self, ev, axis=None):
+        if self.window is None:
+            pg.ViewBox.mouseDragEvent(self, ev)
+            return
+
         if ev.isFinish(): # on release
             if ev.button() == QtCore.Qt.LeftButton:
                 self.onLeftClick(ev)
             elif ev.button() == QtCore.Qt.RightButton:
                 self.onRightClick(ev)
         ev.accept()
-        #    pg.ViewBox.mouseDragEvent(self, ev)
 
     def wheelEvent(self, ev, axis=None):
         ev.ignore()
+    
+    def addMenuAction(self, act):
+        self.add_menu_act = act
+        self.menu.addAction(act)
+    
+    def rmvMenuAction(self, act):
+        if self.add_menu_act:
+            self.menu.removeAction(self.add_menu_act)
+            self.add_menu_act = None
 
 class FixedSelectionUI():
     def setupUI(self, Frame, window):

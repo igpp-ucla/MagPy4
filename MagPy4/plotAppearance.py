@@ -12,7 +12,8 @@ from bisect import bisect
 import functools
 
 class PlotAppearanceUI(BaseLayout):
-    def setupUI(self, Frame, window, plotsInfo, plotItems, mainWindow=False):
+    def setupUI(self, Frame, window, plotsInfo, plotItems, 
+        mainWindow=False, links=None):
         Frame.setWindowTitle('Plot Appearance')
         Frame.resize(300, 200)
 
@@ -100,7 +101,7 @@ class PlotAppearanceUI(BaseLayout):
         if mainWindow:
             tickIntWidget = MagPyTickIntervals(window, plotItems, Frame)
         else:
-            tickIntWidget = TickIntervals(window, plotItems, Frame)
+            tickIntWidget = TickIntervals(window, plotItems, Frame, links=links)
         tw.addTab(tickIntWidget, 'Tick Spacing')
 
         # Set up label properties widget
@@ -124,7 +125,8 @@ class PlotAppearanceUI(BaseLayout):
         return scrollArea
 
 class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
-    def __init__(self, window, plotItems, parent=None, mainWindow=False):
+    def __init__(self, window, plotItems, parent=None, mainWindow=False,
+        links=None):
         super(PlotAppearance, self).__init__(parent)
         self.ui = PlotAppearanceUI()
         self.plotItems = plotItems
@@ -132,7 +134,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
 
         # Get plots' trace/label infos and use to setup/initialize UI elements
         plotsInfo = self.getPlotsInfo()
-        self.ui.setupUI(self, window, plotsInfo, plotItems, mainWindow)
+        self.ui.setupUI(self, window, plotsInfo, plotItems, mainWindow, links=links)
         self.initVars(plotsInfo)
 
         # Connect line width modifiers to function
@@ -342,6 +344,19 @@ class DynamicPlotApp(PlotAppearance):
 
     def allowLeftAxisEditing(self):
         return True
+
+class PressurePlotApp(PlotAppearance):
+    def adjustTitleColors(self, penList):
+        for lblItem, pens in zip(self.window.labels, penList):
+            colors = lblItem.colors
+            new_color = pens[0].color().name()
+            for i in range(0, len(lblItem.dstrs)-1):
+                sub_label = lblItem.subLabels[i]
+                colors[i] = new_color
+
+                fontSize = sub_label.opts['size']
+                sub_label.setText(sub_label.text, size=fontSize, color=new_color)
+            lblItem.resizeEvent(None)
 
 class TickIntervalsUI(BaseLayout):
     def setupUI(self, Frame, window, plotItems, links):
