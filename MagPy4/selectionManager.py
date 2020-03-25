@@ -457,7 +457,7 @@ class SelectableViewBox(pg.ViewBox):
         self.add_menu_act = act
         self.menu.addAction(act)
     
-    def rmvMenuAction(self, act):
+    def rmvMenuAction(self):
         if self.add_menu_act:
             self.menu.removeAction(self.add_menu_act)
             self.add_menu_act = None

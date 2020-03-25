@@ -2358,37 +2358,38 @@ class PressureToolUI(BaseLayout):
         apprAct = QtWidgets.QAction('Plot Appearance...')
         apprAct.triggered.connect(frame.openPlotAppr)
 
-        # Generate each plot
-        for i in range(0, 3):
-            # Set up axis items and viewbox
-            la = LinkedAxis('left')
-            ra = LinkedAxis('right')
-            ba = DateAxis(frame.window.epoch, 'bottom')
-            ta = DateAxis(frame.window.epoch, 'top')
-            vb = SelectableViewBox(None, i)
-            vb.addMenuAction(apprAct)
-            ba.enableAutoSIPrefix(False)
+        # Generate plot
+        ## Set up axis items and viewbox
+        la = LinkedAxis('left')
+        ra = LinkedAxis('right')
+        ba = DateAxis(frame.window.epoch, 'bottom')
+        ta = DateAxis(frame.window.epoch, 'top')
+        vb = SelectableViewBox(None, 0)
+        vb.addMenuAction(apprAct)
+        ba.enableAutoSIPrefix(False)
 
-            plt = MagPyPlotItem(viewBox=vb, axisItems={'left':la, 'bottom':ba, 
-                'right':ra, 'top':ta})
+        plt = MagPyPlotItem(viewBox=vb, axisItems={'left':la, 'bottom':ba, 
+            'right':ra, 'top':ta})
 
-            # Get plot label, trace pen, and units
-            pen = frame.pens[i]
-            lbl = frame.plot_labels[i]
+        ## Get plot label, trace pen, and units
+        dstrs, colors = [], []
+        for lbl, pen in zip(frame.plot_labels, frame.pens):
+            dstrs.extend(lbl.split(' '))
+            colors.extend([pen.color().name()]*2)
             units = frame.plot_info[lbl][1]
 
-            # Create stacked label and add plot + label to grid
-            label = StackedLabel(lbl.split(' '), [pen.color().name()]*2, units=units)
-            grid.addPlt(plt, label)
+        ## Hide buttons and set top/right axes visible
+        plt.hideButtons()
+        for ax in ['top', 'right']:
+            plt.showAxis(ax)
+            plt.getAxis(ax).setStyle(showValues=False)
 
-            frame.labels.append(label)
-            frame.plotItems.append(plt)
+        ## Create stacked label and add plot + label to grid
+        label = StackedLabel(dstrs, colors, units=units)
+        grid.addPlt(plt, label)
 
-            # Hide buttons and set top/right axes visible
-            plt.hideButtons()
-            for ax in ['top', 'right']:
-                plt.showAxis(ax)
-                plt.getAxis(ax).setStyle(showValues=False)
+        frame.labels.append(label)
+        frame.plotItems.append(plt)
 
 class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
     def __init__(self, window, *args, **kwargs):
@@ -2406,13 +2407,14 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         self.k_b = constants.physical_constants['Boltzmann constant in eV/K'][0]
         self.nt_to_T = 1 / (10 ** 9)
         self.cm3_to_m3 = 1 / (10 ** 6)
+        self.pa_to_npa = 10 ** 9
 
         # Plot label maps to variable name and units
         self.plot_labels = ['Magnetic Pressure', 'Thermal Pressure', 'Total Pressure']
         self.plot_info = {
-            self.plot_labels[0]: ('magn_press', 'Pa'), 
-            self.plot_labels[1]: ('therm_press', 'Pa'),
-            self.plot_labels[2]: ('total_press', 'Pa')
+            self.plot_labels[0]: ('magn_press', 'nPa'), 
+            self.plot_labels[1]: ('therm_press', 'nPa'),
+            self.plot_labels[2]: ('total_press', 'nPa')
         }
 
         # Setup UI
@@ -2434,7 +2436,7 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         btot_val *= self.nt_to_T
 
         pressure = (btot_val ** 2) / (2 * self.mu0)
-        return pressure
+        return pressure * self.pa_to_npa
 
     def getNumDensity(self, kw='N_Dens', index=0):
         n_dens = self.window.getData(kw, 0)[index]
@@ -2460,7 +2462,7 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         # Compute thermal pressure as 
         # (number density) * (temperature in Kelvin) * (Boltzmann constant)
         therm_press = n_dens * temp_K * self.k_b
-        return therm_press
+        return therm_press * self.pa_to_npa
 
     def calcPressure(self, mag_index, part_index):
         magn_press = self.calcMagneticPress(1, mag_index)
@@ -2504,17 +2506,19 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
     def plotData(self, times, pressures):
         # Use same time range for all plots
         t0, t1 = times[0][0], times[0][-1]
-        plts = self.plotItems
 
-        # Clear each plot and plot corresponding time v. dta trace
-        for t, dta, plt, pen in zip(times, pressures, plts, self.pens):
-            plt.clear()
-            plt.plot(t, dta, pen=pen)
-            plt.setXRange(t0, t1, padding=0.0)
+        # Clear plot and plot each time v. pressure trace
+        plt = self.plotItems[0]
+        plt.clear()
+        lbls = self.plot_labels
+        for t, dta, pen, lbl in zip(times, pressures, self.pens, lbls):
+            plt.plot(t, dta, pen=pen, name=lbl)
+
+        plt.setXRange(t0, t1, padding=0.0)
 
     def openPlotAppr(self):
         self.closePlotAppr()
-        self.plotAppr = PressurePlotApp(self, self.plotItems, links=[[0],[1],[2]])
+        self.plotAppr = PressurePlotApp(self, self.plotItems, links=[[0]])
         self.plotAppr.show()
 
     def closePlotAppr(self):
@@ -2529,26 +2533,45 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         # Get times and pressure values from last calculation
         times, pressures = self.lastCalc
 
-        # For each plot in grid
-        for plt, lbl, pen, kw, t, dta, check in zip(self.plotItems, self.labels, 
-            self.pens, self.plot_labels, times, pressures, self.ui.boxes):
+        # Get plot item and map its data items to their names
+        plt = self.plotItems[0]
+        plt.getViewBox().rmvMenuAction()
+        self.ui.pltGrd.clear()
+        pdi_map = {pdi.name():pdi for pdi in plt.listDataItems()}
+
+        # For each trace, keep in plot if it is checked
+        pens = self.pens
+        dstrs, colors = [], []
+        plotStrings = []
+        plotPens = []
+        for kw, pen, t, dta, check in zip(self.plot_labels, pens, times, 
+            pressures, self.ui.boxes):
+
+            # If not checked, remove from plot
             if not check.isChecked():
+                plt.removeItem(pdi_map[kw])
                 continue
 
-            # Remove plot item and label from grid
-            self.ui.pltGrd.removeItem(plt)
-            self.ui.pltGrd.removeItem(lbl)
-
-            # Get the variable name and units
+            # Get the variable name, units, and pen color
             var_name, units = self.plot_info[kw]
+            plotStrings.append((var_name, 0))
+            colors.extend([pen.color()]*2)
+            dstrs.extend(kw.split(' '))
+            plotPens.append(pen)
 
             # Generate the time info for this variable
             t_diff = np.diff(t)
             timeInfo = (t, t_diff, t[1] - t[0])
 
-            # Add plot to main window and initialize a new variable in main window
-            self.window.addPlot(plt, lbl, [(var_name, 0)], pens=[pen])
+            # Initialize a new variable in main window
             self.window.initNewVar(var_name, dta, units=units, times=timeInfo)
+
+        if len(plotStrings) == 0:
+            return
+
+        # Create label and add plot + label to plot grid
+        lbl = StackedLabel(dstrs, colors, units='nPa')
+        self.window.addPlot(plt, lbl, plotStrings, pens=plotPens)
 
         # Update plot grid ranges and appearance
         self.window.updateXRange()

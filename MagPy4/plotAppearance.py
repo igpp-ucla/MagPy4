@@ -347,16 +347,20 @@ class DynamicPlotApp(PlotAppearance):
 
 class PressurePlotApp(PlotAppearance):
     def adjustTitleColors(self, penList):
-        for lblItem, pens in zip(self.window.labels, penList):
-            colors = lblItem.colors
-            new_color = pens[0].color().name()
-            for i in range(0, len(lblItem.dstrs)-1):
-                sub_label = lblItem.subLabels[i]
-                colors[i] = new_color
+        label = self.window.labels[0]
+        colors = label.colors
+        row = 0
+        for pen in penList[0]:
+            for j in range(row, row+2):
+                sub_label = label.subLabels[j]
+                colors[j] = pen.color().name()
 
                 fontSize = sub_label.opts['size']
-                sub_label.setText(sub_label.text, size=fontSize, color=new_color)
-            lblItem.resizeEvent(None)
+                sub_label.setText(sub_label.text, size=fontSize, color=pen.color().name())
+
+            row += 2
+
+        self.window.pens = penList[0]
 
 class TickIntervalsUI(BaseLayout):
     def setupUI(self, Frame, window, plotItems, links):
