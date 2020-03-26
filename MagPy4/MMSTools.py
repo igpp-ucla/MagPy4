@@ -2404,10 +2404,11 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
 
         # Constants
         self.mu0 = constants.mu_0
-        self.k_b = constants.physical_constants['Boltzmann constant in eV/K'][0]
-        self.nt_to_T = 1 / (10 ** 9)
-        self.cm3_to_m3 = 1 / (10 ** 6)
-        self.pa_to_npa = 10 ** 9
+        self.k_b_eV = constants.physical_constants['Boltzmann constant in eV/K'][0]
+        self.k_b_j = constants.physical_constants['Boltzmann constant'][0]
+        self.nt_to_T = 1e-9
+        self.cm3_to_m3 = 1e6
+        self.pa_to_npa = 1e9
 
         # Plot label maps to variable name and units
         self.plot_labels = ['Magnetic Pressure', 'Thermal Pressure', 'Total Pressure']
@@ -2440,28 +2441,24 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
 
     def getNumDensity(self, kw='N_Dens', index=0):
         n_dens = self.window.getData(kw, 0)[index]
-        return n_dens * self.cm3_to_m3
+        return n_dens
 
     def getTemperature(self, kw='TempPer', index=0):
         temp = self.window.getData(kw, 0)[index]
         return temp
 
-    def convertTemp(self, temperature):
-        # Temperature in eV -> Kelvin
-        temperature = temperature / self.k_b
-        return temperature
-
     def calcThermalPress(self, index):
-        # Convert temp per to Kelvin
+        # Convert temperature in eV to Kelvin
         temp_eV = self.getTemperature(index=index)
-        temp_K = self.convertTemp(temp_eV)
+        temp_K = temp_eV / self.k_b_eV
 
-        # Get number density
+        # Get number density and convert to 1/m^3
         n_dens = self.getNumDensity(index=index)
+        n_dens = n_dens * self.cm3_to_m3
 
         # Compute thermal pressure as 
         # (number density) * (temperature in Kelvin) * (Boltzmann constant)
-        therm_press = n_dens * temp_K * self.k_b
+        therm_press = n_dens * temp_K * self.k_b_j
         return therm_press * self.pa_to_npa
 
     def calcPressure(self, mag_index, part_index):
@@ -2511,10 +2508,18 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         plt = self.plotItems[0]
         plt.clear()
         lbls = self.plot_labels
-        for t, dta, pen, lbl in zip(times, pressures, self.pens, lbls):
-            plt.plot(t, dta, pen=pen, name=lbl)
+        checks = self.ui.boxes
+
+        checked_kws = []
+        checked_colors = []
+        for t, dta, pen, lbl, chk in zip(times, pressures, self.pens, lbls, checks):
+            if chk.isChecked():
+                plt.plot(t, dta, pen=pen, name=lbl)
+                checked_kws.extend(lbl.split(' '))
+                checked_colors.extend([pen.color().name()]*2)
 
         plt.setXRange(t0, t1, padding=0.0)
+        self.set_label(checked_kws, checked_colors)
 
     def openPlotAppr(self):
         self.closePlotAppr()
@@ -2525,19 +2530,25 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         if self.plotAppr:
             self.plotAppr.close()
             self.plotAppr = None
+    
+    def set_label(self, kws, colors):
+        lbl = StackedLabel(kws, colors, units='nPa')
+        self.ui.pltGrd.setPlotLabel(lbl, 0)
+        self.labels[0] = lbl
 
     def addToMain(self):
+        self.update()
         if self.lastCalc is None:
             return
 
         # Get times and pressure values from last calculation
         times, pressures = self.lastCalc
 
-        # Get plot item and map its data items to their names
+        # Get plot item and label
         plt = self.plotItems[0]
+        lbl = self.labels[0]
         plt.getViewBox().rmvMenuAction()
         self.ui.pltGrd.clear()
-        pdi_map = {pdi.name():pdi for pdi in plt.listDataItems()}
 
         # For each trace, keep in plot if it is checked
         pens = self.pens
@@ -2547,9 +2558,7 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         for kw, pen, t, dta, check in zip(self.plot_labels, pens, times, 
             pressures, self.ui.boxes):
 
-            # If not checked, remove from plot
             if not check.isChecked():
-                plt.removeItem(pdi_map[kw])
                 continue
 
             # Get the variable name, units, and pen color
@@ -2567,10 +2576,10 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
             self.window.initNewVar(var_name, dta, units=units, times=timeInfo)
 
         if len(plotStrings) == 0:
+            self.close()
             return
 
         # Create label and add plot + label to plot grid
-        lbl = StackedLabel(dstrs, colors, units='nPa')
         self.window.addPlot(plt, lbl, plotStrings, pens=plotPens)
 
         # Update plot grid ranges and appearance

@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.11.0 (March 25, 2020)'
+VERSION = f'Version 1.2.12.0 (March 26, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
