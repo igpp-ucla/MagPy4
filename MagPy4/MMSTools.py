@@ -2447,9 +2447,9 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         temp = self.window.getData(kw, 0)[index]
         return temp
 
-    def calcThermalPress(self, kw, index):
+    def calcThermalPress(self, kw, temp_kw, index):
         # Convert temperature in eV to Kelvin
-        temp_eV = self.getTemperature(index=index)
+        temp_eV = self.getTemperature(temp_kw, index=index)
         temp_K = temp_eV / self.k_b_eV
 
         # Get number density and convert to 1/m^3
@@ -2474,10 +2474,12 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
 
         # Get particle data start/end indices and times
         part_dstr_e = 'N_Dens'
+        temp_kw_e = 'TempPer'
         sI_part_e, eI_part_e = self.window.calcDataIndicesFromLines(part_dstr_e, 0)
         part_times_e = self.window.getTimes(part_dstr_e, 0)[0][sI_part_e:eI_part_e]
 
         part_dstr_i = 'N_Dens_I'
+        temp_kw_i = 'TempPer_I'
         sI_part_i, eI_part_i = self.window.calcDataIndicesFromLines(part_dstr_i, 0)
         part_times_i = self.window.getTimes(part_dstr_i, 0)[0][sI_part_i:eI_part_i]
 
@@ -2490,10 +2492,10 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
             magn_press[i-sI_mag] = self.calcMagneticPress(1, i)
 
         for i in range(sI_part_e, eI_part_e):
-            therm_press_e[i-sI_part_e] = self.calcThermalPress(part_dstr_e, i)
+            therm_press_e[i-sI_part_e] = self.calcThermalPress(part_dstr_e, temp_kw_e, i)
 
         for i in range(sI_part_i, eI_part_i):
-            therm_press_i[i-sI_part_i] = self.calcThermalPress(part_dstr_i, i)
+            therm_press_i[i-sI_part_i] = self.calcThermalPress(part_dstr_i, temp_kw_i, i)
 
         # Interpolate (cubic splines) thermal pressure calculations
         cs = scipy.interpolate.CubicSpline(part_times_e, therm_press_e, extrapolate=True)
