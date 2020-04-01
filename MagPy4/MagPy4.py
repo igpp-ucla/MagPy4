@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.16.0 (April 1, 2020)'
+VERSION = f'Version 1.2.17.0 (April 1, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -160,6 +160,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.drawPoints.toggled.connect(self.replotDataCallback)
         self.ui.downsampleAction.toggled.connect(self.enableDownsampling)
         self.ui.showFileLbl.toggled.connect(self.showFileLabel)
+        self.ui.enableScrollingAction.toggled.connect(self.enableScrolling)
 
         # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
         self.DATASTRINGS = []
@@ -2402,6 +2403,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Return the total number of points plotted through plotTrace function
         return numPts
+
+    def enableScrolling(self, val):
+        # Minimum plot height set to 3 inches for now
+        min_height = 3 * QtGui.QDesktopWidget().logicalDpiY()
+
+        # Set minimum height for gview accordingly
+        if val:
+            self.ui.gview.setMinimumHeight(min_height * len(self.plotItems) + 100)
+        else:
+            self.ui.gview.setMinimumHeight(0)
 
     def enableDownsampling(self, val):
         if val:

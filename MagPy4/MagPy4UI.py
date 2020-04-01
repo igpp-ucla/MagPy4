@@ -154,8 +154,11 @@ class MagPy4UI(object):
         self.drawPoints.setStatusTip('')
         self.downsampleAction = QtWidgets.QAction('Downsample Plot Data', checkable=True)
         self.downsampleAction.setStatusTip('Reduces number of visible samples; improves performance for large datasets')
+
         self.showFileLbl = QtWidgets.QAction('Show Filename Label', checkable=True)
         self.showFileLbl.setChecked(True)
+        self.enableScrollingAction = QtWidgets.QAction('Enable Scrolling', checkable=True)
+        self.enableScrollingAction.setStatusTip('Enables vertical scrolling of plot window and sets a minimum height for it')
 
         self.actionHelp = QtWidgets.QAction(window)
         self.actionHelp.setText('MagPy4 &Help')
@@ -230,7 +233,9 @@ class MagPy4UI(object):
         self.optionsMenu.addAction(self.bridgeDataGaps)
         self.optionsMenu.addAction(self.drawPoints)
         self.optionsMenu.addAction(self.downsampleAction)
+        self.optionsMenu.addSeparator()
         self.optionsMenu.addAction(self.showFileLbl)
+        self.optionsMenu.addAction(self.enableScrollingAction)
 
         self.helpMenu = self.menuBar.addMenu('&Help')
         self.helpMenu.addAction(self.actionHelp)
@@ -461,7 +466,14 @@ class MagPy4UI(object):
         self.layout.removeWidget(self.startFrame)
         self.startFrame.deleteLater()
 
-        self.layout.insertWidget(0, self.gview)
+        # Wrap gview inside a scroll frame and insert into main layout
+        scrollFrame = QtWidgets.QScrollArea()
+        scrollFrame.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        scrollFrame.setWidget(self.gview)
+        scrollFrame.setWidgetResizable(True)
+        scrollFrame.setFrameStyle(QtWidgets.QFrame.NoFrame)
+
+        self.layout.insertWidget(0, scrollFrame)
 
         # Re-enable all UI elements for interacting w/ plots
         self.enableUIElems(True)
