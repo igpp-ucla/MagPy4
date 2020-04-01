@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.15.0 (April 1, 2020)'
+VERSION = f'Version 1.2.16.0 (April 1, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -159,6 +159,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.bridgeDataGaps.toggled.connect(self.replotDataCallback)
         self.ui.drawPoints.toggled.connect(self.replotDataCallback)
         self.ui.downsampleAction.toggled.connect(self.enableDownsampling)
+        self.ui.showFileLbl.toggled.connect(self.showFileLabel)
 
         # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
         self.DATASTRINGS = []
@@ -177,6 +178,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.timeSelect = None
         self.asc = None
         self.batchSelect = None
+        self.fileNameLabel = None
 
         self.toolNames = ['Data', 'Edit', 'Plot Menu', 'Detrend', 'Spectra',
             'Dynamic Spectra', 'Dynamic Coh/Pha', 'Wave Analysis',
@@ -392,6 +394,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def clearStatusMsg(self):
         self.ui.statusBar.clearMessage()
+
+    def showFileLabel(self, val):
+        if self.fileNameLabel:
+            self.fileNameLabel.setVisible(val)
 
     def enableToolsAndOptionsMenus(self, b):
         """Enable or disable the Tools and Options menus.
@@ -2245,7 +2251,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         fileNameLabel.opts['justify'] = 'right'
         maxLabelWidth = BaseLayout.getMaxLabelWidth(fileNameLabel, self.ui.glw)
         fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.getFileNameString(maxLabelWidth)}</span>")
+        self.fileNameLabel = fileNameLabel
         self.ui.glw.addItem(fileNameLabel, 0, 0, 1, 1)
+        self.showFileLabel(self.ui.showFileLbl.isChecked())
 
         # Create new plot grid
         self.pltGrd = MainPlotGrid(self)

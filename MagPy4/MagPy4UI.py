@@ -154,6 +154,8 @@ class MagPy4UI(object):
         self.drawPoints.setStatusTip('')
         self.downsampleAction = QtWidgets.QAction('Downsample Plot Data', checkable=True)
         self.downsampleAction.setStatusTip('Reduces number of visible samples; improves performance for large datasets')
+        self.showFileLbl = QtWidgets.QAction('Show Filename Label', checkable=True)
+        self.showFileLbl.setChecked(True)
 
         self.actionHelp = QtWidgets.QAction(window)
         self.actionHelp.setText('MagPy4 &Help')
@@ -228,6 +230,7 @@ class MagPy4UI(object):
         self.optionsMenu.addAction(self.bridgeDataGaps)
         self.optionsMenu.addAction(self.drawPoints)
         self.optionsMenu.addAction(self.downsampleAction)
+        self.optionsMenu.addAction(self.showFileLbl)
 
         self.helpMenu = self.menuBar.addMenu('&Help')
         self.helpMenu.addAction(self.actionHelp)
