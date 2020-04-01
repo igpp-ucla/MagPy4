@@ -2334,6 +2334,12 @@ class PressureToolUI(BaseLayout):
             box.setChecked(True)
             boxLt.addWidget(box)
             self.boxes.append(box)
+
+            # Hide and uncheck if not in list of available kws
+            if mainFrame.available_kws[kw] == False:
+                box.setChecked(False)
+                box.setVisible(False)
+
         layout.addLayout(boxLt)
 
         # Add 'Add To Main Window' button
@@ -2410,13 +2416,32 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         self.cm3_to_m3 = 1e6
         self.pa_to_npa = 1e9
 
+        # Variable names
+        self.e_dstr = 'N_Dens' 
+        self.temp_kw_e = 'TempPer'
+        self.i_dstr = 'N_Dens_I'
+        self.temp_kw_i = 'TempPer_I'
+
         # Plot label maps to variable name and units
         self.plot_labels = ['Magnetic Pressure', 'Thermal Pressure', 'Total Pressure']
+        self.magn_lbl, self.therm_lbl, self.total_lbl = self.plot_labels
         self.plot_info = {
             self.plot_labels[0]: ('magn_press', 'nPa'), 
             self.plot_labels[1]: ('therm_press', 'nPa'),
             self.plot_labels[2]: ('total_press', 'nPa')
         }
+
+        # Determine which elements can be calculated base on
+        # loaded variables
+        self.available_kws = {kw:False for kw in self.plot_labels}
+        all_dstrs = self.window.DATASTRINGS[:]
+        mag_lbl, therm_lbl, total_lbl = self.plot_labels
+        if self.inValidState():
+            self.available_kws[mag_lbl] = True
+        if self.e_dstr in all_dstrs and self.i_dstr in all_dstrs:
+            self.available_kws[therm_lbl] = True
+            if self.available_kws[mag_lbl]:
+                self.available_kws[total_lbl] = True
 
         # Setup UI
         self.ui = PressureToolUI()
@@ -2461,75 +2486,95 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         therm_press = n_dens * temp_K * self.k_b_j
         return therm_press * self.pa_to_npa
 
-    def calcPressure(self, mag_index, part_index):
-        magn_press = self.calcMagneticPress(1, mag_index)
-        therm_press = self.calcThermalPress(part_index)
-        return magn_press, therm_press
+    def get_indices_and_times(self, kw):
+        sI, eI = self.window.calcDataIndicesFromLines(kw, 0)
+        times = self.window.getTimes(kw, 0)[0][sI:eI]
+        return ((sI, eI), times)
+
+    def calcThermPressFull(self, kw, temp_kw):
+        # Determines the start/end indices for the given number
+        # density & tempperp keywords, and calculates the thermal
+        # pressure over that range
+        (sI, eI), times = self.get_indices_and_times(kw)
+        therm_press = np.empty(eI-sI)
+
+        for i in range(sI, eI):
+            therm_press[i-sI] = self.calcThermalPress(kw, temp_kw, i)
+
+        return times, therm_press
+
+    def calcPlasmaThermalPress(self, mag_times=None):
+        # Get electron thermal pressure
+        times_e, therm_press_e = self.calcThermPressFull(self.e_dstr, self.temp_kw_e)
+
+        # Get ion thermal pressure
+        times_i, therm_press_i = self.calcThermPressFull(self.i_dstr, self.temp_kw_i)
+
+        # Interpolate along mag_times if it is given, otherwise, on electron times
+        ref_times = times_e if mag_times is None else mag_times
+        cs = scipy.interpolate.CubicSpline(times_e, therm_press_e, extrapolate=True)
+        interp_therm_press_e = cs(ref_times)
+        cs = scipy.interpolate.CubicSpline(times_i, therm_press_i, extrapolate=True)
+        interp_therm_press_i = cs(ref_times)
+
+        # Sum up thermal pressure and return
+        thermal_press = interp_therm_press_e + interp_therm_press_i
+        return ref_times, thermal_press
+
+    def calcMagnPressFull(self):
+        # Get start/end indices and times
+        mag_dstr = self.getDstrsBySpcrft(1, grp='Field')[0]
+        sI, eI = self.window.calcDataIndicesFromLines(mag_dstr, 0)
+        mag_times = self.window.getTimes(mag_dstr, 0)[0][sI:eI]
+
+        # Calculate magnetic pressure over the given range
+        magn_press = np.empty(eI - sI)
+        for i in range(sI, eI):
+            magn_press[i-sI] = self.calcMagneticPress(1, i)
+
+        return mag_times, magn_press
 
     def update(self):
-        # Get magnetic field start/end indices and times
-        mag_dstr = self.getDstrsBySpcrft(1, grp='Field')[0]
-        sI_mag, eI_mag = self.window.calcDataIndicesFromLines(mag_dstr, 0)
-        mag_times = self.window.getTimes(mag_dstr, 0)[0][sI_mag:eI_mag]
+        times = None
+        magn_press, therm_press, total_press = None, None, None
 
-        # Get particle data start/end indices and times
-        part_dstr_e = 'N_Dens'
-        temp_kw_e = 'TempPer'
-        sI_part_e, eI_part_e = self.window.calcDataIndicesFromLines(part_dstr_e, 0)
-        part_times_e = self.window.getTimes(part_dstr_e, 0)[0][sI_part_e:eI_part_e]
+        # Calculate magnetic pressure
+        if self.available_kws[self.magn_lbl]:
+            times, magn_press = self.calcMagnPressFull()
 
-        part_dstr_i = 'N_Dens_I'
-        temp_kw_i = 'TempPer_I'
-        sI_part_i, eI_part_i = self.window.calcDataIndicesFromLines(part_dstr_i, 0)
-        part_times_i = self.window.getTimes(part_dstr_i, 0)[0][sI_part_i:eI_part_i]
-
-        # Calculate the magnetic pressure and thermal pressure at each index
-        magn_press = np.empty(eI_mag - sI_mag)
-        therm_press_e = np.empty(eI_part_e - sI_part_e)
-        therm_press_i = np.empty(eI_part_i - sI_part_i)
-
-        for i in range(sI_mag, eI_mag):
-            magn_press[i-sI_mag] = self.calcMagneticPress(1, i)
-
-        for i in range(sI_part_e, eI_part_e):
-            therm_press_e[i-sI_part_e] = self.calcThermalPress(part_dstr_e, temp_kw_e, i)
-
-        for i in range(sI_part_i, eI_part_i):
-            therm_press_i[i-sI_part_i] = self.calcThermalPress(part_dstr_i, temp_kw_i, i)
-
-        # Interpolate (cubic splines) thermal pressure calculations
-        cs = scipy.interpolate.CubicSpline(part_times_e, therm_press_e, extrapolate=True)
-        interp_therm_press_e = cs(mag_times)
-        cs = scipy.interpolate.CubicSpline(part_times_i, therm_press_i, extrapolate=True)
-        interp_therm_press_i = cs(mag_times)
-
-        # Add together the interpolated electron and ion thermal pressures
-        therm_press = interp_therm_press_e + interp_therm_press_i
+        # Calculate plasma thermal pressure
+        if self.available_kws[self.therm_lbl]:
+            times, therm_press = self.calcPlasmaThermalPress(times)
 
         # Calculate total pressure
-        total_press = magn_press + therm_press
+        if self.available_kws[self.total_lbl]:
+            total_press = magn_press + therm_press
 
         # Plot calculated data
-        times = (mag_times, mag_times, mag_times)
-        pressures = (magn_press, therm_press, total_press)
+        pressures = [magn_press, therm_press, total_press]
         self.lastCalc = (times, pressures)
         self.plotData(times, pressures)
 
     def plotData(self, times, pressures):
-        # Use same time range for all plots
-        t0, t1 = times[0][0], times[0][-1]
-
-        # Clear plot and plot each time v. pressure trace
         plt = self.plotItems[0]
         plt.clear()
+
+        if times is None:
+            plt.clear()
+            return
+
+        # Use same time range for all plots
+        t0, t1 = times[0], times[-1]
+
+        # Clear plot and plot each time v. pressure trace
         lbls = self.plot_labels
         checks = self.ui.boxes
 
         checked_kws = []
         checked_colors = []
-        for t, dta, pen, lbl, chk in zip(times, pressures, self.pens, lbls, checks):
-            if chk.isChecked():
-                plt.plot(t, dta, pen=pen, name=lbl)
+        for dta, pen, lbl, chk in zip(pressures, self.pens, lbls, checks):
+            if chk.isChecked() and dta is not None:
+                plt.plot(times, dta, pen=pen, name=lbl)
                 checked_kws.extend(lbl.split(' '))
                 checked_colors.extend([pen.color().name()]*2)
 
@@ -2553,11 +2598,17 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
 
     def addToMain(self):
         self.update()
+
         if self.lastCalc is None:
             return
 
         # Get times and pressure values from last calculation
         times, pressures = self.lastCalc
+
+        # If nothing plotted, do nothing except close
+        if len(pressures) == 0:
+            self.close()
+            return
 
         # Get plot item and label
         plt = self.plotItems[0]
@@ -2565,15 +2616,19 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         plt.getViewBox().rmvMenuAction()
         self.ui.pltGrd.clear()
 
+        # Generate the time info for each variable
+        t_diff = np.diff(times)
+        timeInfo = (times, t_diff, times[1] - times[0])
+
         # For each trace, keep in plot if it is checked
         pens = self.pens
         dstrs, colors = [], []
         plotStrings = []
         plotPens = []
-        for kw, pen, t, dta, check in zip(self.plot_labels, pens, times, 
-            pressures, self.ui.boxes):
+        for kw, pen, dta, check in zip(self.plot_labels, pens, pressures, 
+            self.ui.boxes):
 
-            if not check.isChecked():
+            if not check.isChecked() or dta is None:
                 continue
 
             # Get the variable name, units, and pen color
@@ -2582,10 +2637,6 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
             colors.extend([pen.color()]*2)
             dstrs.extend(kw.split(' '))
             plotPens.append(pen)
-
-            # Generate the time info for this variable
-            t_diff = np.diff(t)
-            timeInfo = (t, t_diff, t[1] - t[0])
 
             # Initialize a new variable in main window
             self.window.initNewVar(var_name, dta, units=units, times=timeInfo)
