@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.17.0 (April 1, 2020)'
+VERSION = f'Version 1.2.18.0 (April 2, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -109,6 +109,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.timeEdit.start.dateTimeChanged.connect(self.onStartEditChanged)
         self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
 
+        # Scrolling zoom connects
+        self.ui.scrollPlusShrtct.activated.connect(self.increasePlotHeight)
+        self.ui.scrollMinusShrtct.activated.connect(self.decreasePlotHeight)
+
         # Main menu action connections
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True, None))
         self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False, None))
@@ -180,6 +184,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.asc = None
         self.batchSelect = None
         self.fileNameLabel = None
+        self.minimumPlotHeight = 3 # Inches
 
         self.toolNames = ['Data', 'Edit', 'Plot Menu', 'Detrend', 'Spectra',
             'Dynamic Spectra', 'Dynamic Coh/Pha', 'Wave Analysis',
@@ -2406,13 +2411,34 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def enableScrolling(self, val):
         # Minimum plot height set to 3 inches for now
-        min_height = 3 * QtGui.QDesktopWidget().logicalDpiY()
+        min_height = self.minimumPlotHeight * QtGui.QDesktopWidget().logicalDpiY()
 
         # Set minimum height for gview accordingly
         if val:
             self.ui.gview.setMinimumHeight(min_height * len(self.plotItems) + 100)
         else:
             self.ui.gview.setMinimumHeight(0)
+
+    def increasePlotHeight(self):
+        # Increases the minimum plot height used to set gview size
+        # when scrolling is enabled
+        if self.ui.enableScrollingAction.isChecked():
+            self.minimumPlotHeight = min(self.minimumPlotHeight + 0.5, 5)
+            self.enableScrolling(True)
+
+    def decreasePlotHeight(self):
+        # Calculate the approximate height of window in inches so that
+        # the lower bound for the minimum plot height is set correctly
+        # otherwise, increasePlotHeight doesn't always affect the view
+        winHeight = self.ui.scrollFrame.size().height()
+        viewHeightInches = (winHeight / QtGui.QDesktopWidget().logicalDpiY()) - 2
+        minBound = max(viewHeightInches/len(self.plotItems), 1)
+
+        # Decreases the minimum plot height used to set gview size
+        # when scrolling is enabled
+        if self.ui.enableScrollingAction.isChecked():
+            self.minimumPlotHeight = max(self.minimumPlotHeight - 0.5, minBound)
+            self.enableScrolling(True)
 
     def enableDownsampling(self, val):
         if val:

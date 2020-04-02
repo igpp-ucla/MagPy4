@@ -280,6 +280,10 @@ class MagPy4UI(object):
         self.zoomOutShrtct = QtWidgets.QShortcut('Ctrl+-', window)
         self.zoomAllShrtct = QtWidgets.QShortcut('Ctrl+0', window)
 
+        # Shortcuts used when scrolling is enabled
+        self.scrollPlusShrtct = QtWidgets.QShortcut('Ctrl+Shift+=', window)
+        self.scrollMinusShrtct = QtWidgets.QShortcut('Ctrl+Shift+-', window)
+
         # Shift percentage box setup
         self.shftPrcntBox = QtWidgets.QSpinBox()
         self.shftPrcntBox.setButtonSymbols(QtWidgets.QAbstractSpinBox.PlusMinus)        
@@ -467,13 +471,13 @@ class MagPy4UI(object):
         self.startFrame.deleteLater()
 
         # Wrap gview inside a scroll frame and insert into main layout
-        scrollFrame = QtWidgets.QScrollArea()
-        scrollFrame.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
-        scrollFrame.setWidget(self.gview)
-        scrollFrame.setWidgetResizable(True)
-        scrollFrame.setFrameStyle(QtWidgets.QFrame.NoFrame)
+        self.scrollFrame = QtWidgets.QScrollArea()
+        self.scrollFrame.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        self.scrollFrame.setWidget(self.gview)
+        self.scrollFrame.setWidgetResizable(True)
+        self.scrollFrame.setFrameStyle(QtWidgets.QFrame.NoFrame)
 
-        self.layout.insertWidget(0, scrollFrame)
+        self.layout.insertWidget(0, self.scrollFrame)
 
         # Re-enable all UI elements for interacting w/ plots
         self.enableUIElems(True)
