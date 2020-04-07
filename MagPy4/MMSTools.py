@@ -1,12 +1,12 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, PlotGrid
+from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, PlotGrid, StackedAxisLabel
 
 from FF_Time import FFTIME, leapFile
 from .dataDisplay import DataDisplay, UTCQDate
 
 from .dynBase import SpectrogramPlotItem, SpectraLine, SpectraLegend, SimpleColorPlot
-from .pyqtgraphExtensions import StackedAxisLabel, MagPyColorPlot, LinkedAxis, DateAxis, MagPyPlotItem
+from .pyqtgraphExtensions import MagPyColorPlot, LinkedAxis, DateAxis, MagPyPlotItem
 from .selectionManager import SelectableViewBox
 from .layoutTools import BaseLayout
 from .plotAppearance import PressurePlotApp
@@ -1819,6 +1819,7 @@ class MMSColorPltTool():
 
         # Update plot links and close current window
         self.window.lastPlotLinks.append(links)
+        self.window.pltGrd.resizeEvent(None)
         self.close()
     
     def getRangeSettings(self):

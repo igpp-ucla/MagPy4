@@ -259,7 +259,6 @@ class LinkedSubRegion(pg.LinearRegionItem):
         self.grp.mouseClickEvent(ev)
         pg.LinearRegionItem.mouseClickEvent(self, ev)
 
-
 class MagPyPlotItem(pg.PlotItem):
     def isSpecialPlot(self):
         return False
@@ -291,6 +290,7 @@ class MagPyColorPlot(MagPyPlotItem):
             return self.ctrlMenu
 
 class MagPyAxisItem(pg.AxisItem):
+    textSizeChanged = QtCore.pyqtSignal(object)
     def __init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True):
         self.tickDiff = None
         pg.AxisItem.__init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True)
@@ -319,7 +319,7 @@ class MagPyAxisItem(pg.AxisItem):
         w += max(0, self.style['tickLength'])
         if self.label.isVisible():
             w += self.label.boundingRect().height() * 0.8  # bounding rect is usually an overestimate
-        return w + 10 # 10 extra to offset if in scientific notation
+        return w # 10 extra to offset if in scientific notation
 
     def tickSpacing(self, minVal, maxVal, size):
         if self.logMode:
@@ -805,64 +805,6 @@ class SpectraPlotItem(MagPyPlotItem):
             self.resize(sze)
         else:
             pg.PlotItem.resizeEvent(self, event)
-
-class StackedAxisLabel(pg.GraphicsLayout):
-    def __init__(self, lbls, angle=90, *args, **kwargs):
-        self.lblTxt = lbls
-        self.sublabels = []
-        self.angle = angle
-        pg.GraphicsLayout.__init__(self, *args, **kwargs)
-        self.layout.setVerticalSpacing(-2)
-        self.layout.setHorizontalSpacing(-2)
-        if angle != 0:
-            self.layout.setContentsMargins(5, 0, 5, 0)
-        else:
-            self.layout.setContentsMargins(0, 0, 0, 0)
-        self.setupLabels(lbls)
-
-    def getLabelText(self):
-        return self.lblTxt
-
-    def setupLabels(self, lbls):
-        if self.angle > 0:
-            lbls = lbls[::-1]
-        if self.angle == 0 or self.angle == -180:
-            self.layout.setRowStretchFactor(0, 1)
-        for i in range(0, len(lbls)):
-            lbl = lbls[i]
-            sublbl = pg.LabelItem(lbl, angle=self.angle)
-            if self.angle == 0 or self.angle == -180:
-                self.addItem(sublbl, i+1, 0, 1, 1)
-            else:
-                self.addItem(sublbl, 0, i, 1, 1)
-            self.sublabels.append(sublbl)
-        if self.angle == 0 or self.angle == -180:
-            self.layout.setRowStretchFactor(len(lbls)+1, 1)
-
-    def adjustLabelSizes(self, plotHeight):
-        if self.sublabels == []:
-            return
-
-        # Get the max length of each line of text in this label
-        maxChar = max(list(map(len, self.lblTxt)))
-
-        # Increment the font size until the average char width * max line length
-        # is greater than the plot height
-        font = QtGui.QFont()
-        currSize = 4
-        font.setPointSize(currSize)
-        met = QtGui.QFontMetricsF(font)
-
-        while met.averageCharWidth() * maxChar < plotHeight:
-            currSize += 1
-            font.setPointSize(currSize)
-            met = QtGui.QFontMetricsF(font)
-
-        # Set the label font size to the calculated point size - 1
-        fontSize = min(max(2, font.pointSize() - 1), 12)
-        for lbl in self.sublabels:
-            txt = lbl.text
-            lbl.setText(txt, size=str(fontSize)+'pt')
 
 class BLabelItem(pg.LabelItem):
     def setHtml(self, html):

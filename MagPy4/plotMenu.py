@@ -830,7 +830,6 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         links = self.getLinkLists()
         heightFactors = self.getHeightFactors()
         self.window.plotData(dstrs, links, heightFactors)
-        self.window.pltGrd.resizeEvent(None)
 
     def getHeightFactors(self):
         # Return empty list if in dropdown mode

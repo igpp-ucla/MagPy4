@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.18.0 (April 2, 2020)'
+VERSION = f'Version 1.2.19.0 (April 7, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -28,7 +28,7 @@ import pyqtgraph as pg
 import FF_File
 from FF_Time import FFTIME, leapFile
 
-from .MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit
+from .MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, StackedAxisLabel
 from .plotMenu import PlotMenu
 from .spectra import Spectra
 from .dataDisplay import DataDisplay, UTCQDate
@@ -38,7 +38,7 @@ from .edit import Edit
 from .traceStats import TraceStats
 from .helpWindow import HelpWindow
 from .AboutDialog import AboutDialog
-from .pyqtgraphExtensions import DateAxis, LinkedAxis, BLabelItem, MagPyPlotItem, MagPyPlotDataItem, StackedAxisLabel
+from .pyqtgraphExtensions import DateAxis, LinkedAxis, BLabelItem, MagPyPlotItem, MagPyPlotDataItem
 from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni, PressureTool
 from . import mms_orbit
 from . import mms_formation
@@ -2157,6 +2157,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Update local state information about color plot grid values
         self.colorPlotInfo[name] = (plotInfo, labelTxt, units)
+        self.pltGrd.resizeEvent(None)
 
         # Return plot index to be used when creating link lists
         return pltIndex
@@ -2407,6 +2408,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.loadSelectState(selectState)
 
         # Return the total number of points plotted through plotTrace function
+        self.pltGrd.resizeEvent(None)
         return numPts
 
     def enableScrolling(self, val):

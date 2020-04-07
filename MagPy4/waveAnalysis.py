@@ -3,7 +3,6 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .dynBase import *
 from .layoutTools import BaseLayout
-from .pyqtgraphExtensions import StackedAxisLabel
 from scipy import fftpack, signal
 import pyqtgraph as pg
 
@@ -13,7 +12,7 @@ import numpy as np
 from .mth import Mth
 import bisect
 import math
-from .MagPy4UI import MatrixWidget, NumLabel
+from .MagPy4UI import MatrixWidget, NumLabel, StackedAxisLabel
 import functools
 import os
 

@@ -152,7 +152,7 @@ class LabelSetGrid(pg.GraphicsLayout):
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
         self.layout.setVerticalSpacing(1)
         self.layout.setContentsMargins(0,0,0,0)
-        self.layout.setColumnAlignment(0, QtCore.Qt.AlignBottom)
+        # self.layout.setColumnAlignment(0, QtCore.Qt.AlignBottom)
     
     def addLabelSet(self, dstr):
         # Creates a new label set from the given dstr and adds it to grid

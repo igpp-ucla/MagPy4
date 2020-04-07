@@ -5,8 +5,8 @@ from .plotAppearance import DynamicPlotApp
 import pyqtgraph as pg
 from scipy import fftpack, signal
 import numpy as np
-from .MagPy4UI import TimeEdit, NumLabel
-from .pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, DateAxis, StackedAxisLabel
+from .MagPy4UI import TimeEdit, NumLabel, StackedAxisLabel
+from .pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, DateAxis
 import bisect
 import functools
 from .mth import Mth

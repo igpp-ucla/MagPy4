@@ -1,7 +1,7 @@
 from .dynBase import SpectrogramPlotItem, PhaseSpectrogram
 from .layoutTools import BaseLayout
 from . import waveAnalysis
-from .pyqtgraphExtensions import StackedAxisLabel
+from .MagPy4UI import StackedAxisLabel
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import numpy as np

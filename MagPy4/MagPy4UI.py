@@ -693,6 +693,8 @@ class PlotGrid(pg.GraphicsLayout):
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
         self.layout.setVerticalSpacing(2)
         self.layout.setContentsMargins(0,0,0,0)
+        self.layout.setColumnStretchFactor(0, 0)
+        self.layout.setRowStretchFactor(0, 0)
 
     def count(self):
         # Returns number of plots
@@ -725,79 +727,83 @@ class PlotGrid(pg.GraphicsLayout):
             pg.GraphicsLayout.resizeEvent(self, event)
             return
 
-        # Get height factors, filling in with 1's for any added or modified
-        # plots
-        hfactors = self.factors
-        while len(hfactors) < len(self.plotItems):
-            hfactors.append(1)
+        # Fill in factors w/ 1's to make sure # of factors = # of plots
+        while len(self.factors) < self.count():
+            self.factors.append(1)
 
-        # Scale the factors by the sum of the factors, so we get the fraction
-        # of the plot area height that should be assigned to each plot item
-        totFactors = sum(hfactors)
-        hfactors = np.array(hfactors) / totFactors
+        # Set vertical stretch factors for each row
+        for row in range(self.startRow, self.startRow + self.count()):
+            self.layout.setRowStretchFactor(row, self.factors[row-self.startRow])
 
-        # Determine new height for each plot
-        botmAxisHeight = self.plotItems[-1].getAxis('bottom').maximumHeight() + 1
-        labelSetHeight = 0
-        if self.labelSetGrd:
-            labelSetHeight = self.labelSetGrd.boundingRect().height()
-        gridHeight = self.boundingRect().height()
-        vertSpacing = self.layout.verticalSpacing() * (self.numPlots - 1)
-        plotAreaHeight = gridHeight - vertSpacing - botmAxisHeight - labelSetHeight
-        rowHeights = hfactors * plotAreaHeight
+        # Get the plot grid height / width
+        newSize = event.newSize() if event is not None else self.boundingRect().size()
+        width, height = newSize.width(), newSize.height()
 
-        # Update label font sizes and limit the column width
-        maxFontSize = self.getFontSize(plotAreaHeight, self.numPlots)
-        for lbl, rowHeight in zip(self.labels, rowHeights):
-            lbl.layout.setContentsMargins(10, 0, 0, 0)
-            lbl.adjustLabelSizes(maxFontSize, rowHeight)
+        # Estimate height for each plot
+        numPlots = len(self.plotItems)
+        totalFactors = sum(self.factors)
+        plotRatios = [self.factors[i] / totalFactors for i in range(0, numPlots)]
+        plotHeights = [height * ratio for ratio in plotRatios]
 
-        maxLabelWidth = self.getMaxLabelWidth(maxFontSize)
-        self.layout.setColumnMaximumWidth(0, maxLabelWidth)
+        # Make labels approx 1/15th of plot width
+        lblWidth = max(int(width)/15, 50)
 
-        # Look for color plots and adjust legends + legend labels accordingly
-        for i in range(0, len(self.plotItems)):
-            cpKw = self.colorPltKws[i]
-            if cpKw is None:
-                continue
+        # Resize plot labels + grad legend labels
+        self.resizeLabels(lblWidth, plotHeights)
 
-            # Extract corresp. objects and get the row height for this plot item
-            rowHeight = rowHeights[i]
-            colorPlotInfo = self.colorPltInfo[cpKw]
-            gradLegend = colorPlotInfo['Legend']
-            gradLbl = colorPlotInfo['LegendLbl']
-
-            # Resize legend label text
-            if gradLbl:
-                gradLbl.adjustLabelSizes(rowHeight)
-                gradLbl.setContentsMargins(0, 0, 0, 0)
-
-            # Update legend offsets
-            gradLegend.setOffsets(1, 1, 1)
-
-        # Set row heights, add in extra space for last plot's dateTime axis
-        index = 0
-        for row in range(self.startRow, self.startRow+self.numPlots-1):
-            self.layout.setRowPreferredHeight(row, rowHeights[index])
-            index += 1
-        self.layout.setRowPreferredHeight(self.startRow+self.numPlots-1, rowHeights[-1] + botmAxisHeight)
-
-        # Adjust vertical placement of bottom label
-        botmLabel = self.labels[-1]
-        lm, tm, rm, bm = botmLabel.layout.getContentsMargins()
-        botmLabel.layout.setContentsMargins(lm, tm, rm, botmAxisHeight)
-
-        # Additional adjustments to margins for color plot elements
-        # if the last plot is a color plot
-        if self.colorPltKws[-1] is not None:
-            colorPlotInfo = self.colorPltInfo[self.colorPltKws[-1]]
-            botmLabel = colorPlotInfo['LegendLbl']
-            botmGrad = colorPlotInfo['Legend']
-            lm, rm, tm, bm = botmLabel.layout.getContentsMargins()
-            botmLabel.layout.setContentsMargins(lm, tm, rm, botmAxisHeight)
-            botmGrad.setOffsets(1, botmAxisHeight, 2)
-
+        # Adjust axis widths
         self.adjustPlotWidths()
+
+
+    def resizeLabels(self, lblWidth, plotHeights):
+        # Find the smallest estimated font size among all the left plot labels
+        fontSize = None
+        for i in range(0, len(self.labels)):
+            plotHeight = plotHeights[i]
+            lblFontSize = self.labels[i].estimateFontSize(lblWidth, plotHeight)
+
+            if fontSize is None:
+                fontSize = lblWidth
+            fontSize = min(lblFontSize, fontSize)
+
+        # Set the font size for all left plot labels to the minimum found above
+        for lbl in self.labels:
+            lbl.setFontSize(fontSize)
+
+        del plotHeight
+        del lblFontSize
+        del fontSize
+
+        # Find the smallest estimated font size for all the grad legend labels
+        fontSize = None
+        for plotName in self.colorPltInfo:
+            # Get grad legend label object and its width
+            info = self.colorPltInfo[plotName]
+            lbl = info['LegendLbl']
+            lblWidth = lbl.boundingRect().width()
+
+            # Get the estimated plot height
+            index = self.getColorPlotIndex(plotName)
+            plotHeight = plotHeights[index]
+
+            # Get the estimated font size and compare
+            lblFontSize = lbl.estimateFontSize(lblWidth, plotHeight)
+            if fontSize is None:
+                fontSize = lblFontSize
+            else:
+                fontSize = min(lblFontSize, fontSize)
+
+        if self.colorPltInfo != {}:
+            del lbl
+            del lblFontSize
+
+        # Set the font size for all grad legend labels
+        for plotName in self.colorPltInfo:
+            info = self.colorPltInfo[plotName]
+            lbl = info['LegendLbl']
+            for sublbl in lbl.sublabels:
+                sublbl.setAttr('size', f'{fontSize}pt')
+                sublbl.setText(sublbl.text)
 
     def getFontSize(self, height, numPlots):
         # Hard-coded method for determing label font sizes based on window size
@@ -823,24 +829,53 @@ class PlotGrid(pg.GraphicsLayout):
     def addPlt(self, plt, lbl, index=None):
         index = self.numPlots if index is None else index
 
+        # Each time a new plot is added
+        if self.numPlots > 0:
+            # Remove the old plot and spacer item below it
+            old_plt = self.layout.itemAt(self.startRow + index - 1, 1)
+            old_spacer = self.layout.itemAt(self.startRow + index, 0)
+            self.removeItem(old_plt)
+            self.removeItem(old_spacer)
+
+            # Re-add the old plot with a row span of 1 this time
+            # and reset the maximum row height
+            self.addItem(old_plt, self.startRow + index - 1, 1, 1, 1)
+            self.layout.setRowMaximumHeight(self.startRow+index, 1e28)
+
         # Inserts a plot and its label item into the grid
         lblCol, pltCol = 0, 1
         self.addItem(lbl, self.startRow + index, lblCol, 1, 1)
-        self.addItem(plt, self.startRow + index, pltCol, 1, 1)
+        self.addItem(plt, self.startRow + index, pltCol, 2, 1)
 
+        # Make sure tick styles and settings are properly set
         plt.getAxis('bottom').setStyle(showValues=True)
         for axis in ['left','bottom', 'top', 'right']:
             plt.getAxis(axis).setStyle(tickLength=-5)
 
+        # Update state information
         self.labels.insert(index, lbl)
         self.plotItems.insert(index, plt)
         self.colorPltKws.insert(index, None)
         self.numPlots += 1
         self.setTimeLabel()
 
+        # Add in a spacer item just below the plot label and set the
+        # row height to be equal to the height of the bottom axis item
+        spacer = pg.LabelItem('')
+        self.addItem(spacer, self.startRow + index + 1, lblCol, 1, 1)
+
+        botmHt = plt.getAxis('bottom').maximumHeight()
+        self.layout.setRowMaximumHeight(self.startRow+index+1, botmHt)
+        self.layout.setRowMinimumHeight(self.startRow+index+1, botmHt)
+
+        self.adjustPlotWidths()
+
     def addColorPlt(self, plt, lblStr, colorBar, colorLbl=None, units=None,
                     colorLblSpan=1, index=None):
         lbl = StackedLabel([lblStr], ['#000000'], units=units)
+        colorBar.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+        colorBar.setMaximumHeight(1e28)
+        colorBar.setOffsets(1, 1, 5, 0)
         self.addPlt(plt, lbl, index)
         index = self.numPlots - 1 if index is None else index
         self.addItem(colorBar, self.startRow + index, 2, 1, 1)
@@ -885,8 +920,6 @@ class PlotGrid(pg.GraphicsLayout):
 
         # Adjust displayed tick marks and time axis labels
         self.setTimeLabel()
-        
-        self.resizeEvent(None)
 
     def _removePlotFromGrid(self, pltIndex):
         if pltIndex >= self.numPlots or pltIndex < 0:
@@ -934,25 +967,31 @@ class PlotGrid(pg.GraphicsLayout):
         # Initialize label set grid/stacked label if one hasn't been created yet
         if self.labelSetGrd == None:
             self.labelSetGrd = LabelSetGrid(self.window)
-            self.labelSetLabel = StackedLabel([],[])
-            self.labelSetLabel.setContentsMargins(0, 0, 0, 2)
-            self.labelSetLabel.layout.setVerticalSpacing(-2)
+            self.labelSetLabel = LabelSetLabel()
+            self.labelSetLabel.layout.setContentsMargins(0, 0, 0, 0)
+            self.labelSetLabel.layout.setVerticalSpacing(1)
             self.addItem(self.labelSetGrd, 0, 1, 1, 1)
             self.addItem(self.labelSetLabel, 0, 0, 1, 1)
 
-        # Add dstr to labelSet label and align it to the right
+        # Add dstr to labelSet label and align it to 
         self.labelSetLabel.addSubLabel(dstr, '#000000')
-        self.labelSetLabel.subLabels[-1].setAttr('justify', 'right')
-        self.labelSetLabel.subLabels[-1].setText(dstr)
+        for lbl in self.labelSetLabel.subLabels:
+            lbl.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred))
+
         # Create an axis for the dstr label set
         self.labelSetGrd.addLabelSet(dstr)
+
+        # Adjust sublabel heights so they are aligned w/ the tick labels
+        for lbl in self.labelSetLabel.subLabels:
+            ht = 22
+            lbl.setMinimumHeight(ht)
+            lbl.setMaximumHeight(ht)
 
         # Initialize tick label locations/strings
         ticks = self.plotItems[0].getAxis('bottom')._tickLevels
         if ticks == None:
             return
         self.labelSetGrd.updateTicks(ticks)
-        self.resizeEvent(None) # Update widths and adjust for new heights
 
     def removeLabelSet(self, dstr):
         if self.labelSetGrd == None:
@@ -976,7 +1015,8 @@ class PlotGrid(pg.GraphicsLayout):
         maxWidth = 0
         for pi in self.plotItems:
             la = pi.getAxis('left')
-            maxWidth = max(maxWidth, la.calcDesiredWidth())
+            width = la.calcDesiredWidth()
+            maxWidth = max(maxWidth, width)
 
         # Update all left axes widths
         for pi in self.plotItems:
@@ -1004,7 +1044,6 @@ class PlotGrid(pg.GraphicsLayout):
         self.removeItem(prevLabel)
         self.addItem(lbl, self.startRow+plotNum, 0, 1, 1)
         self.labels[plotNum] = lbl
-        self.resizeEvent(None)
 
     def getPlotLabel(self, plotNum):
         return self.labels[plotNum]
@@ -1022,6 +1061,55 @@ class MainPlotGrid(PlotGrid):
     def getContextMenus(self, event):
         return self.menu.actions() if self.menuEnabled() else []
 
+class AdjustedLabel(pg.LabelItem):
+    def getFont(self):
+        return self.item.font()
+
+    def getFontSize(self):
+        if 'size' in self.opts:
+            size = self.opts['size']
+            return float(size[:-2])
+        else:
+            return self.getFont().pointSizeF()
+
+    def setFontSize(self, pt):
+        self.setAttr('size', pt)
+        self.updateText()
+
+    def setColor(self, color):
+        self.setAttr('color', color)
+        self.updateText()
+
+    def updateText(self):
+        self.setText(self.text)
+
+    def updateMin(self):
+        # Uses minimum font size to estimate minimum bounding
+        # rect so resizeEvents work correctly
+        bounds = self.itemRect()
+        minWidth, minHeight = self.getMinimumSize()
+        self.setMinimumWidth(minWidth)
+        self.setMinimumHeight(minHeight)
+
+        self._sizeHint = {
+            QtCore.Qt.MinimumSize: (minWidth, minHeight),
+            QtCore.Qt.PreferredSize: (bounds.width(), bounds.height()),
+            QtCore.Qt.MaximumSize: (-1, -1),  #bounds.width()*2, bounds.height()*2),
+            QtCore.Qt.MinimumDescent: (0, 0)  ##?? what is this?
+        }
+        self.updateGeometry()
+
+    def getMinimumSize(self):
+        # Estimates the minimum bounding rect for text w/
+        # a font point size of 2
+        min_font_size = 2
+        font = self.getFont()
+        font.setPointSize(min_font_size)
+        fontMetrics = QtGui.QFontMetrics(font)
+        minRect = fontMetrics.tightBoundingRect(self.text)
+
+        return minRect.width(), minRect.height()
+
 class StackedLabel(pg.GraphicsLayout):
     def __init__(self, dstrs, colors, units=None, window=None, *args, **kwargs):
         self.subLabels = []
@@ -1032,9 +1120,9 @@ class StackedLabel(pg.GraphicsLayout):
 
         # Spacing/margins setup
         self.layout.setVerticalSpacing(-4)
-        self.layout.setContentsMargins(10, 0, 0, 0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setRowStretchFactor(0, 1)
-        self.layout.setColumnAlignment(0, QtCore.Qt.AlignHCenter)
+        self.layout.setColumnAlignment(0, QtCore.Qt.AlignCenter)
         rowNum = 1
 
         # Add in every dstr label and set its color
@@ -1056,6 +1144,11 @@ class StackedLabel(pg.GraphicsLayout):
 
         self.layout.setRowStretchFactor(rowNum, 1)
 
+    def addLabel(self, text=' ', row=None, col=None, rowspan=1, colspan=1, **kargs):
+        text = AdjustedLabel(text, justify='center', **kargs)
+        self.addItem(text, row, col, rowspan, colspan)
+        return text
+
     def addSubLabel(self, dstr, color):
         # Add another sublabel at end of stackedLabel
         lbl = self.addLabel(text=dstr, color=color, row=len(self.subLabels), col=0)
@@ -1069,30 +1162,120 @@ class StackedLabel(pg.GraphicsLayout):
         self.dstrs.append(dstr)
         self.colors.append(color)
 
-    def adjustLabelSizes(self, maxFontSize, rowHeight):
-        if self.subLabels == []:
-            return
+    def setFontSize(self, pt):
+        for label in self.subLabels:
+            label.setText(label.text, size=f'{pt}pt')
 
-        # Get the number of rows in this stacked label
-        numRows = len(self.dstrs)
-        if self.units:
-            numRows += 1
+    def count(self):
+        return len(self.subLabels)
 
-        # Decrement the font size until the (font height * numRows) is less
-        # than the maximum row height
-        font = QtGui.QFont()
-        font.setPointSizeF(maxFontSize)
-        fontInfo = QtGui.QFontMetricsF(font)
-        while (fontInfo.height() * numRows + 4) > rowHeight:
-            font.setPointSizeF(font.pointSizeF() - 0.5)
-            fontInfo = QtGui.QFontMetricsF(font)
-            if font.pointSize() <= 2:
-                break
+    def estimateFontSize(self, width, height):
+        if len(self.subLabels) == 0:
+            return QtGui.QFont().pointSize()
+
+        # Set up font + font metrics information
+        font = self.subLabels[0].getFont()
+        fontSize = self.subLabels[0].getFontSize()
+        font.setPointSize(fontSize)
+        fontMetrics = QtGui.QFontMetricsF(font)
+
+        # Estimate the current height/width of the text
+        labelRects = [fontMetrics.boundingRect(lbl) for lbl in self.dstrs]
+        estHeight = sum([fontMetrics.height()+2 for rect in labelRects])
+
+        # Estimate the font size using the ratio of the rect width/height and
+        # the estimated width/height 
+        ratio = estHeight / (height*.875)
+        newFontSize = int(min(max(2, fontSize / ratio), 16))
+
+        # Adjust if not a multiple of 2
+        if newFontSize % 2 != 0:
+            newFontSize -= 1
+
+        return newFontSize
+
+class StackedAxisLabel(pg.GraphicsLayout):
+    def __init__(self, lbls, angle=90, *args, **kwargs):
+        self.lblTxt = lbls
+        self.sublabels = []
+        self.angle = angle
+        pg.GraphicsLayout.__init__(self, *args, **kwargs)
+        self.layout.setVerticalSpacing(-2)
+        self.layout.setHorizontalSpacing(-2)
+        if angle != 0:
+            self.layout.setContentsMargins(0, 0, 0, 0)
+        else:
+            self.layout.setContentsMargins(0, 0, 0, 0)
+        self.setupLabels(lbls)
+
+    def getLabelText(self):
+        return self.lblTxt
+
+    def setupLabels(self, lbls):
+        if self.angle > 0:
+            lbls = lbls[::-1]
+        if self.angle == 0 or self.angle == -180:
+            self.layout.setRowStretchFactor(0, 1)
+        for i in range(0, len(lbls)):
+            lbl = lbls[i]
+            sublbl = AdjustedLabel(lbl, angle=self.angle)
+            if self.angle == 0 or self.angle == -180:
+                self.addItem(sublbl, i+1, 0, 1, 1)
+            else:
+                self.addItem(sublbl, 0, i, 1, 1)
+            self.sublabels.append(sublbl)
+        if self.angle == 0 or self.angle == -180:
+            self.layout.setRowStretchFactor(len(lbls)+1, 1)
+
+    def getFont(self):
+        # Returns the font w/ the correct point size set
+        if self.sublabels == []:
+            return QtGui.QFont()
+
+        font = self.sublabels[0].item.font()
+        if 'size' in self.sublabels[0].opts:
+            fontSize = self.sublabels[0].opts['size'][:-2]
+            fontSize = float(fontSize)
+        else:
+            fontSize = QtGui.QFont().pointSize()
+
+        fontSize = min(fontSize, 12)
+        font.setPointSize(fontSize)
+        return font
+
+    def estimateFontSize(self, width, height):
+        # Set up font + font metrics information
+        font = self.getFont()
         fontSize = font.pointSize()
+        fontMetrics = QtGui.QFontMetricsF(font)
 
-        # Determines new font size and updates all labels accordingly
-        for lbl, txt, clr in zip(self.subLabels, self.dstrs, self.colors):
-            lbl.setText(txt, color=clr, size=str(fontSize)+'pt')
+        # Estimate the current height/width of the text
+        labelRects = [fontMetrics.boundingRect(lbl) for lbl in self.lblTxt]
+        estHeight = max([rect.width() for rect in labelRects])
+
+        # Estimate the font size using the ratio of the rect width/height and
+        # the estimated width/height 
+        ratio = estHeight / (height*.9)
+        newFontSize = int(min(max(2, fontSize / ratio), 14))
+
+        return newFontSize
+
+class LabelSetLabel(pg.GraphicsLayout):
+    def __init__(self, *args, **kwargs):
+        self.dstrs = []
+        self.subLabels = []
+        self.colors = []
+
+        pg.GraphicsLayout.__init__(self, *args, **kwargs)
+
+    def addSubLabel(self, dstr, color):
+        # Add another sublabel at end of stackedLabel
+        lbl = self.addLabel(text=dstr, color=color, row=len(self.subLabels), col=0)
+
+        # Update all internal lists
+        self.subLabels.append(lbl)
+        self.dstrs.append(dstr)
+        self.colors.append(color)
 
 # Checks if libraries required to use MMS Orbit tool are installed
 def checkForOrbitLibs():
