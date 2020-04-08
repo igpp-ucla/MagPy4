@@ -736,14 +736,21 @@ class PlotGrid(pg.GraphicsLayout):
             self.layout.setRowStretchFactor(row, self.factors[row-self.startRow])
 
         # Get the plot grid height / width
-        newSize = event.newSize() if event is not None else self.boundingRect().size()
+        newSize = event.newSize() if event is not None else self.boundingRect()
         width, height = newSize.width(), newSize.height()
 
         # Estimate height for each plot
+        spacingTotal = self.layout.verticalSpacing() * (len(self.plotItems) - 1)
+        height = height - self.plotItems[-1].getAxis('bottom').height() - spacingTotal
         numPlots = len(self.plotItems)
         totalFactors = sum(self.factors)
         plotRatios = [self.factors[i] / totalFactors for i in range(0, numPlots)]
         plotHeights = [height * ratio for ratio in plotRatios]
+
+        # Set preferred row heights so they are all even
+        for i in range(self.startRow, self.startRow + self.count()):
+            pltHeight = plotHeights[i - self.startRow]
+            self.layout.setRowPreferredHeight(i, pltHeight)
 
         # Make labels approx 1/15th of plot width
         lblWidth = max(int(width)/15, 50)
@@ -754,7 +761,6 @@ class PlotGrid(pg.GraphicsLayout):
         # Adjust axis widths
         self.adjustPlotWidths()
 
-
     def resizeLabels(self, lblWidth, plotHeights):
         # Find the smallest estimated font size among all the left plot labels
         fontSize = None
@@ -763,7 +769,7 @@ class PlotGrid(pg.GraphicsLayout):
             lblFontSize = self.labels[i].estimateFontSize(lblWidth, plotHeight)
 
             if fontSize is None:
-                fontSize = lblWidth
+                fontSize = lblFontSize
             fontSize = min(lblFontSize, fontSize)
 
         # Set the font size for all left plot labels to the minimum found above
@@ -1175,22 +1181,18 @@ class StackedLabel(pg.GraphicsLayout):
 
         # Set up font + font metrics information
         font = self.subLabels[0].getFont()
-        fontSize = self.subLabels[0].getFontSize()
+        fontSize = QtGui.QFont().pointSize()
         font.setPointSize(fontSize)
         fontMetrics = QtGui.QFontMetricsF(font)
 
         # Estimate the current height/width of the text
         labelRects = [fontMetrics.boundingRect(lbl) for lbl in self.dstrs]
-        estHeight = sum([fontMetrics.height()+2 for rect in labelRects])
+        estHeight = sum([rect.height()+2 for rect in rects])
 
         # Estimate the font size using the ratio of the rect width/height and
         # the estimated width/height 
-        ratio = estHeight / (height*.875)
+        ratio = estHeight / (height*.75)
         newFontSize = int(min(max(2, fontSize / ratio), 16))
-
-        # Adjust if not a multiple of 2
-        if newFontSize % 2 != 0:
-            newFontSize -= 1
 
         return newFontSize
 
