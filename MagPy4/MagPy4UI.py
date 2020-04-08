@@ -1187,7 +1187,7 @@ class StackedLabel(pg.GraphicsLayout):
 
         # Estimate the current height/width of the text
         labelRects = [fontMetrics.boundingRect(lbl) for lbl in self.dstrs]
-        estHeight = sum([rect.height()+2 for rect in rects])
+        estHeight = sum([rect.height()+2 for rect in labelRects])
 
         # Estimate the font size using the ratio of the rect width/height and
         # the estimated width/height 
