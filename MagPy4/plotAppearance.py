@@ -696,6 +696,7 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
         self.plotItems = plotItems
         self.window = window
         self.textEditor = None
+        self.inMainWindow = inMainWindow
 
         # Get plots' trace/label infos and use to setup/initialize UI elements
         self.ui.setupUI(self, window)
@@ -708,6 +709,8 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
 
         if inMainWindow:
             self.ui.labelEditorBtn.clicked.connect(self.openLabelEditor)
+            self.ui.axisLblSzBox.setVisible(False)
+            self.ui.axisLblSzLbl.setVisible(False)
         else: # Remove label editor button for non-main-window menus
             self.ui.layout.removeWidget(self.ui.labelEditorBtn)
             self.ui.labelEditorBtn.deleteLater()
@@ -788,12 +791,19 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
                 # Adjust vert/horz spacing reserved for bottom ticks if necessary
                 self.adjustTickHeights(axis, tickFont)
 
+        if self.inMainWindow and self.window.pltGrd:
+            if self.window.pltGrd.labelSetGrd:
+                self.window.pltGrd.setLabelSetFontSize(val)
+            ax = self.plotItems[-1].getAxis('bottom')
+            ax.labelStyle = {'font-size':f'{val}pt'}
+
     def adjustTickHeights(self, axis, tickFont):
         # Adjust vertical spacing reserved for bottom ticks if necessary
         mets = QtGui.QFontMetrics(tickFont)
         ht = mets.boundingRect('AJOW').height() # Tall letters
         if ht > 18 and axis.orientation == 'bottom':
-            axis.setStyle(tickTextOffset=5)
+            ht = max(int(ht*.25), 5)
+            axis.setStyle(tickTextOffset=ht)
         elif axis.orientation == 'bottom':
             axis.setStyle(tickTextOffset=2)
 

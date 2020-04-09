@@ -7,26 +7,60 @@ import functools
 import bisect
 import numpy as np
 
+class ColumnLayout(QtWidgets.QGridLayout):
+    def __init__(self, numCols=1, *args, **kwargs):
+        self.numCols = numCols
+        self.numItems = 0
+        self.row = 0
+        self.col = 0
+        QtWidgets.QGridLayout.__init__(self, *args, **kwargs)
+
+    def addWidget(self, widget):
+        if self.col >= self.numCols:
+            self.col = 0
+            self.row += 1
+
+        QtWidgets.QGridLayout.addWidget(self, widget, self.row, self.col, 1, 1)
+        self.col += 1
+        self.numItems += 1
+
 class AddTickLabelsUI(object):
     def setupUI(self, Frame, window, dstrList, prevDstrs):
         Frame.setWindowTitle('Additional Tick Labels')
         Frame.resize(100, 100)
-        layout = QtWidgets.QGridLayout(Frame)
+        wrapLt = QtWidgets.QVBoxLayout(Frame)
+
+        # Set up options frame
+        settingsLt = QtWidgets.QGridLayout()
+        self.locBox = QtWidgets.QComboBox()
+        self.locBox.addItems(['Top', 'Bottom'])
+        lbl = QtWidgets.QLabel('Location: ')
+        settingsLt.addWidget(lbl, 0, 0, 1, 1)
+        settingsLt.addWidget(self.locBox, 0, 1, 1, 1)
+        self.locBox.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
+        wrapLt.addLayout(settingsLt)
+
+        # Create a scroll frame to wrap column layout in
+        scrollFrame = QtWidgets.QScrollArea()
+        scrollFrame.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        scrollFrame.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        wrapLt.addWidget(scrollFrame)
+
+        # Create and wrap column layout in scroll frame
+        wrapFrame = QtWidgets.QFrame()
+        layout = ColumnLayout(4, wrapFrame)
+
+        scrollFrame.setWidget(wrapFrame)
+        scrollFrame.setWidgetResizable(True)
+        wrapFrame.setStyleSheet('.QFrame { background-color: #fafafa; }')
 
         # Initialize checkbox elements for all dstrs not plotted or with
         # tick labels set
         self.chkboxes = []
-        maxWidth = 4 # Limit the number of checkboxes per row
-        if len(dstrList) > 30:
-            maxWidth = 9
-        dstrNum, rowNum = 0, 0
         for dstr in dstrList:
             chkbx = QtWidgets.QCheckBox(dstr)
-            if dstrNum != 0 and dstrNum % maxWidth == 0:
-                rowNum += 1
-            layout.addWidget(chkbx, rowNum, dstrNum % maxWidth, 1, 1)
+            layout.addWidget(chkbx)
             self.chkboxes.append(chkbx)
-            dstrNum += 1
         
         # Add in checkboxes for all previously set tick labels
         for dstr in prevDstrs:
@@ -35,13 +69,14 @@ class AddTickLabelsUI(object):
                 index = dstrList.index(dstr)
                 self.chkboxes[index].setChecked(True)
             else: # In case also plotted, add UI element so it can be removed if needed
-                numDstrs = len(self.chkboxes)
-                rowNum = int(numDstrs/maxWidth) # Calculate row and column nums
-                colNum = numDstrs % maxWidth
                 chkbx = QtWidgets.QCheckBox(dstr)
-                layout.addWidget(chkbx, rowNum, colNum, 1, 1)
+                layout.addWidget(chkbx)
                 self.chkboxes.append(chkbx)
                 chkbx.setChecked(True)
+
+        # Adjust wrap frame minimum width
+        minWidth = wrapFrame.minimumWidth()
+        wrapFrame.setMinimumWidth(minWidth + 20)
 
 class AddTickLabels(QtGui.QFrame, AddTickLabelsUI):
     def __init__(self, window, pltGrd, parent=None):
@@ -65,9 +100,14 @@ class AddTickLabels(QtGui.QFrame, AddTickLabelsUI):
         # Set up UI based on dstrs not plotted and check/add all current labelsets
         self.ui.setupUI(self, window, allDstrs, prevDstrs)
 
+        # Set default as last set location
+        if pltGrd.labelSetLoc == 'bottom':
+            self.ui.locBox.setCurrentIndex(1)
+
         # Connect every checkbox to function
         for chkbx in self.ui.chkboxes:
             chkbx.clicked.connect(functools.partial(self.addLabelSet, chkbx))
+        self.ui.locBox.currentTextChanged.connect(self.pltGrd.moveLabelSets)
 
     def addLabelSet(self, chkbx):
         # Add to pltGrd if chkbx is checked, remove it if unchecked
@@ -83,6 +123,8 @@ class invisAxis(DateAxis):
         self.window = window
         self.dstr = dstr
         DateAxis.__init__(self, window.epoch, orientation)
+        self.setStyle(tickTextOffset=0)
+        self.setStyle(tickLength=0)
 
     def tickStrings(self, values, scale, spacing):
         indices = self.getDataIndices(self.dstr, values)
@@ -96,8 +138,12 @@ class invisAxis(DateAxis):
         return strings
 
     def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
+        pen, p1, p2 = axisSpec
+        p.setPen(pen)
+
         p.setRenderHint(p.Antialiasing, False)
         p.setRenderHint(p.TextAntialiasing, True)
+        p.translate(0.5,0)
         
         ## Draw all text
         if self.tickFont is not None:
@@ -132,16 +178,34 @@ class LabelSet(pg.PlotItem):
         # Reduce the plotItem to just the invisAxis item, visually.
         self.getAxis('left').setHeight(0)
         self.getAxis('right').setHeight(0)
-        self.layout.removeItem(self.vb) # Remove empty viewbox
+        self.vb.setMaximumHeight(0)
+        self.vb.setMinimumHeight(0)
         self.hideAxis('bottom')
         self.showAxis('top')
 
         # Disable interactive elements of plotItem
         self.hideButtons()
         self.setMouseEnabled(False)
-    
+
     def setCstmTickSpacing(self, diff):
         self.getAxis('top').setCstmTickSpacing(diff)
+    
+    def setFontSize(self, val):
+        # Get axis tickFont and update it
+        axis = self.getAxis('top')
+        font = axis.style['tickFont']
+        if font == None:
+            font = QtGui.QFont()
+        font.setPointSize(val)
+        axis.setTickFont(font)
+
+        # Calculate the new bounding rect height and
+        # set a fixed height for the axis item
+        met = QtGui.QFontMetrics(font)
+        rect = met.boundingRect('0123456789')
+        axis.setStyle(tickTextHeight=rect.height())
+        axis.update()
+        axis.setFixedHeight(rect.height())
 
 class LabelSetGrid(pg.GraphicsLayout):
     # GraphicsLayout used to easily synchronize all resize events and tick
@@ -184,3 +248,7 @@ class LabelSetGrid(pg.GraphicsLayout):
     def setCstmTickSpacing(self, diff):
         for lblSet in self.labelSets:
             lblSet.setCstmTickSpacing(diff)
+
+    def setFontSize(self, val):
+        for ls in self.labelSets:
+            ls.setFontSize(val)

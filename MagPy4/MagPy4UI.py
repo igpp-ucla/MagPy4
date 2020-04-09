@@ -687,6 +687,7 @@ class PlotGrid(pg.GraphicsLayout):
         # Elements used if additional tick labels are added
         self.labelSetGrd = None
         self.labelSetLabel = None
+        self.labelSetLoc = 'top' # Bottom or top position
         self.startRow = 1
         self.factors = []
 
@@ -707,13 +708,71 @@ class PlotGrid(pg.GraphicsLayout):
         if self.plotItems == []:
             return
 
+        # Hide tick values for all other plots
         for plt in self.plotItems[:-1]:
             self.hideTickValues(plt)
 
+        # Set time label for bottom axis
         bottomAxis = self.plotItems[-1].getAxis('bottom')
         bottomAxis.setStyle(showValues=True)
         bottomAxis.setLabel(bottomAxis.getDefaultLabel())
-    
+
+        # If label sets are enabled on bottom, set the text for the
+        # spacer/label item next to the axis, and hide the original
+        # axis label
+        spacerLbl = self.getSideTimeLabel()
+        if self.labelSetGrd is not None and self.labelSetLoc == 'bottom':
+            bottomAxis.showLabel(False)
+            bottomAxis.picture = None
+            if spacerLbl is not None:
+                spacerLbl.setText(bottomAxis.getDefaultLabel())
+        else:
+            # Otherwise, make the label item a spacer again
+            if spacerLbl is not None:
+                spacerLbl.setText('')
+
+        # Adjust layout row minimum/maximum height
+        botmHt = bottomAxis.maximumHeight()
+        self.layout.setRowMaximumHeight(self.startRow+self.numPlots, botmHt)
+        self.layout.setRowMinimumHeight(self.startRow+self.numPlots, botmHt)
+
+    def getSideTimeLabel(self):
+        # If label sets are enabled on bottom axis, the label item
+        # previously used as a spacer has its text set accordingly
+        index = self.numPlots
+        spacerLbl = self.layout.itemAt(self.startRow + index, 0)
+        return spacerLbl
+
+    def moveLabelSets(self, loc=None):
+        # Update the label set location
+        if loc is None:
+            loc = self.labelSetLoc
+        else:
+            loc = loc.lower()
+            self.labelSetLoc = loc
+
+        if self.labelSetGrd is None:
+            return
+
+        # Remove previous label set label and grid
+        self.layout.removeItem(self.labelSetLabel)
+        self.layout.removeItem(self.labelSetGrd)
+
+        # Determine label set row number
+        if loc == 'top':
+            row = 0
+        else:
+            row = self.numPlots + self.startRow + 2
+            self.labelSetLabel.layout.setContentsMargins(0, 0, 0, 0)
+            self.labelSetGrd.layout.setContentsMargins(0, 0, 0, 0)
+
+        # Add label set label + grid back into layout
+        self.layout.addItem(self.labelSetLabel, row, 0, 1, 1)
+        self.layout.addItem(self.labelSetGrd, row, 1, 1, 1)
+
+        # Update time label to match
+        self.setTimeLabel()
+
     def hideTickValues(self, plt):
         bottomAxis = plt.getAxis('bottom')
         bottomAxis.showLabel(False)
@@ -741,7 +800,12 @@ class PlotGrid(pg.GraphicsLayout):
 
         # Estimate height for each plot
         spacingTotal = self.layout.verticalSpacing() * (len(self.plotItems) - 1)
-        height = height - self.plotItems[-1].getAxis('bottom').height() - spacingTotal
+        dateHeight = self.plotItems[-1].getAxis('bottom').height()
+        if self.labelSetGrd:
+            labelGrdHt = sum([lblSet.height() for lblSet in self.labelSetGrd.labelSets])
+        else:
+            labelGrdHt = 0
+        height = height - dateHeight - labelGrdHt - spacingTotal
         numPlots = len(self.plotItems)
         totalFactors = sum(self.factors)
         plotRatios = [self.factors[i] / totalFactors for i in range(0, numPlots)]
@@ -855,8 +919,8 @@ class PlotGrid(pg.GraphicsLayout):
 
         # Make sure tick styles and settings are properly set
         plt.getAxis('bottom').setStyle(showValues=True)
-        for axis in ['left','bottom', 'top', 'right']:
-            plt.getAxis(axis).setStyle(tickLength=-5)
+        for axis in ['left', 'bottom', 'top', 'right']:
+            plt.getAxis(axis).setStyle(tickLength=-8)
 
         # Update state information
         self.labels.insert(index, lbl)
@@ -875,6 +939,7 @@ class PlotGrid(pg.GraphicsLayout):
         self.layout.setRowMinimumHeight(self.startRow+index+1, botmHt)
 
         self.adjustPlotWidths()
+        self.moveLabelSets()
 
     def addColorPlt(self, plt, lblStr, colorBar, colorLbl=None, units=None,
                     colorLblSpan=1, index=None):
@@ -966,7 +1031,6 @@ class PlotGrid(pg.GraphicsLayout):
 
         # Remove plot and related objects from grid
         self._removePlotFromGrid(pltIndex)
-
         self.setTimeLabel()
 
     def addLabelSet(self, dstr):
@@ -989,15 +1053,46 @@ class PlotGrid(pg.GraphicsLayout):
 
         # Adjust sublabel heights so they are aligned w/ the tick labels
         for lbl in self.labelSetLabel.subLabels:
-            ht = 22
+            ht = self.labelSetGrd.labelSets[0].maximumHeight()
             lbl.setMinimumHeight(ht)
             lbl.setMaximumHeight(ht)
+
+        # Get font size from bottom date axis and apply it 
+        ax = self.plotItems[-1].getAxis('bottom')
+        font = QtGui.QFont() if ax.tickFont is None else ax.tickFont
+        fontSize = font.pointSize()
+        self.setLabelSetFontSize(fontSize)
+
+        # Update label set location and plot widths
+        self.moveLabelSets()
+        self.adjustPlotWidths()
 
         # Initialize tick label locations/strings
         ticks = self.plotItems[0].getAxis('bottom')._tickLevels
         if ticks == None:
             return
         self.labelSetGrd.updateTicks(ticks)
+
+    def setLabelSetFontSize(self, fontSize):
+        # Set font size for both label and axis item
+        self.labelSetGrd.setFontSize(fontSize)
+        self.labelSetLabel.setFontSize(fontSize)
+
+        # Adjust label heights so they are aligned w/ axis items
+        for lbl, ax in zip(self.labelSetLabel.subLabels, self.labelSetGrd.labelSets):
+            ht = ax.maximumHeight()
+            lbl.setMinimumHeight(ht)
+            lbl.setMaximumHeight(ht)
+
+        # Set font size for time label
+        lbl = self.getSideTimeLabel()
+        lbl.setAttr('size', f'{fontSize}pt')
+        lbl.setText(lbl.text)
+
+        ## Adjust time label height
+        ht = self.plotItems[-1].getAxis('bottom').maximumHeight()
+        lbl.setMinimumHeight(ht)
+        lbl.setMaximumHeight(ht)
 
     def removeLabelSet(self, dstr):
         if self.labelSetGrd == None:
@@ -1015,6 +1110,9 @@ class PlotGrid(pg.GraphicsLayout):
             if dstrs != []:
                 for dstr in dstrs:
                     self.addLabelSet(dstr)
+            else:
+                # Reset time label location if all removed
+                self.setTimeLabel()
 
     def adjustPlotWidths(self):
         # Get minimum width of all left axes
@@ -1269,6 +1367,7 @@ class LabelSetLabel(pg.GraphicsLayout):
         self.colors = []
 
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
+        self.layout.setColumnAlignment(0, QtCore.Qt.AlignTop)
 
     def addSubLabel(self, dstr, color):
         # Add another sublabel at end of stackedLabel
@@ -1278,6 +1377,10 @@ class LabelSetLabel(pg.GraphicsLayout):
         self.subLabels.append(lbl)
         self.dstrs.append(dstr)
         self.colors.append(color)
+
+    def setFontSize(self, pt):
+        for label in self.subLabels:
+            label.setText(label.text, size=f'{pt}pt')
 
 # Checks if libraries required to use MMS Orbit tool are installed
 def checkForOrbitLibs():
