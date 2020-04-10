@@ -20,8 +20,8 @@ class MagPy4UI(object):
         window.setWindowFlags(QtCore.Qt.Window)
         window.resize(1280, 700)
 
-        self.centralWidget = QtWidgets.QWidget(window)
-        window.setCentralWidget(self.centralWidget)
+        frame = QtWidgets.QFrame(window)
+        window.setCentralWidget(frame)
 
         # Define actions.
 
@@ -250,7 +250,8 @@ class MagPy4UI(object):
         self.addTickLblsAction = QtWidgets.QAction(window)
         self.addTickLblsAction.setText('Extra Tick Labels...')
 
-        layout = QtWidgets.QVBoxLayout(self.centralWidget)
+        layout = QtWidgets.QVBoxLayout(frame)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         # SLIDER setup
         sliderLayout = QtWidgets.QGridLayout() # r, c, w, h
@@ -296,6 +297,9 @@ class MagPy4UI(object):
 
         # Status bar setup
         self.statusBar = window.statusBar()
+        margins = self.statusBar.layout().contentsMargins()
+        margins.setBottom(5)
+        self.statusBar.layout().setContentsMargins(margins)
 
         sliderLayout.addWidget(self.timeEdit.start, 0, 0, 1, 1)
         sliderLayout.addWidget(self.startSlider, 0, 1, 1, 1)
@@ -304,6 +308,7 @@ class MagPy4UI(object):
         sliderLayout.addWidget(self.shftPrcntBox, 0, 4, 2, 1)
         sliderLayout.addWidget(self.timeEdit.end, 1, 0, 1, 1)
         sliderLayout.addWidget(self.endSlider, 1, 1, 1, 1)
+        sliderLayout.setContentsMargins(10, 0, 10, 0)
 
         layout.addLayout(sliderLayout)
 
@@ -465,6 +470,8 @@ class MagPy4UI(object):
         self.gview = pg.GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = GridGraphicsLayout(self.window)
+        self.glw.layout.setVerticalSpacing(0)
+        self.glw.layout.setContentsMargins(5, 5, 5, 5)
         self.gview.setCentralItem(self.glw)
 
         self.layout.removeWidget(self.startFrame)
@@ -673,6 +680,58 @@ class PyQtUtils:
             # this will activate the window
             window.activateWindow()
 
+class FileLabel(pg.LabelItem):
+    '''
+        Self-adjusting label for lists of files opened
+    '''
+    def __init__(self, labels, *args, **kwargs):
+        self.labels = labels
+        font = QtGui.QFont()
+        metrics = QtGui.QFontMetrics(font)
+        self.widths = [metrics.boundingRect(lbl).width() for lbl in labels]
+        pg.LabelItem.__init__(self, '', *args, **kwargs)
+        self.setAttr('justify', 'right')
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
+        self.setMinimumWidth
+
+    def resizeEvent(self, ev):
+        if ev is None:
+            return
+
+        # Get the width of the new bounding rect
+        newSize = ev.newSize()
+        windowWidth = newSize.width() * 0.75
+
+        # Set text based on sub-label widths and bounding rect width
+        if len(self.labels) == 1:
+            self.setText(self.labels[0])
+        elif len(self.labels) > 1:
+            # Make sure the last label is included
+            lastLabel = self.labels[-1]
+            estWidth = self.widths[-1]
+
+            # Gather all labels in beginning that fit in window
+            visibleLabels = []
+            for lbl, width in zip(self.labels[:-1], self.widths):
+                # If adding this label makes the labelItem too lengthy, break
+                if len(visibleLabels) > 0 and (estWidth + width) > windowWidth:
+                    break
+
+                visibleLabels.append(lbl)
+                estWidth += width
+
+            # Build text from visibleLabels and lastLabel
+            if len(visibleLabels) == (len(self.labels) - 1):
+                txt = ', '.join(visibleLabels + [lastLabel])
+            else:
+                txt = ', '.join(visibleLabels)
+                txt = ', '.join([txt, '...', lastLabel])
+
+            self.setText(txt)
+
+        # Default resize event
+        pg.LabelItem.resizeEvent(self, ev)
+
 class PlotGrid(pg.GraphicsLayout):
     def __init__(self, window=None, *args, **kwargs):
         self.window = window
@@ -692,8 +751,9 @@ class PlotGrid(pg.GraphicsLayout):
         self.factors = []
 
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
+        self.layout.setHorizontalSpacing(2)
         self.layout.setVerticalSpacing(2)
-        self.layout.setContentsMargins(0,0,0,0)
+        self.layout.setContentsMargins(5,0,0,0)
         self.layout.setColumnStretchFactor(0, 0)
         self.layout.setRowStretchFactor(0, 0)
 

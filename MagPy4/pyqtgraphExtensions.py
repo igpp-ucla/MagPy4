@@ -293,6 +293,7 @@ class MagPyAxisItem(pg.AxisItem):
     textSizeChanged = QtCore.pyqtSignal(object)
     def __init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True):
         self.tickDiff = None
+        self.minWidthSet = False
         pg.AxisItem.__init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True)
 
     def setCstmTickSpacing(self, diff):
@@ -306,6 +307,24 @@ class MagPyAxisItem(pg.AxisItem):
 
     def axisType(self):
         return 'Regular' if not self.logMode else 'Log'
+
+    def _updateMaxTextSize(self, x):
+        ## Informs that the maximum tick size orthogonal to the axis has
+        ## changed; we use this to decide whether the item needs to be resized
+        ## to accomodate.
+        if self.orientation in ['left', 'right']:
+            mx = max(self.textWidth, x)
+            if mx > self.textWidth or mx < self.textWidth-10 or not self.minWidthSet:
+                self.textWidth = mx
+                if self.style['autoExpandTextSpace'] is True:
+                    self._updateWidth()
+                self.minWidthSet = True
+        else:
+            mx = max(self.textHeight, x)
+            if mx > self.textHeight or mx < self.textHeight-10:
+                self.textHeight = mx
+                if self.style['autoExpandTextSpace'] is True:
+                    self._updateHeight()
 
     def calcDesiredWidth(self):
         w = 0
@@ -1007,19 +1026,7 @@ class MagPyPlotDataItem(pg.PlotDataItem):
             self.scatter.hide()
 
 class LinkedAxis(MagPyAxisItem):
-    def calcDesiredWidth(self):
-        w = 0
-        if not self.style['showValues']:
-            w = 0
-        elif self.style['autoExpandTextSpace'] is True:
-            w = self.textWidth
-        else:
-            w = self.style['tickTextWidth']
-        w += self.style['tickTextOffset'][0] if self.style['showValues'] else 0
-        w += max(0, self.style['tickLength'])
-        if self.label.isVisible():
-            w += self.label.boundingRect().height() * 0.8  # bounding rect is usually an overestimate
-        return w + 10 # 10 extra to offset if in scientific notation
+    pass
 
 # Same as export() from pyqtgraph's ImageExporter class
 # But fixed bug where width/height params are not set as integers

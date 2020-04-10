@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.21.0 (April 9, 2020)'
+VERSION = f'Version 1.2.22.0 (April 10, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -28,7 +28,7 @@ import pyqtgraph as pg
 import FF_File
 from FF_Time import FFTIME, leapFile
 
-from .MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, StackedAxisLabel
+from .MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, StackedAxisLabel, FileLabel
 from .plotMenu import PlotMenu
 from .spectra import Spectra
 from .dataDisplay import DataDisplay, UTCQDate
@@ -2254,10 +2254,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.glw.clear()
 
         # Add label for file name at top right
-        fileNameLabel = BLabelItem()
-        fileNameLabel.opts['justify'] = 'right'
-        maxLabelWidth = BaseLayout.getMaxLabelWidth(fileNameLabel, self.ui.glw)
-        fileNameLabel.setHtml(f"<span style='font-size:10pt;'>{self.getFileNameString(maxLabelWidth)}</span>")
+        fileList = [os.path.basename(FID.name) for FID in self.FIDs]
+        fileNameLabel = FileLabel(fileList)
         self.fileNameLabel = fileNameLabel
         self.ui.glw.addItem(fileNameLabel, 0, 0, 1, 1)
         self.showFileLabel(self.ui.showFileLbl.isChecked())
