@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from .timeManager import TimeManager
 from math import ceil
 import functools
-from bisect import bisect
+from bisect import bisect_left, bisect_right
 
 # Label item placed at top
 class RegionLabel(pg.InfLineLabel):
@@ -949,14 +949,15 @@ class MagPyPlotDataItem(pg.PlotDataItem):
                     # this option presumes that x-values have uniform spacing
                     range = self.viewRect()
                     if range is not None and len(x) > 1:
-                        lft = range.left() - x[0]
-                        rght = range.right() - x[0]
-                        x0 = bisect(x, lft)
-                        x1 = bisect(x, rght)
-                        x = x[x0:x1]
-                        y = y[x0:x1]
+                        lft = range.left()
+                        rght = range.right()
+                        x0 = bisect_left(x, lft)
+                        x0 = max(0, x0-1)
+                        x1 = bisect_right(x, rght)
+                        x = x[x0:x1+1]
+                        y = y[x0:x1+1]
                         if self.connectSegments is not None:
-                            segs = segs[x0:x1]
+                            segs = segs[x0:x1+1]
 
             if ds > 1:
                 if self.opts['downsampleMethod'] == 'subsample':
@@ -1526,6 +1527,15 @@ class PDFExporter(pg.exporters.Exporter):
         # Initialize PDF Writer paint device
         self.pdfFile = QtGui.QPdfWriter(fileName)
 
+        # Enable clipping for main plot grid if its in the scene
+        mainGrid = None
+        sceneItems = self.getScene().items()
+        from .MagPy4UI import MainPlotGrid
+        for si in sceneItems:
+            if isinstance(si, MainPlotGrid):
+                mainGrid = si
+                mainGrid.enablePDFClipping(True)
+
         # Set page orientation if user selected 'Landscape' mode
         horzLt = self.params['Orientation: '] == 'Landscape'
         if horzLt:
@@ -1556,6 +1566,10 @@ class PDFExporter(pg.exporters.Exporter):
         finally:
             self.setExportMode(False)
         painter.end()
+
+        # Disable clipping for main plot grid if in scene
+        if mainGrid:
+            mainGrid.enablePDFClipping(False)
 
 # Add PDF exporter to list of exporters
 PDFExporter.register()

@@ -1225,6 +1225,10 @@ class MainPlotGrid(PlotGrid):
     def getContextMenus(self, event):
         return self.menu.actions() if self.menuEnabled() else []
 
+    def enablePDFClipping(self, val):
+        for plt in self.plotItems:
+            plt.setClipToView(val)
+
 class AdjustedLabel(pg.LabelItem):
     def getFont(self):
         return self.item.font()
