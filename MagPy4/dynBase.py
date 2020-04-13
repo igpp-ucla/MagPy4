@@ -1205,6 +1205,8 @@ class SimpleColorPlot(pg.PlotItem):
                 else:
                     pdi.setData(x=pdi.xData+self.baseOffset, y=pdi.yData)
                 pdi.path = None
+        else:
+            return
 
         # Reset tick offset
         ba = self.getAxis('bottom')

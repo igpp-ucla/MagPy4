@@ -1508,8 +1508,12 @@ class PDFExporter(pg.exporters.Exporter):
 
         # Orientation option
         self.params = Parameter(name='params', type='group', children=[
-            {'name':'Orientation: ', 'type':'list', 'values':['Portrait',
-                'Landscape']}
+            {'name':'Orientation: ', 'type':'list', 
+                'values': ['Portrait', 'Landscape']
+            },
+            {'name':'Aspect Ratio: ', 'type':'list', 
+                'values':['Original', '4x6', '5x7', '8x10']
+            }
         ])
 
     def parameters(self):
@@ -1556,7 +1560,45 @@ class PDFExporter(pg.exporters.Exporter):
         targetRect = targetRect.marginsRemoved(margins)
 
         # Get the source rect
-        sourceRect = self.getSourceRect()
+        oldSource = self.getSourceRect()
+
+        # Get aspect ratio and apply it to image
+        aspect = self.params['Aspect Ratio: ']
+        widget = None
+        if aspect != 'Original':
+            # Map the aspect ratio to width and height in inches
+            hzAspect, vtAspect = [float(v) for v in aspect.split('x')]
+            if horzLt: # Flip if horizontal layout
+                hzAspect, vtAspect = vtAspect, hzAspect
+
+            # Get the central widget for the view
+            widget = self.getCentralWidget()
+            oldSource = widget.boundingRect()
+
+            # Resize the layout to given scale ratio
+            scaledRect = self.getScaledRect(hzAspect, vtAspect)
+            widget.resize(scaledRect.width(), scaledRect.height())
+
+            # Get new source rect from layout's bounding rect
+            sourceRect = widget.boundingRect()
+            tr = widget.viewTransform()
+            sourceRect = tr.mapRect(sourceRect)
+
+            # Item resizing + color plot preparations
+            for item in self.getScene().items():
+                if hasattr(item, 'resizeEvent'):
+                    item.resizeEvent(None)
+
+            for item in self.getScene().items():
+                if hasattr(item, 'prepareForExport'):
+                    item.prepareForExport()
+
+        else:
+            # Default source rect if no aspect ratio is applied
+            sourceRect = oldSource
+
+        # Get view and resize according to aspect ratio
+        self.getScene().update()
 
         # Start painter and render scene
         painter = QtGui.QPainter(self.pdfFile)
@@ -1570,6 +1612,28 @@ class PDFExporter(pg.exporters.Exporter):
         # Disable clipping for main plot grid if in scene
         if mainGrid:
             mainGrid.enablePDFClipping(False)
+
+        # Return view/widget to original size
+        if widget:
+            widget.resize(oldSource.width(), oldSource.height())
+
+        # Reset color plots
+        for item in self.getScene().items():
+            if hasattr(item, 'resetAfterExport'):
+                item.resetAfterExport()
+
+    def getScaledRect(self, width, height):
+        # Returns a rect w/ width = width in inches, height = height in inches
+        # in pixel coordinates
+        hzDpi = QtGui.QDesktopWidget().logicalDpiX()
+        vtDpi = QtGui.QDesktopWidget().logicalDpiY()
+
+        return QtCore.QRectF(0, 0, width*hzDpi, height*vtDpi)
+
+    def getCentralWidget(self):
+        view = self.getScene().getViewWidget()
+        widget = view.centralWidget
+        return widget
 
 # Add PDF exporter to list of exporters
 PDFExporter.register()

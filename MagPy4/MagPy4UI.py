@@ -753,7 +753,7 @@ class PlotGrid(pg.GraphicsLayout):
         pg.GraphicsLayout.__init__(self, *args, **kwargs)
         self.layout.setHorizontalSpacing(2)
         self.layout.setVerticalSpacing(2)
-        self.layout.setContentsMargins(5,0,0,0)
+        self.layout.setContentsMargins(10,0,0,0)
         self.layout.setColumnStretchFactor(0, 0)
         self.layout.setRowStretchFactor(0, 0)
 
