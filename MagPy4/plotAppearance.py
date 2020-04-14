@@ -684,6 +684,13 @@ class LabelAppearUI(BaseLayout):
             layout.addItem(spacer, row, 2, 1, 1)
             row += 1
 
+        # Add in default box for axis label sizes in main window
+        spacer = layout.itemAtPosition(1, 2)
+        layout.removeItem(spacer)
+        self.defaultBtn = QtWidgets.QPushButton('Default')
+        self.defaultBtn.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        layout.addWidget(self.defaultBtn, 1, 2, 1, 1)
+
         frameLt.addLayout(layout)
         self.labelEditorBtn = QtWidgets.QPushButton('Edit Label Text...')
         layout.addWidget(self.labelEditorBtn, row, 0, 1, 2)
@@ -706,20 +713,26 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
         self.ui.titleSzBox.valueChanged.connect(self.changeTitleSize)
         self.ui.axisLblSzBox.valueChanged.connect(self.changeAxisLblSize)
         self.ui.tickLblSzBox.valueChanged.connect(self.changeTickLblSize)
+        self.ui.defaultBtn.clicked.connect(self.resizeMainAxisLbls)
 
         if inMainWindow:
             self.ui.labelEditorBtn.clicked.connect(self.openLabelEditor)
-            self.ui.axisLblSzBox.setVisible(False)
-            self.ui.axisLblSzLbl.setVisible(False)
         else: # Remove label editor button for non-main-window menus
             self.ui.layout.removeWidget(self.ui.labelEditorBtn)
             self.ui.labelEditorBtn.deleteLater()
+            self.ui.defaultBtn.setVisible(False)
 
     def openLabelEditor(self):
         self.closeLabelEditor()
         self.textEditor = RenameLabels(self.window)
         self.textEditor.show()
         self.textEditor.initVars()
+
+    def resizeMainAxisLbls(self):
+        # Unlock label resize settings and resize plot grid so they
+        # are reverted to default sizes
+        self.window.pltGrd.lockLabelSizes(False)
+        self.window.pltGrd.resizeEvent(None)
 
     def closeLabelEditor(self):
         if self.textEditor:
@@ -766,6 +779,13 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
             plt.titleLabel.setText(plt.titleLabel.text, size=str(val)+'pt')
 
     def changeAxisLblSize(self, val):
+        # Set stacked label sizes for main window plot grid and lock label size
+        if self.inMainWindow and self.window.pltGrd:
+            for lbl in self.window.pltGrd.labels:
+                lbl.setFontSize(val)
+            self.window.pltGrd.lockLabelSizes()
+            return
+
         # Update every plot's label sizes for every axis
         for plt in self.plotItems:
             for ax in [plt.getAxis('bottom'), plt.getAxis('left')]:

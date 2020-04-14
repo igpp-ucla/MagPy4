@@ -1579,6 +1579,7 @@ class PDFExporter(pg.exporters.Exporter):
 
             # Resize the layout to given scale ratio
             scaledRect = self.getScaledRect(hzAspect, vtAspect)
+            print (oldSource, scaledRect, self.getSourceRect())
             widget.resize(scaledRect.width(), scaledRect.height())
 
             # Get new source rect from layout's bounding rect
@@ -1629,6 +1630,7 @@ class PDFExporter(pg.exporters.Exporter):
         # in pixel coordinates
         hzDpi = QtGui.QDesktopWidget().logicalDpiX()
         vtDpi = QtGui.QDesktopWidget().logicalDpiY()
+        print (hzDpi, vtDpi)
 
         return QtCore.QRectF(0, 0, width*hzDpi, height*vtDpi)
 

@@ -739,6 +739,9 @@ class PlotGrid(pg.GraphicsLayout):
         self.plotItems = []
         self.labels = []
 
+        # Indicates whether label sizes should be updated when resizing
+        self.labelSizesLocked = False
+
         # Additional lists for handling color plots
         self.colorPltKws = []
         self.colorPltInfo = {}
@@ -802,6 +805,9 @@ class PlotGrid(pg.GraphicsLayout):
         index = self.numPlots
         spacerLbl = self.layout.itemAt(self.startRow + index, 0)
         return spacerLbl
+
+    def lockLabelSizes(self, val=True):
+        self.labelSizesLocked = val
 
     def moveLabelSets(self, loc=None):
         # Update the label set location
@@ -897,8 +903,9 @@ class PlotGrid(pg.GraphicsLayout):
             fontSize = min(lblFontSize, fontSize)
 
         # Set the font size for all left plot labels to the minimum found above
-        for lbl in self.labels:
-            lbl.setFontSize(fontSize)
+        if not self.labelSizesLocked:
+            for lbl in self.labels:
+                lbl.setFontSize(fontSize)
 
         del plotHeight
         del lblFontSize
