@@ -2371,7 +2371,7 @@ class PressureToolUI(BaseLayout):
         ra = LinkedAxis('right')
         ba = DateAxis(frame.window.epoch, 'bottom')
         ta = DateAxis(frame.window.epoch, 'top')
-        vb = SelectableViewBox(frame.window, 0)
+        vb = SelectableViewBox(None, 0)
         vb.addMenuAction(apprAct)
         ba.enableAutoSIPrefix(False)
 
@@ -2513,10 +2513,19 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
 
         # Interpolate along mag_times if it is given, otherwise, on electron times
         ref_times = times_e if mag_times is None else mag_times
-        cs = scipy.interpolate.CubicSpline(times_e, therm_press_e, extrapolate=True)
+        cs = scipy.interpolate.CubicSpline(times_e, therm_press_e)
         interp_therm_press_e = cs(ref_times)
-        cs = scipy.interpolate.CubicSpline(times_i, therm_press_i, extrapolate=True)
+        cs = scipy.interpolate.CubicSpline(times_i, therm_press_i)
         interp_therm_press_i = cs(ref_times)
+
+        # Remove any NaNs for extrapolated values and replace w/ endpoints
+        timeLst = [times_e, times_i]
+        interpLst = [interp_therm_press_e, interp_therm_press_i]
+        origLst = [therm_press_e, therm_press_i]
+        for t, dta, origDta in zip(timeLst, interpLst, origLst):
+            # Fill starting/ending values
+            dta[ref_times < t[0]] = origDta[0]
+            dta[ref_times > t[-1]] = origDta[-1]
 
         # Sum up thermal pressure and return
         thermal_press = interp_therm_press_e + interp_therm_press_i
