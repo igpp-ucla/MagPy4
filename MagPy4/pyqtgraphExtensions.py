@@ -338,6 +338,8 @@ class MagPyAxisItem(pg.AxisItem):
         w += max(0, self.style['tickLength'])
         if self.label.isVisible():
             w += self.label.boundingRect().height() * 0.8  # bounding rect is usually an overestimate
+        if self.logMode:
+            w += 10
         return w # 10 extra to offset if in scientific notation
 
     def tickSpacing(self, minVal, maxVal, size):

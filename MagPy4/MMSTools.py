@@ -2371,7 +2371,7 @@ class PressureToolUI(BaseLayout):
         ra = LinkedAxis('right')
         ba = DateAxis(frame.window.epoch, 'bottom')
         ta = DateAxis(frame.window.epoch, 'top')
-        vb = SelectableViewBox(None, 0)
+        vb = SelectableViewBox(frame.window, 0)
         vb.addMenuAction(apprAct)
         ba.enableAutoSIPrefix(False)
 
@@ -2614,7 +2614,20 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         # Get plot item and label
         plt = self.plotItems[0]
         lbl = self.labels[0]
-        plt.getViewBox().rmvMenuAction()
+
+        # Create a new plot to add
+        oldPlt = plt
+        vb = SelectableViewBox(None, 0)
+        axes = {
+            'left': LinkedAxis('left'),
+            'bottom': DateAxis(self.window.epoch, 'bottom'),
+            'top': DateAxis(self.window.epoch, 'top')
+            }
+        plt = MagPyPlotItem(viewBox=vb, axisItems=axes)
+        for pdi in oldPlt.listDataItems():
+            oldPlt.removeItem(pdi)
+            plt.addItem(pdi)
+
         self.ui.pltGrd.clear()
 
         # Generate the time info for each variable

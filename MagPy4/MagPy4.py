@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.24.0 (April 13, 2020)'
+VERSION = f'Version 1.2.25.0 (April 14, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -2158,6 +2158,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Update local state information about color plot grid values
         self.colorPlotInfo[name] = (plotInfo, labelTxt, units)
         self.pltGrd.resizeEvent(None)
+        self.pltGrd.adjustPlotWidths()
 
         # Return plot index to be used when creating link lists
         return pltIndex
@@ -2212,6 +2213,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             times = pdi.xData
             pdi.setData(times-self.tickOffset, pdi.yData)
         plt.getAxis('bottom').tickOffset = self.tickOffset
+        plt.getAxis('top').tickOffset = self.tickOffset
+
+        # Adjust axes and buttons
+        for ax in ['left', 'top', 'right', 'bottom']:
+            plt.showAxis(ax)
+        for ax in ['top', 'right']:
+            plt.getAxis(ax).setStyle(showValues=False)
+        plt.hideButtons()
 
         # Update state info for plotItems, plotStrings, plotLinks, 
         # heightFactors, and plotPens
@@ -2225,6 +2234,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.lastPlotHeightFactors.append(1)
 
         self.plotTracePens.append(pens)
+        self.updateXRange()
+        self.pltGrd.resizeEvent(None)
 
     def plotData(self, dataStrings, links, heightFactors):
         # Remove any saved linked regions from plots and save their state
