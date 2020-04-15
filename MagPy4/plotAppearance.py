@@ -816,6 +816,7 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
                 self.window.pltGrd.setLabelSetFontSize(val)
             ax = self.plotItems[-1].getAxis('bottom')
             ax.labelStyle = {'font-size':f'{val}pt'}
+            self.window.pltGrd.adjustPlotWidths()
 
     def adjustTickHeights(self, axis, tickFont):
         # Adjust vertical spacing reserved for bottom ticks if necessary

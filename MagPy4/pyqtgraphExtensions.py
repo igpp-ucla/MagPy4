@@ -348,6 +348,281 @@ class MagPyAxisItem(pg.AxisItem):
         else:
             return pg.AxisItem.tickSpacing(self, minVal, maxVal, size)
 
+    def logTickStrings(self, values, scale, spacing):
+        return [f'10<sup>{int(x)}</sup>' for x in np.array(values).astype(float)]
+
+    def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
+        p.setRenderHint(p.Antialiasing, False)
+        p.setRenderHint(p.TextAntialiasing, True)
+
+        self.drawAxis(p, tickSpecs, axisSpec)
+        self.drawText(p, textSpecs)
+
+    def drawAxis(self, p, tickSpecs, axisSpec):
+        ''' Draw axis lines and tick markers '''
+        # Draw long axis line
+        pen, p1, p2 = axisSpec
+        p.setPen(pen)
+        p.drawLine(p1, p2)
+        p.translate(0.5,0)
+        
+        # Draw tick markers
+        for pen, p1, p2 in tickSpecs:
+            p.setPen(pen)
+            p.drawLine(p1, p2)
+
+    def drawText(self, p, textSpecs):
+        ''' Paint tick labels '''
+        # Set pen font
+        if self.tickFont is not None:
+            p.setFont(self.tickFont)
+
+        # Draw labels in rich text
+        p.setPen(self.pen())
+        for rect, flags, text in textSpecs:
+            qst = QtGui.QStaticText(text)
+            qst.setTextFormat(QtCore.Qt.RichText)
+            p.drawStaticText(rect.left(), rect.top(), qst)
+
+    def generateDrawSpecs(self, p):
+        if self.tickFont:
+            p.setFont(self.tickFont)
+        """
+        Calls tickValues() and tickStrings() to determine where and how ticks should
+        be drawn, then generates from this a set of drawing commands to be 
+        interpreted by drawPicture().
+        """
+        bounds = self.mapRectFromParent(self.geometry())
+
+        linkedView = self.linkedView()
+        if linkedView is None or self.grid is False:
+            tickBounds = bounds
+        else:
+            tickBounds = linkedView.mapRectToItem(self, linkedView.boundingRect())
+
+        if self.orientation == 'left':
+            span = (bounds.topRight(), bounds.bottomRight())
+            tickStart = tickBounds.right()
+            tickStop = bounds.right()
+            tickDir = -1
+            axis = 0
+        elif self.orientation == 'right':
+            span = (bounds.topLeft(), bounds.bottomLeft())
+            tickStart = tickBounds.left()
+            tickStop = bounds.left()
+            tickDir = 1
+            axis = 0
+        elif self.orientation == 'top':
+            span = (bounds.bottomLeft(), bounds.bottomRight())
+            tickStart = tickBounds.bottom()
+            tickStop = bounds.bottom()
+            tickDir = -1
+            axis = 1
+        elif self.orientation == 'bottom':
+            span = (bounds.topLeft(), bounds.topRight())
+            tickStart = tickBounds.top()
+            tickStop = bounds.top()
+            tickDir = 1
+            axis = 1
+
+        ## determine size of this item in pixels
+        points = list(map(self.mapToDevice, span))
+        if None in points:
+            return
+        lengthInPixels = pg.Point(points[1] - points[0]).length()
+        if lengthInPixels == 0:
+            return
+
+        # Determine major / minor / subminor axis ticks
+        if self._tickLevels is None:
+            tickLevels = self.tickValues(self.range[0], self.range[1], lengthInPixels)
+            tickStrings = None
+        else:
+            ## parse self.tickLevels into the formats returned by tickLevels() and tickStrings()
+            tickLevels = []
+            tickStrings = []
+            for level in self._tickLevels:
+                values = []
+                strings = []
+                tickLevels.append((None, values))
+                tickStrings.append(strings)
+                for val, strn in level:
+                    values.append(val)
+                    strings.append(strn)
+
+        ## determine mapping between tick values and local coordinates
+        dif = self.range[1] - self.range[0]
+        if dif == 0:
+            xScale = 1
+            offset = 0
+        else:
+            if axis == 0:
+                xScale = -bounds.height() / dif
+                offset = self.range[0] * xScale - bounds.height()
+            else:
+                xScale = bounds.width() / dif
+                offset = self.range[0] * xScale
+
+        xRange = [x * xScale - offset for x in self.range]
+        xMin = min(xRange)
+        xMax = max(xRange)
+
+        tickPositions = [] # remembers positions of previously drawn ticks
+
+        ## compute coordinates to draw ticks
+        ## draw three different intervals, long ticks first
+        tickSpecs = []
+        for i in range(len(tickLevels)):
+            tickPositions.append([])
+            ticks = tickLevels[i][1]
+
+            ## length of tick
+            tickLength = self.style['tickLength'] / ((i*0.5)+1.0)
+
+            lineAlpha = 255 / (i+1)
+            if self.grid is not False:
+                lineAlpha *= self.grid/255. * np.clip((0.05  * lengthInPixels / (len(ticks)+1)), 0., 1.)
+            
+            for v in ticks:
+                ## determine actual position to draw this tick
+                x = (v * xScale) - offset
+                if x < xMin or x > xMax:  ## last check to make sure no out-of-bounds ticks are drawn
+                    tickPositions[i].append(None)
+                    continue
+                tickPositions[i].append(x)
+                
+                p1 = [x, x]
+                p2 = [x, x]
+                p1[axis] = tickStart
+                p2[axis] = tickStop
+                if self.grid is False:
+                    p2[axis] += tickLength*tickDir
+                tickPen = self.pen()
+                color = tickPen.color()
+                color.setAlpha(lineAlpha)
+                tickPen.setColor(color)
+                tickSpecs.append((tickPen, pg.Point(p1), pg.Point(p2)))
+
+        if self.style['stopAxisAtTick'][0] is True:
+            stop = max(span[0].y(), min(map(min, tickPositions)))
+            if axis == 0:
+                span[0].setY(stop)
+            else:
+                span[0].setX(stop)
+        if self.style['stopAxisAtTick'][1] is True:
+            stop = min(span[1].y(), max(map(max, tickPositions)))
+            if axis == 0:
+                span[1].setY(stop)
+            else:
+                span[1].setX(stop)
+        axisSpec = (self.pen(), span[0], span[1])
+
+        textOffset = self.style['tickTextOffset'][axis]  ## spacing between axis and text
+
+        textSize2 = 0
+        textRects = []
+        textSpecs = []  ## list of draw
+
+        # If values are hidden, return early
+        if not self.style['showValues']:
+            return (axisSpec, tickSpecs, textSpecs)
+
+        for i in range(min(len(tickLevels), self.style['maxTextLevel']+1)):
+            ## Get the list of strings to display for this level
+            if tickStrings is None:
+                spacing, values = tickLevels[i]
+                strings = self.tickStrings(values, self.autoSIPrefixScale * self.scale, spacing)
+            else:
+                strings = tickStrings[i]
+
+            if len(strings) == 0:
+                continue
+
+            ## ignore strings belonging to ticks that were previously ignored
+            for j in range(len(strings)):
+                if tickPositions[i][j] is None:
+                    strings[j] = None
+
+            ## Measure density of text; decide whether to draw this level
+            rects = []
+            for s in strings:
+                if s is None:
+                    rects.append(None)
+                else:
+                    br = p.boundingRect(QtCore.QRectF(0, 0, 100, 100), QtCore.Qt.AlignCenter, asUnicode(s))
+                    if self.logMode:
+                        # Calculate bounding rect for rich-text log tick labels
+                        txtItem = QtWidgets.QGraphicsTextItem()
+                        txtItem.setHtml(s)
+                        txtItem.setFont(p.font())
+                        txt_br = txtItem.boundingRect()
+                        width = txt_br.width() * 0.8
+                        height = txt_br.height()
+                        lft = 50 - (width/2)
+                        top = 50 - (height/2)
+                        br = QtCore.QRectF(lft, top, width, height)
+                    
+                    br.setHeight(br.height() * 0.8)
+                    rects.append(br)
+                    textRects.append(rects[-1])
+
+            if len(textRects) > 0:
+                ## measure all text, make sure there's enough room
+                if axis == 0:
+                    textSize = np.sum([r.height() for r in textRects])
+                    textSize2 = np.max([r.width() for r in textRects])
+                else:
+                    textSize = np.sum([r.width() for r in textRects])
+                    textSize2 = np.max([r.height() for r in textRects])
+            else:
+                textSize = 0
+                textSize2 = 0
+
+            if i > 0:  ## always draw top level
+                ## If the strings are too crowded, stop drawing text now.
+                ## We use three different crowding limits based on the number
+                ## of texts drawn so far.
+                textFillRatio = float(textSize) / lengthInPixels
+                finished = False
+                for nTexts, limit in self.style['textFillLimits']:
+                    if len(textSpecs) >= nTexts and textFillRatio >= limit:
+                        finished = True
+                        break
+                if finished:
+                    break
+
+            # Determine exactly where tick text should be drawn
+            for j in range(len(strings)):
+                vstr = strings[j]
+                if vstr is None: ## this tick was ignored because it is out of bounds
+                    continue
+                vstr = asUnicode(vstr)
+                x = tickPositions[i][j]
+                textRect = rects[j]
+                height = textRect.height()
+                width = textRect.width()
+                #self.textHeight = height
+                offset = max(0,self.style['tickLength']) + textOffset
+                if self.orientation == 'left':
+                    textFlags = QtCore.Qt.TextDontClip|QtCore.Qt.AlignRight|QtCore.Qt.AlignVCenter
+                    rect = QtCore.QRectF(tickStop-offset-width, x-(height/2), width, height)
+                elif self.orientation == 'right':
+                    textFlags = QtCore.Qt.TextDontClip|QtCore.Qt.AlignLeft|QtCore.Qt.AlignVCenter
+                    rect = QtCore.QRectF(tickStop+offset, x-(height/2), width, height)
+                elif self.orientation == 'top':
+                    textFlags = QtCore.Qt.TextDontClip|QtCore.Qt.AlignCenter|QtCore.Qt.AlignBottom
+                    rect = QtCore.QRectF(x-width/2., tickStop-offset-height, width, height)
+                elif self.orientation == 'bottom':
+                    textFlags = QtCore.Qt.TextDontClip|QtCore.Qt.AlignCenter|QtCore.Qt.AlignTop
+                    rect = QtCore.QRectF(x-width/2., tickStop+offset, width, height)
+
+                textSpecs.append((rect, textFlags, vstr))
+
+        ## update max text size if needed.
+        self._updateMaxTextSize(textSize2)
+
+        return (axisSpec, tickSpecs, textSpecs)
+
 #todo show minor ticks on left side
 #hide minor tick labels always
 class LogAxis(pg.AxisItem):
@@ -1579,7 +1854,6 @@ class PDFExporter(pg.exporters.Exporter):
 
             # Resize the layout to given scale ratio
             scaledRect = self.getScaledRect(hzAspect, vtAspect)
-            print (oldSource, scaledRect, self.getSourceRect())
             widget.resize(scaledRect.width(), scaledRect.height())
 
             # Get new source rect from layout's bounding rect
@@ -1630,7 +1904,6 @@ class PDFExporter(pg.exporters.Exporter):
         # in pixel coordinates
         hzDpi = QtGui.QDesktopWidget().logicalDpiX()
         vtDpi = QtGui.QDesktopWidget().logicalDpiY()
-        print (hzDpi, vtDpi)
 
         return QtCore.QRectF(0, 0, width*hzDpi, height*vtDpi)
 
