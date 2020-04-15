@@ -305,6 +305,13 @@ class MagPyAxisItem(pg.AxisItem):
         self.picture = None
         self.update()
 
+    def setLogMode(self, val):
+        pg.AxisItem.setLogMode(self, val)
+        if val:
+            self.setCstmTickSpacing(1)
+        else:
+            self.resetTickSpacing()
+
     def axisType(self):
         return 'Regular' if not self.logMode else 'Log'
 
