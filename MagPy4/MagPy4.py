@@ -2584,17 +2584,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             if self.ui.drawPoints.isChecked():
                 brush = pg.mkBrush(pen.color())
                 outlinePen = self.getPointsOutlinePen(pen)
-                pi.scatterPlot(ofstTimes, Y, pen=outlinePen, brush=brush, size=2, connect=segs)
+                pi.scatterPlot(ofstTimes, Y, pen=outlinePen, brush=brush, size=2, 
+                    connect=segs, name=dstr)
             else:
-                pdi = MagPyPlotDataItem(ofstTimes, Y, pen=pen, connect=segs)
+                pdi = MagPyPlotDataItem(ofstTimes, Y, pen=pen, connect=segs, 
+                    name=dstr)
                 pi.addItem(pdi)
         else:
             if self.ui.drawPoints.isChecked():
                 brush = pg.mkBrush(pen.color())
                 outlinePen = self.getPointsOutlinePen(pen)
-                pi.scatterPlot(ofstTimes, Y, pen=outlinePen, brush=brush, size=2)
+                pi.scatterPlot(ofstTimes, Y, pen=outlinePen, brush=brush, size=2,
+                    name=dstr)
             else:
-                pdi = MagPyPlotDataItem(ofstTimes, Y, pen=pen)
+                pdi = MagPyPlotDataItem(ofstTimes, Y, pen=pen, name=dstr)
                 pi.addItem(pdi)
 
         return len(Y)
