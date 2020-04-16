@@ -6,7 +6,8 @@ import pyqtgraph as pg
 from scipy import fftpack, signal
 import numpy as np
 from .MagPy4UI import TimeEdit, NumLabel, StackedAxisLabel
-from .pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, DateAxis
+from .pyqtgraphExtensions import GridGraphicsLayout
+from .plotBase import MagPyAxisItem, DateAxis, MagPyPlotItem
 import bisect
 import functools
 from .mth import Mth
@@ -253,10 +254,17 @@ class ColorBar(pg.GraphicsWidget):
     def paint(self, p, opt, widget):
         ''' Fill the bounding rect w/ current gradient '''
         pg.GraphicsWidget.paint(self, p, opt,widget)
+        # Get paint rect and pen
         rect = self.boundingRect()
+        pen = pg.mkPen((0, 0, 0))
+        pen.setJoinStyle(QtCore.Qt.MiterJoin)
+
+        # Set gradient bounds
         self.gradient.setStart(0, rect.bottom())
         self.gradient.setFinalStop(0, rect.top())
-        p.setPen(pg.mkPen((0, 0, 0)))
+
+        # Draw gradient
+        p.setPen(pen)
         p.setBrush(self.gradient)
         p.drawRect(rect)
 
@@ -980,7 +988,7 @@ class PhaseGradient(QtGui.QLinearGradient):
     def getColorPos(self):
         return self.colorPos
 
-class SimpleColorPlot(pg.PlotItem):
+class SimpleColorPlot(MagPyPlotItem):
     def __init__(self, epoch, logYScale=False, vb=None, axItems=None):
         self.gradient = RGBGradient()
         self.mappedGrid = None # Mapped colors
@@ -994,23 +1002,10 @@ class SimpleColorPlot(pg.PlotItem):
 
         # Initialize default viewbox and axis items
         vb = SpectrogramViewBox() if vb is None else vb
-        dateAxis = DateAxis(epoch, orientation='bottom')
+
+        MagPyPlotItem.__init__(self, epoch=epoch, viewBox=vb)
         if logYScale:
-            leftAxis = LogAxis(orientation='left')
-            leftAxis.setLogMode(True)
-        else:
-            leftAxis = MagPyAxisItem(orientation='left')
-        axisItems = {'bottom':dateAxis, 'left':leftAxis}
-
-        # Use any specified axis items instead of defaults
-        if axItems:
-            for key in axItems:
-                axisItems[key] = axItems[key]
-
-            if 'left' in axItems and logYScale:
-                axisItems['left'].setLogMode(True)
-
-        pg.PlotItem.__init__(self, viewBox=vb, axisItems=axisItems)
+            self.getAxis('left').setLogMode(True)
 
         # Additional plot adjustments to tick lengths, axis z-values, etc.
         self.plotSetup()

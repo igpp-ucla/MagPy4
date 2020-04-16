@@ -2,7 +2,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from .MagPy4UI import TimeEdit
 from PyQt5.QtWidgets import QSizePolicy
 from .layoutTools import BaseLayout
-from .pyqtgraphExtensions import LinkedAxis, DateAxis, MagPyPlotItem
+from .plotBase import DateAxis, MagPyPlotItem
 from .dynBase import GradLegend, ColorBar
 import pyqtgraph as pg
 from pyqtgraph import GraphicsWidgetAnchor
@@ -439,9 +439,7 @@ class AltitudePlotter(QtWidgets.QFrame, AltitudeUI):
         index = 0
         for fieldDta, dstr in zip(fieldDtaLst, lbls):
             # Create plot item
-            la = LinkedAxis('left')
-            ba = LinkedAxis('bottom')
-            plt = MagPyPlotItem(axisItems={'bottom':ba, 'left':la})
+            plt = MagPyPlotItem()
             pen = self.outerFrame.getPens()[index]
 
             gaps = self.outerFrame.getSegments(a, b)

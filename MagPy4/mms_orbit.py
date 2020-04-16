@@ -1,5 +1,6 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
+from .plotBase import MagPyPlotItem
 from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, checkForOrbitLibs
 from FF_Time import FFTIME, leapFile
 from .layoutTools import BaseLayout
@@ -269,7 +270,7 @@ class MMS_OrbitUI(BaseLayout):
         if self.glw is None:
             self.glw = self.getGraphicsGrid()
             self.gview.setSizePolicy(self.getSizePolicy('Min', 'Min'))
-            self.plt = pg.PlotItem()
+            self.plt = MagPyPlotItem()
             self.timeInfoLbl = pg.LabelItem()
             self.glw.addItem(self.plt, 0, 0, 1, 1)
             self.glw.addItem(self.timeInfoLbl, 1, 0, 1, 1)

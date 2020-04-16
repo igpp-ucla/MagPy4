@@ -6,7 +6,7 @@ from .dataDisplay import UTCQDate
 from .layoutTools import BaseLayout
 from .timeManager import TimeManager
 from .selectionManager import SelectableViewBox, GeneralSelect
-from .pyqtgraphExtensions import LinkedAxis, DateAxis
+from .plotBase import MagPyPlotItem, DateAxis
 from .traceStats import TraceStats
 
 from .dynamicSpectra import DynamicSpectra, DynamicCohPha
@@ -363,19 +363,15 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
                 ens.append(en)
 
             # Build plot item
-            la = LinkedAxis(orientation='left')
-            ba = DateAxis(self.epoch, orientation='bottom')
-            ta = DateAxis(self.epoch, orientation='top')
             vb = SelectableViewBox(self, plotNum)
-            plt = pg.PlotItem(viewBox=vb, axisItems={'left':la, 'bottom':ba,
-                'top':ta })
+            plt = MagPyPlotItem(epoch=self.epoch, viewBox=vb)
             self.plotItems.append(plt)
 
             # Set tick offsets for datetime axes
-            ba.tickOffset = self.tickOffset
-            ta.tickOffset = self.tickOffset
-            ba.setStyle(showValues=False)
-            ta.setStyle(showValues=False)
+            for ax in ['bottom', 'top']:
+                axis = plt.getAxis(ax)
+                axis.tickOffset = self.tickOffset
+                axis.setStyle(showValues=False)
 
             # Build plot label
             colors = [pen.color().name() for pen in pens]
@@ -435,7 +431,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         self.pltGrd.setTimeLabel()
 
         # Show tick labels on bottom axis
-        ba.setStyle(showValues=True)
+        plt.getAxis('bottom').setStyle(showValues=True)
 
         # Link plots if necessary
         if self.getLinkMode():

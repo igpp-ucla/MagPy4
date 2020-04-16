@@ -8,7 +8,8 @@ from scipy import fftpack
 import numpy as np
 from FF_Time import FFTIME
 from .plotAppearance import PlotAppearance, SpectraPlotApp
-from .pyqtgraphExtensions import GridGraphicsLayout, LogAxis, BLabelItem, SpectraPlotItem, MagPyAxisItem, MagPyPlotItem
+from .pyqtgraphExtensions import GridGraphicsLayout, BLabelItem, SpectraPlotItem
+from .plotBase import MagPyPlotItem
 from .dataDisplay import UTCQDate
 from .MagPy4UI import TimeEdit
 from .spectraUI import SpectraUI, SpectraViewBox
@@ -409,9 +410,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
             self.waveState = None # Clear state after loading
 
     def buildPlotItem(self):
-        ba = LogAxis(orientation='bottom')
-        la = LogAxis(orientation='left')
-        pi = SpectraPlotItem(viewBox = SpectraViewBox(), axisItems={'bottom':ba, 'left':la})
+        pi = SpectraPlotItem(viewBox = SpectraViewBox())
         pi.hideButtons() # hide autoscale button
 
         return pi
@@ -579,9 +578,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
         for d in datas:
             d[0].clear()
-            ba = LogAxis(orientation='bottom')
-            la = LogAxis(orientation='left')
-            pi = MagPyPlotItem(axisItems={'bottom':ba, 'left':la})
+            pi = MagPyPlotItem()
             pi.plot(freqs, d[1], pen=QtGui.QPen(self.window.pens[0]))
             pi.titleLabel.setAttr('size', '12pt') # Set up default font size
             pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}')
@@ -590,7 +587,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
             # y axis should be in angles for phase
             if d[2] == 'Phase':
-                la.setTickSpacing(90, 15)
+                pi.getAxis('left').setTickSpacing(90, 15)
 
         # Custom context menu handling for coh/pha
         actText = 'Change Plot Appearance...'

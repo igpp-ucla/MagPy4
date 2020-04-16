@@ -6,7 +6,7 @@ from FF_Time import FFTIME, leapFile
 from .dataDisplay import DataDisplay, UTCQDate
 
 from .dynBase import SpectrogramPlotItem, SpectraLine, SpectraLegend, SimpleColorPlot
-from .pyqtgraphExtensions import MagPyColorPlot, LinkedAxis, DateAxis, MagPyPlotItem
+from .plotBase import MagPyPlotItem, MagPyColorPlot, DateAxis
 from .selectionManager import SelectableViewBox
 from .layoutTools import BaseLayout
 from .plotAppearance import PressurePlotApp
@@ -2367,16 +2367,11 @@ class PressureToolUI(BaseLayout):
 
         # Generate plot
         ## Set up axis items and viewbox
-        la = LinkedAxis('left')
-        ra = LinkedAxis('right')
-        ba = DateAxis(frame.window.epoch, 'bottom')
-        ta = DateAxis(frame.window.epoch, 'top')
         vb = SelectableViewBox(None, 0)
         vb.addMenuAction(apprAct)
-        ba.enableAutoSIPrefix(False)
 
-        plt = MagPyPlotItem(viewBox=vb, axisItems={'left':la, 'bottom':ba, 
-            'right':ra, 'top':ta})
+        plt = MagPyPlotItem(epoch=frame.window.epoch, viewBox=vb)
+        plt.getAxis('bottom').enableAutoSIPrefix(False)
 
         ## Get plot label, trace pen, and units
         dstrs, colors = [], []
@@ -2627,12 +2622,7 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         # Create a new plot to add
         oldPlt = plt
         vb = SelectableViewBox(None, 0)
-        axes = {
-            'left': LinkedAxis('left'),
-            'bottom': DateAxis(self.window.epoch, 'bottom'),
-            'top': DateAxis(self.window.epoch, 'top')
-            }
-        plt = MagPyPlotItem(viewBox=vb, axisItems=axes)
+        plt = MagPyPlotItem(epoch=self.window.epoch, viewBox=vb)
         for pdi in oldPlt.listDataItems():
             oldPlt.removeItem(pdi)
             plt.addItem(pdi)

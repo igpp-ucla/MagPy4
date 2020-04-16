@@ -6,7 +6,8 @@ import pyqtgraph as pg
 from scipy import fftpack, signal
 import numpy as np
 from .MagPy4UI import TimeEdit, NumLabel, StackedAxisLabel
-from .pyqtgraphExtensions import GridGraphicsLayout, LogAxis, MagPyAxisItem, DateAxis
+from .pyqtgraphExtensions import GridGraphicsLayout
+from .plotBase import DateAxis
 import bisect
 import functools
 from .mth import Mth

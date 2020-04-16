@@ -3,7 +3,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 import pyqtgraph as pg
-from .pyqtgraphExtensions import GridGraphicsLayout, RowGridLayout, LogAxis, BLabelItem
+from .pyqtgraphExtensions import GridGraphicsLayout, RowGridLayout, BLabelItem
 from .MagPy4UI import TimeEdit
 
 class SpectraUI(object):

@@ -1,7 +1,7 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .MagPy4UI import StackedLabel
-from .pyqtgraphExtensions import DateAxis
+from .plotBase import DateAxis
 
 from datetime import datetime, timedelta
 import numpy as np

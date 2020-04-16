@@ -1,8 +1,8 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
+from .plotBase import DateAxis, MagPyAxisItem
 
 import pyqtgraph as pg
-from .pyqtgraphExtensions import LinkedAxis, DateAxis
 import functools
 import bisect
 import numpy as np
@@ -171,8 +171,7 @@ class LabelSet(pg.PlotItem):
         # Initialize axisItems to be used to show labels and for resizing
         topAxis = invisAxis(window, dstr, 'top')
         topAxis.tickOffset = window.tickOffset
-        rightAxis = LinkedAxis(orientation='right')
-        axisDict = {'top': topAxis, 'right': rightAxis}
+        axisDict = {'top': topAxis, 'right': MagPyAxisItem('right')}
         pg.PlotItem.__init__(self, parent, name, labels, title, viewBox, enableMenu=False, axisItems=axisDict, **kargs)
 
         # Reduce the plotItem to just the invisAxis item, visually.

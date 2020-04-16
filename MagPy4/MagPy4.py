@@ -38,7 +38,7 @@ from .edit import Edit
 from .traceStats import TraceStats
 from .helpWindow import HelpWindow
 from .AboutDialog import AboutDialog
-from .pyqtgraphExtensions import DateAxis, LinkedAxis, BLabelItem, MagPyPlotItem, MagPyPlotDataItem
+from .plotBase import DateAxis, MagPyPlotItem, MagPyPlotDataItem
 from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni, PressureTool
 from . import mms_orbit
 from . import mms_formation
@@ -2171,8 +2171,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Generate plot item
         vb = MagPyViewBox(self, self.pltGrd.numPlots)
-        axisItems = {'left':LinkedAxis('left')}
-        plt = SimpleColorPlot(self.epoch, logY, vb=vb, axItems=axisItems)
+        plt = SimpleColorPlot(self.epoch, logY, vb=vb)
         plt.getAxis('bottom').tickOffset = self.tickOffset
         plt.loadPlotInfo(plotInfo)
 
@@ -2300,14 +2299,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 self.plotTracePens.append([None])
                 continue
 
-            axis = DateAxis(self.epoch, orientation='bottom')
-            topAxis = DateAxis(self.epoch, orientation='top')
-            topAxis.setStyle(showValues=False)
-            rightAxis = LinkedAxis(orientation='right')
             vb = MagPyViewBox(self, plotIndex)
-            pi = MagPyPlotItem(viewBox = vb, axisItems={'bottom': axis, 
-                'left': LinkedAxis(orientation='left'), 'top': topAxis,
-                'right':rightAxis})
+            pi = MagPyPlotItem(epoch=self.epoch, viewBox=vb)
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
 
             pi.ctrl.logYCheck.toggled.connect(functools.partial(self.updateLogScaling, plotIndex))
