@@ -988,6 +988,10 @@ class PlotGrid(pg.GraphicsLayout):
         plt.getAxis('bottom').setStyle(showValues=True)
         for axis in ['left', 'bottom', 'top', 'right']:
             plt.getAxis(axis).setStyle(tickLength=-8)
+            plt.showAxis(axis)
+
+        for ax in ['top', 'right']:
+            plt.getAxis(ax).setStyle(showValues=False)
 
         # Update state information
         self.labels.insert(index, lbl)
@@ -1218,6 +1222,10 @@ class PlotGrid(pg.GraphicsLayout):
 
     def getPlotLabel(self, plotNum):
         return self.labels[plotNum]
+    
+    def setLabelFontSizes(self, val):
+        for lbl in self.labels:
+            lbl.setFontSize(val)
 
 class MainPlotGrid(PlotGrid):
     def __init__(self, window=None, *args, **kwargs):
@@ -1286,7 +1294,7 @@ class AdjustedLabel(pg.LabelItem):
         return minRect.width(), minRect.height()
 
 class StackedLabel(pg.GraphicsLayout):
-    def __init__(self, dstrs, colors, units=None, window=None, *args, **kwargs):
+    def __init__(self, dstrs, colors, units=None, html=False, *args, **kwargs):
         self.subLabels = []
         self.dstrs = dstrs
         self.colors = colors
@@ -1318,6 +1326,15 @@ class StackedLabel(pg.GraphicsLayout):
             rowNum += 1
 
         self.layout.setRowStretchFactor(rowNum, 1)
+
+    def getPens(self):
+        if self.units:
+            colors = self.colors[:-1]
+        else:
+            colors = self.colors
+
+        pens = [pg.mkPen(color) for color in colors]
+        return pens
 
     def addLabel(self, text=' ', row=None, col=None, rowspan=1, colspan=1, **kargs):
         text = AdjustedLabel(text, justify='center', **kargs)

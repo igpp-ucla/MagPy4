@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.2.28.0 (April 15, 2020)'
+VERSION = f'Version 1.3.0.0 (April 17, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -940,13 +940,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeMMSTools()
         self.tools['Curvature'] = Curvature(self)
         self.initGeneralSelect('Curvature', '#ff4242', self.tools['Curvature'].ui.timeEdit,
-            'Adjusting', self.showCurvature, self.updateCurvature, self.closeCurvature,
-            maxSteps=-1)
+            'Single', self.showCurvature, closeFunc=self.closeCurvature)
 
     def showCurvature(self):
         if self.tools['Curvature']:
             self.tools['Curvature'].show()
-            self.tools['Curvature'].updateCalculations()
+            self.tools['Curvature'].update()
 
     def closeCurvature(self):
         if self.tools['Curvature']:
@@ -2718,10 +2717,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def updateDynWave(self):
         if self.tools['DynWave']:
             self.tools['DynWave'].updateParameters()
-
-    def updateCurvature(self):
-        if self.tools['Curvature']:
-            self.tools['Curvature'].updateCalculations()
 
     def mouseDragPlots(self, ev):
         # Allow mouse dragging only in stats mode

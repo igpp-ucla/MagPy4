@@ -23,6 +23,7 @@ class MagPyPlotItem(pg.PlotItem):
             del kwargs['axisItems']
 
         pg.PlotItem.__init__(self, axisItems=axisItems, *args, **kwargs)
+        self.hideButtons()
 
     def isSpecialPlot(self):
         return False
@@ -421,6 +422,7 @@ class DateAxis(pg.AxisItem):
         self.tm = TimeManager(0, 0, self.epoch)
         pg.AxisItem.__init__(self, orientation, pen, linkView, None,
                             maxTickLength,showValues)
+        self.enableAutoSIPrefix(False)
 
         # Dictionary holding default increment values for ticks
         self.modeToDelta = {}

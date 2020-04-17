@@ -1135,110 +1135,65 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         # Sets progress bar / label as hidden or visible
         self.ui.progressBar.setVisible(b)
 
-class CurvatureUI(object):
+class CurvatureUI(BaseLayout):
     def setupUI(self, Frame, window):
-        Frame.setWindowTitle('Curvature Results')
-        Frame.resize(100, 100)
+        Frame.setWindowTitle('Curvature')
+        Frame.resize(1100, 700)
         layout = QtWidgets.QGridLayout(Frame)
 
-        # Set up curvature, radius, and error frames
-        self.vecs = []
-        curvFrame = self.setupMMSFrame('Curvature', self.vecs, VectorWidget, 5)
+        # Set up settings frame
+        plotFrame = self.setupPlotFrame(Frame)
+        layout.addWidget(plotFrame, 0, 0, 1, 1)
 
-        self.radii = []
-        radiiFrame = self.setupMMSFrame('Radius of Curvature', self.radii, NumLabel, 6)
+        # Set up graphics grid
+        self.glw = self.getGraphicsGrid()
+        layout.addWidget(self.gview, 1, 0, 1, 1)
 
-        self.errors = []
-        errFrame = self.setupMMSFrame('Estimated Error', self.errors, NumLabel, 6)
-
-        # Set up plot frame
-        plotFrame = self.setupPlotFrame()
-
-        gyroLt = self.setupGyroLt()
-        avgDistFrame = self.setupAvgDistFrame()
-
-        # Add everything to main layout
-        layout.addWidget(curvFrame, 0, 0, 2, 1)
-        layout.addWidget(radiiFrame, 0, 1, 1, 1)
-        layout.addWidget(errFrame, 1, 1, 1, 1)
-        layout.addWidget(plotFrame, 3, 0, 1, 3)
-        layout.addLayout(gyroLt, 0, 2, 2, 1)
-        layout.addWidget(avgDistFrame, 0, 3, 1, 1)
-
-        # Set up settings layout for time edit, progress bar, and checkbox
+        # Set up time edit layout
+        timeFrm = QtWidgets.QFrame()
+        timeFrm.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
+        timeLt = QtWidgets.QHBoxLayout(timeFrm)
+        timeLt.setContentsMargins(0, 0, 0, 0)
         self.timeEdit = TimeEdit(QtGui.QFont())
-        minDt, maxDt = window.getMinAndMaxDateTime()
-        self.timeEdit.setupMinMax((minDt, maxDt))
-        self.stayOnTopChk = QtWidgets.QCheckBox('Stay on top')
-        self.stayOnTopChk.setChecked(True)
+        timeLt.addWidget(self.timeEdit.start)
+        timeLt.addWidget(self.timeEdit.end)
+        timeLt.addStretch()
+    
+        # Hide and uncheck gyroradius buttons if missing data
+        etempKw = 'TempPer'
+        itempKw = etempKw + '_I'
+        tempKws = [etempKw, itempKw]
 
-        self.progBar = QtWidgets.QProgressBar()
-        self.progBar.setVisible(False)
+        for tempKw, boxText in zip(tempKws, ['Electron Gyroradius', 'Ion Gyroradius']):
+            if tempKw not in Frame.window.DATASTRINGS:
+                for box in self.checkboxes:
+                    if box.text() == boxText:
+                        box.setChecked(False)
+                        box.setVisible(False)
 
-        settingsLt = QtWidgets.QHBoxLayout()
-        for e in [self.timeEdit.start, self.timeEdit.end, self.progBar, self.stayOnTopChk]:
-            settingsLt.addWidget(e)
+        layout.addWidget(timeFrm, 2, 0, 1, 1)
 
-        layout.addLayout(settingsLt, 4, 0, 1, 2)
-
-    def setupMMSFrame(self, name, lst, widgetType, prec):
-        frame = QtWidgets.QGroupBox(name)
-        frameLt = QtWidgets.QGridLayout(frame)
-        frame.setAlignment(QtCore.Qt.AlignCenter)
-        frame.setContentsMargins(0, 18, 0, 2)
-
-        # Creates a separate groupbox frame for each element in main frame
-        for i in range(0, 1):
-            widget = widgetType(prec=prec)
-            frameLt.addWidget(widget, 0, 0, 1, 1, QtCore.Qt.AlignHCenter)
-            lst.append(widget)
-
-        return frame
-
-    def setupPlotFrame(self):
-        plotFrame = QtWidgets.QGroupBox('Generate plot variables: ')
+    def setupPlotFrame(self, Frame):
+        plotFrame = QtWidgets.QGroupBox('Selected Variables: ')
         plotLt = QtWidgets.QHBoxLayout(plotFrame)
 
+        # Set up variable checkboxes
         self.checkboxes = []
-        for name in ['Curv_X', 'Curv_Y', 'Curv_Z', 'Radius', 'RE_Gyro', 'RI_Gyro']:
+        for name in list(Frame.nameMap.keys()):
             chkbx = QtWidgets.QCheckBox(name)
             chkbx.setChecked(True)
             self.checkboxes.append(chkbx)
             plotLt.addWidget(chkbx)
 
-        self.applyBtn = QtWidgets.QPushButton('Apply')
-        plotLt.addWidget(self.applyBtn)
+        # Set up plot / add to main / create variables buttons
+        plotLt.addStretch()
+        self.updateBtn = QtWidgets.QPushButton(' Plot ')
+        self.addToMainBtn = QtWidgets.QPushButton(' Add To Main Window ')
+        self.saveVarBtn = QtWidgets.QPushButton(' Create Variables ')
+        for btn in [self.updateBtn, self.saveVarBtn, self.addToMainBtn,]:
+            plotLt.addWidget(btn)
+
         return plotFrame
-
-    def setupAvgDistFrame(self):
-        avgDistFrame = QtWidgets.QGroupBox('Avg Distance')
-        avgDistLt = QtWidgets.QGridLayout(avgDistFrame)
-        self.avgDistLbl = NumLabel(prec=4)
-        avgDistLt.addWidget(self.avgDistLbl, 0, 0, 1, 1, QtCore.Qt.AlignCenter)
-        avgDistFrame.setAlignment(QtCore.Qt.AlignCenter)
-        return avgDistFrame
-
-    def setupGyroLt(self):
-        # Set up average distance and gyro radius frames
-        infoLt = QtWidgets.QVBoxLayout()
-        alignCenter = QtCore.Qt.AlignCenter
-
-        electGyroFrame = QtWidgets.QGroupBox('Electron Gyro Radius')
-        gyroRadiusLt = QtWidgets.QGridLayout(electGyroFrame)
-        self.eGyroRadiusLbl = NumLabel(prec=4)
-        gyroRadiusLt.addWidget(self.eGyroRadiusLbl, 0, 0, 1, 1, alignCenter)
-
-        ionGyroFrame = QtWidgets.QGroupBox('Ion Gyro Radius')
-        gyroRadiusLt = QtWidgets.QGridLayout(ionGyroFrame)
-        self.iGyroRadiusLbl = NumLabel(prec=4)
-        gyroRadiusLt.addWidget(self.iGyroRadiusLbl, 0, 0, 1, 1, alignCenter)
-
-        # Center align frames and add to layout
-        for frm in [electGyroFrame, ionGyroFrame]:
-            frm.setAlignment(QtCore.Qt.AlignCenter)
-            infoLt.addWidget(frm)
-
-        return infoLt
 
 class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
     def __init__(self, window, parent=None):
@@ -1246,64 +1201,196 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         MMSTools.__init__(self, window)
         self.window = window
         self.ui = CurvatureUI()
-        self.ui.setupUI(self, window)
+        self.lastCalc = None
 
         # Constant used in gyro-radius calculations
         self.k_b = constants.physical_constants['Boltzmann constant in eV/K'][0]
-        self.eDta, self.iDta = None, None
 
-        self.ui.stayOnTopChk.clicked.connect(self.toggleWindowOnTop)
-        self.visibleWin = False
-        self.ui.applyBtn.clicked.connect(self.addcstmVars)
+        # Maps checkbox name to keywords
+        self.nameMap = {'Curvature':'Curvature', 'Radius Of Curvature':'Radius',
+            'Electron Gyroradius':'RE_Gyro', 'Ion Gyroradius':'RI_Gyro'}
+
+        # Maps variable to number of columns
+        self.colMap = {'Curvature':3, 'Radius':1, 'RE_Gyro':1, 'RI_Gyro':1}
+
+        # Maps keyword to units
+        self.units = {'Curvature':'km^-1', 'Radius':'km', 'RE_Gyro':'km', 
+            'RI_Gyro':'km'}
+
+        # Maps keyword to variable names
+        self.varNames = {'Curvature':['Curv_X', 'Curv_Y', 'Curv_Z'],
+            'Radius':['RC'], 'RE_Gyro':['RE_Gyro'], 'RI_Gyro':['RI_Gyro']}
+
+        # Set up plot stacked labels
+        self.labels = {kw:[kw] for kw in self.colMap}
+        self.labels['Curvature'] = [f'Curv<sub><b>{ax}<b></sub>' for ax in ['X','Y','Z']]
+        self.labels['Radius'] = ['RC']
+        self.labels['RE_Gyro'] = ['Electron Gyroradius']
+        self.labels['RI_Gyro'] = ['Ion Gyroradius']
+
+        self.ui.setupUI(self, window)
+        self.eDta, self.iDta = None, None
+        self.ui.updateBtn.clicked.connect(self.update)
+        self.ui.saveVarBtn.clicked.connect(self.createVariables)
+        self.ui.addToMainBtn.clicked.connect(self.addToMain)
 
     def closeEvent(self, ev):
         self.window.endGeneralSelect()
         self.close()
 
-    def toggleWindowOnTop(self, val):
-        # Keeps window on top of main window while user updates lines
-        self.setParent(self.window if val else None)
-        dialogFlag = QtCore.Qt.Dialog
-        if self.window.OS == 'posix':
-            dialogFlag = QtCore.Qt.Tool
-        flags = self.windowFlags()
-        flags = flags | dialogFlag if val else flags & ~dialogFlag
-        self.setWindowFlags(flags)
-        self.show()
+    def update(self):
+        # Get start/end indices and time array
+        edit = 0
+        arbDstr = self.getDstrsBySpcrft(1)[0]
+        sI, eI = self.window.calcDataIndicesFromLines(arbDstr, edit)
+        times = self.window.getTimes(arbDstr, edit)[0][sI:eI]
 
-    def updateCalculations(self):
-        if not self.visibleWin:
-            self.visibleWin = True
-            self.toggleWindowOnTop(self.ui.stayOnTopChk.isChecked())
+        # Calculate results over given interval
+        results = self.calcOverRng(sI, eI)
 
-        # Determine selected data index
-        tO, tE = self.window.getSelectionStartEndTimes()
-        dstr = self.getDstrsBySpcrft(1)[0] # Use any relevant dstr
-        times = self.window.getTimes(dstr, self.window.currentEdit)[0]
-        index = self.window.calcDataIndexByTime(times, tO)
+        # Plot time series
+        self.plot(results, times)
 
-        # Run calculations for given spacecraft at this index and update window
-        vec, radius, err = self.calculate(index)
-        self.ui.vecs[0].setVector(vec)
-        self.ui.radii[0].setText(radius)
-        self.ui.errors[0].setText(err)
+        # Store result
+        self.lastCalc = {'data':results, 'times':times}
 
-        # Calculate additional state information
-        avgDist = self.getAvgDist(index)
-        self.ui.avgDistLbl.setText(avgDist)
+    def plot(self, results, times, copy=False):
+        ''' Plots the calculated variables in the plot grid;
+            Returns plots if copy is True
+        '''
+        # Clear and generate a new plot grid
+        self.ui.glw.clear()
+        pltGrd = PlotGrid()
+        self.ui.glw.addItem(pltGrd, 0, 0, 1, 1)
 
-        eGyroRadius = self.getGyroRadius(index)
-        self.ui.eGyroRadiusLbl.setText(eGyroRadius)
+        # For each result
+        plotItems = {}
+        penIndex = 0
+        for key in results:
+            # Extract data
+            data = results[key]
 
-        iGyroRadius = self.getGyroRadius(index, 'Ion')
-        self.ui.iGyroRadiusLbl.setText(iGyroRadius)
+            # Get pens
+            ncols = self.colMap[key]
+            pens = self.window.pens[penIndex:penIndex + ncols]
+            colors = [pen.color().name() for pen in pens]
+            penIndex += ncols
+
+            # Build plot items and plot each trace
+            sublabels = self.labels[key]
+            units = self.units[key]
+            label = StackedLabel(sublabels, units=units, colors=colors)
+
+            plt = MagPyPlotItem(self.window.epoch)
+            for col in range(0, ncols):
+                plt.plot(times, data[:,col], pen=pens[col])
+            plt.setXRange(times[0], times[-1], 0.0)
+
+            # Add to grid if not just creating copy
+            if not copy:
+                pltGrd.addPlt(plt, label)
+            else:
+                plotItems[key] = (plt, label)
+
+            # Make sure radius of curvature is log scale
+            if key == 'Radius':
+                plt.setLogMode(x=False, y=True)
+
+        # Adjustments to label font size behavior
+        pltGrd.setLabelFontSizes(12)
+        pltGrd.lockLabelSizes()
+
+        return plotItems
+
+    def createVariables(self, sigHand=None, close=True):
+        ''' Creates new plot variables in main window '''
+        result = self.lastCalc
+        if result is None:
+            return
+
+        # Extract data from result
+        dataMap, times = result['data'], result['times']
+        timeInfo = (times, np.diff(times), times[1]-times[0])
+
+        # Create variables for each key in dataMap
+        for key in dataMap:
+            # Get variable info for this key
+            data = dataMap[key]
+            cols = self.colMap[key]
+            varNames = self.varNames[key]
+            units = self.units[key]
+
+            # Extract data and initalize new variable
+            for col in range(0, cols):
+                varDta = data[:,col]
+                name = varNames[col]
+                self.window.initNewVar(name, varDta, units=units, times=timeInfo)
+
+        if close:
+            self.close()
+
+    def addToMain(self):
+        ''' Adds selected plots/variables to main window's plot grid '''
+        result = self.lastCalc
+        if result is None:
+            return
+
+        # Generate the plot variables for the main window
+        self.createVariables(close=False)
+
+        # Create new plots from the previous results
+        data, times = result['data'], result['times']
+        plots = self.plot(data, times, copy=True)
+
+        # Add plots to main window
+        for key in data:
+            plt, lbl = plots[key]
+            pens = lbl.getPens()
+            varLst = [(dstr, 0) for dstr in self.varNames[key]]
+            self.window.addPlot(plt, lbl, varLst, pens=pens)
+
+        self.close()
+
+    def calcOverRng(self, iO, iE):
+        ''' Calculates the selected variables over a given index range '''
+        # Get the array sizes and number of points 
+        iO, iE = min(iO, iE), max(iO, iE)
+        n = iE - iO
+
+        # Get the selected keywords and initalized arrays
+        keys = [box.text() for box in self.ui.checkboxes if box.isChecked()]
+        keys = [self.nameMap[key] for key in keys] # Map to internal keywords
+        results = {key:np.empty((n, self.colMap[key])) for key in keys}
+
+        # Switch to boolean values to speed things up
+        baseCalc = 'Curvature' in keys or 'Radius' in keys
+        radiusCalc = 'Radius' in keys
+        egyroCalc = 'RE_Gyro' in keys
+        igyroCalc = 'RI_Gyro' in keys
+
+        # Calculate the values
+        for i in range(iO, iE):
+            refIndex = i - iO
+            if baseCalc:
+                curv, rc = self.calculate(i)
+                results['Curvature'][refIndex] = curv
+                if radiusCalc:
+                    results['Radius'][refIndex] = rc
+
+            if egyroCalc:
+                results['RE_Gyro'][refIndex] = self.getGyroRadius(i, 'Electron')
+
+            if igyroCalc:
+                results['RI_Gyro'][refIndex] = self.getGyroRadius(i, 'Ion')
+
+        # Return a dictionary of the results
+        return results
 
     def calculate(self, index):
-        # Calculates curvature, radius, & error for given spcrft at given index
+        # Calculates curvature, radius for given spcrft at given index
         vec = self.calcCurv(index)
         radius = self.getCurvRadius(vec)
-        err = self.estimateError(index, radius)
-        return vec, radius, err
+        return vec, radius
 
     def getCurvRadius(self, curv):
         radius = 1 / np.sqrt(np.dot(curv, curv))
@@ -1453,100 +1540,6 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
 
         curvature = np.matmul(G, bUnit)
         return curvature
-
-    def addcstmVars(self):
-        dstrs = ['Curv_X', 'Curv_Y', 'Curv_Z'] # Prefixes for variable names
-
-        # Determine the number of data points to use
-        arbDstr = self.getDstrsBySpcrft(1)[0]
-        dta = self.window.getData(arbDstr)
-        timeInfo = self.window.getTimes(arbDstr, 0)
-        dtaLen = len(dta)
-
-        # Prepare progress bar for updating
-        self.ui.progBar.setVisible(True)
-        stepSize = 100 / dtaLen
-        progVal = 0
-
-        plotRadii = self.ui.checkboxes[len(dstrs)].isChecked()
-        plotEGyro = self.ui.checkboxes[len(dstrs)+1].isChecked()
-        plotIGyro = self.ui.checkboxes[len(dstrs)+2].isChecked()
-        plotCurves = True in [self.ui.checkboxes[i].isChecked() for i in [0,1,2]]
-
-        regions = self.window.currSelect.regions
-        refDstr = self.getDstrsBySpcrft(1)[0]
-        indices = []
-        if len(regions) == 1 and regions[0].isLine():
-            indices = [(0, dtaLen)] # Full data set if no region selected
-        elif len(regions) >= 1:
-            # Get indices for each selected region
-            indices = []
-            for regNum in range(0, len(regions)):
-                indexPair = self.window.calcDataIndicesFromLines(refDstr, 0, regNum)
-                indices.append(indexPair)
-
-            # Set up new times array/object from selected regions
-            oldTimes, oldRes, avgRes = self.window.getTimes(refDstr, 0)
-            times = []
-            numIndices = 0
-            for a, b in indices:
-                times.extend(self.window.getTimes(refDstr, 0)[0][a:b])
-                numIndices += (b-a)
-            times = np.array(times)
-            diff = np.diff(times)
-            diff = np.concatenate([diff, [times[-1]]])
-            timeInfo = (times, diff, avgRes)
-
-            # Adjust the step size based on the number of points selected
-            stepSize = 100 / numIndices
-
-        # Create a mask of the selected indices to use to extract data from
-        # results arrays
-        mask = [np.arange(a,b) for (a,b) in indices]
-        mask = np.concatenate(mask)
-    
-        # Calculate curvatures and radii if checked
-        curvatures = np.zeros((3, dtaLen))
-        radii = np.zeros(dtaLen)
-        eGyroRadii = np.zeros(dtaLen)
-        iGyroRadii = np.zeros(dtaLen)
-        for a, b in indices: # Calculate individually for each region
-            for index in range(a, b):
-                if plotCurves or plotRadii:
-                    vec, radius, err = self.calculate(index)
-                    curvatures[:,index] = vec
-                if plotRadii:
-                    radii[index] = radius
-                if plotEGyro:
-                    eGyroRadii[index] = self.getGyroRadius(index, 'Electron')
-                if plotIGyro:
-                    iGyroRadii[index] = self.getGyroRadius(index, 'Ion')
-
-                # Update progress bar
-                progVal += stepSize
-                self.ui.progBar.setValue(progVal)
-
-        curvatures = np.array([curvatures[row][mask] for row in range(0, 3)])
-        radii = radii[mask]
-        eGyroRadii = eGyroRadii[mask]
-        iGyroRadii = iGyroRadii[mask]
-
-        # Create new variables
-        i = 0
-        for dstr in dstrs:
-            if self.ui.checkboxes[i].isChecked():
-                self.window.initNewVar(dstr, curvatures[i], '1/km', times=timeInfo)
-            i += 1
-        if plotRadii:
-            self.window.initNewVar('RC', radii, 'km', times=timeInfo)
-        # Add in gyro radius calculations if valid
-        if plotEGyro and self.eDta != []:
-            self.window.initNewVar('RE_Gyro', eGyroRadii, 'km', times=timeInfo)
-        if plotIGyro and self.iDta != []:
-            self.window.initNewVar('RI_Gyro', iGyroRadii, 'km', times=timeInfo)
-
-        # Hide progress bar after work is done
-        self.ui.progBar.setVisible(False)
 
 class ParticlePlotItem(SpectrogramPlotItem):
     def __init__(self, epoch, logMode=False):

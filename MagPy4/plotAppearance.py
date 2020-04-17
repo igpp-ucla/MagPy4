@@ -781,8 +781,7 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
     def changeAxisLblSize(self, val):
         # Set stacked label sizes for main window plot grid and lock label size
         if self.inMainWindow and self.window.pltGrd:
-            for lbl in self.window.pltGrd.labels:
-                lbl.setFontSize(val)
+            self.window.pltGrd.setLabelFontSizes(val)
             self.window.pltGrd.lockLabelSizes()
             return
 
