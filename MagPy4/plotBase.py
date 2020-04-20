@@ -328,6 +328,10 @@ class MagPyAxisItem(pg.AxisItem):
             if len(strings) == 0:
                 continue
 
+            spacing, values = tickLevels[i]
+            if self.logMode and spacing is None:
+                continue
+
             ## ignore strings belonging to ticks that were previously ignored
             for j in range(len(strings)):
                 if tickPositions[i][j] is None:

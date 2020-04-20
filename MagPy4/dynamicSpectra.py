@@ -735,6 +735,7 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
             self.lineInfoHist = []
             self.addSavedLine()
             self.savedLineInfo = None
+
     def setupPlotLayout(self, plt, plotType, varPair, times, logScaling):
         # Create gradient legend and add it to the graphics layout
         gradLegend = plt.getGradLegend(logMode=False)

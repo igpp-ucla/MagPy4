@@ -1005,7 +1005,7 @@ class SimpleColorPlot(MagPyPlotItem):
 
         MagPyPlotItem.__init__(self, epoch=epoch, viewBox=vb)
         if logYScale:
-            self.getAxis('left').setLogMode(True)
+            self.setLogMode(x=False, y=True)
 
         # Additional plot adjustments to tick lengths, axis z-values, etc.
         self.plotSetup()
