@@ -852,44 +852,47 @@ class PlotGrid(pg.GraphicsLayout):
             pg.GraphicsLayout.resizeEvent(self, event)
             return
 
-        # Fill in factors w/ 1's to make sure # of factors = # of plots
-        while len(self.factors) < self.count():
-            self.factors.append(1)
+        try:
+            # Fill in factors w/ 1's to make sure # of factors = # of plots
+            while len(self.factors) < self.count():
+                self.factors.append(1)
 
-        # Set vertical stretch factors for each row
-        for row in range(self.startRow, self.startRow + self.count()):
-            self.layout.setRowStretchFactor(row, self.factors[row-self.startRow])
+            # Set vertical stretch factors for each row
+            for row in range(self.startRow, self.startRow + self.count()):
+                self.layout.setRowStretchFactor(row, self.factors[row-self.startRow])
 
-        # Get the plot grid height / width
-        newSize = event.newSize() if event is not None else self.boundingRect()
-        width, height = newSize.width(), newSize.height()
+            # Get the plot grid height / width
+            newSize = event.newSize() if event is not None else self.boundingRect()
+            width, height = newSize.width(), newSize.height()
 
-        # Estimate height for each plot
-        spacingTotal = self.layout.verticalSpacing() * (len(self.plotItems) - 1)
-        dateHeight = self.plotItems[-1].getAxis('bottom').height()
-        if self.labelSetGrd:
-            labelGrdHt = sum([lblSet.height() for lblSet in self.labelSetGrd.labelSets])
-        else:
-            labelGrdHt = 0
-        height = height - dateHeight - labelGrdHt - spacingTotal
-        numPlots = len(self.plotItems)
-        totalFactors = sum(self.factors)
-        plotRatios = [self.factors[i] / totalFactors for i in range(0, numPlots)]
-        plotHeights = [height * ratio for ratio in plotRatios]
+            # Estimate height for each plot
+            spacingTotal = self.layout.verticalSpacing() * (len(self.plotItems) - 1)
+            dateHeight = self.plotItems[-1].getAxis('bottom').height()
+            if self.labelSetGrd:
+                labelGrdHt = sum([lblSet.height() for lblSet in self.labelSetGrd.labelSets])
+            else:
+                labelGrdHt = 0
+            height = height - dateHeight - labelGrdHt - spacingTotal
+            numPlots = len(self.plotItems)
+            totalFactors = sum(self.factors)
+            plotRatios = [self.factors[i] / totalFactors for i in range(0, numPlots)]
+            plotHeights = [height * ratio for ratio in plotRatios]
 
-        # Set preferred row heights so they are all even
-        for i in range(self.startRow, self.startRow + self.count()):
-            pltHeight = plotHeights[i - self.startRow]
-            self.layout.setRowPreferredHeight(i, pltHeight)
+            # Set preferred row heights so they are all even
+            for i in range(self.startRow, self.startRow + self.count()):
+                pltHeight = plotHeights[i - self.startRow]
+                self.layout.setRowPreferredHeight(i, pltHeight)
 
-        # Make labels approx 1/15th of plot width
-        lblWidth = max(int(width)/15, 50)
+            # Make labels approx 1/15th of plot width
+            lblWidth = max(int(width)/15, 50)
 
-        # Resize plot labels + grad legend labels
-        self.resizeLabels(lblWidth, plotHeights)
+            # Resize plot labels + grad legend labels
+            self.resizeLabels(lblWidth, plotHeights)
 
-        # Adjust axis widths
-        self.adjustPlotWidths()
+            # Adjust axis widths
+            self.adjustPlotWidths()
+        except:
+            return
 
     def resizeLabels(self, lblWidth, plotHeights):
         # Find the smallest estimated font size among all the left plot labels
