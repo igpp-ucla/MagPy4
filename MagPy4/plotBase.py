@@ -4,6 +4,7 @@ import numpy as np
 from .timeManager import TimeManager
 from datetime import datetime, timedelta
 from FF_Time import FFTIME
+from bisect import bisect_left, bisect_right
 
 class MagPyPlotItem(pg.PlotItem):
     def __init__(self, epoch=None, *args, **kwargs):
