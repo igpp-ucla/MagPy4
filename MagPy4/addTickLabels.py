@@ -122,7 +122,9 @@ class invisAxis(DateAxis):
     def __init__(self, window, dstr, orientation):
         self.window = window
         self.dstr = dstr
+        self.matchedTicks = None
         DateAxis.__init__(self, window.epoch, orientation)
+        self.setStyle(textFillLimits=[(0, 1.1)])
         self.setStyle(tickTextOffset=0)
         self.setStyle(tickLength=0)
 
@@ -131,6 +133,9 @@ class invisAxis(DateAxis):
         strings = []
         data = self.window.getData(self.dstr, self.window.currentEdit)
         for index in indices:
+            if index is None:
+                strings.append('')
+                continue
             val = data[index]
             txt = str(np.round(val, decimals=4))
             strings.append(txt)
@@ -158,8 +163,21 @@ class invisAxis(DateAxis):
         times = self.window.getTimes(dstr, 0)[0]
         for tv in tickValues:
             curIndex = bisect.bisect(times, tv + self.window.tickOffset)
-            dataIndices.append(curIndex)
+            if curIndex >= len(times):
+                dataIndices.append(None)
+            else:
+                dataIndices.append(curIndex)
         return dataIndices
+
+    def matchTicks(self, ticks):
+        levels = []
+        if ticks != self.matchedTicks:
+            for spacing, values in ticks:
+                rowStrings = self.tickStrings(values, 0, spacing)
+                rowLevels = [(val, s) for val, s in zip(values, rowStrings)]
+                levels.append(rowLevels)
+            self.setTicks(levels)
+        self.matchedTicks = ticks
 
 class LabelSet(pg.PlotItem):
     # PlotItem subclass used to draw additional tick labels to match main plot's ticks
@@ -206,6 +224,9 @@ class LabelSet(pg.PlotItem):
         axis.update()
         axis.setFixedHeight(rect.height())
 
+    def setTickLevels(self, ticks):
+        self.getAxis('top').matchTicks(ticks)
+
 class LabelSetGrid(pg.GraphicsLayout):
     # GraphicsLayout used to easily synchronize all resize events and tick
     # value updates across label sets, as well as adding new label sets
@@ -234,6 +255,10 @@ class LabelSetGrid(pg.GraphicsLayout):
             if diff is not None:
                 labelSet.setCstmTickSpacing(diff)
     
+    def setTickLevels(self, ticks):
+        for lblSt in self.labelSets:
+            lblSt.setTickLevels(ticks)
+
     def adjustWidths(self, width):
         # Used by pltGrd to sync labelSet widths w/ plot widths
         for lblSt in self.labelSets:

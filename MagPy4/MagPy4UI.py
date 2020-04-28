@@ -774,11 +774,15 @@ class PlotGrid(pg.GraphicsLayout):
         # Hide tick values for all other plots
         for plt in self.plotItems[:-1]:
             self.hideTickValues(plt)
+            ba = plt.getAxis('bottom')
+            if ba.receivers(ba.ticksChanged) > 0:
+                ba.ticksChanged.disconnect(self.updateLabelSets)
 
         # Set time label for bottom axis
         bottomAxis = self.plotItems[-1].getAxis('bottom')
         bottomAxis.setStyle(showValues=True)
         bottomAxis.setLabel(bottomAxis.getDefaultLabel())
+        bottomAxis.ticksChanged.connect(self.updateLabelSets)
 
         # If label sets are enabled on bottom, set the text for the
         # spacer/label item next to the axis, and hide the original
@@ -798,6 +802,10 @@ class PlotGrid(pg.GraphicsLayout):
         botmHt = bottomAxis.maximumHeight()
         self.layout.setRowMaximumHeight(self.startRow+self.numPlots, botmHt)
         self.layout.setRowMinimumHeight(self.startRow+self.numPlots, botmHt)
+    
+    def updateLabelSets(self, ticks):
+        if self.labelSetGrd:
+            self.labelSetGrd.setTickLevels(ticks)
 
     def getSideTimeLabel(self):
         # If label sets are enabled on bottom axis, the label item
@@ -1141,11 +1149,9 @@ class PlotGrid(pg.GraphicsLayout):
         self.moveLabelSets()
         self.adjustPlotWidths()
 
-        # Initialize tick label locations/strings
-        ticks = self.plotItems[0].getAxis('bottom')._tickLevels
-        if ticks == None:
-            return
-        self.labelSetGrd.updateTicks(ticks)
+        ba = self.plotItems[-1].getAxis('bottom')
+        if ba.levels is not None:
+            self.updateLabelSets(ba.levels)
 
     def setLabelSetFontSize(self, fontSize):
         # Set font size for both label and axis item
