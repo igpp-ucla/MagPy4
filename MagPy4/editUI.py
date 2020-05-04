@@ -102,6 +102,7 @@ class EditUI(object):
         self.minVarButton = QtGui.QPushButton('Minimum Variance...')
         self.minVarButton.setToolTip('Build a rotation matrix by selecting a minimum variance window')
         builderLayout.addWidget(self.minVarButton)
+
         for btn in [self.customRotButton, self.minVarButton]:
             btn.setFixedWidth(175)
 
@@ -125,8 +126,14 @@ class EditUI(object):
         if window.insightMode:
             miscLayout.addWidget(self.smoothBtn)
 
-        for btn in [self.filterButton, self.calcBtn, self.smoothBtn]:
-            btn.setFixedWidth(100)
+        # Data removal tool setup
+        self.dataFlagBtn = QtGui.QPushButton('Remove Data...')
+        self.dataFlagBtn.setToolTip('Remove bad data or replace with flag values')
+        if len(window.FIDs) == 1:
+            miscLayout.addWidget(self.dataFlagBtn)
+
+        for btn in [self.filterButton, self.calcBtn, self.smoothBtn, self.dataFlagBtn]:
+            btn.setFixedWidth(150)
 
         leftLayout.addWidget(builderFrame)
         leftLayout.addWidget(miscFrame)
@@ -155,7 +162,6 @@ class EditUI(object):
         leftButtons.addStretch()
         histLayout.addLayout(leftButtons,1)
         self.history = QtWidgets.QListWidget()
-        # self.history.setEditTriggers(QtWidgets.QAbstractItemView.SelectedClicked)
         histLayout.addWidget(self.history,2)
 
         rightLayout.addWidget(histFrame)

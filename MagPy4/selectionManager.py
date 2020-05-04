@@ -207,6 +207,7 @@ class GeneralSelect(object):
         # Removes all regions from plot items
         for region in self.regions:
             region.removeRegionItems()
+        self.regions = []
 
     def addRegion(self, x, y=None, update=True):
         # Adds a new region/line to all plots and connects it to the timeEdit

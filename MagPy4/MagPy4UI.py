@@ -11,6 +11,7 @@ import functools
 from .pyqtgraphExtensions import GridGraphicsLayout,BLabelItem
 from . import getRelPath
 from .mth import Mth
+import re
 
 class MagPy4UI(object):
 
@@ -45,6 +46,11 @@ class MagPy4UI(object):
         self.actionExportFF = QtWidgets.QAction(window)
         self.actionExportFF.setText('Export Flat File...')
         self.actionExportFF.setStatusTip('Exports current flat file with edited data')
+
+        self.actionExportDataFile = QtWidgets.QAction(window)
+        self.actionExportDataFile.setText('Export Data File...')
+        self.actionExportDataFile.setStatusTip('Exports current data in original file format')
+        self.actionExportDataFile.setVisible(False)
 
         self.actionExit = QtWidgets.QAction(window)
         self.actionExit.setText('E&xit')
@@ -189,10 +195,12 @@ class MagPy4UI(object):
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.actionOpenASCII)
         self.fileMenu.addSeparator()
-        self.fileMenu.addAction(self.switchMode)
-        self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.actionOpenWs)
         self.fileMenu.addAction(self.actionSaveWs)
+        self.fileMenu.addSeparator()
+        self.fileMenu.addAction(self.actionExportDataFile)
+        self.fileMenu.addSeparator()
+        self.fileMenu.addAction(self.switchMode)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.actionExit)
 
@@ -562,6 +570,42 @@ class TimeEdit():
         d0 = self.start.dateTime().toString(form)
         d1 = self.end.dateTime().toString(form)
         return d0,d1    
+
+class ScientificSpinBox(QtWidgets.QDoubleSpinBox):
+    def validate(self, txt, pos):
+        # Checks if string matches scientific notation format or is a regular num
+        state = 1
+        if re.fullmatch('\d*\.*\d*', txt):
+            state = 2
+        elif re.fullmatch('\d*.*\d*e\+\d+', txt) is not None:
+            state = 2
+        elif re.match('\d+.*\d*e', txt) or re.match('\d+.*\d*e\+', txt):
+            state = 1
+        else:
+            state = 0
+
+        # Case where prefix is set to '10^'
+        if self.prefix() == '10^':
+            if re.match('10\^\d*\.*\d*', txt) or re.match('10\^-\d*\.*\d*', txt):
+                state = 2
+            elif re.match('10\^\d*\.', txt) or re.match('10\^-\d*\.', txt):
+                state = 1
+
+        return (state, txt, pos)
+
+    def textFromValue(self, value):
+        if value >= 10000:
+            return np.format_float_scientific(value, precision=4, trim='-', 
+                pad_left=False, sign=False)
+        else:
+            return str(value)
+
+    def valueFromText(self, text):
+        if '10^' in text:
+            text = text.split('^')[1]
+        if text == '':
+            return 0
+        return float(text)
 
 class MatrixWidget(QtWidgets.QWidget):
     def __init__(self, type='labels', prec=None, parent=None):

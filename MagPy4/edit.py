@@ -1,7 +1,8 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .MagPy4UI import StackedLabel
+import pyqtgraph as pg
+from .MagPy4UI import StackedLabel, TimeEdit, ScientificSpinBox
 
 #import pyqtgraph as pg
 import numpy as np
@@ -76,6 +77,9 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.simpCalc = None
         self.ui.calcBtn.clicked.connect(self.openSimpleCalc)
 
+        self.dataFlagTool = None
+        self.ui.dataFlagBtn.clicked.connect(self.openDataFlagTool)
+
         self.smoothTool = None
         if window.insightMode:
             self.ui.smoothBtn.clicked.connect(window.startSmoothing)
@@ -87,7 +91,8 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.closeCustomRot()
         self.closeMinVar()
         self.closeSimpleCalc()
-    
+        self.closeDataFlagTool()
+
     def getEditHistory(self):
         hist = []
         for i in range(len(self.history)):
@@ -100,6 +105,23 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.closeMinVar()
         self.closeFilter()
         self.closeSimpleCalc()
+
+    def openDataFlagTool(self):
+        self.closeDataFlagTool()
+
+        # Minimize this window but keep running
+        self.showMinimized()
+
+        # Open data flag tool and start general select
+        self.dataFlagTool = DataFlagTool(self.window, self)
+        self.window.initGeneralSelect('Data Removal', '#2c1e45', 
+            self.dataFlagTool.timeEdit, 'Multi', maxSteps=-1)
+        self.dataFlagTool.show()
+
+    def closeDataFlagTool(self):
+        if self.dataFlagTool:
+            self.dataFlagTool.close()
+            self.dataFlagTool = None
 
     def openCustomRot(self):
         self.closeSubWindows()
@@ -183,6 +205,11 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         for dstr,datas in self.window.DATADICT.items():
             del datas[curRow]
+            # Remove any edited times corresponding to this edit
+            if dstr in self.window.EDITEDTIMES:
+                timeDict = self.window.EDITEDTIMES[dstr]
+                if curRow in timeDict:
+                    del timeDict[curRow]
 
         self.ui.history.setCurrentRow(curRow - 1) # change before take item otherwise onHistory gets called with wrong row
         self.ui.history.takeItem(curRow)
@@ -208,6 +235,8 @@ class Edit(QtWidgets.QFrame, EditUI):
             
             self.window.pltGrd.setPlotLabel(newLabel, plotNum)
             plotNum += 1
+
+        self.window.pltGrd.resizeEvent(None)
 
     def onHistoryChanged(self):
         row = self.ui.history.currentRow()
@@ -449,3 +478,95 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         self.edit.apply(eigen, labelText, 'MinVar', 'L')
         #self.edit.closeMinVar()
         PyQtUtils.moveToFront(self.edit)
+
+class DataFlagTool(QtWidgets.QFrame):
+    def __init__(self, window, editFrame):
+        self.window = window
+        self.editFrame = editFrame
+        QtWidgets.QFrame.__init__(self)
+        self.setupUI(window)
+        self.applyBtn.clicked.connect(self.flagData)
+        self.toggleWindowOnTop(True)
+
+    def toggleWindowOnTop(self, val):
+        self.setParent(self.window if val else None)
+        dialogFlag = QtCore.Qt.Dialog
+        if self.window.OS == 'posix':
+            dialogFlag = QtCore.Qt.Tool
+        flags = self.windowFlags()
+        flags = flags | dialogFlag if val else flags & ~dialogFlag
+        self.setWindowFlags(flags)
+        self.show()
+
+    def setupUI(self, window):
+        layout = QtWidgets.QGridLayout(self)
+        self.setWindowTitle('Data Removal')
+
+        # Set up time edit
+        timeLt = QtWidgets.QHBoxLayout()
+        self.timeEdit = TimeEdit(QtGui.QFont())
+        timeLt.addWidget(self.timeEdit.start)
+        timeLt.addWidget(self.timeEdit.end)
+        self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
+
+        # Set up operation radio buttons
+        optionsFrame = QtWidgets.QGroupBox('Operation:')
+        optionsLt = QtWidgets.QHBoxLayout(optionsFrame)
+        optionsLt.setAlignment(QtCore.Qt.AlignTop)
+
+        self.flagCheck = QtWidgets.QRadioButton('Fill with flag:')
+        self.flagBox = ScientificSpinBox()
+        self.flagBox.setMinimum(-1e32)
+        self.flagBox.setMaximum(1e32)
+        self.flagBox.setValue(1e32)
+
+        self.deleteCheck = QtWidgets.QRadioButton('Remove data')
+        self.deleteCheck.setChecked(True)
+
+        # Add buttons to layout
+        for elem in [self.deleteCheck, self.flagCheck, self.flagBox]:
+            optionsLt.addWidget(elem)
+        optionsLt.addStretch()
+        optionsLt.setSpacing(10)
+
+        # Apply button and general layout structure
+        self.applyBtn = QtWidgets.QPushButton('Apply')
+        layout.addLayout(timeLt, 1, 0, 1, 1)
+        layout.addWidget(optionsFrame, 0, 0, 1, 2)
+        layout.addWidget(self.applyBtn, 1, 1, 1, 1)
+
+    def flagData(self):
+        if len(self.window.FIDs) > 1:
+            return
+
+        # Get flag, use None if removing data completely
+        if self.flagCheck.isChecked():
+            flag = self.flagBox.value()
+        else:
+            flag = None
+
+        # Call window function to flag or remove data
+        regionTicks = self.window.flagData(flag)
+
+        # Convert region ticks to timestamps
+        mapTick = lambda t : self.window.getTimestampFromTick(t)
+        timestamps = [(mapTick(t0), mapTick(t1)) for t0, t1 in regionTicks]
+
+        # Add to edit history
+        name = 'Removal'
+        mat = np.eye(3)
+        notes = 'Removed data at:\n'
+        notes += '\n'.join([f'{ts[0]}, {ts[1]}' for ts in timestamps])
+        self.editFrame.addHistory(mat, notes, name)
+
+        # Close selected regions
+        self.window.currSelect.closeAllRegions()
+    
+    def closeEvent(self, ev):
+        # If edit window is still minimized, close it
+        if self.editFrame.isMinimized():
+            self.editFrame.close()
+
+        # End general select and close
+        self.window.endGeneralSelect()
+        self.close()

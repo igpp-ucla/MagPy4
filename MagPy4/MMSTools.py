@@ -1,6 +1,6 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, PlotGrid, StackedAxisLabel
+from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, PlotGrid, StackedAxisLabel, ScientificSpinBox
 
 from FF_Time import FFTIME, leapFile
 from .dataDisplay import DataDisplay, UTCQDate
@@ -1560,40 +1560,6 @@ class PitchAnglePlotItem(ParticlePlotItem):
     def plotSetup(self):
         ParticlePlotItem.plotSetup(self)
         self.getAxis('left').setCstmTickSpacing(30)
-
-class ScientificSpinBox(QtWidgets.QDoubleSpinBox):
-    def validate(self, txt, pos):
-        # Checks if string matches scientific notation format or is a regular num
-        state = 1
-        if re.fullmatch('\d*\.*\d*', txt):
-            state = 2
-        elif re.fullmatch('\d*.*\d*e\+\d+', txt) is not None:
-            state = 2
-        elif re.match('\d+.*\d*e', txt) or re.match('\d+.*\d*e\+', txt):
-            state = 1
-        else:
-            state = 0
-
-        # Case where prefix is set to '10^'
-        if self.prefix() == '10^':
-            if re.match('10\^\d*\.*\d*', txt) or re.match('10\^-\d*\.*\d*', txt):
-                state = 2
-            elif re.match('10\^\d*\.', txt) or re.match('10\^-\d*\.', txt):
-                state = 1
-
-        return (state, txt, pos)
-
-    def textFromValue(self, value):
-        if value >= 10000:
-            return np.format_float_scientific(value, precision=4, trim='-', 
-                pad_left=False, sign=False)
-        else:
-            return str(value)
-
-    def valueFromText(self, text):
-        if '10^' in text:
-            text = text.split('^')[1]
-        return float(text)
 
 class ElectronPitchAngleUI(BaseLayout):
     def setupUI(self, Frame, window):

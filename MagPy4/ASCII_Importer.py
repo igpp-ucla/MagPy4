@@ -397,8 +397,92 @@ class Asc_Importer(QtWidgets.QDialog, Asc_UI):
         ancInfo['Labels'] = labels
         ancInfo['Epoch'] = epoch
         ancInfo['StateInfo'] = self.getStateInfo()
+        ancInfo['TimeMode'] = self.getTimeMode()
         fileType = self.getFileFormat()
         fd = TextFD(self.filename, fileType, ancInfo)
 
         errFlag = self.getErrorFlag()
         return (times, data, (labels, units, epoch, errFlag, fd))
+    
+class ASC_Output():
+    '''
+        Helps write out files in ASCII format
+    '''
+    def __init__(self, filename, records, header, secondsFmt=True, fileFmt='CSV', cols=[], epoch=None):
+        self.filename = filename
+        self.records = records
+        self.header = header
+        self.fileFmt = fileFmt
+        self.secondsFmt = secondsFmt
+        self.cols = cols
+        if self.cols is not None:
+            self.cols[-1] -= 1
+        self.epoch = epoch
+
+    def fmtToUTC(self, tick):
+        ''' Maps tick to UTC timestamp w/ T in middle '''
+        ts = FFTIME(tick, Epoch=self.epoch).UTC
+        year, doy, month, day, times = ts.split(' ')
+        month = datetime.strptime(month, '%b').strftime('%m')
+
+        date = '-'.join([year, month, day])
+        newTs = f'{date}T{times}'
+
+        return newTs
+
+    def formatSep(self, line, sep=','):
+        ''' Formats records separated by commas or tabs '''
+        recordFmts = ['{:.5f}']*len(line)
+        record = [fmt.format(val) for fmt, val in zip(recordFmts, line)]
+
+        # Replace ticks w/ UTC timestamp
+        if not self.secondsFmt:
+            record[0] = self.fmtToUTC(line[0])
+        else:
+            record[0] = '{:.5f}'.format(line[0])
+
+        return sep.join(record)
+
+    def formatCol(self, line):
+        ''' Formats records separated into fixed-length columns '''
+        # Determine whether to align left or right
+        if self.header[0] == ' ':
+            alignStr = '>'
+        else:
+            alignStr = ''
+
+        # Create formatting string based on alignment and column spacing
+        record = []
+        prevCol = 0
+        for col, val in zip(self.cols[1:], line):
+            diff = col - prevCol
+            recordFmt = f'{{:{alignStr}{diff}.5f}}'
+            record.append(recordFmt.format(val))
+            prevCol = col
+
+        # Replace ticks w/ UTC timestamp
+        if not self.secondsFmt:
+            record[0] = self.fmtToUTC(line[0])
+
+        return ''.join(record)
+
+    def write(self):
+        '''
+            Formats and writes out ASCII file
+        '''
+        # Open file and write header
+        fd = open(self.filename, 'w')
+        fd.write(self.header)
+
+        # Format records
+        if self.fileFmt == 'CSV':
+            records = [self.formatSep(line) for line in self.records]
+        elif self.fileFmt == 'TSV':
+            records = [self.formatSep(line, '\t') for line in self.records]
+        else:
+            records = [self.formatCol(line) for line in self.records]
+
+        # Write lines to file and close
+        recordTxt = '\n'.join(records)
+        fd.write(recordTxt)
+        fd.close()

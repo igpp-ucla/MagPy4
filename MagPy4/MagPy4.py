@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.3.3.0 (April 28, 2020)'
+VERSION = f'Version 1.3.4.0 (May 4, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -44,7 +44,7 @@ from . import mms_orbit
 from . import mms_formation
 from .dynBase import SimpleColorPlot
 from .detrendWin import DetrendWindow
-from .ASCII_Importer import Asc_Importer
+from .ASCII_Importer import Asc_Importer, ASC_Output
 from .dynamicSpectra import DynamicSpectra, DynamicCohPha
 from .waveAnalysis import DynamicWave
 from .trajectory import TrajectoryAnalysis
@@ -117,6 +117,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True, None))
         self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False, None))
         self.ui.actionOpenASCII.triggered.connect(functools.partial(self.openFileDialog, False, True, None))
+
+        self.ui.actionExportDataFile.triggered.connect(self.exportFile)
 
         self.ui.actionExportFF.triggered.connect(self.exportFlatFile)
         self.ui.actionExit.triggered.connect(self.close)
@@ -1255,7 +1257,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.smoothing.close()
             self.smoothing = None
             self.endGeneralSelect()
-
+    
     def openHelp(self):
         self.closeHelp()
         self.helpWindow = HelpWindow(self)
@@ -1422,7 +1424,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.setWindowTitle('MarsPy' if self.insightMode else 'MagPy4')
             self.updateSelectionMenu()
 
+        # Update menu items
         self.enableToolsAndOptionsMenus(True)
+
+        # Show export file option only if single file is open
+        self.ui.actionExportDataFile.setVisible((len(self.FIDs) == 1))
 
         # Close sub-windows, re-initialize variables, and replot defaults
         self.closeAllSubWindows()
@@ -1571,6 +1577,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.UNITDICT = {} # dict mapping dstrs to unit strings
         self.TIMES = [] # list of time informations (3 part lists) [time series, resolutions, average res]
         self.TIMEINDEX = {} # dict mapping dstrs to index into times list
+        self.EDITEDTIMES = {}
 
         self.minTime = None # minimum time tick out of all loaded times
         self.maxTime = None # maximum
@@ -2530,7 +2537,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.updateYRange()
 
     def getTimes(self, dstr, editNumber):
-        times,resolutions,avgRes = self.TIMES[self.TIMEINDEX[dstr]]
+        times, resolutions, avgRes = self.TIMES[self.TIMEINDEX[dstr]]
+
+        # Check if data has been edited
+        if dstr in self.EDITEDTIMES:
+            timeDict = self.EDITEDTIMES[dstr]
+            editList = sorted(list(timeDict.keys()))
+            # Return times for edit >= editNumber
+            for en in editList:
+                if en >= editNumber:
+                    return self.EDITEDTIMES[dstr][en]
 
         # check if arrays arent same length then assume the difference is from a filter operation
         Y = self.getData(dstr, editNumber)
@@ -2697,6 +2713,196 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Manually update y ranges
         self.updateYRange()
+
+    def flagData(self, flag=None):
+        if len(self.FIDs) > 1:
+            return
+
+        # Get number of selected regions
+        numRegions = len(self.currSelect.regions)
+
+        # Stores new times
+        timeDict = {}
+
+        en = self.currentEdit
+        lastTimes = None
+        for dstr in self.DATADICT:
+            # Get data and times
+            data = np.array(self.getData(dstr, en))
+            times = np.array(self.getTimes(dstr, en)[0])
+
+            # Get start/end indices for each region
+            regionTicks = []
+            for regionNum in range(0, numRegions):
+                t0, t1 = self.getSelectionStartEndTimes(regionNum)
+                sI = bisect.bisect_right(times, t0)
+                eI = bisect.bisect_right(times, t1)
+                regionTicks.append((t0, t1))
+
+                # Remove flagged data or replace w/ flag
+                if flag is None:
+                    if eI >= len(times):
+                        times = times[:sI]
+                        data = data[:sI]
+                    else:
+                        times = np.concatenate([times[:sI], times[eI+1:]])
+                        data = np.concatenate([data[:sI], data[eI+1:]])
+                else:
+                    # Fill indices with flag
+                    data[sI:eI+1] = flag
+
+            # Update stored data
+            self.DATADICT[dstr].append(data)
+
+            # Reuse previous array if same as last
+            if lastTimes is not None and np.array_equal(lastTimes, times):
+                times = lastTimes
+
+            # Get new time ticks and add to EditedTimes dict if deleted
+            if flag is not None:
+                continue
+            resolutions = np.diff(times)
+            avgRes = np.median(resolutions)
+            timeInfo = (times, resolutions, avgRes)
+            if dstr not in self.EDITEDTIMES:
+                self.EDITEDTIMES[dstr] = {en+1:timeInfo}
+            else:
+                self.EDITEDTIMES[dstr][en+1] = timeInfo
+
+            lastTimes = times
+
+        return regionTicks
+
+    def exportFile(self):
+        ''' Opens up file dialog for exporting an edited file '''
+        if len(self.FIDs) > 1:
+            return
+
+        # Get information about file type
+        FID = self.FIDs[0]
+        fileType = FID.getFileType()
+
+        # Determine file dialog filter and file generating function based on file type
+        fdFilter = ['Flat Files (*.ffh)'] if fileType != 'ASCII' else ['All files (*)']
+        exportFunc = self.exportASCII if fileType == 'ASCII' else self.exportFlatFileCopy
+
+        # Generate a default new filename
+        if '.' in FID.name:
+            basename, extension = FID.name.split('.')
+            defaultName = f'{basename}_new.{extension}'
+        else:
+            defaultName = FID.name + '_new'
+
+        # Get filename and connect file dialog accept to export function
+        fd = QtWidgets.QFileDialog(self)
+        fd.selectFile(defaultName)
+        fd.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
+        fd.setFileMode(QtWidgets.QFileDialog.AnyFile)
+        fd.setNameFilters(fdFilter)
+        fd.fileSelected.connect(exportFunc)
+        fd.open()
+
+    def exportASCII(self, name):
+        ''' Exports latest edited data as an ASCII file '''
+        # Get original file ID
+        FID = self.FIDs[0]
+
+        # Get information about original file
+        filename = FID.getName()
+        asc_imp = Asc_Importer(self, filename)
+        header = asc_imp.header
+        asc_type = FID.fileType
+        epoch = FID.ancInfo['Epoch']
+        timeMode = FID.ancInfo['TimeMode']
+        cols = None
+        if asc_type == 'Fixed Columns':
+            cols = asc_imp.guessColumns(header, asc_imp.lines[1])
+
+        # Build records
+        records, labels = self.getLatestRecords()
+
+        # Pass the old file format to ASC_Output and generate the new file
+        asc_out = ASC_Output(name, records, header, (timeMode == 'Seconds'), asc_type, cols, epoch)
+        asc_out.write()
+
+    def exportFlatFileCopy(self, name):
+        ''' Create a new flat file based on the loaded flat file 
+            using the latest data
+        '''
+        # Build records
+        records, labels = self.getLatestRecords()
+
+        # Get units, sources, and epoch information from original flat file
+        units = [self.UNITDICT[label] for label in labels]
+        sources = ['']*len(labels)
+        epoch = self.epoch
+
+        # Generate flat file
+        createFF(name, records[:,0], records[:,1:], labels, units, sources, epoch)
+
+    def getLatestRecords(self):
+        ''' 
+            Returns the array of records in the data, using the latest
+            edited data
+        '''
+
+        # Assemble list of unique time arrays and their corresponding data arrays
+        timeDict = {} # Index -> (dstr, data) list
+        timeMap = {} # Index -> Times
+        index = 0
+        for dstr in self.DATADICT:
+            times = self.getTimes(dstr, self.currentEdit)[0]
+            data = self.getData(dstr, self.currentEdit)
+
+            # If time array previously seen, add to its timeDict list
+            reusedTimes = False
+            for key in timeMap:
+                if np.array_equal(timeMap[key], times):
+                    reusedTimes = True
+                    timeDict[key].append((dstr, data))
+                    break
+
+            # Create new entry in dictionary
+            if not reusedTimes:
+                timeDict[index] = [(dstr, data)]
+                timeMap[index] = times
+                index += 1
+        del key
+        del index
+
+        # Find longest time array
+        lastKey = None
+        for key in timeMap:
+            if lastKey is None or len(timeMap[key]) > len(timeMap[lastKey]):
+                lastKey = key
+        del key
+        fullTimes = timeMap[lastKey]
+
+        # Fill all other time arrays and data arrays to be same length
+        # as fullTimes
+        fullData = [fullTimes]
+        labels = []
+        for key in timeDict:
+            # Get relative indices and create filler arrays if time range is
+            # only a subset of full times
+            currTimes = timeMap[key]
+            sI = bisect.bisect_right(fullTimes, currTimes[0])
+            if currTimes[0] == fullTimes[0]:
+                sI = 0
+            eI = bisect.bisect_right(fullTimes, currTimes[-1])
+            startFill = [self.errorFlag]*sI
+            endFill = [self.errorFlag]*(max(len(fullTimes) - eI - 1, 0))
+
+            # Concatenate filler arrays with each data array
+            for dstr, data in timeDict[key]:
+                newData = np.concatenate([startFill, data, endFill])
+                fullData.append(newData)
+                labels.append(dstr)
+
+        # Stack full dataset
+        records = np.stack(fullData, axis=1)
+
+        return records, labels
 
     def updateTraceStats(self):
         if self.tools['Stats']:
