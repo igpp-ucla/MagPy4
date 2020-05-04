@@ -737,7 +737,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.defParams = { # Value range, grad label, grad label units
             'Azimuth Angle' : ((-90, 90), 'Azimuth Angle', 'Degrees'),
             'Ellipticity (Means)' : ((-1.0, 1.0), 'Ellipticity', None),
-            'Ellipticity (SVD)' : ((0, 1.0), 'Ellipticity', None),
+            'Ellipticity (SVD)' : ((-1.0, 1.0), 'Ellipticity', None),
             'Ellipticity (Born-Wolf)' : ((0, 1.0), 'Ellipticity', None),
             'Propagation Angle (Means)' : ((0, 90), 'Angle', 'Degrees'),
             'Propagation Angle (SVD)' : ((0, 90), 'Angle', 'Degrees'),
@@ -1251,6 +1251,10 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
 
         # Calculate ellipticity from the ratio of two of the sorted singular values
         res = (wVec[1] / wVec[2])
+
+        # Adjust sign based on imagPower_xy
+        res *= np.sign(imagPower[0][1])
+
         return res
 
     def calcSVDPropAngle(self, realPower, imagPower, avg):
@@ -1413,7 +1417,7 @@ class PreDynWaveUI(BaseLayout):
 
         self.waveParam = QtWidgets.QComboBox()
         self.waveParam.addItems(dynWindow.defParams.keys())
-        self.waveParam.setCurrentIndex(1)
+        self.waveParam.setCurrentIndex(2)
 
         # Set up vector combo boxes
         self.vectorBoxes = []
