@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.3.5.0 (May 4, 2020)'
+VERSION = f'Version 1.3.6.0 (May 4, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -2543,9 +2543,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if dstr in self.EDITEDTIMES:
             timeDict = self.EDITEDTIMES[dstr]
             editList = sorted(list(timeDict.keys()))
+
             # Return times for edit >= editNumber
-            for en in editList:
-                if en >= editNumber:
+            for en in editList[::-1]:
+                if en <= editNumber:
                     return self.EDITEDTIMES[dstr][en]
 
         # check if arrays arent same length then assume the difference is from a filter operation
