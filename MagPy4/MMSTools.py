@@ -2287,18 +2287,22 @@ class PressureToolUI(BaseLayout):
         layout.addStretch()
 
         # Set up variable checkboxes
-        self.boxes = []
+        self.boxes = {}
         boxLt = QtWidgets.QHBoxLayout()
         for kw in mainFrame.plot_labels:
             box = QtWidgets.QCheckBox(' ' + kw.split(' ')[0])
             box.setChecked(True)
             boxLt.addWidget(box)
-            self.boxes.append(box)
+            self.boxes[kw] = box
 
             # Hide and uncheck if not in list of available kws
             if mainFrame.available_kws[kw] == False:
                 box.setChecked(False)
                 box.setVisible(False)
+
+        # Adjustments for plasma beta checkbox
+        self.boxes['Plasma Beta'].setText('Plasma Beta')
+        self.boxes['Plasma Beta'].setChecked(False)
 
         layout.addLayout(boxLt)
 
@@ -2361,7 +2365,7 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         # Plot item objects
         self.labels = []
         self.plotItems = []
-        self.pens = window.pens[0:3]
+        self.pens = window.pens[0:4]
 
         # Constants
         self.mu0 = constants.mu_0
@@ -2378,25 +2382,32 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         self.temp_kw_i = 'TempPer_I'
 
         # Plot label maps to variable name and units
-        self.plot_labels = ['Magnetic Pressure', 'Thermal Pressure', 'Total Pressure']
-        self.magn_lbl, self.therm_lbl, self.total_lbl = self.plot_labels
+        self.plot_labels = ['Magnetic Pressure', 'Thermal Pressure', 
+            'Total Pressure', 'Plasma Beta']
+        self.magn_lbl, self.therm_lbl, self.total_lbl = self.plot_labels[0:3]
+        self.plasma_beta_lbl = self.plot_labels[3]
         self.plot_info = {
             self.plot_labels[0]: ('magn_press', 'nPa'), 
             self.plot_labels[1]: ('therm_press', 'nPa'),
-            self.plot_labels[2]: ('total_press', 'nPa')
+            self.plot_labels[2]: ('total_press', 'nPa'),
+            self.plot_labels[3]: ('plasma_beta', '')
         }
+
+        # Groups of plot variables
+        self.pltGrps =[[self.magn_lbl, self.therm_lbl, self.total_lbl], [self.plasma_beta_lbl]]
 
         # Determine which elements can be calculated base on
         # loaded variables
         self.available_kws = {kw:False for kw in self.plot_labels}
         all_dstrs = self.window.DATASTRINGS[:]
-        mag_lbl, therm_lbl, total_lbl = self.plot_labels
+        mag_lbl, therm_lbl, total_lbl = self.plot_labels[0:3]
         if self.inValidState():
             self.available_kws[mag_lbl] = True
         if self.e_dstr in all_dstrs and self.i_dstr in all_dstrs:
             self.available_kws[therm_lbl] = True
             if self.available_kws[mag_lbl]:
                 self.available_kws[total_lbl] = True
+                self.available_kws[self.plasma_beta_lbl] = True
 
         # Setup UI
         self.ui = PressureToolUI()
@@ -2501,6 +2512,7 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
     def update(self):
         times = None
         magn_press, therm_press, total_press = None, None, None
+        plasma_beta = None
 
         # Calculate magnetic pressure
         if self.available_kws[self.magn_lbl]:
@@ -2513,37 +2525,99 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         # Calculate total pressure
         if self.available_kws[self.total_lbl]:
             total_press = magn_press + therm_press
+        
+        # Calculate plasma beta
+        if self.available_kws[self.plasma_beta_lbl]:
+            plasma_beta = therm_press / magn_press
 
-        # Plot calculated data
-        pressures = [magn_press, therm_press, total_press]
-        self.lastCalc = (times, pressures)
-        self.plotData(times, pressures)
+        # Create a dictionary from the calculated data
+        results = {
+            self.magn_lbl : magn_press,
+            self.therm_lbl : therm_press,
+            self.total_lbl : total_press,
+            self.plasma_beta_lbl : plasma_beta
+        }
 
-    def plotData(self, times, pressures):
-        plt = self.plotItems[0]
-        plt.clear()
+        # Nullify any unchecked values
+        for kw in results:
+            if not self.ui.boxes[kw].isChecked():
+                results[kw] = None
+
+        self.lastCalc = (times, results)
+        self.plotItems, self.labels = self.plotData(times, results)
+
+    def plotData(self, times, results, copy=False):
+        ''' Returns plots and labels, skips adding to grid if copy is True '''
+        # Clear previous plots
+        self.ui.glw.clear()
+        self.plotItems = []
+        self.ui.pltGrd = None
 
         if times is None:
-            plt.clear()
             return
+
+        # Initialize plot grids
+        self.ui.pltGrd = PlotGrid(self)
+        self.ui.glw.addItem(self.ui.pltGrd)
 
         # Use same time range for all plots
         t0, t1 = times[0], times[-1]
 
-        # Clear plot and plot each time v. pressure trace
-        lbls = self.plot_labels
-        checks = self.ui.boxes
+        # Create plot items/labels and add to grid
+        plotItems = []
+        labelItems = []
+        penIndex = 0
+        for grp in self.pltGrps:
+            # Create plot item for each group
+            vb = SelectableViewBox(None, 0)
+            plt = MagPyPlotItem(epoch=self.window.epoch, viewBox=vb)
+            
+            # Create plot appearance menu action
+            apprAct = QtWidgets.QAction('Plot Appearance...')
+            apprAct.triggered.connect(self.openPlotAppr)
+            if not copy:
+                vb.addMenuAction(apprAct)
 
-        checked_kws = []
-        checked_colors = []
-        for dta, pen, lbl, chk in zip(pressures, self.pens, lbls, checks):
-            if chk.isChecked() and dta is not None:
+            # Plot each trace in plot
+            units = None
+            labelList, penList = [], []
+            for lbl in grp:
+                # Check if variable was generated
+                dta = results[lbl]
+                if dta is None:
+                    penIndex += 1
+                    continue
+
+                # Get pen and label info
+                units = self.plot_info[lbl][1]
+                if units == '':
+                    units = None
+                pen = self.pens[penIndex]
+                penList.extend([pen]*2)
+                labelList.extend(lbl.split(' '))
+
+                # Plot trace
                 plt.plot(times, dta, pen=pen, name=lbl)
-                checked_kws.extend(lbl.split(' '))
-                checked_colors.extend([pen.color().name()]*2)
+                penIndex += 1
 
-        plt.setXRange(t0, t1, padding=0.0)
-        self.set_label(checked_kws, checked_colors)
+            # Skip adding empty plots
+            if len(labelList) < 1:
+                continue
+
+            # Create label item
+            colors = [pen.color() for pen in penList]
+            labelItem = StackedLabel(labelList, colors, units=units)
+
+            # Set plot range
+            plt.setXRange(t0, t1, padding=0.0)
+
+            # Add plot to grid
+            if not copy:
+                self.ui.pltGrd.addPlt(plt, labelItem)
+            plotItems.append(plt)
+            labelItems.append(labelItem)
+
+        return plotItems, labelItems
 
     def openPlotAppr(self):
         self.closePlotAppr()
@@ -2554,11 +2628,6 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         if self.plotAppr:
             self.plotAppr.close()
             self.plotAppr = None
-    
-    def set_label(self, kws, colors):
-        lbl = StackedLabel(kws, colors, units='nPa')
-        self.ui.pltGrd.setPlotLabel(lbl, 0)
-        self.labels[0] = lbl
 
     def addToMain(self):
         self.update()
@@ -2567,58 +2636,54 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
             return
 
         # Get times and pressure values from last calculation
-        times, pressures = self.lastCalc
+        times, results = self.lastCalc
 
         # If nothing plotted, do nothing except close
-        if len(pressures) == 0:
+        if len(results) == 0:
             self.close()
             return
-
-        # Get plot item and label
-        plt = self.plotItems[0]
-        lbl = self.labels[0]
-
-        # Create a new plot to add
-        oldPlt = plt
-        vb = SelectableViewBox(None, 0)
-        plt = MagPyPlotItem(epoch=self.window.epoch, viewBox=vb)
-        for pdi in oldPlt.listDataItems():
-            oldPlt.removeItem(pdi)
-            plt.addItem(pdi)
-
-        self.ui.pltGrd.clear()
 
         # Generate the time info for each variable
         t_diff = np.diff(times)
         timeInfo = (times, t_diff, times[1] - times[0])
 
-        # For each trace, keep in plot if it is checked
-        pens = self.pens
-        dstrs, colors = [], []
-        plotStrings = []
-        plotPens = []
-        for kw, pen, dta, check in zip(self.plot_labels, pens, pressures, 
-            self.ui.boxes):
+        # Get plot information for each plot
+        penIndex = 0
+        plotStrings, plotPens = [], []
+        for grp in self.pltGrps:
+            grpStrings, grpPens = [], []
+            # Get variable information for each trace in plot
+            for label in grp:
+                # Check if variable has data
+                dta = results[label]
+                if dta is None:
+                    penIndex += 1
+                    continue
 
-            if not check.isChecked() or dta is None:
-                continue
+                # Get the variable name, units, and pen
+                pen = self.pens[penIndex]
+                var_name, units = self.plot_info[label]
+                grpStrings.append((var_name, 0))
+                grpPens.append(pen)
 
-            # Get the variable name, units, and pen color
-            var_name, units = self.plot_info[kw]
-            plotStrings.append((var_name, 0))
-            colors.extend([pen.color()]*2)
-            dstrs.extend(kw.split(' '))
-            plotPens.append(pen)
+                # Initialize a new variable in main window
+                self.window.initNewVar(var_name, dta, units=units, times=timeInfo)
+                penIndex += 1
+            
+            # Skip any empty plot groups
+            if len(grpStrings) > 0:
+                plotStrings.append(grpStrings)
+                plotPens.append(grpPens)
 
-            # Initialize a new variable in main window
-            self.window.initNewVar(var_name, dta, units=units, times=timeInfo)
-
+        # Skip if nothing plotted
         if len(plotStrings) == 0:
             self.close()
             return
 
-        # Create label and add plot + label to plot grid
-        self.window.addPlot(plt, lbl, plotStrings, pens=plotPens)
+        # Create label and add plots + labels to plot grid
+        plts, lbls = self.plotData(times, results, copy=True)
+        for plt, lbl, pltStrs, pltPens in zip(plts, lbls, plotStrings, plotPens):
+            self.window.addPlot(plt, lbl, pltStrs, pens=pltPens)
 
         # Update plot grid ranges and appearance
         self.window.updateXRange()
