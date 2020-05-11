@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.3.7.0 (May 5, 2020)'
+VERSION = f'Version 1.3.8.0 (May 11, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -39,7 +39,7 @@ from .traceStats import TraceStats
 from .helpWindow import HelpWindow
 from .AboutDialog import AboutDialog
 from .plotBase import DateAxis, MagPyPlotItem, MagPyPlotDataItem
-from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni, PressureTool
+from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni, PressureTool, FEEPS_EPAD
 from . import mms_orbit
 from . import mms_formation
 from .dynBase import SimpleColorPlot
@@ -146,6 +146,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionCurvature.triggered.connect(self.openCurvature)
         self.ui.actionEPAD.triggered.connect(self.startEPAD)
         self.ui.actionEOmni.triggered.connect(self.startEOMNI)
+        self.ui.actionFEEPSPAD.triggered.connect(self.startFEEPSEPAD)
         self.ui.actionMMSPressure.triggered.connect(self.openPressure)
         self.ui.actionMMSOrbit.triggered.connect(self.openMMSOrbit)
         self.ui.actionMMSFormation.triggered.connect(self.openMMSFormation)
@@ -190,19 +191,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.toolNames = ['Data', 'Edit', 'Plot Menu', 'Detrend', 'Spectra',
             'Dynamic Spectra', 'Dynamic Coh/Pha', 'Wave Analysis',
-            'Trajectory Analysis', 'Stats', 'Electron/Ion Spectrum',
+            'Trajectory Analysis', 'Stats', 'Electron/Ion Spectrum', 'FEEPS EPAD',
             'Electron PAD', 'Plane Normal', 'Curlometer', 'Curvature',
             'MMS Orbit', 'MMSFormation', 'MMS Pressure']
 
         self.toolAbbrv = ['Data', 'Edit', 'PlotMenu', 'Detrend', 'Spectra',
             'DynSpectra', 'DynCohPha', 'DynWave', 'Traj', 'Stats',
-            'EOMNI', 'EPAD', 'PlaneNormal', 'Curlometer', 'Curvature',
-            'MMSOrbit', 'MMSFormation', 'Pressure']
+            'EOMNI', 'FEEPS EPAD', 'EPAD', 'PlaneNormal', 'Curlometer', 
+            'Curvature', 'MMSOrbit', 'MMSFormation', 'Pressure']
 
         self.toolInitFuncs  = [self.showData, self.openEdit, self.openPlotMenu,
             self.startDetrend, self.startSpectra, self.startDynamicSpectra,
             self.startDynamicCohPha, self.startDynWave, self.openTraj,
-            self.startTraceStats, self.startEOMNI, self.startEPAD,
+            self.startTraceStats, self.startEOMNI, self.startFEEPSEPAD, self.startEPAD,
             self.openPlaneNormal, self.openCurlometer, self.openCurlometer,
             self.openMMSOrbit, self.openMMSFormation, self.openPressure]
 
@@ -882,6 +883,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeCurvature()
         self.closeEPAD()
         self.closeEOMNI()
+        self.closeFEEPSEPAD()
         self.closeMMSFormation()
         self.closeMMSOrbit()
         self.closePressure()
@@ -920,6 +922,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.clearStatusMsg()
             self.tools['EPAD'].show()
             self.tools['EPAD'].update()
+
+    def startFEEPSEPAD(self):
+        self.closeFEEPSEPAD()
+        self.tools['FEEPS EPAD'] = FEEPS_EPAD(self)
+        self.initGeneralSelect('FEEPS PAD', '#000000', self.tools['FEEPS EPAD'].ui.timeEdit,
+            'Single', self.showFEEPSPAD, closeFunc=self.closeFEEPSEPAD)
+    
+    def showFEEPSPAD(self):
+        if self.tools['FEEPS EPAD']:
+            self.clearStatusMsg()
+            self.tools['FEEPS EPAD'].show()
+            self.tools['FEEPS EPAD'].update()
+
+    def closeFEEPSEPAD(self):
+        if self.tools['FEEPS EPAD']:
+            self.tools['FEEPS EPAD'].close()
+            self.tools['FEEPS EPAD'] = None
 
     def openCurlometer(self):
         self.closeMMSTools()
@@ -2171,9 +2190,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def loadColorPlot(self, plotInfo, labelTxt):
         # Extract specific plot info and offset times by main window's tick offset
-        grid, x, y, logY, logColor, valRng = plotInfo
+        grid, x, y, logY, logColor, valRng, maskInfo = plotInfo
         x = x - self.tickOffset
-        plotInfo = (grid, x, y, logY, logColor, valRng)
+        plotInfo = (grid, x, y, logY, logColor, valRng, maskInfo)
 
         # Generate plot item
         vb = MagPyViewBox(self, self.pltGrd.numPlots)

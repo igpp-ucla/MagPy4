@@ -7,7 +7,7 @@ from FF_Time import FFTIME
 from bisect import bisect_left, bisect_right
 
 class MagPyPlotItem(pg.PlotItem):
-    def __init__(self, epoch=None, *args, **kwargs):
+    def __init__(self, epoch=None, selectable=False, *args, **kwargs):
         # Initialize axis items
         axisKws = ['left', 'top', 'right', 'bottom']
         axisItems = {kw:MagPyAxisItem(kw) for kw in axisKws}

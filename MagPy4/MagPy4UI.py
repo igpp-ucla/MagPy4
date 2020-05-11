@@ -115,6 +115,10 @@ class MagPy4UI(object):
         self.actionEOmni.setText('Plot Electron/Ion Spectrum...')
         self.actionEOmni.setStatusTip('Plots a color-mapped representation of omni-directional electron/ion energy spectrum')
 
+        self.actionFEEPSPAD = QtWidgets.QAction(window)
+        self.actionFEEPSPAD.setText('Plot FEEPS Pitch Angle Distributions...')
+        self.actionFEEPSPAD.setStatusTip('Plots the MMS FEEPS pitch angle distributions')
+
         self.actionMMSPressure = QtWidgets.QAction(window)
         self.actionMMSPressure.setText('Pressure...')
         self.actionMMSPressure.setStatusTip('Calculates magnetic, thermal, and total pressure')
@@ -222,6 +226,7 @@ class MagPy4UI(object):
         self.MMSMenu.addAction(self.actionCurvature)
         self.MMSMenu.addAction(self.actionEPAD)
         self.MMSMenu.addAction(self.actionEOmni)
+        self.MMSMenu.addAction(self.actionFEEPSPAD)
         self.MMSMenu.addAction(self.actionMMSPressure)
         self.MMSMenu.addSeparator()
 
@@ -1080,13 +1085,16 @@ class PlotGrid(pg.GraphicsLayout):
             self.addItem(colorLbl, self.startRow + index, 3, 1, 1)
 
         # Additional state updates
-        plt.getAxis('bottom').tickOffset = self.window.tickOffset
+        if self.window:
+            plt.getAxis('bottom').tickOffset = self.window.tickOffset
+            plt.getAxis('top').tickOffset = self.window.tickOffset
         colorBar.setBarWidth(28)
 
         # Add tracker lines to plots
         trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=pg.mkPen('#000000', width=1, style=QtCore.Qt.DashLine))
-        plt.addItem(trackerLine)
-        self.window.trackerLines.insert(index, trackerLine)
+        if self.window:
+            plt.addItem(trackerLine)
+            self.window.trackerLines.insert(index, trackerLine)
 
         # Update state information
         cpInfo = {}

@@ -223,6 +223,8 @@ class ColorBarAxis(pg.AxisItem):
         # Limit tick values to top level if sufficient, or add in
         # second level minor ticks and limit the number of ticks
         tickVals = pg.AxisItem.tickValues(self, minVal, maxVal, size)
+        if len(tickVals) == 0:
+            return []
 
         majorSpacing, majorTicks = tickVals[0]
         if len(majorTicks) >= 4:
@@ -999,6 +1001,7 @@ class SimpleColorPlot(MagPyPlotItem):
         self.gridItem = None # Grid PlotCurveItem
         self.valueRange = (0, 1) # Gradient legend value range
         self.baseOffset = None # Parameter used when exporting as SVG
+        self.maskInfo = None
 
         # Initialize default viewbox and axis items
         vb = SpectrogramViewBox() if vb is None else vb
@@ -1015,11 +1018,17 @@ class SimpleColorPlot(MagPyPlotItem):
 
     def getPlotInfo(self):
         info = (self.mappedGrid, self.xTicks, self.yTicks, self.logYScale, 
-            self.logColor, self.valueRange)
+            self.logColor, self.valueRange, self.maskInfo)
         return info
     
     def loadPlotInfo(self, plotInfo):
-        grid, x, y, logY, logColor, valRng = plotInfo
+        grid, x, y, logY, logColor, valRng, maskInfo = plotInfo
+
+        # Apply mask to color mapped grid
+        if maskInfo:
+            mask, maskColor, outline = maskInfo
+            grid[mask] = maskColor
+
         self.valueRange = valRng
         self.logColor = logColor
         self.setMappedGrid(grid, y, x)
@@ -1239,8 +1248,8 @@ class SpectrogramViewBox(pg.ViewBox):
         self.addedItems = []
 
 class SpectrogramPlotItem(SimpleColorPlot):
-    def __init__(self, epoch, logMode=False):
-        super().__init__(epoch, logMode)
+    def __init__(self, epoch, logMode=False, *args, **kwargs):
+        super().__init__(epoch, logMode, *args, **kwargs)
         self.savedPlot = None
 
         # Initialize default pg.PlotItem settings
@@ -1299,6 +1308,7 @@ class SpectrogramPlotItem(SimpleColorPlot):
         
         # Map any masked values to the given color before plotting
         if maskInfo:
+            self.maskInfo = maskInfo
             mask, maskColor, maskOutline = maskInfo
             r, g, b = maskColor
             if not maskOutline:

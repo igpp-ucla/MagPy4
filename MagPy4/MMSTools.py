@@ -2256,6 +2256,338 @@ class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
         self.wasClosed = True
         self.close()
 
+class SelectableList(QtWidgets.QWidget):
+    def __init__(self):
+        QtWidgets.QWidget.__init__(self)
+        layout = QtWidgets.QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
+
+        # Set up input/output list widgets
+        self.inputList = QtWidgets.QListWidget()
+        self.outputList = QtWidgets.QListWidget()
+
+        for lst in [self.inputList, self.outputList]:
+            lst.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+
+        # # Set up general layout
+        self.titleLabel = QtWidgets.QLabel()
+        self.titleLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        layout.addWidget(self.titleLabel)
+        layout.addWidget(self.inputList)
+
+        self.setMinimumWidth(300)
+
+    def setLabel(self, txt):
+        self.titleLabel.setText(txt)
+
+    def setInput(self, items, datas=None):
+        if datas is None:
+            datas = [''] * len(items)
+
+        for item in items:
+            self.inputList.addItem(item)
+
+    def getSelectedItems(self):
+        return [item.text() for item in self.inputList.selectedItems()]
+
+    def getInputItems(self):
+        count = self.inputList.count()
+        return [self.inputList.item(row).text() for row in range(count)]
+
+    def getOutputItems(self):
+        count = self.outputList.count()
+        return [self.outputList.item(row).text() for row in range(count)]
+
+    def addSelections(self):
+        # Get list of new items and add to set of currently selected items
+        items = self.getSelectedItems(self.inputList)
+        prevItems = self.getOutputItems()
+        newItems = set(items) | set(prevItems)
+
+        # Clear output list and re-add items
+        self.outputList.clear()
+        for item in newItems:
+            self.outputList.addItem(item)
+
+    def removeSelections(self):
+        # Get updated list of items
+        items = self.getOutputItems()
+        selectedItems = self.getSelectedItems(self.outputList)
+        newItems = set(items) - set(selectedItems)
+        newItems = sorted(list(newItems))
+
+        # Clear items and update output list
+        self.outputList.clear()
+        for item in newItems:
+            self.outputList.addItem(item)
+
+class FEEPS_EPAD_UI(BaseLayout):
+    def setupUI(self, frame):
+        layout = QtWidgets.QGridLayout(frame)
+        frame.resize(100, 700)
+        frame.setWindowTitle('FEEPS Pitch Angle Distributions')
+
+        # Set up time edits
+        timeLt = QtWidgets.QHBoxLayout()
+        self.timeEdit = TimeEdit(QtGui.QFont())
+        timeLt.addWidget(self.timeEdit.start)
+        timeLt.addWidget(self.timeEdit.end)
+        timeLt.addStretch()
+
+        # Set up selection list
+        self.selectList = SelectableList()
+        self.selectList.setLabel('Distributions: ')
+        self.selectList.setMaximumWidth(300)
+
+        ## Add items to list input
+        items = []
+        for energy_type in frame.grps:
+            for bin_start, bin_end in frame.grps[energy_type]:
+                label = f'{energy_type.capitalize()} {bin_start}-{bin_end} keV'
+                items.append(label)
+        self.selectList.setInput(items)
+
+        # Set up log scale checkbox
+        self.logCheck = QtWidgets.QCheckBox('Log Color Scale')
+
+        # Set up update and add to main buttons
+        btnLt = QtWidgets.QHBoxLayout()
+        self.updateBtn = QtWidgets.QPushButton(' Plot ')
+        self.addToMainBtn = QtWidgets.QPushButton('Add To Main Window')
+        for btn in [self.addToMainBtn, self.updateBtn]:
+            btnLt.addWidget(btn)
+    
+        leftLt = QtWidgets.QVBoxLayout()
+        for elem in [self.selectList, self.logCheck]:
+            leftLt.addWidget(elem)
+        leftLt.addLayout(btnLt)
+
+        # Set up graphics grid
+        self.glw = self.getGraphicsGrid()
+
+        ## Wrap in a scroll frame
+        self.gridWrapper = QtWidgets.QScrollArea()
+        self.gridWrapper.setWidget(self.gview)
+        self.gridWrapper.setWidgetResizable(True)
+        self.gridWrapper.setMinimumWidth(800)
+        self.gridWrapper.setVisible(False)
+
+        # Add graphics view and settings layouts to upper layout above time edits
+        upperLt = QtWidgets.QHBoxLayout()
+        upperLt.addLayout(leftLt)
+        upperLt.addWidget(self.gridWrapper)
+
+        layout.addLayout(upperLt, 0, 0, 1, 1, alignment=QtCore.Qt.AlignLeft)
+        layout.addLayout(timeLt, 1, 0, 1, 1)
+
+class FEEPS_EPAD(QtWidgets.QFrame):
+    def __init__(self, window):
+        self.window = window
+        QtWidgets.QFrame.__init__(self)
+        self.ui = FEEPS_EPAD_UI()
+        self.grps = self.findGrps()
+        self.ui.setupUI(self)
+        self.lastCalc = None
+        self.ui.updateBtn.clicked.connect(self.update)
+        self.ui.addToMainBtn.clicked.connect(self.addToMainWindow)
+    
+    def findGrps(self):
+        ''' Find groups of PAD variables for each energy type and
+            splits by energy bins
+        '''
+        grps = {'electron': {}, 'ion': {}}
+        energy_map = {'e':'electron', 'i':'ion'}
+
+        # Get all datastrings and setup regex pattern
+        dstrs = self.window.DATASTRINGS[:]
+        expr = '(i|e)_pad_[0-9]+_[0-9]+_[0-9]+'
+
+        # Place each variable name into a grps if expression
+        # matches pattern
+        for dstr in dstrs:
+            if re.fullmatch(expr, dstr):
+                # Determine energy type
+                energy_type = energy_map[dstr[0]]
+
+                # Get energy bin
+                bins = tuple(dstr.split('_')[2:4])
+
+                # Add to grps list
+                if bins not in grps[energy_type]:
+                    grps[energy_type][bins] = []
+                grps[energy_type][bins].append(dstr)
+
+        return grps
+
+    def sortByRange(self, items):
+        ''' Sorts lists of selected items by energy levels '''
+        bins = [item.split(' ')[2].split('-') for item in items]
+        startRng = [b[0] for b in bins]
+        order = np.argsort(startRng)[::-1]
+        return [items[i] for i in order]
+
+    def update(self):
+        results = {}
+
+        # Get state information
+        logScale = self.ui.logCheck.isChecked()
+
+        # Get list of selected plot items and sort them
+        selectedItems = self.ui.selectList.getSelectedItems()
+        electronItems = [item for item in selectedItems if 'Electron' in item]
+        ionItems = [item for item in selectedItems if 'Ion' in item]
+        electronItems = self.sortByRange(electronItems)
+        ionItems = self.sortByRange(ionItems)
+        selectedItems = electronItems + ionItems
+
+        # Get data and labels for each item
+        for item in selectedItems:
+            # Split item text into elements
+            energy_type, bins, unit = item.split(' ')
+
+            # Get relevant dstrs
+            energy_type = energy_type.lower()
+            bins = tuple(bins.split('-'))
+            dstrs = self.grps[energy_type][bins]
+
+            # Get selected start/end indices
+            sI, eI = self.window.calcDataIndicesFromLines(dstrs[0], 0)
+
+            # Get times for this variable
+            times = self.window.getTimes(dstrs[0], 0)[0][sI:eI+1]
+
+            # Get data from list of dstrs
+            datas = []
+            for dstr in dstrs:
+                data = self.window.getData(dstr, 0)[sI:eI+1]
+                rawDta = self.window.ORIGDATADICT[dstr][sI:eI+1]
+                data[rawDta >= 1e31] = np.nan
+                datas.append(data)
+            datas = np.stack(datas)
+
+            # Set up label and units
+            label = item[:len(energy_type)] + ' PAD' + item[len(energy_type):]
+            units = self.window.UNITDICT[dstrs[0]]
+
+            # Create dictionary of plot variable data
+            results[item] = {}
+            results[item]['times'] = times
+            results[item]['data'] = datas
+            results[item]['units'] = units
+            results[item]['label'] = label
+
+        self.lastCalc = results
+        self.plot(results, logScale)
+
+    def plot(self, results, logScale, copy=False):
+        if len(results) == 0:
+            return
+
+        # Store generated plot items and label/legends/legend-labels
+        plotItems = []
+        labelItems = []
+
+        # Set up plot grid
+        self.ui.gridWrapper.setVisible(True)
+        pltGrd = PlotGrid()
+        pltGrd.setLabelFontSizes(14)
+        pltGrd.lockLabelSizes()
+        self.ui.glw.clear()
+        self.ui.glw.addItem(pltGrd, 0, 0, 1, 1)
+
+        # Set up pitch angle bins
+        bins = np.arange(0, 181, step=180/11)
+
+        i = 0 
+
+        for var in results:
+            # Extract data, times, units
+            data = results[var]['data']
+            data = np.array(data)
+            times = results[var]['times']
+            units = results[var]['units']
+            label = results[var]['label']
+            if copy:
+                times = times - self.window.tickOffset
+
+            # Get color range and error flag mask
+            cleanData = data[~np.isnan(data)]
+            mask = np.isnan(data)
+            data[mask] = 0
+            if len(cleanData) == 0:
+                colorRng = (0.01, 1)
+            else:
+                colorRng = (min(cleanData), max(cleanData))
+
+            # Create spectogram
+            if copy:
+                vb = SelectableViewBox(self.window, len(self.window.plotItems))
+                plt = SpectrogramPlotItem(self.window.epoch, logMode=False, vb=vb)
+                plt.setPlotMenuEnabled(False)
+            else:
+                plt = SpectrogramPlotItem(self.window.epoch, logMode=False)
+            plt.createPlot(bins, data, times, colorRng, 
+                logColorScale=logScale, maskInfo=(mask, (255, 255, 255), False))
+            plt.getAxis('left').setTickSpacing(30, 15)
+
+            # Create legend items
+            lgnd = plt.getGradLegend(logMode=logScale)
+            lgndLblTxt = 'DEF' if not logScale else 'Log DEF'
+            lgndLbl = StackedAxisLabel([lgndLblTxt, units], angle=90)
+            for item in [lgnd, lgndLbl]:
+                item.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
+            labelItems.append((label, lgnd, lgndLbl))
+
+            # Add plot to grid
+            if not copy:
+                pltGrd.addColorPlt(plt, label, lgnd, lgndLbl, units='Degrees')
+                plt.setMinimumHeight(100)
+                plt.setCursor(QtCore.Qt.ArrowCursor)
+            else:
+                plotItems.append(plt)
+            i += 1
+
+        # Update grid heights
+        if not copy:
+            pltGrd.resizeEvent(None)
+            self.ui.gview.setMinimumHeight(pltGrd.minimumHeight() + 100)
+            self.ui.gridWrapper.verticalScrollBar().setValue(0)
+
+        return plotItems, labelItems
+
+    def addToMainWindow(self):
+        ''' Adds plots to main window '''
+        if self.lastCalc is None or len(self.lastCalc) == 0:
+            self.close()
+            return
+
+        # Generate new plots
+        logScale = self.ui.logCheck.isChecked()
+        plts, labelItems = self.plot(self.lastCalc, logScale, copy=True)
+        if len(plts) == 0:
+            self.close()
+            return
+
+        # Add each plot and corresponding label items to plot grid
+        for plt, (lbl, lgnd, lgndLbl) in zip(plts, labelItems):
+            self.window.pltGrd.addColorPlt(plt, lbl, lgnd, lgndLbl)
+            self.window.lastPlotStrings.append([(lbl, -1)])
+            self.window.plotTracePens.append([None])
+            self.window.plotItems.append(plt)
+
+            labelTxt = lgndLbl.getLabelText()
+            plotInfo = plt.getPlotInfo()
+            self.window.colorPlotInfo[lbl] = (plotInfo, labelTxt, 'Degrees')
+        self.window.pltGrd.resizeEvent(None)
+
+        # Close window after loading plots into main grid
+        self.close()
+
+    def closeEvent(self, ev):
+        self.window.endGeneralSelect()
+        self.close()
+
 class PressureToolUI(BaseLayout):
     def setupUI(self, frame):
         frame.setWindowTitle('Pressure')
