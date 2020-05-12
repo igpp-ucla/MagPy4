@@ -7,7 +7,7 @@ from FF_Time import FFTIME
 from bisect import bisect_left, bisect_right
 
 class MagPyPlotItem(pg.PlotItem):
-    def __init__(self, epoch=None, selectable=False, *args, **kwargs):
+    def __init__(self, epoch=None, name=None, selectable=False, *args, **kwargs):
         # Initialize axis items
         axisKws = ['left', 'top', 'right', 'bottom']
         axisItems = {kw:MagPyAxisItem(kw) for kw in axisKws}
@@ -23,11 +23,28 @@ class MagPyPlotItem(pg.PlotItem):
             axisItems.update(kwargs['axisItems'])
             del kwargs['axisItems']
 
+        # Set default name, None if none passed
+        self.name = name
+        self.varInfo = []
+        self.plotApprAction = None
+        self.plotAppr = None
+
         pg.PlotItem.__init__(self, axisItems=axisItems, *args, **kwargs)
         self.hideButtons()
 
     def isSpecialPlot(self):
+        '''
+            Returns whether this is regular line plot or not
+        '''
         return False
+    
+    def setName(self, name):
+        ''' Sets internal name/label for this plot '''
+        self.name = name
+    
+    def getName(self, name):
+        ''' Returns internal name/label for this plot '''
+        return self.name
 
     def updateLogMode(self):
         x = self.ctrl.logXCheck.isChecked()
@@ -48,12 +65,55 @@ class MagPyPlotItem(pg.PlotItem):
             self.clear()
             
         item = MagPyPlotDataItem(*args, **kargs)
-            
+
         if params is None:
             params = {}
+
         self.addItem(item, params=params)
         
         return item
+    
+    def getLineInfo(self):
+        '''
+            Extract dictionaries containing info about
+            the plot data item, trace pen, and name
+        '''
+        if self.isSpecialPlot():
+            return []
+
+        # Save info for each plot data item
+        infos = []
+        pdis = self.listDataItems()
+        for pdi in pdis:
+            info = {}
+            info['pen'] = pdi.opts['pen']
+            info['item'] = pdi
+            info['name'] = pdi.name()
+            infos.append(info)
+        
+        return infos
+    
+    def setVarInfo(self, info):
+        self.varInfo = info
+    
+    def enablePlotAppr(self, val):
+        if val:
+            self.plotApprAction = QtWidgets.QAction('Change Plot Appearance...')
+            self.plotApprAction.triggered.connect(self.openPlotAppr)
+        else:
+            self.plotApprAction = None
+    
+    def getContextMenus(self, ev):
+        menu = self.getMenu()
+        if self.plotApprAction:
+            return [self.plotApprAction, menu]
+        else:
+            return menu
+
+    def openPlotAppr(self):
+        from .plotAppearance import PlotAppearance
+        self.plotAppr = PlotAppearance(self, [self])
+        self.plotAppr.show()
 
 class MagPyColorPlot(MagPyPlotItem):
     def __init__(self, *args, **kwargs):

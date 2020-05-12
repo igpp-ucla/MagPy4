@@ -1262,18 +1262,17 @@ class PlotGrid(pg.GraphicsLayout):
         if self.labelSetGrd: # Match extra tick axis widths to maxWidth
             self.labelSetGrd.adjustWidths(maxWidth)
 
-    def adjustTitleColors(self, penList):
-        # Get each pen list and stacked list corresponding to a plot
-        for lbl, pltPenList in zip(self.labels, penList):
-            subLblNum = 0
-            # Match pen colors to sublabels in stacked label
-            for dstrLabel, pen in zip(lbl.subLabels, pltPenList):
-                color = pen.color()
-                fontSize = dstrLabel.opts['size']
-                dstrLabel.setText(dstrLabel.text, size=fontSize, color=color)
-                # Update stacked label's list of colors to use when resizing
-                lbl.colors[subLblNum] = color
-                subLblNum += 1
+    def adjustTitleColors(self, lineInfo):
+        ''' Updates StackedLabel for the plot that the updated line is in '''
+        # Extract line information
+        plotIndex = lineInfo['plotIndex']
+        lineIndex = lineInfo['traceIndex']
+        pen = lineInfo['pen']
+
+        # Get stacked label and set the color for the corresponding sublabel
+        label = self.labels[plotIndex]
+        sublabel = label.subLabels[lineIndex]
+        sublabel.setColor(pen.color().name())
 
     def setPlotLabel(self, lbl, plotNum):
         prevLabel = self.getPlotLabel(plotNum)

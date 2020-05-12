@@ -324,7 +324,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
             self.tracePenList.append(plotPensLst)
 
         # Update plot titles
-        self.updateTitleColors(self.tracePenList)
+        self.updateTitleColors()
 
         # Find largest title width and use it to set the minimum width
         # for all columns so they all have the same width
@@ -394,7 +394,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 power = self.powers[dstr]
                 plt.plot(freq, power, pen=pen)
 
-        self.updateTitleColors(plotPens)
+        self.updateTitleColors()
         self.updateInfoLabel()
 
         # Update coherence and phase graphs
@@ -534,7 +534,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
         return plotStrings, plotPens
 
-    def updateTitleColors(self, penList):
+    def updateTitleColors(self):
         # Update title colors to match colors from a list of pens
         plotInfos = self.window.getSelectedPlotInfo()
         titleString = ''
@@ -547,7 +547,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         # Loop through each set of plot strings and the corresponding set of pens
         # in penList
         plotIndex = 0
-        for stringInfo, plotPenList in zip(plotStrings, penList):
+        for stringInfo, plotPenList in zip(plotStrings, self.tracePenList):
             pi = self.plotItems[plotIndex]
             titleString = ''
             # Update title string for every plot w/ new pen color
@@ -556,8 +556,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
                 titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
             pi.setTitle(titleString)
             plotIndex += 1
-
-        self.tracePenList = penList
 
     def formatPltTitle(self, titleStr, color):
         return f"<span style='color:{color};'>{titleStr}</span>"

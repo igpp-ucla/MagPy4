@@ -25,77 +25,17 @@ class PlotAppearanceUI(BaseLayout):
         layout.addWidget(tw, 3, 0, 1, 4)
 
         # Set up UI for setting plot trace colors, line style, thickness, etc.
-        tracePropFrame = QtWidgets.QFrame()
-        tracePropLayout = QtWidgets.QGridLayout(tracePropFrame)
-        tracePropFrame.setSizePolicy(self.getSizePolicy('Max', 'Max'))
+        tracePropFrame = self.getTracePropFrame(plotsInfo)
 
         pltNum = 0 # Lists for storing interactive UI elements
         self.lineWidthBoxes = []
         self.lineStyleBoxes = []
         self.colorBoxes = []
 
-        colNum, rowNum = 0, 0 # Layout ordering for excessive number of plots
-        maxTracesPerCol = 3 * 3
-        totTraces = 0
-
-        for trcList in plotsInfo:
-            # Group plot traces by plot number
-            plotFrame = QtWidgets.QGroupBox('Plot '+str(pltNum + 1)+':')
-            plotLayout = QtWidgets.QVBoxLayout(plotFrame)
-
-            if trcList == []:
-                pltNum += 1
-                continue
-
-            traceNum = 0
-            for trcPen in trcList:
-                traceLayout = QtWidgets.QHBoxLayout()
-                label = QtWidgets.QLabel('L'+str(traceNum + 1)+': ')
-
-                # Create all elements for choosing line style
-                styleLabel = QtWidgets.QLabel('  Style: ')
-                lineStyle = QtWidgets.QComboBox()
-                for t in ['Solid', 'Dashed', 'Dotted', 'DashDot']:
-                    lineStyle.addItem(t)
-                self.lineStyleBoxes.append((lineStyle, (pltNum, traceNum)))
-
-                # Create all elements for choosing line thickness
-                widthLabel = QtWidgets.QLabel('  Width: ')
-                lineWidth = QtWidgets.QSpinBox()
-                lineWidth.setMinimum(1)
-                lineWidth.setMaximum(5)
-                self.lineWidthBoxes.append((lineWidth, (pltNum, traceNum)))
-
-                # Create elements for choosing line color
-                colorLbl = QtWidgets.QLabel('Color: ')
-                colorBtn = QtWidgets.QPushButton()
-                colorBtn.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-                self.colorBoxes.append((colorBtn, (pltNum, traceNum)))
-
-                # Add all elements to sublayout
-                for e in [label, colorLbl, colorBtn, styleLabel, lineStyle,
-                        widthLabel, lineWidth]:
-                    traceLayout.addWidget(e)
-                    traceLayout.setAlignment(e, QtCore.Qt.AlignBaseline)
-
-                plotLayout.addLayout(traceLayout)
-                traceNum += 1
-            plotLayout.addStretch()
-
-            tracePropLayout.addWidget(plotFrame, rowNum, colNum, 1, 1)
-            pltNum += 1
-
-            # Move to next row and keep track of total number of traces
-            rowNum += 1
-            totTraces += traceNum
-
         # If there are a lot of traces, wrap the trace properties frame
         # inside a scroll area
-        if totTraces > 9:
-            tracePropScroll = self.wrapTracePropFrame(tracePropFrame)
-            tw.addTab(tracePropScroll, 'Trace Properties')
-        else: # Otherwise add it as a tab directly
-            tw.addTab(tracePropFrame, 'Trace Properties')
+        tracePropScroll = self.wrapTracePropFrame(tracePropFrame)
+        tw.addTab(tracePropScroll, 'Trace Properties')
 
         # Set up tick intervals widget
         if mainWindow:
@@ -107,18 +47,88 @@ class PlotAppearanceUI(BaseLayout):
         # Set up label properties widget
         self.lblPropWidget = LabelAppear(window, plotItems, mainWindow)
         tw.addTab(self.lblPropWidget, 'Label Properties')
+    
+    def getTracePropFrame(self, plotInfos):
+        frame = QtWidgets.QFrame()
+        layout = QtWidgets.QVBoxLayout(frame)
+        self.styleGrps, self.widthGrps, self.colorGrps = [], [], []
+        for index, info in plotInfos:
+            plotFrame, elems = self.getPlotPropFrame(index, len(info))
+
+            # Hide if special plot
+            if len(info) == 0:
+                plotFrame.setVisible(False)
+
+            styleBoxes, widthBoxes, colorBtns = elems
+            self.styleGrps.append(styleBoxes)
+            self.widthGrps.append(widthBoxes)
+            self.colorGrps.append(colorBtns)
+            layout.addWidget(plotFrame)
+        layout.addStretch()
+        
+        return frame
+
+    def getPlotPropFrame(self, index, numTraces):
+        # Build the properties frame for a single plot item
+        frame = QtWidgets.QGroupBox(f'Plot {index+1}:')
+        layout = QtWidgets.QGridLayout(frame)
+        layout.setHorizontalSpacing(12)
+
+        # Build header layout
+        labels = [f'{label}:' for label in ['#', 'Style', 'Width', 'Color']]
+        for i, label in enumerate(labels):
+            layout.addWidget(QtWidgets.QLabel(label), 0, i, 1, 1)
+
+        # Create line properties settings layout for each line
+        styleBoxes, widthBoxes, colorBtns = [], [], []
+        for index in range(0, numTraces):
+            elems = self.getLinePropLt(index)
+            for i, elem in enumerate(elems):
+                layout.addWidget(elem, index+1, i, 1, 1)
+
+            # Store line property elements
+            lbl, style, width, color = elems
+            styleBoxes.append(style)
+            widthBoxes.append(width)
+            colorBtns.append(color)
+
+        return frame, (styleBoxes, widthBoxes, colorBtns)
+
+    def getLinePropLt(self, index):
+        # Line index label
+        label = QtWidgets.QLabel(f'{index+1}:')
+        label.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        # Create all elements for choosing line style
+        lineStyle = QtWidgets.QComboBox()
+        for t in ['Solid', 'Dashed', 'Dotted', 'DashDot']:
+            lineStyle.addItem(t)
+        
+        # Create all elements for choosing line thickness
+        lineWidth = QtWidgets.QDoubleSpinBox()
+        lineWidth.setMinimum(1)
+        lineWidth.setMaximum(5)
+        lineWidth.setSingleStep(0.5)
+
+        # Create elements for choosing line color
+        colorBtn = QtWidgets.QPushButton()
+        colorBtn.setCursor(QtCore.Qt.ClosedHandCursor)
+
+        return (label, lineStyle, lineWidth, colorBtn)
 
     def wrapTracePropFrame(self, widgetFrame):
         # Create a scroll area and set its dimensions
         scrollArea = QtWidgets.QScrollArea()
         scrollArea.setWidget(widgetFrame)
-        scrollArea.setMinimumHeight(450)
-        scrollArea.setMinimumWidth(430)
+        scrollArea.setWidgetResizable(True)
+        scrollArea.setMinimumHeight(min(widgetFrame.sizeHint().height(), 500))
+        scrollArea.setMinimumWidth(widgetFrame.sizeHint().width()+150)
         scrollArea.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
 
         # Set style properties to match tab widget's background
         scrollArea.setStyleSheet('QScrollArea {background-color: transparent;}')
         widgetFrame.setStyleSheet('QFrame {background-color: white;}')
+
         # Hide bottom scroll bar
         scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
@@ -133,95 +143,92 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         self.window = window
 
         # Get plots' trace/label infos and use to setup/initialize UI elements
-        plotsInfo = self.getPlotsInfo()
+        plotsInfo = self.getPlotLineInfos()
         self.ui.setupUI(self, window, plotsInfo, plotItems, mainWindow, links=links)
         self.initVars(plotsInfo)
 
         # Connect line width modifiers to function
-        for lw, indices in self.ui.lineWidthBoxes:
-            pltNum, trcNum = indices
-            pltPen, traceList = plotsInfo[pltNum][trcNum]
-            lw.valueChanged.connect(functools.partial(self.updateLineWidth, lw, traceList))
+        grps = (plotsInfo, self.ui.styleGrps, self.ui.widthGrps, self.ui.colorGrps)
+        for (index, info), styleGrp, widthGrp, colorGrp in zip(*grps):
+            traceIndex = 0
+            for line, style, width, color in zip(info, styleGrp, widthGrp, colorGrp):
+                line['plotIndex'] = index
+                line['traceIndex'] = traceIndex
+                widthFunc = functools.partial(self.updateLineWidth, line)
+                width.valueChanged.connect(widthFunc)
 
-        # Connect line style modifiers to function
-        for ls, indices in self.ui.lineStyleBoxes:
-            pltNum, trcNum = indices
-            pltPen, traceList = plotsInfo[pltNum][trcNum]
-            ls.currentIndexChanged.connect(functools.partial(self.updateLineStyle, ls, traceList))
+                styleFunc = functools.partial(self.updateLineStyle, line)
+                style.currentTextChanged.connect(styleFunc)
 
-        # Connect line color modifiers to function
-        for cs, indices in self.ui.colorBoxes:
-            pltNum, trcNum = indices
-            pltPen, traceList = plotsInfo[pltNum][trcNum]
-            cs.clicked.connect(functools.partial(self.openColorSelect, cs, traceList))
+                colorFunc = functools.partial(self.openColorSelect, color, line)
+                color.clicked.connect(colorFunc)
+                traceIndex += 1
+    
+        self.plotInfo = plotsInfo
 
-    def getPlotsInfo(self):
+    def getPlotLineInfos(self):
         # Creates list of per-plot lists containing tuples of pens and a list of
         # data items within the given plot that correspond to it
         # ex: [ [(pen1, [plotDataItem1...]), (pen2, [..])] , ... , ]
-        plotsInfo = []
-        for plt in self.plotItems:
-            if plt.isSpecialPlot():
-                plotsInfo.append([])
-                continue
-            pltInfo = []
-            uniqPltPens = [] # Create list of unique pens in current plot
-            for pt in plt.listDataItems():
-                pen = pt.opts['pen']
-                if pen not in uniqPltPens:
-                    # Add unseen pens to list and init its list of traces
-                    uniqPltPens.append(pen)
-                    pltInfo.append((pen, [pt]))
-                else:
-                    # Add current trace item to corresp. pen's trace list
-                    index = uniqPltPens.index(pen)
-                    penItemList = pltInfo[index][1]
-                    penItemList.append(pt)
-            plotsInfo.append(pltInfo)
-        return plotsInfo
+        n = len(self.plotItems)
+        plotInfos = [(i, plt.getLineInfo()) for i, plt in zip(range(n), self.plotItems)]
+        return plotInfos
 
+    def getPenStyle(self, pen):
+        # Extract style information from pen
+        style = pen.style()
+        width = pen.widthF()
+        color = pen.color()
+
+        return (style, width, color)
+    
     def initVars(self, plotsInfo):
         # Initializes all values in UI elements with current plot properties
         if self.plotItems == None:
             return
-        # Get attributes from last plot in set
-        plt = self.plotItems[-1]
 
-        traceNum = 0
-        for pltGrp in plotsInfo:
-            for pen, lst in pltGrp:
-                # Initialize plot trace line styles
-                style = pen.style()
-                if style == QtCore.Qt.DashLine:
-                    styleStr = 'Dashed'
-                elif style == QtCore.Qt.DotLine:
-                    styleStr = 'Dotted'
-                elif style == QtCore.Qt.DashDotLine:
-                    styleStr = 'DashDot'
+        # Maps Qt Style flag to string
+        styleMap = {
+            QtCore.Qt.DashLine: 'Dashed',
+            QtCore.Qt.DotLine: 'Dotted',
+            QtCore.Qt.DashDotLine:'DashDot',
+        }
+
+        # Iterate over plots and their traces to initialize pen settings
+        for index, info in plotsInfo:
+            lineNum = 0
+            for lineInfo in info:
+                pen = lineInfo['pen']
+                style, width, color = self.getPenStyle(pen)
+
+                # Map the Qt Pen style to a string
+                if style in styleMap:
+                    styleStr = styleMap[style]
                 else:
                     styleStr = 'Solid'
-                self.ui.lineStyleBoxes[traceNum][0].setCurrentText(styleStr)
+                
+                # Set UI elements with values
+                self.ui.styleGrps[index][lineNum].setCurrentText(styleStr)
+                self.ui.widthGrps[index][lineNum].setValue(width)
+                self.setButtonColor(self.ui.colorGrps[index][lineNum], color)
 
-                # Initialize plot trace line widths
-                width = pen.width()
-                self.ui.lineWidthBoxes[traceNum][0].setValue(width)
+                lineNum += 1
 
-                # Initialize plot trace line colors
-                color = pen.color()
-                self.setButtonColor(self.ui.colorBoxes[traceNum][0], color)
+    def updateLineWidth(self, lineInfo, val):
+        # Extract line and its pen item
+        line = lineInfo['item']
+        pen = lineInfo['pen']
 
-                traceNum += 1
+        # Set new pen width
+        pen.setWidthF(val)
+        line.setPen(pen)
+        lineInfo['pen'] = pen
 
-    def updateLineWidth(self, lw, ll, val):
-        for pt in ll:
-            pen = pg.mkPen(pt.opts['pen'])
-            pen.setWidth(val)
-            pt.setPen(pen)
-        self.setChangesPersistent(self.getPenList())
+        # Apply any other persistent changes TODO:
+        self.setChangesPersistent(lineInfo)
 
-    def updateLineStyle(self, ls, ll):
+    def updateLineStyle(self, lineInfo, styleStr):
         # Get style object from name
-        styleStr = ls.currentText()
         if styleStr == 'Dashed':
             style = QtCore.Qt.DashLine
         elif styleStr == 'Dotted':
@@ -232,33 +239,44 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
             style = QtCore.Qt.SolidLine
 
         # Update pens for selected plots
-        for pt in ll:
-            pen = pg.mkPen(pt.opts['pen'])
-            pen.setStyle(style)
-            pt.setPen(pen)
-        self.setChangesPersistent(self.getPenList())
+        line = lineInfo['item']
+        pen = lineInfo['pen']
+        pen.setStyle(style)
+        line.setPen(pen)
+        lineInfo['pen'] = pen
 
-    def openColorSelect(self, cs, ll):
+        # TODO: Apply other persistent changes
+        self.setChangesPersistent(lineInfo)
+
+    def openColorSelect(self, btn, lineInfo):
         # Open color selection dialog and connect to line color update function
         clrDialog = QtWidgets.QColorDialog(self)
         clrDialog.show()
-        clrDialog.colorSelected.connect(functools.partial(self.setLineColor, cs, ll))
+        clrDialog.setCurrentColor(lineInfo['pen'].color())
+        clrDialog.colorSelected.connect(functools.partial(self.setLineColor, btn, lineInfo))
 
-    def setLineColor(self, cs, ll, color):
-        # Update pen color of every trace item in ll corresp. to the original pen
-        for pt in ll:
-            pen = pg.mkPen(pt.opts['pen'])
-            pen.setColor(color)
-            pt.setPen(pen)
+    def setLineColor(self, btn, lineInfo, color):
+        # Update pen color of every trace item
+        pen = lineInfo['pen']
+        pen.setColor(color)
+        lineInfo['pen'] = pen
+        
+        line = lineInfo['item']
+        line.setPen(pen)
 
         # Match the color selection button to the selected color
-        self.setButtonColor(cs, color)
+        self.setButtonColor(btn, color)
+
         # Set the title colors to match, if implemented
-        self.adjustTitleColors(self.getPenList())
-        self.setChangesPersistent(self.getPenList())
+        self.setChangesPersistent(lineInfo)
+        self.adjustTitleColors(lineInfo)
 
     def setButtonColor(self, cs, color):
-        styleSheet = "* { background:" + color.name() + " }"
+        styleSheet = f'''
+            * {{
+                background: {color.name()};
+            }}
+        '''
         cs.setStyleSheet(styleSheet)
         cs.show()
 
@@ -296,33 +314,34 @@ class MagPyPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
         PlotAppearance.__init__(self, window, plotItems, parent, True)
 
-    def adjustTitleColors(self, penList):
-        self.window.pltGrd.adjustTitleColors(penList)
-        self.window.plotTracePens = penList
+    def adjustTitleColors(self, lineInfo):
+        ''' Adjusts StackedLabel colors and pens stored in state '''
+        plotIndex = lineInfo['plotIndex']
+        lineIndex = lineInfo['traceIndex']
+        pen = lineInfo['pen']
 
-    def setChangesPersistent(self, penList):
-        # Update main window's current pen list
-        self.window.plotTracePens = penList
-        # Create new pen list to look through every time plots are rebuilt w/ plotData
-        allPltStrs = self.window.lastPlotStrings
-        customPens = []
-        for pltStrs, pltPens in zip(allPltStrs, penList):
-            pltCstmPens = []
-            for (pltStr, en), pen in zip(pltStrs, pltPens):
-                pltCstmPens.append((pltStr, en, pen))
-            customPens.append(pltCstmPens)
-        # Stores per-plot lists of (dstr, en, newPen) tuples for every trace
-        self.window.customPens = customPens
+        # Set colors in PlotGrid labels
+        self.window.pltGrd.adjustTitleColors(lineInfo)
+
+    def setChangesPersistent(self, lineInfo):
+        # Set pen in window state
+        plotIndex = lineInfo['plotIndex']
+        lineIndex = lineInfo['traceIndex']
+        pen = lineInfo['pen']
+        self.window.plotTracePens[plotIndex][lineIndex] = pen
 
 class SpectraPlotApp(PlotAppearance):
     def __init__(self, window, plotItems, parent=None):
         PlotAppearance.__init__(self, window, plotItems, parent)
 
-    def adjustTitleColors(self, penList):
-        self.window.updateTitleColors(penList)
+    def adjustTitleColors(self, lineInfo):
+        self.window.updateTitleColors()
 
-    def setChangesPersistent(self, penList):
-        self.window.tracePenList = penList
+    def setChangesPersistent(self, lineInfo):
+        plotIndex = lineInfo['plotIndex']
+        lineIndex = lineInfo['traceIndex']
+        pen = lineInfo['pen']
+        self.window.tracePenList[plotIndex][lineIndex] = pen
 
     def adjustTickHeights(self, axis, tickFont):
         # Adjust horizontal spacing to account for numbers w/ superscripts
