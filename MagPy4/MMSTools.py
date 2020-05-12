@@ -2580,6 +2580,7 @@ class FEEPS_EPAD(QtWidgets.QFrame):
             plotInfo = plt.getPlotInfo()
             self.window.colorPlotInfo[lbl] = (plotInfo, labelTxt, 'Degrees')
         self.window.pltGrd.resizeEvent(None)
+        self.window.updateXRange()
 
         # Close window after loading plots into main grid
         self.close()
