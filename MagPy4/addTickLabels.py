@@ -151,8 +151,8 @@ class invisAxis(DateAxis):
         p.translate(0.5,0)
         
         ## Draw all text
-        if self.tickFont is not None:
-            p.setFont(self.tickFont)
+        if self.getTickFont() is not None:
+            p.setFont(self.getTickFont())
         p.setPen(self.pen())
         for rect, flags, text in textSpecs:
             p.drawText(rect, flags, text)

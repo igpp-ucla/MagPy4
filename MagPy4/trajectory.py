@@ -1098,7 +1098,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         # Reduce RGB values by 50 to get a slightly darker color
         outlineColors = []
         width = 50
-        for r, g, b in colors:
+        for r, g, b, a in colors:
             new_r = max(0, r-width)
             new_g = max(0, g-width)
             new_b = max(0, b-width)

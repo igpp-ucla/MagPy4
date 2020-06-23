@@ -18,7 +18,7 @@ setuptools.setup(
 	long_description=long_description,
 	url='https://github.com/igpp-ucla/MagPy4',
 	install_requires=['ffPy @ git+https://github.com/igpp-ucla/ffPy.git',
-		'numpy>=1.15.0', 'scipy>=1.1.0', 'pyqtgraph>=0.10.0',
+		'numpy>=1.15.0', 'scipy>=1.1.0', 'pyqtgraph>=0.11.0',
 		'PyQt5==5.13.1', 'PyQtWebEngine==5.13.1', 'cdflib', 'requests',
 		'matplotlib'],
 	packages=['MagPy4', 'MagPy4/geopack/geopack'],

@@ -908,7 +908,7 @@ class PlotGrid(pg.GraphicsLayout):
         if self.numPlots == 0:
             pg.GraphicsLayout.resizeEvent(self, event)
             return
-
+        
         try:
             # Fill in factors w/ 1's to make sure # of factors = # of plots
             while len(self.factors) < self.count():
@@ -948,6 +948,9 @@ class PlotGrid(pg.GraphicsLayout):
 
             # Adjust axis widths
             self.adjustPlotWidths()
+
+            if event:
+                event.accept()
         except:
             return
 
@@ -1025,6 +1028,7 @@ class PlotGrid(pg.GraphicsLayout):
 
     def addPlt(self, plt, lbl, index=None):
         index = self.numPlots if index is None else index
+        plt.setSizePolicy(QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding))
 
         # Each time a new plot is added
         if self.numPlots > 0:
@@ -1193,7 +1197,7 @@ class PlotGrid(pg.GraphicsLayout):
 
         # Get font size from bottom date axis and apply it 
         ax = self.plotItems[-1].getAxis('bottom')
-        font = QtGui.QFont() if ax.tickFont is None else ax.tickFont
+        font = QtGui.QFont() if ax.getTickFont() is None else ax.getTickFont()
         fontSize = font.pointSize()
         self.setLabelSetFontSize(fontSize)
 

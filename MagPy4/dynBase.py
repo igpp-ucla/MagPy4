@@ -1027,7 +1027,8 @@ class SimpleColorPlot(MagPyPlotItem):
         # Apply mask to color mapped grid
         if maskInfo:
             mask, maskColor, outline = maskInfo
-            grid[mask] = maskColor
+            r, g, b = maskColor
+            grid[mask] = (r, g, b, 255)
 
         self.valueRange = valRng
         self.logColor = logColor
@@ -1035,7 +1036,7 @@ class SimpleColorPlot(MagPyPlotItem):
         self.fillPlot()
 
     def getColor(self, rgb):
-        r, g, b = rgb
+        r, g, b, a = rgb
         return QtGui.QColor(r, g, b)
 
     def getGradLegend(self, logMode=True, offsets=None, cstmTicks=None):
@@ -1087,7 +1088,7 @@ class SimpleColorPlot(MagPyPlotItem):
         # Map values using color map and set all invalid log values to white
         mappedGrid = colorMap.map(grid)
         if mask is not None:
-            mappedGrid[mask] = (255, 255, 255)
+            mappedGrid[mask] = (255, 255, 255, 255)
         
         self.logColor = logColorScale
 
@@ -1312,7 +1313,7 @@ class SpectrogramPlotItem(SimpleColorPlot):
             mask, maskColor, maskOutline = maskInfo
             r, g, b = maskColor
             if not maskOutline:
-                mappedGrid[mask] = (r, g, b)
+                mappedGrid[mask] = (r, g, b, 255)
 
         # Set the mapped grid colors for this plot and generate
         self.setMappedGrid(mappedGrid, yVals, timeVals)

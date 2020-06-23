@@ -782,10 +782,10 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
         # Initialize tick label font size
         self.ui.tickLblSzBox.blockSignals(True)
         axis = plt.getAxis('bottom')
-        if axis.tickFont == None: # No custom font, use default
+        if axis.getTickFont() == None: # No custom font, use default
             self.ui.tickLblSzBox.setValue(11)
         else:
-            tickFont = axis.tickFont
+            tickFont = axis.getTickFont()
             tickSize = tickFont.pointSize()
             if tickSize < 0: # No point size set, use default
                 tickSize = 11
@@ -823,7 +823,7 @@ class LabelAppear(QtWidgets.QFrame, LabelAppearUI):
                     tickFont = QtGui.QFont()
                 tickFont.setPointSize(val)
                 axis.setStyle(tickFont=tickFont)
-                axis.tickFont = tickFont
+                axis.setTickFont(tickFont)
 
                 # Adjust vert/horz spacing reserved for bottom ticks if necessary
                 self.adjustTickHeights(axis, tickFont)

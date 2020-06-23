@@ -269,21 +269,40 @@ class GridGraphicsLayout(pg.GraphicsLayout):
         self.lastWidth = 0
         self.lastHeight = 0
 
-    def clear(self):  # clear doesnt get rid of grid layout formatting correctly, todo: make override of this
-        pg.GraphicsLayout.clear(self)
-        self.currentRow = 0
-        self.currentCol = 0
+    def addItem(self, item, row=None, col=None, rowspan=1, colspan=1):
+        """
+        Add an item to the layout and place it in the next available cell (or in the cell specified).
+        The item must be an instance of a QGraphicsWidget subclass.
+        """
+        if row is None:
+            row = self.currentRow
+        if col is None:
+            col = self.currentCol
+            
+        self.items[item] = []
+        for i in range(rowspan):
+            for j in range(colspan):
+                row2 = row + i
+                col2 = col + j
+                if row2 not in self.rows:
+                    self.rows[row2] = {}
+                self.rows[row2][col2] = item
+                self.items[item].append((row2, col2))
 
-    def paint(self, p, *args):
-        pg.GraphicsLayout.paint(self,p,*args)
-        if not self.window:
-            return
-        vr = self.viewRect()
-        w = vr.width()
-        h = vr.height()
-        if w != self.lastWidth or h != self.lastHeight:
-            self.lastWidth = w
-            self.lastHeight = h
+        borderRect = QtGui.QGraphicsRectItem()
+
+        borderRect.setParentItem(self)
+        borderRect.setZValue(1e3)
+        borderRect.setPen(pg.mkPen(self.border))
+
+        self.itemBorders[item] = borderRect
+
+        item.geometryChanged.connect(self._updateItemBorder)
+
+        self.layout.addItem(item, row, col, rowspan, colspan)
+                               # Allows some PyQtGraph features to also work without Qt event loop.
+        
+        self.nextColumn()
 
 from .plotBase import MagPyPlotItem
 

@@ -138,6 +138,12 @@ class MagPyAxisItem(pg.AxisItem):
         self.levels = None
         pg.AxisItem.__init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True)
 
+    def getTickFont(self):
+        if hasattr(self, 'tickFont'):
+            return self.tickFont
+        else:
+            return self.style['tickFont']
+
     def setCstmTickSpacing(self, diff):
         self.setTickSpacing(major=diff, minor=diff*1000)
         self.tickDiff = diff
@@ -225,8 +231,8 @@ class MagPyAxisItem(pg.AxisItem):
     def drawText(self, p, textSpecs):
         ''' Paint tick labels '''
         # Set pen font
-        if self.tickFont is not None:
-            p.setFont(self.tickFont)
+        if self.getTickFont() is not None:
+            p.setFont(self.getTickFont())
 
         # Draw labels in rich text
         p.setPen(self.pen())
@@ -241,8 +247,8 @@ class MagPyAxisItem(pg.AxisItem):
         be drawn, then generates from this a set of drawing commands to be 
         interpreted by drawPicture().
         """
-        if self.tickFont:
-            p.setFont(self.tickFont)
+        if self.getTickFont():
+            p.setFont(self.getTickFont())
         visibleLevels = []
 
         bounds = self.mapRectFromParent(self.geometry())
@@ -487,15 +493,13 @@ class MagPyAxisItem(pg.AxisItem):
 
 class DateAxis(pg.AxisItem):
     ticksChanged = QtCore.pyqtSignal(object)
-    def __init__(self, epoch, orientation, offset=0, pen=None, linkView=None, parent=None,
-                maxTickLength=-5, showValues=True):
+    def __init__(self, epoch, orientation, offset=0, *args, **kwargs):
         self.tickOffset = offset
         self.timeRange = None
         self.epoch = epoch
         self.levels = None
         self.tm = TimeManager(0, 0, self.epoch)
-        pg.AxisItem.__init__(self, orientation, pen, linkView, None,
-                            maxTickLength,showValues)
+        pg.AxisItem.__init__(self, orientation,  *args, **kwargs)
         self.enableAutoSIPrefix(False)
 
         # Dictionary holding default increment values for ticks
@@ -536,6 +540,12 @@ class DateAxis(pg.AxisItem):
         self.timeDict = {} # Maps time modes to indices
         for timeMode, indexLst in zip(self.timeModes, self.refIndices):
             self.timeDict[timeMode] = indexLst
+
+    def getTickFont(self):
+        if hasattr(self, 'tickFont'):
+            return self.tickFont
+        else:
+            return self.style['tickFont']
 
     def splitTimestamp(self, tmstmp):
         # Break down timestamp into its components and return a list of strings
@@ -813,8 +823,8 @@ class DateAxis(pg.AxisItem):
         be drawn, then generates from this a set of drawing commands to be 
         interpreted by drawPicture().
         """
-        if self.tickFont:
-            p.setFont(self.tickFont)
+        if self.getTickFont():
+            p.setFont(self.getTickFont())
         visibleLevels = []
 
         bounds = self.mapRectFromParent(self.geometry())
