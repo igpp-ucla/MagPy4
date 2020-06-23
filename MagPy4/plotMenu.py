@@ -1,11 +1,345 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
+import pyqtgraph as pg
 
 import functools
 from .MagPy4UI import PyQtUtils
 from . import getRelPath
 import os
+import numpy as np
+
+class TraceInfo():
+    ''' Object containing information about a plot variable '''
+    def __init__(self, name, edit, window):
+        self.name = name
+        self.edit = edit
+        self.window = window
+
+    def getTuple(self):
+        return (self.name, self.edit)
+
+    def getLabel(self):
+        if self.edit < 0:
+            return self.name
+        else:
+            return self.window.getLabel(self.name, self.edit)
+
+    def __eq__(self, other):
+        return (self.getTuple() == other.getTuple())
+
+class VariableListItem(QtWidgets.QListWidgetItem):
+    ''' Custom list item w/ TraceInfo set as data '''
+    def __init__(self, info):
+        label = info.getLabel()
+        QtWidgets.QListWidgetItem.__init__(self, label)
+        self.setData(QtCore.Qt.UserRole, info)
+
+    def getInfo(self):
+        return self.data(QtCore.Qt.UserRole)
+
+class DragPixmap(QtGui.QPixmap):
+    ''' Drag handle pixmap icon '''
+    def __init__(self):
+        # Initialize pixmap with fixed size rect
+        rect = QtCore.QRect(0, 0, 28, 20)
+        QtGui.QPixmap.__init__(self, rect.width(), rect.height())
+
+        # Make background transparent
+        self.fill(QtCore.Qt.transparent)
+
+        # Create a painter w/ grey pen
+        p = QtGui.QPainter(self)
+        pen = pg.mkPen((150, 150, 150))
+        pen.setWidthF(1.3)
+        p.setPen(pen)
+
+        # Draw each line in rect
+        padding = 2
+        height = rect.height() - padding*2
+        for i in range(0, 3):
+            y = padding*1.5 + height * (i/3)
+            p.drawLine(0, y, rect.width(), y)
+
+        # End painter
+        p.end()
+
+class DragLabel(QtGui.QLabel):
+    ''' Drag handle widget facilitates drag events for the given widget '''
+    def __init__(self, widget, *args, **kwargs):
+        self.widget = widget
+        QtGui.QLabel.__init__(self, *args, **kwargs)
+        self.pixmap = DragPixmap()
+        self.setPixmap(self.pixmap)
+        self.setCursor(QtCore.Qt.OpenHandCursor)
+        self.setMaximumWidth(30)
+
+    def mousePressEvent(self, ev):
+        ''' Call widget's moveStarted function '''
+        self.widget.moveStarted()
+
+    def mouseMoveEvent(self, ev):
+        ''' Move widget '''
+        # Map position to parent coordinates
+        pos = ev.pos()
+        pos = QtCore.QPoint(pos.x(), pos.y() - self.rect().height())
+        pos = self.mapToParent(pos)
+        self.widget.moveToPos(pos)
+
+    def mouseReleaseEvent(self, ev):
+        ''' Call widget's moveFinished function '''
+        self.widget.moveFinished()
+
+class DragLayout(QtWidgets.QGridLayout):
+    ''' Manages plot widgets in layout '''
+    def __init__(self, *args, **kwargs):
+        QtWidgets.QGridLayout.__init__(self, *args, **kwargs)
+
+    def getItems(self):
+        ''' Returns item in order of their row indices '''
+        # Get all items
+        count = self.count()
+        items = [self.itemAtPosition(index, 0) for index in range(0, count)]
+
+        # Update indices for each item
+        index = 0
+        for item in items:
+            if item.widget().index == None:
+                item.widget().index = index
+            index += 1
+
+        return items
+
+    def getSnapPositions(self):
+        ''' Get current positions of all widgets in layout '''
+        positions = []
+        for item in self.getItems():
+            pos = item.widget().pos()
+            positions.append(pos)
+        return positions
+
+    def updateZOrder(self, topWidget):
+        ''' Stacks all widgets in layout underneath the given topWidget '''
+        items = self.getItems()
+        for item in items:
+            if item.widget() != topWidget:
+                item.widget().stackUnder(topWidget)
+
+    def updateSnapPositions(self, topWidget):
+        # Get items and sort by index value
+        items = self.getItems()
+        sortOrder = [item.widget().index for item in items]
+        items = [items[i] for i in sortOrder]
+
+        # Remove items
+        for item in items:
+            self.removeItem(item)
+
+        # Place in correct order
+        for i in range(0, len(items)):
+            item = items[i]
+            self.addItem(item, i, 0)
+
+        # Update plot widget titles
+        self.updateIndices()
+
+    def findItem(self, widget):
+        ''' Finds the row index for the given widget in the layout '''
+        index = 0
+        for item in self.getItems():
+            if item.widget() == widget:
+                break
+
+            index += 1
+
+        return index
+
+    def updateIndices(self):
+        ''' Update the plot label for each widget in layout '''
+        items = self.getItems()
+        for i in range(0, len(items)):
+            items[i].widget().label.setText(f'Plot {i+1}:')
+
+class PlotListWidget(QtWidgets.QFrame):
+    def __init__(self, parentLt):
+        self.parentLt = parentLt
+        self.snapPositions = []
+        self.index = None
+
+        QtWidgets.QFrame.__init__(self)
+
+        # Set up list view
+        self.table = QtWidgets.QListWidget()
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+
+        # Set up label, drag hangle, and menu
+        self.label = QtWidgets.QLabel('')
+        self.dragHandle = DragLabel(self)
+        self.menuBtn = self.setupMenu()
+
+        titleLt = QtWidgets.QHBoxLayout()
+        for elem in [self.label, self.dragHandle, self.menuBtn]:
+            titleLt.addWidget(elem)
+
+        # Set up buttons from adding/removing dstrs from plots
+        self.addBtn = QtWidgets.QPushButton('>>')
+        self.rmvBtn = QtWidgets.QPushButton(' < ')
+        self.rmvBtn.clicked.connect(self.removeSelectedItems)
+
+        ## Set up button layout
+        btnLt = QtWidgets.QVBoxLayout()
+        btnLt.addStretch()
+        for btn in [self.addBtn, self.rmvBtn]:
+            btn.setFixedWidth(50)
+            btnLt.addWidget(btn)
+        btnLt.addStretch()
+
+        # Add items to layout
+        self.layout = QtWidgets.QGridLayout()
+        self.setLayout(self.layout)
+
+        self.layout.addLayout(titleLt, 0, 1, 1, 1)
+        self.layout.addLayout(btnLt, 1, 0, 1, 1)
+        self.layout.addWidget(self.table, 1, 1, 1, 1)
+
+        # Set a non-transparent background
+        self.setStyleSheet('''
+            PlotListWidget { background-color: rgba(240, 240, 240, 255); 
+
+                }
+            ''')
+
+    def setupMenu(self):
+        # Set up sub-plot options button
+        optBtn = QtWidgets.QPushButton()
+        optBtn.setStyleSheet('QPushButton { color: #292929; }')
+        optBtn.setFlat(True)
+        optBtn.setFixedSize(20, 20)
+
+        # Set up options menu and 'close' action
+        menu = QtWidgets.QMenu()
+        self.removeAction = menu.addAction('Remove sub-plot')
+        optBtn.setMenu(menu)
+
+        # Set up height factor action + its internal layout
+        frame = QtWidgets.QFrame()
+        lt = QtWidgets.QGridLayout(frame)
+        lt.setContentsMargins(30, 2, 2, 2)
+
+        lbl = QtWidgets.QLabel('Set height factor: ')
+        lt.addWidget(lbl, 0, 0, 1, 1)
+
+        self.heightBox = QtWidgets.QSpinBox()
+        self.heightBox.setMinimum(1)
+        self.heightBox.setMaximum(5)
+        lt.addWidget(self.heightBox, 0, 1, 1, 1)
+
+        # Add action to menu
+        act = QtWidgets.QWidgetAction(menu)
+        act.setDefaultWidget(frame)
+        menu.addSeparator()
+        menu.addAction(act)
+
+        return optBtn
+
+    def getItems(self):
+        ''' Returns a list of items in table format '''
+        items = [self.table.item(row) for row in range(self.table.count())]
+        return items
+
+    def addItems(self, items):
+        ''' Adds non-duplicate items to table widget '''
+        # Get items (in tuple format) currently in table
+        currItems = self.getItems()
+        currItems = [item.getInfo().getTuple() for item in currItems]
+
+        # Add in items if not currently in table
+        for item in items:
+            pair = item.getInfo().getTuple()
+            if pair not in currItems:
+                newItem = VariableListItem(item.getInfo())
+                self.table.addItem(newItem)
+
+    def removeItems(self, items):
+        ''' Removes given items from table '''
+        # Get current items and items to remove
+        rmvItems = [item.getInfo().getTuple() for item in items]
+        currItems = self.getItems()
+
+        # Get items that aren't in remove list
+        newItems = []
+        for item in currItems:
+            if item.getInfo().getTuple() not in rmvItems:
+                newItem = VariableListItem(item.getInfo())
+                newItems.append(newItem)
+
+        # Clear table and re-add items
+        self.table.clear()
+        self.addItems(newItems)
+
+    def removeSelectedItems(self):
+        ''' Removes currently selected items from table '''
+        items = self.table.selectedItems()
+        self.removeItems(items)
+
+    def moveStarted(self):
+        # Save positions for items to snap back to
+        self.snapPositions = self.parentLt.getSnapPositions()
+
+        # Update z order so this widget has a higher z value
+        self.parentLt.updateZOrder(self)
+
+        # Save the index this item is currently at and make sure
+        # other indices are set
+        self.index = self.parentLt.findItem(self)
+        self.parentLt.getItems()
+
+    def moveToPos(self, pos):
+        # Map position to parent coordinates
+        pos = self.mapToParent(pos)
+        pos = QtCore.QPoint(0, pos.y())
+
+        # Move widget to new position
+        self.move(pos)
+
+        # Get position ranges for each widget
+        bins = self.getBins()
+
+        # Look for the new index corresponding to this widget
+        y = pos.y()
+        for i in range(0, len(bins)-1):
+            b = bins[i]
+            b_next = bins[i+1]
+
+            # If current position falls in bin, switch indices with
+            # widget in current index
+            if i != self.index and (y > b) and (y < b_next):
+                # Update indices and have parent layout update positions
+                items = self.parentLt.getItems()
+                items[i].widget().index = self.index
+                self.index = i
+                self.parentLt.updateSnapPositions(self)
+                break
+
+    def getBins(self):
+        ''' Gets bins for falling into another row in grid '''
+        # Get original positions
+        yPos = [pos.y() for pos in self.snapPositions]
+
+        # Get halfway points between each y-position
+        diff = yPos[1] - yPos[0]
+        halfPoints = np.array(yPos) + (diff/2)
+
+        # Add in a zero at beginning to indicate first bin
+        halfPoints = np.concatenate([[0], halfPoints])
+        return halfPoints
+
+    def moveFinished(self):
+        # Remove and re-add widget to layout to snap it back
+        # into the correct position
+        index = self.parentLt.findItem(self)
+        self.parentLt.removeWidget(self)
+        self.parentLt.addWidget(self, index, 0)
 
 class AdjustingScrollArea(QtWidgets.QScrollArea):
     # Scroll area that hides border when vertical scrollbar is not visible
@@ -14,7 +348,8 @@ class AdjustingScrollArea(QtWidgets.QScrollArea):
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
-        self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum))
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred))
+        self.setAcceptDrops(True)
 
     def resizeEvent(self, ev):
         QtWidgets.QScrollArea.resizeEvent(self, ev)
@@ -26,167 +361,6 @@ class AdjustingScrollArea(QtWidgets.QScrollArea):
             self.setStyleSheet('QScrollArea { background-color : #ffffff; }')
         else:
             self.setFrameShape(QtWidgets.QFrame.NoFrame)
-
-class DropdownLayout(QtWidgets.QGridLayout):
-    def __init__(self, window, frame):
-        self.grid = self
-        self.window = window
-        self.mainFrame = frame
-        self.dropdowns = []
-        self.plotLabels = []
-
-        QtWidgets.QGridLayout.__init__(self)
-
-    def addPlot(self):
-        en = self.mainFrame.getCurrentEdit()
-
-        # Adds the plot label and empty boxes filled w/ current edit's dstrs
-        pltNum = len(self.dropdowns)
-        lbl = QtWidgets.QLabel('Plot ' + str(pltNum+1) + ':')
-        self.grid.addWidget(lbl, pltNum, 0, 1, 1)
-        dd = self.addEmptyBox(pltNum, 1)
-
-        # Store dropdown and labels for removing later
-        self.dropdowns.append([(dd, en)])
-        self.plotLabels.append(lbl)
-
-    def removePlot(self):
-        # Remove dropdowns and plot label from layout and delete
-        dropRow = self.dropdowns[-1]
-        for dd, en in dropRow:
-            self.grid.removeWidget(dd)
-            dd.deleteLater()
-
-        lbl = self.plotLabels[-1]
-        self.grid.removeWidget(lbl)
-        lbl.deleteLater()
-
-        # Update lists that keep track of dropdowns
-        for lst in [self.dropdowns, self.plotLabels]:
-            lst.pop()
-
-    def initPlots(self, dropList):
-        self.checkBoxes = []
-        # for each dropdown row in all the dropdowns
-        for di, dropRow in enumerate(dropList):
-            # add spacer in first row to take up right space
-            if di == 0:
-                spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-                self.grid.addItem(spacer,0,100,1,1) # just so its always the last column
-
-            pltLbl = QtWidgets.QLabel('Plot ' + str(di+1) + ':')
-            self.grid.addWidget(pltLbl, di, 0, 1, 1)
-            self.plotLabels.append(pltLbl)
-
-            dropRow = dropRow + [('', self.mainFrame.getCurrentEdit())]
-
-            row = []
-            # for each dropdown in row
-            for i,(dstr,en) in enumerate(dropRow):
-                if en < 0:
-                    dd = QtWidgets.QComboBox()
-                    dd.addItem(dstr)
-                    dd.addItem('')
-                    self.grid.addWidget(dd, di, i+1, 1, 1)
-                    dd.currentTextChanged.connect(self.resetDropdownLsts)
-                elif dstr != '':
-                    dd = self.addBox(di, i+1, en, dstr)
-                else:
-                    dd = self.addEmptyBox(di, i+1)
-                row.append((dd,en))
-
-            self.dropdowns.append(row)
-
-    def clearPlots(self):
-        # Remove all plots and re-add the same number as before
-        numPlts = len(self.dropdowns)
-        self.clearElements()
-        for i in range(0, numPlts):
-            self.addPlot()
-
-    def resetDropdownLsts(self):
-        # Re-organizes plot dropdowns if an empty box is filled or a previously
-        # filled box is emptied
-        rowNum = 0
-        prevDropdowns = self.dropdowns[:]
-        self.dropdowns = []
-        for ddRow in prevDropdowns:
-            # Find the empty and non-empty combo boxes in this row
-            nonEmptyBoxes = []
-            for dd, en in ddRow:
-                dstr = dd.currentText()
-                # Remove all dropdowns from this row
-                self.grid.removeWidget(dd) 
-                if dstr == '':
-                    dd.deleteLater()
-                else:
-                    nonEmptyBoxes.append((dd, en))
-
-            # Add back in all non-empty boxes
-            col = 1
-            for dd, en in nonEmptyBoxes:
-                self.grid.addWidget(dd, rowNum, col, 1, 1)
-                col += 1
-
-            # Add an empty box at the end
-            emptyEndBx = self.addEmptyBox(rowNum, col)
-
-            # Save the new list of dropdowns
-            nonEmptyBoxes.append((emptyEndBx, self.mainFrame.getCurrentEdit()))
-            self.dropdowns.append(nonEmptyBoxes)
-
-            rowNum += 1
-
-    def addBox(self, row, col, en, dstr):
-        # Creates an empty box first
-        box = QtWidgets.QComboBox()
-        self.fillComboBox(box, en)
-        self.grid.addWidget(box, row, col, 1, 1)
-
-        # Finds the index of the dstr it's to be set to
-        ddItems = [box.itemText(itemIndex) for itemIndex in range(0, box.count())]
-        currIndex = ddItems.index(self.window.getLabel(dstr, en))
-        box.setCurrentIndex(currIndex)
-
-        box.currentTextChanged.connect(self.resetDropdownLsts)
-        return box
-
-    def addEmptyBox(self, row, col):
-        # Adds an empty box to grid and fills it
-        emptyEndBx = QtWidgets.QComboBox()
-        self.fillComboBox(emptyEndBx, self.mainFrame.getCurrentEdit())
-        self.grid.addWidget(emptyEndBx, row, col, 1, 1)
-        emptyEndBx.currentTextChanged.connect(self.resetDropdownLsts)
-        return emptyEndBx
-
-    def fillComboBox(self, dd, en):
-        # Fills the combo box w/ dstrs for the given edit number
-        dd.addItem('')
-        for k,v in self.window.DATADICT.items():
-            if len(v[en]) > 0:
-                s = self.window.getLabel(k,en)
-                dd.addItem(s)
-
-    def updtDstrOptions(self):
-        self.resetDropdownLsts()
-
-    def getPltDstrs(self, pltNum):
-        ddRow = self.dropdowns[pltNum]
-        dstrs = []
-        for dd, en in ddRow:
-            dstr = dd.currentText()
-            if dstr not in dstrs:
-                dstrs.append(dstr)
-        return dstrs
-
-    def clearElements(self):
-        numPlts = len(self.dropdowns)
-        while numPlts > 0:
-            self.removePlot()
-            numPlts -= 1
-
-    def setHeightFactor(self, plotItem, factor):
-        return
 
 class ListLayout(QtWidgets.QGridLayout):
     def __init__(self, window, frame):
@@ -206,12 +380,21 @@ class ListLayout(QtWidgets.QGridLayout):
         self.dstrTableFrame, self.dstrTable = self.setupDstrTable(layout)
         layout.addWidget(self.dstrTableFrame, 0, 0, 1, 1)
 
+        self.plotWrappers = []
         self.pltFrms, self.pltTbls, self.elems = [], [], []
+        # self.pltLtFrm = DragFrameArea()
         self.pltLtFrm = QtWidgets.QFrame()
-        self.pltLt = QtWidgets.QGridLayout(self.pltLtFrm)
+        self.pltLt = DragLayout(self.pltLtFrm)
+        self.pltLt.setContentsMargins(0, 0, 0, 0)
 
         # Set up scroll area wrapper for plot boxes
         self.scrollArea = AdjustingScrollArea()
+        testWidget = PlotListWidget(self.pltLt)
+        width = testWidget.sizeHint().width()
+        height = testWidget.table.sizeHint().height()
+
+        # self.scrollArea.setMinimumWidth(width+10)
+        # self.scrollArea.setMinimumHeight(400)
         self.scrollArea.setWidget(self.pltLtFrm)
         layout.addWidget(self.scrollArea, 0, 1, 1, 1)
 
@@ -220,7 +403,11 @@ class ListLayout(QtWidgets.QGridLayout):
         layout = QtWidgets.QVBoxLayout(frame)
         table = QtWidgets.QListWidget()
 
-        table.insertItems(0, self.window.DATASTRINGS)
+        dstrs = self.window.DATASTRINGS
+        infos = [TraceInfo(dstr, 0, self.window) for dstr in dstrs]
+        for info in infos:
+            table.addItem(VariableListItem(info))
+
         table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
 
         layout.addWidget(table)
@@ -265,63 +452,29 @@ class ListLayout(QtWidgets.QGridLayout):
         menu.addSeparator()
         menu.addAction(act)
 
+        # Set up drag and drop label item
+        dragLbl = DragLabel()
+
         # Create layout
-        pltElems = [pltLbl, optBtn]
+        pltElems = [pltLbl, dragLbl, optBtn]
         for elem in pltElems:
             pltTitleLt.addWidget(elem)
 
-        return pltTitleLt, pltElems + [heightBox]
-
-    def closeSubPlot(self, plotIndex):
-        if not self.mainFrame.checkIfPlotRemovable():
-            return
-
-        # Remove plot, update frame state, and update plot titles
-        self.removeSpecificPlot(plotIndex)
-        self.updatePlotTitles()
-        self.mainFrame.plotCount -= 1
-        self.mainFrame.rebuildPlotLinks()
+        return pltTitleLt, [pltLbl, optBtn] + [heightBox]
 
     def addPlot(self):
-        plotNum = len(self.pltFrms) + 1
-        row = plotNum - 1
-        col = 0
+        plotNum = self.pltLt.count()
+        plotFrame = PlotListWidget(self.pltLt)
+        plotFrame.index = plotNum
+        plotFrame.label.setText(f'Plot {plotNum+1}:')
+        self.pltLt.addWidget(plotFrame, plotNum, 0, 1, 1)
+        plotFrame.addBtn.clicked.connect(functools.partial(self.addDstrsToPlt, plotFrame))
+        plotFrame.removeAction.triggered.connect(functools.partial(self.removeSpecificPlot, plotFrame))
 
-        plotTableLt = QtWidgets.QGridLayout()
-        self.pltLt.addLayout(plotTableLt, row, col, 1, 1)
+        return plotFrame
 
-        # Add plot label
-        pltTitleLt, pltTitleElems = self.getPlotTitleLt(plotNum)
-        plotTableLt.addLayout(pltTitleLt, 0, 1, 1, 1)
-
-        # Add plot table
-        table = QtWidgets.QListWidget()
-        table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        plotTableLt.addWidget(table, 1, 1, 1, 1)
-
-        # Set up buttons from adding/removing dstrs from plots
-        pltBtnLt = QtWidgets.QVBoxLayout()
-        plotTableLt.addLayout(pltBtnLt, 1, 0, 1, 1)
-
-        pltBtn = QtWidgets.QPushButton('>>')
-        pltRmvBtn = QtWidgets.QPushButton(' < ')
-
-        pltBtnLt.addStretch()
-        for btn in [pltBtn, pltRmvBtn]:
-            btn.setFixedWidth(50)
-            pltBtnLt.addWidget(btn)
-        pltBtnLt.addStretch()
-
-        # Store this layout and elems for removing + the plot table itself
-        self.pltFrms.append(plotTableLt)
-        self.pltTbls.append(table)
-        elemList = [pltBtn, pltRmvBtn] + pltTitleElems
-        self.elems.append(elemList)
-
-        # Connect add/remove buttons to functions
-        pltBtn.clicked.connect(functools.partial(self.subPlotAction, pltBtn))
-        pltRmvBtn.clicked.connect(functools.partial(self.subPlotAction, pltRmvBtn))
-        return plotTableLt, table
+    def plotCount(self):
+        return len(self.pltLt.getItems())
 
     def subPlotAction(self, btn):
         # Try to find the index and function corresp. to given button
@@ -335,187 +488,98 @@ class ListLayout(QtWidgets.QGridLayout):
                 break
             index += 1
 
-    def subMenuAction(self, btn, actType):
-        # Find the index of the menu's frame first
-        index = 0
-        found = False
-        for addBtn, rmvBtn, lbl, optBtn, heightBox in self.elems:
-            if optBtn == btn:
-                found = True
-                break
-            index += 1
-
-        # Apply action if a matching plot is found
-        if found:
-            if actType == 'Remove':
-                self.closeSubPlot(index)
-            elif actType == 'Up':
-                self.movePlotUp(index)
-            elif actType == 'Down':
-                self.movePlotDown(index)
-
     def setHeightFactor(self, plotIndex, factor):
-        box = self.elems[plotIndex][4]
-        box.setValue(factor)
-
-    def switchTables(self, plotIndex_1, plotIndex_2):
-        # Switch the set of items in each table with the items from the other
-        # table
-        upperTable = self.pltTbls[plotIndex_1]
-        lowerTable = self.pltTbls[plotIndex_2]
-
-        upperDstrs = [upperTable.item(row) for row in range(upperTable.count())]
-        upperDstrs = [item.text() for item in upperDstrs]
-        lowerDstrs = [lowerTable.item(row) for row in range(lowerTable.count())]
-        lowerDstrs = [item.text() for item in lowerDstrs]
-
-        upperTable.clear()
-        lowerTable.clear()
-
-        for item in upperDstrs:
-            lowerTable.addItem(item)
-
-        for item in lowerDstrs:
-            upperTable.addItem(item)
-
-        # Switch height factor settings
-        upperBox = self.elems[plotIndex_1][4]
-        upperHeight = upperBox.value()
-        lowerBox = self.elems[plotIndex_2][4]
-        lowerHeight = lowerBox.value()
-
-        upperBox.setValue(lowerHeight)
-        lowerBox.setValue(upperHeight)
-
-    def movePlotUp(self, index):
-        if index <= 0:
-            return
-
-        # Switch list items w/ list below current index
-        self.switchTables(index-1, index)
-
-    def movePlotDown(self, index):
-        if index >= len(self.pltTbls) - 1:
-            return
-
-        # Switch list items w/ list above current index
-        self.switchTables(index, index+1)
+        items = [item.widget() for item in self.pltLt.getItems()]
+        items[plotIndex].heightBox.setValue(factor)
 
     def removePlot(self):
         # Remove plot layout from layout and delete the plot elements
-        self.pltLt.removeItem(self.pltFrms[-1])
-        self.pltTbls[-1].deleteLater()
-        for elem in self.elems[-1]:
-            elem.deleteLater()
+        items = [item for item in self.pltLt.getItems()]
+        item = items[-1]
+        self.pltLt.removeItem(item)
+        item.widget().deleteLater()
 
-        # Update lists that keep track of plot tables and elements
-        for lst in [self.pltFrms, self.pltTbls, self.elems]:
-            lst.pop()
 
-    def removeSpecificPlot(self, index):
+    def removeSpecificPlot(self, item):
         # Remove plot layout from layout and delete the plot elements
-        self.pltLt.removeItem(self.pltFrms[index])
-        self.pltTbls[index].deleteLater()
+        index = None
+        items = self.pltLt.getItems()
+        i = 0
+        for elem in items:
+            if elem.widget() == item:
+                index = i
+                break
+            i += 1
 
-        for elem in self.elems[index]:
-            elem.deleteLater()
+        if index is None:
+            return
 
-        # Update lists that keep track of plot tables and elements
-        for lst in [self.pltFrms, self.pltTbls, self.elems]:
-            lst.pop(index)
+        self.pltLt.removeItem(items[index])
+        item.deleteLater()
 
         # Shift all plot layouts above this index down by one index
-        for row in range(index, len(self.pltFrms)):
-            lt = self.pltFrms[row]
-            self.pltLt.removeItem(lt)
-            self.pltLt.addLayout(lt, row, 0, 1, 1)
+        for row in range(index+1, len(items)):
+            item = items[row]
+            self.pltLt.removeItem(items[row])
+            self.pltLt.addWidget(item.widget(), row-1, 0, 1, 1)
+            item.widget().label.setText(f'Plot {row}:')
 
-    def updatePlotTitles(self):
-        plotNum = 1
-        for elemLst in self.elems:
-            pltLbl = elemLst[2]
-            pltLbl.setText('Plot ' + str(plotNum) + ':') 
-            plotNum += 1
+    def mapItems(self, lst):
+        items = []
+        for dstr, en in lst:
+            info = TraceInfo(dstr, en, self.window)
+            item = VariableListItem(info)
+            items.append(item)
+        return items
 
     def initPlots(self, dstrLst):
         # Creates a table for each dstr sub-list and fills it w/ the given dstrs
-        pltNum = 0
         for subLst in dstrLst:
-            self.addPlot()
-            dstrs = []
-            for (dstr, en) in subLst:
-                if en < 0:
-                    dstrs.append(dstr)
-                else:
-                    lbl = self.window.getLabel(dstr, en)
-                    dstrs.append(lbl)
-            self.addSpecificDstrsToPlt(len(self.pltTbls)-1, dstrs)
-            pltNum += 1
+            pltFrm = self.addPlot()
+            items = self.mapItems(subLst)
+            pltFrm.addItems(items)
 
     def clearPlots(self):
-        for plt in self.pltTbls:
-            plt.clear()
+        items = self.pltLt.getItems()
+        for item in items:
+            item.widget().table.clear()
 
     def updtDstrOptions(self):
         # Update dstr table w/ current edit's dstrs
         self.dstrTable.clear()
         editNum = self.mainFrame.getCurrentEdit()
-        newDstrs = []
         for k,v in self.window.DATADICT.items():
             if len(v[editNum]) > 0:
-                s = self.window.getLabel(k,editNum)
-                newDstrs.append(s)
-        self.dstrTable.addItems(newDstrs)
+                info = TraceInfo(k, editNum, self.window)
+                item = VariableListItem(info)
+                self.dstrTable.addItem(item)
 
-    def rmvDstrsFrmPlt(self, plotNum):
-        # Removes the selected datastrings from the given plot table
-        selectedItems = self.pltTbls[plotNum].selectedItems()
-
-        for item in selectedItems:
-            row = self.pltTbls[plotNum].row(item)
-            self.pltTbls[plotNum].takeItem(row)
-
-    def addDstrsToPlt(self, plotNum):
+    def addDstrsToPlt(self, plotWidget):
         # Adds the selected dstrs from the dstr table to the given plot table
         selectedItems = self.dstrTable.selectedItems()
-        selectedDstrs = [item.text() for item in selectedItems]
-
-        self.addSpecificDstrsToPlt(plotNum, selectedDstrs)
-
-    def addSpecificDstrsToPlt(self, plotNum, selectedDstrs):
-        # Used by addDstrsToPlt and initPlots to update a plot table w/ dstrs
-        prevDstrs = self.getPltDstrs(plotNum)
-        for dstr in selectedDstrs:
-            if dstr not in prevDstrs:
-                self.pltTbls[plotNum].addItem(dstr)
+        plotWidget.addItems(selectedItems)
 
     def getPltDstrs(self, pltNum):
-        pltList = self.pltTbls[pltNum]
-        n = pltList.count()
-        dstrs = []
-        for i in range(0, n):
-            dstrs.append(pltList.item(i).text())
-        return dstrs
+        ''' Extra plot trace information from each plot frame '''
+        plts = self.pltLt.getItems()
+        groups = []
+        for plt in plts:
+            items = plt.widget().getItems()
+            items = [item.getInfo().getTuple() for item in items]
+            groups.append(items)
 
-    def clearElements(self):
-        numPlts = len(self.pltFrms)
-        if numPlts == 0:
-            return
-        # Removes all plots, then removes the dstr table/frame
-        while numPlts > 0:
-            self.removePlot()
-            numPlts -= 1
-        self.removeWidget(self.dstrTable)
-        self.removeWidget(self.dstrTableFrame)
-        self.dstrTable.deleteLater()
-        self.dstrTableFrame.deleteLater()
-        self.removeWidget(self.scrollArea)
-        self.scrollArea.deleteLater()
+        return groups
+
+    def getHeightFactors(self):
+        items = [item.widget() for item in self.pltLt.getItems()]
+        factors = []
+        for item in items:
+            factors.append(item.heightBox.value())
+        return factors
 
 class PlotMenuUI(object):
     def setupUI(self, Frame):
         Frame.setWindowTitle('Plot Menu')
-        Frame.resize(100,100)
 
         base_url = getRelPath('images', directory=True)
 
@@ -527,7 +591,7 @@ class PlotMenuUI(object):
             for subKw in ['', 'hover', 'pressed']:
                 # Get style text
                 style = f'QCheckBox::indicator:{kw}'
-                
+
                 # Get style image
                 imgPath = f'image: url({base_url}checkbox_{kw}'
 
@@ -535,13 +599,13 @@ class PlotMenuUI(object):
                 if subKw != '':
                     style = f'{style}:{subKw}'
                     imgPath = f'{imgPath}_{subKw}'
-                
+
                 # Merge style and image info into single string
                 styleStr = f'{style} {{ {imgPath}.png);}}'
 
                 if style == 'indeterminate' and subKw == '':
                     continue
-            
+
                 # Slash direction needs to be reversed in Windows paths for Qt for some reason
                 if os.name == 'nt':
                     styleStr = styleStr.replace('\\', '/')
@@ -568,10 +632,10 @@ class PlotMenuUI(object):
         lab.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         errorFlagLayout.addWidget(lab)
         errorFlagLayout.addWidget(self.errorFlagEdit)
-        
+
         buttonLayout = QtWidgets.QGridLayout()
         topBtns = [self.clearButton, self.removePlotButton, self.addPlotButton,
-            self.defaultsButton, self.switchButton]
+            self.defaultsButton]
         btnNum = 0
         for btn in topBtns:
             buttonLayout.addWidget(btn, 0, btnNum, 1, 1)
@@ -591,7 +655,7 @@ class PlotMenuUI(object):
         # layouts that may be dynamically set by the user
         self.pltLtFrame = QtWidgets.QFrame()
         self.pltLtContainer = QtWidgets.QGridLayout(self.pltLtFrame)
-        self.plottingLayout = DropdownLayout(Frame.window, Frame)
+        self.plottingLayout = ListLayout(Frame.window, Frame)
         self.pltLtContainer.addLayout(self.plottingLayout, 0, 0, 1, 1)
         self.layout.addWidget(self.pltLtFrame)
 
@@ -657,10 +721,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.initPlotMenu(dstrs, links, [])
 
     def getLayout(self):
-        if self.tableMode:
-            layout = ListLayout(self.window, self)
-        else:
-            layout = DropdownLayout(self.window, self)
+        layout = ListLayout(self.window, self)
         return layout
 
     def clearPreviousLayout(self):
@@ -674,9 +735,8 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             print('empty plot matrix!')
             return
 
-        self.clearPreviousLayout()
-        self.ui.plottingLayout = self.getLayout()
-        self.ui.pltLtContainer.addLayout(self.ui.plottingLayout, 0, 0, 1, 1)
+        while self.ui.plottingLayout.plotCount() > 0:
+            self.ui.plottingLayout.removePlot()
         self.ui.plottingLayout.initPlots(dstrs)
 
         self.plotCount = len(dstrs)
@@ -704,31 +764,17 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             factor = heightFactors[plotIndex]
             self.ui.plottingLayout.setHeightFactor(plotIndex, factor)
 
+        width = 200
+        height = 600
+        if not self.isVisible() and len(dstrs) <= 4:
+            height = 125 * len(dstrs) + 300
+
+        if not self.isVisible():
+            self.resize(width, height)
+
     # returns list of list of strings (one list for each plot, (dstr, editNumber) for each trace)
     def getPlotInfo(self):
-        dstrs = []
-        for i in range(0, self.plotCount):
-            # Gets the list of selected datastrings from the layout
-            pltDstrs = self.ui.plottingLayout.getPltDstrs(i)
-
-            # Then it looks through all combinations of edit numbers and
-            # dstrs to find the dstr w/ the matching edit name
-            dstrWithEditNums = []
-            for dstr in pltDstrs:
-                if dstr == '':
-                    continue
-                elif dstr in self.window.pltGrd.colorPltKws:
-                    dstrWithEditNums.append((dstr, -1))
-                    continue
-                for k, v in self.window.DATADICT.items():
-                    for en in range(0, len(v)):
-                        editStr = self.window.getLabel(k, en)
-                        if (editStr == dstr and len(v[en]) > 0):
-                            dstrWithEditNums.append((k, en))
-                            break
-            dstrs.append(dstrWithEditNums)
-        if dstrs == []:
-            dstrs.append([])
+        dstrs = self.ui.plottingLayout.getPltDstrs(1)
         return dstrs
 
     def getLinkLists(self):
@@ -837,10 +883,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             return []
 
         # Extract the height factors from the plot layout sub-menus
-        factors = []
-        for elems in self.ui.plottingLayout.elems:
-            box = elems[4]
-            factors.append(box.value())
+        factors = self.ui.plottingLayout.getHeightFactors()
         return factors
 
     def clearRows(self):
