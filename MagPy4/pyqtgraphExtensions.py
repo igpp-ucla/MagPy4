@@ -239,11 +239,14 @@ class LinkedSubRegion(pg.LinearRegionItem):
             linePen = pg.mkPen('#000cff')
             color.setAlpha(35)
         self.setBrush(pg.mkBrush(color))
+        hoverBrush = pg.mkColor(color)
+        hoverBrush.setAlpha(50)
+        self.setHoverBrush(pg.mkBrush(hoverBrush))
 
         # Set line's pen to same color but opaque and its hover pen to black
         for line in self.lines:
             pen = pg.mkPen('#000000')
-            pen.setWidth(2)
+            pen.setWidth(1)
             line.setHoverPen(pen)
             line.setPen(linePen)
 
