@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.4.0.0 (June 23, 2020)'
+VERSION = f'Version 1.4.1.0 (June 26, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -88,10 +88,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.OS = 'windows'
         print(f'OS: {self.OS}')
 
-        self.ui.startSlider.valueChanged.connect(self.onStartSliderChanged)
-        self.ui.endSlider.valueChanged.connect(self.onEndSliderChanged)
-        self.ui.startSlider.sliderReleased.connect(self.setTimes)
-        self.ui.endSlider.sliderReleased.connect(self.setTimes)
+        self.ui.scrollSelect.startChanged.connect(self.onStartSliderChanged)
+        self.ui.scrollSelect.endChanged.connect(self.onEndSliderChanged)
+        self.ui.scrollSelect.rangeChanged.connect(self.rangeChanged)
+        self.ui.scrollSelect.sliderReleased.connect(self.setTimes)
 
         # Shift window connections
         self.ui.mvRgtBtn.clicked.connect(self.shiftWinRgt)
@@ -313,8 +313,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def setNewWindowTicks(self, newTO, newTE):
         # Update slider values and self.iO, self.iE
-        self.setSliderNoCallback(self.ui.startSlider, newTO)
-        self.setSliderNoCallback(self.ui.endSlider, newTE)
+        self.setSliderNoCallback('start', newTO)
+        self.setSliderNoCallback('stop', newTE)
 
         # Update timeEdit values
         self.onStartSliderChanged(newTO)
@@ -1937,10 +1937,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
         self.ui.timeEdit.setStartNoCallback(dt)
 
-        # send a new time if the user clicks on the bar but not on the sliders
-        if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.startSlider.underMouse():
-            self.setTimes()
-
     def onEndSliderChanged(self, val):
         """callback for when the bottom (end) slider is moved"""
         self.iE = val
@@ -1954,20 +1950,48 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
         self.ui.timeEdit.setEndNoCallback(dt)
 
-        # send a new time if the user clicks on the bar but not on the sliders
-        if not self.ui.startSlider.isSliderDown() and not self.ui.endSlider.isSliderDown() and self.ui.endSlider.underMouse():
-            self.setTimes()
-
     def setSliderNoCallback(self, slider, i):
-        slider.blockSignals(True)
-        slider.setValue(i)
-        slider.blockSignals(False)
+        ''' Update start/end slider with given value i '''
+        # Determine which function to call to set value on
+        if slider == 'start':
+            f = self.ui.scrollSelect.set_start
+        else:
+            f = self.ui.scrollSelect.set_end
+
+        # Block signals and set value
+        self.ui.scrollSelect.blockSignals(True)
+        f(i)
+        self.ui.scrollSelect.blockSignals(False)
+
+    def rangeChanged(self, rng):
+        ''' Updates the view range with the current slider tick range '''
+        # Hide tracker lines while updating range
+        for line in self.trackerLines:
+            line.hide()
+
+        # Extract values
+        start, stop = rng
+
+        # Save start slider tick and update start time edit
+        self.iO = start
+        tt = self.getTimeFromTick(self.iO)
+        dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
+        self.ui.timeEdit.setStartNoCallback(dt)
+
+        # Save stp[] slider tick and update start time edit
+        self.iE = stop
+        tt = self.getTimeFromTick(self.iE)
+        dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
+        self.ui.timeEdit.setEndNoCallback(dt)
+
+        # Update view range by calling setTimes
+        self.setTimes()
 
     def onStartEditChanged(self, val):
         """this gets called when the start date time edit is changed directly"""
         tick = FFTIME(UTCQDate.QDateTime2UTC(val), Epoch=self.epoch)._tick
         self.iO = self.calcTickIndexByTime(tick)
-        self.setSliderNoCallback(self.ui.startSlider, self.iO)
+        self.setSliderNoCallback('start', self.iO)
         for line in self.trackerLines:
             line.hide()
         self.setTimes()
@@ -1976,7 +2000,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         """this gets called when the end date time edit is changed directly"""
         tick = FFTIME(UTCQDate.QDateTime2UTC(val), Epoch=self.epoch)._tick
         self.iE = self.calcTickIndexByTime(tick)
-        self.setSliderNoCallback(self.ui.endSlider, self.iE)
+        self.setSliderNoCallback('stop', self.iE)
         for line in self.trackerLines:
             line.hide()
         self.setTimes()

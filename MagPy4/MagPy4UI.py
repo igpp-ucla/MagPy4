@@ -268,11 +268,6 @@ class MagPy4UI(object):
 
         # SLIDER setup
         sliderLayout = QtWidgets.QGridLayout() # r, c, w, h
-        self.startSlider = QtWidgets.QSlider()
-        self.startSlider.setOrientation(QtCore.Qt.Horizontal)
-        self.endSlider = QtWidgets.QSlider()
-        self.endSlider.setOrientation(QtCore.Qt.Horizontal)
-
         self.timeEdit = TimeEdit(QtGui.QFont("monospace", 11))
 
         # Create buttons for moving plot windows L or R by a fixed amt
@@ -315,12 +310,13 @@ class MagPy4UI(object):
         self.statusBar.layout().setContentsMargins(margins)
 
         sliderLayout.addWidget(self.timeEdit.start, 0, 0, 1, 1)
-        sliderLayout.addWidget(self.startSlider, 0, 1, 1, 1)
+        self.scrollSelect = ScrollSelector()
+        sliderLayout.addWidget(self.scrollSelect, 0, 1, 2, 1)
         sliderLayout.addWidget(self.mvLftBtn, 0, 2, 2, 1)
         sliderLayout.addWidget(self.mvRgtBtn, 0, 3, 2, 1)
         sliderLayout.addWidget(self.shftPrcntBox, 0, 4, 2, 1)
         sliderLayout.addWidget(self.timeEdit.end, 1, 0, 1, 1)
-        sliderLayout.addWidget(self.endSlider, 1, 1, 1, 1)
+        # sliderLayout.addWidget(self.endSlider, 1, 1, 1, 1)
         sliderLayout.setContentsMargins(10, 0, 10, 0)
 
         layout.addLayout(sliderLayout)
@@ -331,32 +327,17 @@ class MagPy4UI(object):
 
     # update slider tick amount and timers and labels and stuff based on new file
     def setupSliders(self, tick, max, minmax):
-        #dont want to trigger callbacks from first plot
-        self.startSlider.blockSignals(True)
-        self.endSlider.blockSignals(True)
-
-        self.startSlider.setMinimum(0)
-        self.startSlider.setMaximum(max)
-        self.startSlider.setTickInterval(tick)
-        self.startSlider.setSingleStep(tick)
-        self.startSlider.setValue(0)
-        self.endSlider.setMinimum(0)
-        self.endSlider.setMaximum(max)
-        self.endSlider.setTickInterval(tick)
-        self.endSlider.setSingleStep(tick)
-        self.endSlider.setValue(max)
-
+        self.scrollSelect.set_range(max)
+        self.scrollSelect.set_start(0)
+        self.scrollSelect.set_end(max)
         self.timeEdit.setupMinMax(minmax)
-
-        self.startSlider.blockSignals(False)
-        self.endSlider.blockSignals(False)
 
     def enableUIElems(self, enabled=True):
         # Enable/disable all elems for interacting w/ plots
-        elems = [self.startSlider, self.endSlider, self.shftPrcntBox, self.mvLftBtn,
+        elems = [self.shftPrcntBox, self.mvLftBtn,
                 self.mvRgtBtn, self.timeEdit.start, self.timeEdit.end,
                 self.mvLftShrtct, self.mvRgtShrtct, self.switchMode, self.MMSMenu,
-                self.actionSaveWs]
+                self.actionSaveWs, self.scrollSelect]
         for e in elems:
             e.setEnabled(enabled)
 
@@ -1544,3 +1525,259 @@ def checkForOrbitLibs():
             installed = False
     
     return installed
+
+class ScrollSelector(QtWidgets.QAbstractSlider):
+    startChanged = QtCore.pyqtSignal(int)
+    endChanged = QtCore.pyqtSignal(int)
+    rangeChanged = QtCore.pyqtSignal(tuple)
+
+    def __init__(self):
+        # Slider start/end marker positions, max # of ticks
+        self.start_pos = 0
+        self.end_pos = 100
+        self.num_ticks = 100
+
+        # Keeps track of active slider
+        self.current_slider = 0
+
+        # Positions of start/end markers relative to position
+        # selected on scroll bar
+        self.slider_relative_start = 0
+        self.slider_relative_end = 0
+
+        # Appearance settings
+        self.mark_width = 6
+        self.vert_ofst = 4
+        self.max_height = 25
+        self.elems = {}
+        self.setup_colors()
+
+        QtWidgets.QAbstractSlider.__init__(self)
+        self.setMaximumHeight(self.max_height)
+    
+    def setup_colors(self):
+        # Set up gradient to use as brush for 'background' scroll area
+        gradient = QtGui.QLinearGradient(0, 0, 0, 1)
+        center_color = pg.mkColor((218.0, 218.0, 218.0))
+        edge_color = center_color.darker(110)
+        gradient.setColorAt(0, edge_color)
+        gradient.setColorAt(0.25, center_color)
+        gradient.setColorAt(0.75, center_color)
+        gradient.setColorAt(1.0, edge_color)
+
+        self.elems['background'] = gradient
+        self.elems['outline'] = edge_color.darker(120)
+
+        # Set up scroll bar brushes (both enabled/disabled)
+        scrollColors = [pg.mkColor('#61b5ff'), pg.mkColor('#d9d9d9')]
+        labels = ['scroll', 'scroll_disabled']
+        for scrollColor, name in zip(scrollColors, labels):
+            edgeColor = scrollColor.darker(115)
+            gradient = QtGui.QLinearGradient(0, 0, 0, 0)
+            gradient.setColorAt(0, edgeColor)
+            gradient.setColorAt(0.1, scrollColor)
+            gradient.setColorAt(0.9, scrollColor)
+            gradient.setColorAt(1.0, edgeColor)
+            self.elems[name] = gradient
+            self.elems[f'{name}_line'] = edgeColor
+
+        # Set the button brush
+        btn_color = pg.mkColor(250, 250, 250)
+        btn_grad = QtGui.QRadialGradient(0, 0, self.mark_width*2)
+        btn_grad.setColorAt(0, btn_color)
+        btn_grad.setColorAt(0.5, btn_color)
+        btn_grad.setColorAt(1, btn_color.darker(108))
+        self.elems['button'] = btn_grad
+
+    def set_start(self, t):
+        ''' Sets the start tick value '''
+        t = min(max(t, 0), self.get_num_ticks())
+        self.start_pos = t
+        self.update()
+        self.startChanged.emit(t)
+    
+    def set_end(self, t):
+        ''' Sets the end tick value '''
+        t = min(max(t, 0), self.get_num_ticks())
+        self.end_pos = t
+        self.update()
+        self.endChanged.emit(t)
+    
+    def set_range(self, t):
+        ''' Sets the maximum number of ticks '''
+        self.num_ticks = t
+        self.update()
+
+    def get_num_ticks(self):
+        ''' Returns the maximum number of ticks '''
+        return self.num_ticks
+    
+    def mouseReleaseEvent(self, ev):
+        self.sliderReleased.emit()
+
+    def mouseMoveEvent(self, ev):
+        if not self.isEnabled():
+            return
+
+        # Get position and current slider rects
+        pos = ev.pos()
+        startRect, endRect, scrollRect = self.get_marker_rects()
+
+        # Update position of currently selected slider
+        if self.current_slider == 0: # Start slider
+            self.start_pos = self.get_marker_pos(pos)
+            self.startChanged.emit(self.start_pos)
+        elif self.current_slider == 1: # End slider
+            self.end_pos = self.get_marker_pos(pos)
+            self.endChanged.emit(self.end_pos)
+        elif self.current_slider == -1: # Scroll bar
+            # Get original difference between start/end
+            diff = self.end_pos - self.start_pos
+
+            # Get potential new positions of start/end sliders based
+            # on new position for slider (relative to where it was selected)
+            start = QtCore.QPointF(pos.x() - self.slider_relative_start, 0)
+            end = QtCore.QPointF(pos.x() + self.slider_relative_end, 0)
+
+            # Map new positions in pixel coordinates to ticks
+            self.start_pos = self.get_marker_pos(start)
+            self.end_pos = self.get_marker_pos(end)
+        
+            # If the new positions would shrink the scrollbar
+            # set to lowest/highest values possible while still maintaining
+            # the original size of the scroll bar
+            if abs(self.end_pos - self.start_pos) < abs(diff):
+                num_ticks = self.get_num_ticks()
+                if self.end_pos == 0 or self.start_pos == 0:
+                    # Bounded by min value
+                    self.start_pos = 0
+                    self.end_pos = abs(diff)
+                elif self.end_pos == num_ticks or self.start_pos == num_ticks:
+                    # Bounded by max value
+                    self.start_pos = num_ticks - abs(diff)
+                    self.end_pos = num_ticks
+
+            # Seng signal that whole range was updated
+            self.rangeChanged.emit((self.start_pos, self.end_pos))
+
+        # Update appearance
+        self.update()
+        ev.accept()
+    
+    def mousePressEvent(self, ev):
+        # Get position and current slider rects
+        pos = ev.pos()
+        startRect, endRect, scrollRect = self.get_marker_rects()
+
+        # Update which slider item is being selected 
+        if startRect.contains(pos): # Start slider
+            self.current_slider = 0
+        elif endRect.contains(pos): # End slider
+            self.current_slider = 1
+        elif scrollRect.contains(pos): # Scroll bar
+            self.current_slider = -1
+            # Save position of start/end relative to position selected
+            # on scroll bar
+            self.slider_relative_start = pos.x() - scrollRect.left()
+            self.slider_relative_end = scrollRect.right() - pos.x()
+        else: # No slider selected
+            self.current_slider = -2
+
+    def get_marker_pos(self, pos):
+        ''' Maps pos's x value in pixels to an internal tick value '''
+        x = pos.x()
+
+        # Get overall area width and subtract padding for marker items
+        rect = self.rect()
+        width = rect.width()
+        avail_width = width - (self.mark_width*2)
+        
+        # Convert x position into a tick value based on the overall
+        # available space for placing ticks
+        int_pos = (x - self.mark_width) * (self.get_num_ticks() / avail_width)
+        int_pos = min(max(int_pos, 0), self.get_num_ticks())
+        return np.round(int_pos)
+
+    def get_marker_rects(self):
+        ''' Gets the rect for each marker and scrollbar '''
+        # Get rect for this object
+        rect = self.rect()
+        width = rect.width()
+        height = rect.height()
+
+        # Get position of start/end markers in pixel coordinates
+        avail_width = width - (self.mark_width*2) - 2
+        pos_a = self.mark_width + avail_width * (self.start_pos / self.get_num_ticks())
+        pos_b = self.mark_width + avail_width * (self.end_pos / self.get_num_ticks())
+
+        # Create rects from positions and self.mark_width settings
+        startRect = QtCore.QRectF(pos_a - self.mark_width, 0, self.mark_width*2, height)
+        endRect = QtCore.QRectF(pos_b - self.mark_width, 0, self.mark_width*2, height)
+
+        # Construct scrollRect from startRect and endRect endpoints
+        left = startRect.left()
+        right = endRect.left()
+        scrollRect = QtCore.QRectF(left, 0, right-left, self.rect().height())
+
+        return startRect, endRect, scrollRect
+
+    def paintEvent(self, ev):
+        # Start a painter
+        p = QtGui.QPainter()
+        p.begin(self)
+
+        # Get current rect width/height
+        rect = self.rect()
+        width = rect.width()
+        height = rect.height()
+
+        # Get position of start/end markers
+        avail_width = width - (self.mark_width*2)
+        pos_a = self.mark_width + avail_width * (self.start_pos / self.get_num_ticks())
+        pos_b = self.mark_width + avail_width * (self.end_pos / self.get_num_ticks())
+
+        # Fill in background
+        rect = QtCore.QRectF(0, self.vert_ofst, rect.width()-1, height-self.vert_ofst*2)
+
+        ## Update gradient positioning
+        gradient = self.elems['background']
+        gradient.setStart(0, self.vert_ofst)
+        gradient.setFinalStop(0, height-self.vert_ofst)
+
+        ## Fill with painter
+        p.setBrush(gradient)
+        p.setPen(self.elems['outline'])
+        p.drawRoundedRect(rect, 2, 2)
+
+        # Fill in scroll bar
+        scrollRect = QtCore.QRectF(pos_a, self.vert_ofst, pos_b-pos_a, height-self.vert_ofst*2)
+
+        ## Update gradient positioning
+        enabled = self.isEnabled()
+        scrollPen = self.elems['scroll_line'] if enabled else self.elems['scroll_disabled_line']
+        gradient = self.elems['scroll'] if enabled else self.elems['scroll_disabled']
+        gradient.setStart(0, self.vert_ofst)
+        gradient.setFinalStop(0, height-self.vert_ofst)
+
+        ## Fill with painter
+        p.setBrush(gradient)
+        p.setPen(scrollPen)
+        p.drawRect(scrollRect)
+
+        # Fill in markers
+        startRect = QtCore.QRectF(pos_a - self.mark_width, 1, self.mark_width*2, height-2)
+        endRect = QtCore.QRectF(pos_b - self.mark_width, 1, self.mark_width*2, height-2)
+
+        ## Set up pen and aliasing
+        pen = pg.mkPen(self.elems['outline'].darker(120))
+        p.setPen(pen)
+        p.setRenderHint(p.Antialiasing, True)
+
+        ## Update gradient positions and draw
+        for rect in [startRect, endRect]:
+            gradient = QtGui.QRadialGradient(rect.center(), self.mark_width*2)
+            gradient.setStops(self.elems['button'].stops())
+            p.setBrush(gradient)
+            p.drawRoundedRect(rect, 1.0, 1.0)
+
+        p.end()
