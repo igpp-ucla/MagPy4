@@ -1,5 +1,6 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
+from copy import copy
 
 from .plotAppearance import DynamicPlotApp
 import pyqtgraph as pg
@@ -14,6 +15,43 @@ from .mth import Mth
 from .layoutTools import BaseLayout
 from .simpleCalculations import ExpressionEvaluator
 import os
+
+class AddIcon(QtGui.QPixmap):
+    ''' Pixmap renders arrow pointing to bottom right '''
+    def __init__(self):
+        QtGui.QPixmap.__init__(self, 20, 20)
+
+        # Set up painter and background
+        self.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(self)
+
+        # Set pen
+        pen = pg.mkPen((125, 125, 125))
+        pen.setWidthF(2.5)
+        pen.setJoinStyle(QtCore.Qt.MiterJoin)
+        p.setPen(pen)
+        mid = 10
+
+        # Determine corner points
+        topLeft = QtCore.QPointF(4, 4)
+        bottomRight = QtCore.QPointF(20-2, 20-2)
+        bottomLeft = QtCore.QPointF(6, 20-2)
+        topRight = QtCore.QPointF(20-2, 6)
+
+        # Draw arrow
+        p.drawLine(topLeft, bottomRight)
+        p.drawLine(bottomRight, bottomLeft)
+        p.drawLine(bottomRight, topRight)
+
+        p.end()
+
+class AddBtn(QtWidgets.QPushButton):
+    ''' Button showing arrow pointing to bottom right '''
+    def __init__(self):
+        QtWidgets.QPushButton.__init__(self)
+        icon = QtGui.QIcon(AddIcon())
+        self.setIcon(icon)
+        self.setToolTip('Add plot to main plot grid')
 
 class SpectraLineEditorUI(BaseLayout):
     def setupUI(self, Frame, window):
@@ -446,8 +484,9 @@ class DynamicAnalysisTool(SpectraBase):
         self.savedLineInfo = None
         self.lineHistory = set()
         self.lineInfoHist = set()
-        self.fftBins = [32, 64, 128, 256, 512, 1024, 2048, 4096]
-        self.fftBinBound = 131072
+        self.fftBins = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 
+            16384, 32768, 65536, 131072]
+        self.fftBinBound = self.fftBins[-1]*4
 
     def getState(self):
         state = {}
@@ -732,6 +771,31 @@ class DynamicAnalysisTool(SpectraBase):
         fd.write(colorRowStr)
         fd.close()
 
+    def getAddBtn(self):
+        ''' Returns button with arrow pointing to bottom right '''
+        return AddBtn()
+
+    def addToMain(self, sigHand=None, plt=None):
+        ''' Adds spectrogram to main plot grid '''
+        if plt is None:
+            plt = self.plotItem
+
+        # If there is a plot generated
+        if plt:
+            # Get its specData and create a copy
+            specData = plt.getSpecData()
+            specCopy = copy(specData)
+
+            # Remove analysis from plot name to make it shorter
+            name = specCopy.get_name()
+            if 'Analysis' in name:
+                name = ' '.join([elem.strip(' ') for elem in name.split('Analysis')])
+            specCopy.set_name(name)
+
+            # Add spectrogram to main plot grid and close window
+            self.window.addSpectrogram(specCopy)
+            self.close()
+
 class SpectraLegend(GradLegend):
     def __init__(self, offsets=(31, 48)):
         GradLegend.__init__(self)
@@ -989,6 +1053,182 @@ class PhaseGradient(QtGui.QLinearGradient):
     
     def getColorPos(self):
         return self.colorPos
+
+class SpecData():
+    def __init__(self, y_vals, x_vals, grid_vals, color_rng=None, 
+        log_color=False, mask_info=None, log_y=False,
+        y_label=[], legend_label=[], name=''):
+        # Store plot values
+        self.y_bins = y_vals
+        self.x_bins = x_vals
+        self.grid = grid_vals
+        self.grid_range = None
+
+        # Store plot visual attributes
+        self.val_range = color_rng
+        self.log_color = log_color
+        self.mask_info = mask_info
+        self.log_scale = log_y
+        self.grad_range = None
+
+        # Default gradient is RGB gradient
+        self.gradient_stops = []
+        grad = RGBGradient()
+        self.set_gradient(grad)
+
+        # Store plot label information
+        self.y_label = y_label
+        self.legend_label = legend_label
+        self.name = name
+
+    def get_name(self):
+        return self.name
+
+    def get_labels(self):
+        return self.y_label, self.legend_label
+
+    def get_bins(self):
+        return self.y_bins, self.x_bins
+
+    def get_grid(self):
+        return self.grid
+
+    def log_y_scale(self):
+        return self.log_scale
+
+    def log_color_scale(self):
+        return self.log_color
+
+    def get_y_label(self):
+        return self.y_label
+
+    def get_legend_label(self):
+        return self.legend_label
+
+    def get_grid_range(self):
+        if self.grid_range is None:
+            minVal, maxVal = np.min(self.grid), np.max(self.grid)
+            self.grid_range = (minVal, maxVal)
+        return self.grid_range
+
+    def get_value_range(self):
+        if self.val_range is None:
+            minval, maxval = self.get_grid_range()
+            if self.log_color:
+                minval = np.log10(np.min(self.grid[self.grid>0]))
+                maxval = np.log10(np.max(self.grid[self.grid>0]))
+            return minval, maxval
+        else:
+            minval, maxval = self.val_range
+            if self.log_color:
+                minval = np.log10(minval)
+                maxval = np.log10(maxval)
+            return minval, maxval
+
+    def get_gradient(self):
+        gradient = QtGui.QLinearGradient()
+        for pos, color in self.gradient_stops:
+            gradient.setColorAt(pos, pg.mkColor(color))
+
+        return gradient
+
+    def set_gradient(self, grad):
+        stops = list((a, b) for a,b in zip(grad.getColorPos(), grad.getColors()))
+        self.gradient_stops = stops
+
+    def get_mapped_grid(self, color_rng=None):
+        grid = self.grid[:]
+        if color_rng is None:
+            color_rng = self.val_range[:]
+
+        # Set value range as min/max of grid values if none is specified
+        if self.val_range is None:
+            minVal, maxVal = self.get_grid_range()
+        else:
+            minVal, maxVal = self.val_range
+
+        # Map values and range to log base if necessary
+        mask = None
+        if self.log_color:
+            if self.val_range is None:
+                minVal = np.log10(np.min(grid[grid>0]))
+                maxVal = np.log10(np.max(grid[grid>0]))
+            else:
+                minVal = np.log10(minVal)
+                maxVal = np.log10(maxVal)
+            # Mask out any values that the log can't be computed for
+            mask = (grid <= 0)
+            grid[mask] = 1
+            grid = np.log10(grid)
+        
+        self.grad_range = (minVal, maxVal)
+
+        # Create color map
+        rng = maxVal - minVal
+        positions, colors = [], []
+        for pos, color in self.gradient_stops:
+            positions.append(pos)
+            colors.append(color)
+
+        valStops = []
+        for pos in positions:
+            valStop = minVal + (rng * pos)
+            valStops.append(valStop)
+        colorMap = pg.ColorMap(valStops, colors)
+
+        # Map values using color map and set all invalid log values to white
+        mappedGrid = colorMap.map(grid)
+        if mask is not None:
+            mappedGrid[mask] = (255, 255, 255, 255)
+
+        # Apply mask if not drawing outline
+        if self.mask_info:
+            mask, maskColor, maskOutline = self.mask_info
+            r, g, b = maskColor
+            if not maskOutline:
+                mappedGrid[mask] = (r, g, b, 255)
+
+        return mappedGrid
+
+    def set_mask(self, mask_info):
+        self.mask_info = mask_info
+
+    def get_mask(self):
+        return self.mask_info
+
+    def mask_outline(self):
+        if self.mask_info:
+            mask, maskColor, maskOutline = self.mask_info
+            r, g, b = maskColor
+            pen = pg.mkPen(maskColor)
+
+            if maskOutline:
+                maskYVals = self.y_bins[:]
+            else:
+                return None
+
+            if self.log_y_scale:
+                maskYVals = np.log10(maskYVals)
+
+            maskOutline = MaskOutline(mask, list(maskYVals), self.x_bins, pen=pen)
+            return maskOutline
+
+        return None
+
+    def set_color_scale(self, val):
+        self.log_color_scale = val
+
+    def set_val_range(self, rng):
+        self.val_range = rng
+
+    def set_y_label(self, lbl):
+        self.y_label = lbl
+
+    def set_legend_label(self, lbl):
+        self.legend_label = lbl
+
+    def set_name(self, name):
+        self.name = name
 
 class SimpleColorPlot(MagPyPlotItem):
     def __init__(self, epoch, logYScale=False, vb=None, axItems=None):
@@ -1252,6 +1492,7 @@ class SpectrogramPlotItem(SimpleColorPlot):
     def __init__(self, epoch, logMode=False, *args, **kwargs):
         super().__init__(epoch, logMode, *args, **kwargs)
         self.savedPlot = None
+        self.specData = None
 
         # Initialize default pg.PlotItem settings
         self.plotAppr = None
@@ -1300,20 +1541,39 @@ class SpectrogramPlotItem(SimpleColorPlot):
         else:
             return self.ctrlMenu
 
+    def loadPlot(self, specData, winFrame=None):
+        ''' Loads spectrogram from specData object '''
+        # Extract grid info
+        y, x = specData.get_bins()
+        grid = specData.get_grid()
+
+        # Get color and mask info
+        color_rng = specData.val_range
+        mask_info = specData.get_mask()
+
+        # Set log y scaling
+        self.logYScale = specData.log_y_scale()
+        if self.logYScale:
+            self.setLogMode(x=False, y=True)
+        
+        # Set gradient
+        gradient = specData.get_gradient()
+        self.setGradient(gradient)
+
+        # Generate plot
+        self.createPlot(y, grid, x, color_rng, specData.log_color_scale(),
+            winFrame, mask_info)
+
     # Takes the y-vals (length m), time ticks (length n), a matrix of values 
     # (of shape (m-1) x (n-1)), and a tuple of min/max values repres. by color gradient
     def createPlot(self, yVals, valueGrid, timeVals, colorRng, logColorScale=True, 
         winFrame=None, maskInfo=None):
         # Map values in grid to RGB colors
-        mappedGrid = self.mapGrid(valueGrid, colorRng, logColorScale)
-        
-        # Map any masked values to the given color before plotting
-        if maskInfo:
-            self.maskInfo = maskInfo
-            mask, maskColor, maskOutline = maskInfo
-            r, g, b = maskColor
-            if not maskOutline:
-                mappedGrid[mask] = (r, g, b, 255)
+        self.specData = SpecData(yVals, timeVals, valueGrid, colorRng, logColorScale,
+            maskInfo, self.logYScale)
+        mappedGrid = self.specData.get_mapped_grid()
+        self.valueRange = self.specData.grad_range
+        self.logColor = self.specData.log_color_scale()
 
         # Set the mapped grid colors for this plot and generate
         self.setMappedGrid(mappedGrid, yVals, timeVals)
@@ -1324,28 +1584,28 @@ class SpectrogramPlotItem(SimpleColorPlot):
         self.getAxis('bottom').setLabel(timeLbl)
 
         # Add in mask outlines
-        if maskInfo and maskOutline:
-            pen = pg.mkPen(maskColor)
-            maskYVals = yVals
-            if self.logYScale:
-                maskYVals = np.log10(maskYVals)
-
-            maskOutline = MaskOutline(mask, list(maskYVals), timeVals, pen=pen)
-            self.addItem(maskOutline)
+        mask_outline = self.specData.mask_outline()
+        if mask_outline is not None:
+            self.addItem(mask_outline)
 
         # Link tool's statusBar to clicks on the plot
         if winFrame:
             self.linkToStatusBar(winFrame)
 
-        # Save plot info for export
-        mappedColors = [list(map(self.getColor, row)) for row in mappedGrid]
-        self.savePlotInfo(yVals, timeVals, valueGrid, mappedColors)
+    def getSpecData(self):
+        return self.specData
 
-    def savePlotInfo(self, freqs, times, grid, colors):
-        self.savedPlot = (freqs, times, grid, colors)
+    def savePlotInfo(self, freqs, times, grid):
+        self.savedPlot = (freqs, times, grid)
 
     def getSavedPlotInfo(self):
-        return self.savedPlot
+        # Build plot info from specData object
+        freqs, times = self.specData.get_bins()
+        grid = self.specData.get_grid()
+        mappedGrid = self.specData.get_mapped_grid()
+        mappedColors = [list(map(self.getColor, row)) for row in mappedGrid]
+    
+        return (freqs, times, grid, mappedColors)
 
     def linkToStatusBar(self, window):
         # Link clicks on this plot to the window's statusBar to display

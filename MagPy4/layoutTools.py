@@ -41,11 +41,14 @@ class BaseLayout(object):
 
         return QSizePolicy(horz, vert)
 
-    def getTimeStatusBar(self):
+    def getTimeStatusBar(self, optWidgets=[]):
         layout = QtWidgets.QHBoxLayout()
         timeEdit = TimeEdit(QtGui.QFont())
         layout.addWidget(timeEdit.start)
         layout.addWidget(timeEdit.end)
+
+        for widget in optWidgets:
+            layout.addWidget(widget)
 
         layout.addItem(self.getSpacer(5))
 

@@ -501,8 +501,15 @@ class DynamicWaveUI(BaseLayout):
         Frame.resize(800, 775)
         layout = QtWidgets.QGridLayout(Frame)
 
+        # Create additional widget for adding plots to main window
+        self.addBtn = Frame.getAddBtn()
+        if isinstance(window, QtGui.QMainWindow):
+            widgets = [self.addBtn]
+        else:
+            widgets = []
+
         # Setup time edits / status bar and the graphics frame
-        lt, self.timeEdit, self.statusBar = self.getTimeStatusBar()
+        lt, self.timeEdit, self.statusBar = self.getTimeStatusBar(widgets)
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
         self.glw = self.getGraphicsGrid(window)
 
@@ -771,6 +778,7 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.ui.updtBtn.clicked.connect(self.update)
         self.ui.addLineBtn.clicked.connect(self.openLineTool)
         self.ui.maskBtn.clicked.connect(self.openMaskTool)
+        self.ui.addBtn.clicked.connect(self.addToMain)
 
         self.preWindow = None # Window used to pre-select information
 
@@ -919,6 +927,12 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         title, axisLbl, legendLbl = self.getLabels(plotType, logMode)
         plt.setTitle(title, size='13pt')
         plt.getAxis('left').setLabel(axisLbl)
+
+        # Update specData information
+        specData = plt.getSpecData()
+        specData.set_name(title)
+        specData.set_y_label(axisLbl)
+        specData.set_legend_label(legendLbl.getLabelText())
 
         # Add in time range label at bottom
         timeInfo = self.getTimeInfoLbl((times[0], times[-1]))

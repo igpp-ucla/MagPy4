@@ -1059,7 +1059,13 @@ class PlotGrid(pg.GraphicsLayout):
 
     def addColorPlt(self, plt, lblStr, colorBar, colorLbl=None, units=None,
                     colorLblSpan=1, index=None):
-        lbl = StackedLabel([lblStr], ['#000000'], units=units)
+        if isinstance(lblStr, str):
+            lbl = [lblStr]
+        else:
+            lbl = lblStr
+            lblStr = ' '.join(lblStr)
+        
+        lbl = StackedLabel(lbl, ['#000000']*len(lbl), units=units)
         colorBar.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
         colorBar.setMaximumHeight(1e28)
         colorBar.setOffsets(1, 1, 5, 0)
@@ -1088,6 +1094,49 @@ class PlotGrid(pg.GraphicsLayout):
         cpInfo['Units'] = units
         self.colorPltInfo[lblStr] = cpInfo
         self.colorPltKws[index] = lblStr
+
+    def addSpectrogram(self, specData):
+        from .dynBase import SpectrogramPlotItem
+        # Create plot and fill with specData
+        plt = SpectrogramPlotItem(self.window.epoch)
+        plt.loadPlot(specData)
+
+        # Disable plotappr menu and change cursor
+        plt.setPlotMenuEnabled(False)
+        plt.getViewBox().setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+
+        # Get color bar and axis labels
+        color_bar = plt.getGradLegend(specData.log_color_scale())
+        color_lbl = specData.get_legend_label()
+        color_lbl = StackedAxisLabel(color_lbl, angle=90)
+        color_lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
+
+        # Set plot labels
+        y_labels = specData.get_y_label()
+        plt.getAxis('left').setLabel(y_labels)
+
+        # Determine plot title
+        name = specData.get_name()
+        if len(name) > 10:
+            # Split by spaces, not within parentheses
+            match = '(' in name or ')' in name
+            if '(' in name or ')' in name:
+                # Find parenthesized section and split elsewhere
+                match = re.search('\(.+\)', name)
+                if match:
+                    a, b = match.span()
+                    split_name = name[:a].split(' ') + [name[a:b]] + name[b:].split(' ')
+                    name = [elem for elem in split_name if elem != '']
+
+            # Split by spaces if no parentheses detected
+            if not match:
+                name = name.split(' ')
+
+        # Add elements to grid
+        self.addColorPlt(plt, name, color_bar, color_lbl)
+        self.resizeEvent(None)
+
+        return plt
 
     def getColorPlotIndex(self, name):
         # Get row index corresponding to the color plot w/ given name,

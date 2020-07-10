@@ -1,4 +1,5 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
+import copy
 from PyQt5.QtWidgets import QSizePolicy
 
 from .plotAppearance import DynamicPlotApp
@@ -13,7 +14,7 @@ import functools
 from .mth import Mth
 from .layoutTools import BaseLayout
 from .simpleCalculations import ExpressionEvaluator
-from .dynBase import DynamicAnalysisTool, SpectraLineEditor, SpectrogramPlotItem, SpectraLegend, SpectraBase, PhaseSpectrogram
+from .dynBase import DynamicAnalysisTool, SpectraLineEditor, SpectrogramPlotItem, SpectraLegend, SpectraBase, PhaseGradient
 import os
 
 class DynamicSpectraUI(BaseLayout):
@@ -103,11 +104,18 @@ class DynamicSpectraUI(BaseLayout):
 
         layout.addWidget(settingsFrame, 0, 0, 1, 2)
 
+        # Create additional widget for adding plots to main window
+        self.addBtn = Frame.getAddBtn()
+        if isinstance(window, QtGui.QMainWindow):
+            widgets = [self.addBtn]
+        else:
+            widgets = []
+
         # Set up time edits at bottom of window + status bar
-        timeLt, self.timeEdit, self.statusBar = self.getTimeStatusBar()
+        tlt, self.timeEdit, self.statusBar = self.getTimeStatusBar(widgets)
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
 
-        layout.addLayout(timeLt, 9, 0, 1, 2)
+        layout.addLayout(tlt, 9, 0, 1, 2)
 
         # Initialize data values for spinboxes and combo boxes
         itemSet = set()
@@ -217,6 +225,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.ui.updateBtn.clicked.connect(self.update)
         self.ui.addLineBtn.clicked.connect(self.openLineTool)
         self.ui.maskBtn.clicked.connect(self.openMaskTool)
+        self.ui.addBtn.clicked.connect(self.addToMain)
 
     def closeEvent(self, ev):
         self.closeLineTool()
@@ -448,6 +457,12 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         plt.setTitle(title, size='14pt')
         plt.getAxis('left').setLabel(axisLbl)
 
+        # Update specData information
+        specData = plt.getSpecData()
+        specData.set_name(title)
+        specData.set_y_label(axisLbl)
+        specData.set_legend_label(legendLbl.getLabelText())
+
         # Time range information
         timeInfo = self.getTimeInfoLbl((times[0], times[-1]))
 
@@ -518,8 +533,15 @@ class DynamicCohPhaUI(BaseLayout):
         self.tabWidget, self.cohGrid, self.phaGrid = self.setupTabs(window)
         layout.addWidget(self.tabWidget, 1, 0, 1, 2)
 
+        # Create additional widget for adding plots to main window
+        self.addBtn = Frame.getAddBtn()
+        if isinstance(window, QtGui.QMainWindow):
+            widgets = [self.addBtn]
+        else:
+            widgets = []
+
         # Set up status bar and time edits
-        timeLt, self.timeEdit, self.statusBar = self.getTimeStatusBar()
+        timeLt, self.timeEdit, self.statusBar = self.getTimeStatusBar(widgets)
         minDt, maxDt = window.getMinAndMaxDateTime()
         self.timeEdit.setupMinMax((minDt, maxDt))
 
@@ -663,6 +685,7 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         self.ui.updtBtn.clicked.connect(self.update)
         self.ui.addLineBtn.clicked.connect(self.openLineTool)
         self.ui.maskBtn.clicked.connect(self.openMaskTool)
+        self.ui.addBtn.clicked.connect(self.addToMain)
 
     def closeEvent(self, ev):
         self.closeLineTool()
@@ -752,6 +775,11 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         plt.setTitle(title, size='13pt')
         plt.getAxis('left').setLabel(axisLbl)
 
+        specData = plt.getSpecData()
+        specData.set_name(title)
+        specData.set_y_label(axisLbl)
+        specData.set_legend_label(legendLbl.getLabelText())
+
         # Time range information
         timeInfo = self.getTimeRangeLbl(times[0], times[-1])
 
@@ -819,14 +847,16 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         freqs = self.extendFreqs(freqs, logScaling)
         cohGrid, phaGrid = grids
         cohPlt = SpectrogramPlotItem(self.window.epoch, logScaling)
-        phaPlt = PhaseSpectrogram(self.window.epoch, logScaling)
+        phaPlt = SpectrogramPlotItem(self.window.epoch, logScaling)
+        phaPlt.setGradient(PhaseGradient())
         cohRng = (0, 1.0)
         phaRng = (-180, 180)
         cohPlt.createPlot(freqs, cohGrid, times, cohRng, winFrame=self, 
             logColorScale=False)
         phaPlt.createPlot(freqs, phaGrid, times, phaRng, winFrame=self, 
             logColorScale=False)
-        
+        phaPlt.getSpecData().set_gradient(PhaseGradient())
+
         return (cohPlt, phaPlt)
     
     def extendFreqs(self, freqs, logScale):
@@ -893,3 +923,11 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
             if line in plt.listDataItems():
                 plt.removeItem(line)
                 self.lineHistory.remove(line)
+    
+    def addToMain(self):
+        if self.ui.tabWidget.currentIndex() == 1: # Phase mode
+            plt = self.phaPlt
+        else: # Coherence mode
+            plt = self.cohPlt
+
+        DynamicAnalysisTool.addToMain(self, plt=plt)

@@ -1770,15 +1770,14 @@ class MMSColorPltTool():
                 continue
 
             # Pass plot to main window to add it to the main grid
-            pltIndex = self.window.addColorPltToGrid(plt, kw, gradLbl, units)
-            links.append(pltIndex)
+            specData = plt.getSpecData()
+            specData.set_name(kw)
+            specData.set_y_label(units)
+            specData.set_legend_label(gradLbl.getLabelText())
+            self.window.addSpectrogram(specData)
 
-            # Update ranges and resize
-            self.window.updateXRange()
-
-        # Update plot links and close current window
-        self.window.lastPlotLinks.append(links)
-        self.window.pltGrd.resizeEvent(None)
+        # Update ranges and resize
+        self.window.updateXRange()
         self.close()
     
     def getRangeSettings(self):
@@ -1846,7 +1845,7 @@ class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
             return
 
     def addToMainWindow(self):
-        kws = ['E'+kw for kw in [self.hiKw, self.midKw, self.lowKw]]
+        kws = [f'Electron {kw} Energy PAD' for kw in ['High', 'Mid', 'Low']]
         selectedKws = []
         for kw in kws: # Gather all selected keywords
             index = kws.index(kw)

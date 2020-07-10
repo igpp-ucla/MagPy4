@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.4.1.0 (June 26, 2020)'
+VERSION = f'Version 1.4.2.0 (July 10, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -1594,6 +1594,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ORIGDATADICT = {} # dict mapping dstrs to original data array
         self.DATADICT = {}  # dict mapping dstrs to lists of data where each element is a list of edited data (the first being unedited)
         self.UNITDICT = {} # dict mapping dstrs to unit strings
+        self.SPECDICT = {}
         self.TIMES = [] # list of time informations (3 part lists) [time series, resolutions, average res]
         self.TIMEINDEX = {} # dict mapping dstrs to index into times list
         self.EDITEDTIMES = {}
@@ -2285,6 +2286,34 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.updateXRange()
         self.pltGrd.resizeEvent(None)
 
+    def addSpectrogram(self, specData):
+        ''' Adjusts specData before passing to pltGrd to load spectrogram '''
+        # Adjust by tick offset
+        specData.x_bins = specData.x_bins - self.tickOffset
+
+        # Store specData in dictionary
+        duplicate = specData.get_name() in self.SPECDICT
+        self.SPECDICT[specData.get_name()] = specData
+
+        # Replot if given spectrogram was previously plotted (in SPECDICT)
+        if duplicate:
+            self.plotAfterSpecUpdate()
+            return
+
+        # Add spectrogram to plotGrid and update state
+        plt = self.pltGrd.addSpectrogram(specData)
+
+        self.plotItems.append(plt)
+        self.lastPlotStrings.append([(specData.get_name(), -1)])
+        self.plotTracePens.append([None])
+
+        self.updateXRange()
+
+    def plotAfterSpecUpdate(self):
+        ''' Replots data with same settings as before '''
+        self.plotData(self.lastPlotStrings, self.lastPlotLinks, 
+            self.lastPlotHeightFactors)
+
     def plotData(self, dataStrings, links, heightFactors):
         # Remove any saved linked regions from plots and save their state
         selectState = self.getSelectState()
@@ -2326,6 +2355,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.trackerLines = []
         newColorPlotInfo = {} # Keep track of which color plots are re-plotted
+        newSpec = {}
 
         numPts = 0
         for plotIndex, dstrs in enumerate(dataStrings):
@@ -2338,12 +2368,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     colorPltName = dstr
 
             if colorPlt:
-                # Save old color plot info
-                newColorPlotInfo[colorPltName] = self.colorPlotInfo[colorPltName]
-                # Extract plot info and generate new plot items/legends
-                plotInfo, gradLbl, units = self.colorPlotInfo[colorPltName]
-                plt, grad, gradLbl = self.loadColorPlot(plotInfo, gradLbl)
-                self.pltGrd.addColorPlt(plt, colorPltName, grad, gradLbl, units)
+                # Save old color plot info and generate spectrogram
+                specData = self.SPECDICT[colorPltName]
+                newSpec[colorPltName] = specData
+                plt = self.pltGrd.addSpectrogram(specData)
                 self.plotItems.append(plt)
                 self.plotTracePens.append([None])
                 continue
@@ -2460,6 +2488,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Return the total number of points plotted through plotTrace function
         self.pltGrd.resizeEvent(None)
+        self.SPECDICT = newSpec
         return numPts
 
     def enableScrolling(self, val):
