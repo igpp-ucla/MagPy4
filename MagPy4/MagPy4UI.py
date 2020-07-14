@@ -293,6 +293,14 @@ class MagPy4UI(object):
         self.scrollPlusShrtct = QtWidgets.QShortcut('Ctrl+Shift+=', window)
         self.scrollMinusShrtct = QtWidgets.QShortcut('Ctrl+Shift+-', window)
 
+        # Enable/disable tracker
+        self.toggleTrackerAction = QtWidgets.QAction(window)
+        self.toggleTrackerAction.setText('Enable Tracker Line')
+        self.toggleTrackerAction.setStatusTip('Shows line that follows mouse in plot window & updates timestamp in status bar')
+        self.toggleTrackerAction.setCheckable(True)
+        self.toggleTrackerAction.setShortcut('t')
+        self.optionsMenu.addAction(self.toggleTrackerAction)
+
         # Shift percentage box setup
         self.shftPrcntBox = QtWidgets.QSpinBox()
         self.shftPrcntBox.setButtonSymbols(QtWidgets.QAbstractSpinBox.PlusMinus)        
@@ -308,6 +316,11 @@ class MagPy4UI(object):
         margins = self.statusBar.layout().contentsMargins()
         margins.setBottom(5)
         self.statusBar.layout().setContentsMargins(margins)
+
+        self.timeStatus = QtWidgets.QLabel()
+        self.timeStatus.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        # self.timeStatus.setMinimumWidth(220)
+        self.statusBar.addPermanentWidget(self.timeStatus)
 
         sliderLayout.addWidget(self.timeEdit.start, 0, 0, 1, 1)
         self.scrollSelect = ScrollSelector()

@@ -50,6 +50,7 @@ class LinkedRegion(pg.LinearRegionItem):
         self.updateFunc = updateFunc
         self.linkedTE = linkedTE
         self.lblPos = lblPos
+        self.labelHidden = False
 
         pg.LinearRegionItem.__init__(self, values=(0,0))
 
@@ -69,7 +70,7 @@ class LinkedRegion(pg.LinearRegionItem):
         self.setLabel(self.labelPltIndex)
         if self.linkedTE:
             self.updateTimeEditByLines(self.linkedTE)
-
+        
     def setLinkedTE(self, te):
         self.linkedTE = te
 
@@ -95,6 +96,9 @@ class LinkedRegion(pg.LinearRegionItem):
         # Update line's label and store the plot index where it's currently located
         self.regionItems[plotNum].lines[0].label = label
         self.labelPltIndex = plotNum
+    
+    def hideLabel(self):
+        self.regionItems[self.labelPltIndex].lines[0].setVisible(False)
 
     def mouseDragEvent(self, ev):
         # Called by sub-regions to drag all regions at same time
@@ -222,6 +226,28 @@ class LinkedRegion(pg.LinearRegionItem):
     def mouseClickEvent(self, ev):
         # Signal this region to be set as the active region
         self.onRegionActivated()
+
+class TrackerRegion(LinkedRegion):
+    def __init__(self, *args, **kwargs):
+        LinkedRegion.__init__(self, *args, **kwargs)
+        for region in self.regionItems:
+            for line in region.lines:
+                pen = line.pen
+                pen.setStyle(QtCore.Qt.DashLine)
+                line.setPen(pen)
+
+                pen = line.hoverPen
+                pen.setWidth(1)
+                pen.setStyle(QtCore.Qt.DashLine)
+                line.setHoverPen(pen)
+
+            brush = pg.mkBrush(0, 0, 0, 0)
+            region.setHoverBrush(brush)
+            region.setBrush(brush)
+            region.lines[0].setVisible(False)
+
+    def mouseClickEvent(self, ev):
+        return
 
 class LinkedSubRegion(pg.LinearRegionItem):
     def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):

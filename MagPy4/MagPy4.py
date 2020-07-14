@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.4.2.0 (July 10, 2020)'
+VERSION = f'Version 1.4.3.0 (July 10, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -29,6 +29,7 @@ import FF_File
 from FF_Time import FFTIME, leapFile
 
 from .MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, StackedAxisLabel, FileLabel
+from .pyqtgraphExtensions import TrackerRegion
 from .plotMenu import PlotMenu
 from .spectra import Spectra
 from .dataDisplay import DataDisplay, UTCQDate
@@ -112,6 +113,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Scrolling zoom connects
         self.ui.scrollPlusShrtct.activated.connect(self.increasePlotHeight)
         self.ui.scrollMinusShrtct.activated.connect(self.decreasePlotHeight)
+
+        # Toggle tracker shortcuts/actions
+        self.ui.toggleTrackerAction.triggered.connect(self.toggleTracker)
 
         # Main menu action connections
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True, None))
@@ -260,6 +264,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.plotItems = []
         self.trackerLines = []
         self.regions = []
+
+        self.hoverTracker = None
 
         self.startUp = True
         self.workspace = None
@@ -2319,6 +2325,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         selectState = self.getSelectState()
         self.closeFixSelection()
         self.closeBatchSelect()
+        self.disableTracker()
 
         # Clear any selected tools
         self.closeTraceStats()
@@ -2488,8 +2495,34 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Return the total number of points plotted through plotTrace function
         self.pltGrd.resizeEvent(None)
+
+        # Enable tracker if option checked
+        if self.ui.toggleTrackerAction.isChecked():
+            self.enableTracker()
+
         self.SPECDICT = newSpec
         return numPts
+    
+    def enableTracker(self):
+        ''' Creates a new tracker line item '''
+        if not self.hoverTracker:
+            self.hoverTracker = TrackerRegion(self, self.plotItems, mode='Single', color='#383838')
+            self.hoverTracker.hideLabel()
+
+    def disableTracker(self):
+        ''' Removes any tracker lines present in plot grid '''
+        if self.hoverTracker:
+            self.hoverTracker.setAllRegionsVisible(False)
+            self.hoverTracker.deleteLater()
+            self.hoverTracker = None
+            self.ui.timeStatus.setText('')
+    
+    def toggleTracker(self):
+        ''' Toggles tracker line '''
+        if self.hoverTracker:
+            self.disableTracker()
+        else:
+            self.enableTracker()
 
     def enableScrolling(self, val):
         # Minimum plot height set to 3 inches for now
@@ -3211,6 +3244,45 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         res = True if tool is not None else False
         return res
 
+    def hoverStart(self, pos):
+        ''' Action when mouse hover started '''
+        # Ignore if hover tracker object hasn't been created
+        if not self.hoverTracker:
+            return
+
+        # Set hover tracker visible
+        for i in range(0, len(self.plotItems)):
+            self.hoverTracker.setVisible(True, i)
+        
+        # Set tracker position
+        self.gridHover(pos)
+
+    def gridHover(self, pos):
+        ''' Action as mouse hover continues '''
+        # Ignore if hover tracker object hasn't been created
+        if not self.hoverTracker:
+            return
+
+        # Adjust tick position by offset and set tracker position
+        x = pos.x() + self.tickOffset
+        self.hoverTracker.setRegion((x-self.tickOffset, x-self.tickOffset))
+
+        # Update timestamp in statusbar
+        ts = FFTIME(x, Epoch=self.epoch).UTC
+        self.ui.timeStatus.setText(ts+' ')
+
+    def hoverEnd(self):
+        ''' Action when hover ends '''
+        if not self.hoverTracker:
+            return
+        
+        # Set hover tracker hidden
+        for i in range(0, len(self.plotItems)):
+            self.hoverTracker.setVisible(False, i)
+        
+        # Clear timestamp in statusbar
+        self.ui.timeStatus.setText('')
+
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
 class MagPyViewBox(SelectableViewBox): # custom viewbox event handling
@@ -3229,7 +3301,22 @@ class MagPyViewBox(SelectableViewBox): # custom viewbox event handling
     
     def setPlotIndex(self, index):
         self.plotIndex = index
-
+    
+    def hoverEvent(self, ev):
+        # Update hover tracker position if present
+        if ev.isEnter():
+            # Start hover
+            pos = self.mapToView(ev.pos())
+            self.window.hoverStart(pos)
+        elif ev.isExit():
+            # End hover
+            self.window.hoverEnd()
+        else:
+            # Start and update hover
+            pos = self.mapToView(ev.pos())
+            self.window.hoverStart(pos)
+            self.window.gridHover(pos)
+        
 # Wrapper class for Flat File FID functions
 class FF_FD():
     def __init__(self, filename, FID):
