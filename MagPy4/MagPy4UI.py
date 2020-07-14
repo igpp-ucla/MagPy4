@@ -1589,6 +1589,7 @@ def checkForOrbitLibs():
     return installed
 
 class ScrollSelector(QtWidgets.QAbstractSlider):
+    ''' Dual slider that also serves as a scrollbar '''
     startChanged = QtCore.pyqtSignal(int)
     endChanged = QtCore.pyqtSignal(int)
     rangeChanged = QtCore.pyqtSignal(tuple)
@@ -1693,39 +1694,12 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
             self.end_pos = self.get_marker_pos(pos)
             self.endChanged.emit(self.end_pos)
         elif self.current_slider == -1: # Scroll bar
-            # Get original difference between start/end
-            diff = self.end_pos - self.start_pos
-
-            # Get potential new positions of start/end sliders based
-            # on new position for slider (relative to where it was selected)
-            start = QtCore.QPointF(pos.x() - self.slider_relative_start, 0)
-            end = QtCore.QPointF(pos.x() + self.slider_relative_end, 0)
-
-            # Map new positions in pixel coordinates to ticks
-            self.start_pos = self.get_marker_pos(start)
-            self.end_pos = self.get_marker_pos(end)
-        
-            # If the new positions would shrink the scrollbar
-            # set to lowest/highest values possible while still maintaining
-            # the original size of the scroll bar
-            if abs(self.end_pos - self.start_pos) < abs(diff):
-                num_ticks = self.get_num_ticks()
-                if self.end_pos == 0 or self.start_pos == 0:
-                    # Bounded by min value
-                    self.start_pos = 0
-                    self.end_pos = abs(diff)
-                elif self.end_pos == num_ticks or self.start_pos == num_ticks:
-                    # Bounded by max value
-                    self.start_pos = num_ticks - abs(diff)
-                    self.end_pos = num_ticks
-
-            # Seng signal that whole range was updated
-            self.rangeChanged.emit((self.start_pos, self.end_pos))
+            self.moveBar(pos.x())
 
         # Update appearance
         self.update()
         ev.accept()
-    
+
     def mousePressEvent(self, ev):
         # Get position and current slider rects
         pos = ev.pos()
@@ -1742,8 +1716,72 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
             # on scroll bar
             self.slider_relative_start = pos.x() - scrollRect.left()
             self.slider_relative_end = scrollRect.right() - pos.x()
+
         else: # No slider selected
             self.current_slider = -2
+
+    # def saveBarDistances(self, x_pos):
+    #     ''' Save relative positions of start/end sliders from mouse position '''
+
+
+    def moveBar(self, x_center):
+        ''' Moves bar so that it's centered at x_center but maintains
+            the initial width 
+        '''
+        # Get original difference between start/end
+        diff = self.end_pos - self.start_pos
+
+        # Get potential new positions of start/end sliders based
+        # on new position for slider (relative to where it was selected)
+        start = QtCore.QPointF(x_center - self.slider_relative_start, 0)
+        end = QtCore.QPointF(x_center + self.slider_relative_end, 0)
+
+        # Map new positions in pixel coordinates to ticks
+        self.start_pos = self.get_marker_pos(start)
+        self.end_pos = self.get_marker_pos(end)
+    
+        # If the new positions would shrink the scrollbar
+        # set to lowest/highest values possible while still maintaining
+        # the original size of the scroll bar
+        if abs(self.end_pos - self.start_pos) < abs(diff):
+            num_ticks = self.get_num_ticks()
+            if self.end_pos == 0 or self.start_pos == 0:
+                # Bounded by min value
+                self.start_pos = 0
+                self.end_pos = abs(diff)
+            elif self.end_pos == num_ticks or self.start_pos == num_ticks:
+                # Bounded by max value
+                self.start_pos = num_ticks - abs(diff)
+                self.end_pos = num_ticks
+
+        # Send signal that whole range was updated
+        self.rangeChanged.emit((self.start_pos, self.end_pos))
+
+    def wheelEvent(self, ev):
+        # Get angle delta
+        delta = ev.angleDelta()
+        if delta.y() != 0:
+            diff = delta.y()
+        else:
+            diff = delta.x()
+
+        # Map delta to fraction of window width
+        angle = diff * (1/8)
+        frac = angle / 360
+
+        # Determine bar center
+        a, b = self.get_marker_draw_pos()
+        a, b = min(a, b), max(a, b)
+        center = (a+b)/2
+
+        # Save relative slider positions (to maintain width)
+        self.slider_relative_start = center - a
+        self.slider_relative_end = b - center
+
+        # Move scroll bar to new center
+        new_center = center + abs(b-a)*frac
+        self.moveBar(new_center)
+        self.update()
 
     def get_marker_pos(self, pos):
         ''' Maps pos's x value in pixels to an internal tick value '''
@@ -1782,6 +1820,18 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
         scrollRect = QtCore.QRectF(left, 0, right-left, self.rect().height())
 
         return startRect, endRect, scrollRect
+
+    def get_marker_draw_pos(self):
+        # Get current rect width/height
+        rect = self.rect()
+        width = rect.width()
+        height = rect.height()
+
+        # Get position of start/end markers
+        avail_width = width - (self.mark_width*2)
+        pos_a = self.mark_width + avail_width * (self.start_pos / self.get_num_ticks())
+        pos_b = self.mark_width + avail_width * (self.end_pos / self.get_num_ticks())
+        return (pos_a, pos_b)
 
     def paintEvent(self, ev):
         # Start a painter
