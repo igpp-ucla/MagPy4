@@ -35,6 +35,12 @@ class VariableListItem(QtWidgets.QListWidgetItem):
         QtWidgets.QListWidgetItem.__init__(self, label)
         self.setData(QtCore.Qt.UserRole, info)
 
+        # If plotting a spectrogram or other special plot,
+        # set the text color to blue
+        if info.edit < 0:
+            color = pg.mkColor(0, 0, 255)
+            self.setForeground(color)
+
     def getInfo(self):
         return self.data(QtCore.Qt.UserRole)
 
@@ -860,6 +866,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             self.fcheckBoxes.append(row)
 
     def plotData(self):
+        ''' Plots selected variables '''
         # try to update error flag
         try:
             flag = float(self.ui.errorFlagEdit.text())
@@ -872,9 +879,23 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             print(f'cannot interpret error flag value, leaving at: {flag:.0e}')
             self.ui.errorFlagEdit.setText(f'{flag:.0e}')
 
+        # Get new plot data
         dstrs = self.getPlotInfo()
         links = self.getLinkLists()
         heightFactors = self.getHeightFactors()
+
+        # Check that no more than one color plot is selected in
+        # each plot
+        for dstrLst in dstrs:
+            count = 0
+            for dstr, en in dstrLst:
+                if en < 0:
+                    count += 1
+            if count > 1:
+                msg = 'Error: Cannot have more than one spectrogram in a single plot'
+                self.window.statusBar.showMessage(msg)
+                return
+
         self.window.plotData(dstrs, links, heightFactors)
 
     def getHeightFactors(self):

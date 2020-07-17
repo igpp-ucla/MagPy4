@@ -16,6 +16,154 @@ from .layoutTools import BaseLayout
 from .simpleCalculations import ExpressionEvaluator
 import os
 
+class GradEditor(QtWidgets.QFrame):
+    def __init__(self, grad):
+        self.grad = grad
+        self.spec = grad.getPlot().getSpecData()
+        QtWidgets.QFrame.__init__(self)
+        self.setWindowTitle('Spectrogram Editor')
+        self.resize(250, 200)
+
+        self.setupUI()
+        self.applyBtn.clicked.connect(self.applyChanges)
+
+    def setupUI(self):
+        layout = QtWidgets.QGridLayout(self)
+
+        # Set up value range layout
+        rangeFrm = self.setupRangeLt()
+
+        # Set up log color scaling checkbox
+        self.logColor = QtWidgets.QCheckBox('Log Color Scaling')
+        self.logColor.setChecked(self.spec.log_color_scale())
+        self.logColor.toggled.connect(self.scalingUpdated)
+
+        # Set up log axis scaling checkbox
+        self.logY = QtWidgets.QCheckBox('Log Y-Axis Scaling')
+        self.logY.setChecked(self.spec.log_y_scale())
+
+        self.applyBtn = QtWidgets.QPushButton('Apply')
+        layout.addWidget(rangeFrm, 0, 0, 1, 1)
+        layout.addWidget(self.logColor, 1, 0, 1, 1)
+        layout.addWidget(self.logY, 2, 0, 1, 1)
+        layout.addWidget(self.applyBtn, 3, 0, 1, 1)
+
+    def applyChanges(self):
+        # Get new value ranges
+        minVal = self.minBox.value()
+        maxVal = self.maxBox.value()
+
+        # Adjust value range if on log scale
+        if self.minBox.prefix() != '':
+            minVal = 10 ** minVal
+            maxVal = 10 ** maxVal
+
+        valRange = (minVal, maxVal)
+
+        # If default box is checked, use None
+        if self.defaultRngBox.isChecked():
+            valRange = None
+
+        # Update color scaling
+        self.spec.set_color_scale(self.logColor.isChecked())
+
+        # Set range for specData and gradient bar
+        self.spec.set_val_range(valRange)
+        gradRange = self.spec.get_value_range()
+        self.grad.setRange(self.grad.getGradient(), gradRange)
+
+        # Update gradient color scale mode
+        self.grad.setLogMode(self.logColor.isChecked())
+
+        # Update plot scaling and left axis label accordingly
+        log_scale = self.logY.isChecked()
+
+        self.spec.set_y_log_scale(log_scale)
+        y_label = self.spec.get_y_label()
+        if y_label.startswith('Log') and (not log_scale):
+            new_label = y_label
+            new_label = ' '.join(new_label.split(' ')[1:]).strip(' ')
+            self.spec.set_y_label(new_label)
+        elif (not y_label.startswith('Log')) and log_scale:
+            new_label = f'Log {y_label}'.strip(' ')
+            self.spec.set_y_label(new_label)
+        
+        plt = self.grad.getPlot()
+        plt.getAxis('left').setLabel(self.spec.get_y_label())
+        
+        # Reload plot
+        plt.reloadPlot(self.spec)
+
+    def scalingUpdated(self, val):
+        ''' Updates minBox and maxBoxes when color scaling changed '''
+        if val:
+            prefix = '10^'
+            grid = self.spec.get_grid()
+            minVal = np.log10(np.min(grid[grid>0]))
+            maxVal = np.log10(np.max(grid[grid>0]))
+            bounds = (-100, 100)
+        else:
+            prefix = ''
+            minVal, maxVal = self.spec.get_grid_range()
+            bounds = (-1e16, 1e16)
+
+        for box in [self.minBox, self.maxBox]:
+            box.setPrefix(prefix)
+            box.setMinimum(bounds[0])
+            box.setMaximum(bounds[1])
+
+        self.minBox.setValue(minVal)
+        self.maxBox.setValue(maxVal)
+
+    def setupRangeLt(self):
+        frame = QtWidgets.QGroupBox('Value Range: ')
+        layout = QtWidgets.QGridLayout(frame)
+
+        # Set up default checkbox
+        self.defaultRngBox = QtWidgets.QCheckBox(' Default Values')
+        layout.addWidget(self.defaultRngBox, 0, 0, 1, 2)
+        
+        # Set up min and max spinboxes
+        lbls, boxes = [], []
+        row = 1
+        for label in ['Min: ', 'Max: ']:
+            lbl = QtWidgets.QLabel(label)
+            lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+            box = QtWidgets.QDoubleSpinBox()
+            box.setMinimum(-100)
+            box.setMaximum(100)
+            lbls.append(lbl)
+            boxes.append(box)
+
+            layout.addWidget(lbl, row, 0, 1, 1)
+            layout.addWidget(box, row, 1, 1, 1)
+            row += 1
+        
+        self.minBox, self.maxBox = boxes
+
+        # Set initial values for checkboxes
+        minVal, maxVal = self.spec.get_value_range()
+        if self.spec.log_color_scale():
+            for box in boxes:
+                box.setPrefix('10^')
+        
+        self.minBox.setValue(minVal)
+        self.maxBox.setValue(maxVal)
+    
+        # Connect default checkbox to toggleElems for min/max spinboxes
+        toggleFunc = functools.partial(self.toggleElems, lbls+boxes)
+        self.defaultRngBox.toggled.connect(toggleFunc)
+
+        # Toggle default box if no specific range is set
+        if self.spec.val_range is None:
+            self.defaultRngBox.setChecked(True)
+
+        return frame
+    
+    def toggleElems(self, elems, val):
+        for elem in elems:
+            elem.setEnabled(not val)
+
 class AddIcon(QtGui.QPixmap):
     ''' Pixmap renders arrow pointing to bottom right '''
     def __init__(self):
@@ -315,6 +463,12 @@ class GradLegend(pg.GraphicsLayout):
         self.colorBar = ColorBar(QtGui.QLinearGradient())
         self.axisItem = ColorBarAxis(orientation='right')
 
+        # Linked plot and menu toggle
+        self.plot = None
+        self.label = None
+        self.editor = None
+        self.menuEnabled = False
+
         # Set default contents spacing/margins
         super().__init__(parent)
         self.layout.setVerticalSpacing(0)
@@ -324,6 +478,18 @@ class GradLegend(pg.GraphicsLayout):
 
         self.addItem(self.colorBar, 0, 0, 1, 1)
         self.addItem(self.axisItem, 0, 1, 1, 1)
+    
+    def getPlot(self):
+        return self.plot
+    
+    def setPlot(self, plot):
+        self.plot = plot
+    
+    def getLabel(self):
+        return self.label
+    
+    def setLabel(self, label):
+        self.label = label
 
     def getGradient(self):
         return self.colorBar.getGradient()
@@ -360,6 +526,31 @@ class GradLegend(pg.GraphicsLayout):
 
     def setTickSpacing(self, major, minor):
         self.axisItem.setTickSpacing(major, minor)
+    
+    def resetTickSpacing(self):
+        self.axisItem.resetTickSpacing()
+
+    def enableMenu(self, val=True):
+        ''' Set menu and cursor '''
+        self.menuEnabled = val
+        if val:
+            self.setCursor(QtCore.Qt.PointingHandCursor)
+        else:
+            self.setCursor(QtCore.Qt.Arrow)
+
+    def mouseClickEvent(self, ev):
+        leftClick = ev.button() == QtCore.Qt.LeftButton
+
+        # Open editor if enabled
+        if leftClick and self.menuEnabled:
+            # Create new editor
+            if not self.editor:
+                self.editor = GradEditor(self)
+                self.destroyed.connect(self.editor.close)
+            else:
+                # Bring previous editor to front
+                self.editor.raise_()
+            self.editor.show()
 
 class SpectraBase(object):
     def getCommonVars(self, bw, N):
@@ -812,6 +1003,29 @@ class SpectraLegend(GradLegend):
         self.logMode = logMode
         if logMode:
             self.setTickSpacing(1, 0.5)
+        else:
+            self.setTickSpacing(None, None)
+        
+        # Update label if there is one linked to this gradlegend
+        if self.getLabel():
+            # Get label and sublabel text
+            label = self.getLabel()
+            subLabels = label.getLabelText()
+
+            # Check if first label starts with 'Log'
+            if len(subLabels) > 0:
+                firstLabel = subLabels[0]
+                # Add log to first label
+                if logMode and (not firstLabel.startswith('Log')):
+                    firstLabel = f'Log {firstLabel}'
+                # Remove log from first label
+                elif (not logMode) and firstLabel.startswith('Log'):
+                    firstLabel = ' '.join(firstLabel.split(' ')[1:])
+            
+                # Update label item with new list of sublabels
+                labels = [firstLabel] + subLabels[1:]
+                label.clear()
+                label.setupLabels(labels)
 
     def logModeSetting(self):
         return self.logMode
@@ -1139,7 +1353,7 @@ class SpecData():
     def get_mapped_grid(self, color_rng=None):
         grid = self.grid[:]
         if color_rng is None:
-            color_rng = self.val_range[:]
+            color_rng = self.val_range
 
         # Set value range as min/max of grid values if none is specified
         if self.val_range is None:
@@ -1216,13 +1430,16 @@ class SpecData():
         return None
 
     def set_color_scale(self, val):
-        self.log_color_scale = val
+        self.log_color = val
 
     def set_val_range(self, rng):
         self.val_range = rng
 
     def set_y_label(self, lbl):
         self.y_label = lbl
+
+    def set_y_log_scale(self, val):
+        self.log_scale = val
 
     def set_legend_label(self, lbl):
         self.legend_label = lbl
@@ -1357,8 +1574,12 @@ class SimpleColorPlot(MagPyPlotItem):
         return self.gradient
 
     def fillPlot(self):
-        # Takes the mapped grid values (as RGB tuples) and the corresponding
-        # x/y ticks and generates each line accordingly
+        ''' 
+            Takes the mapped grid values (as RGB tuples) and the corresponding
+            x/y ticks and generates each line accordingly
+
+            updtRng specifies whether x and y ranges should be set automatically
+        '''
         yTicks = self.yTicks[:]
         if self.logYScale:
             yTicks = np.log10(yTicks)
@@ -1541,7 +1762,7 @@ class SpectrogramPlotItem(SimpleColorPlot):
         else:
             return self.ctrlMenu
 
-    def loadPlot(self, specData, winFrame=None):
+    def loadPlot(self, specData, winFrame=None, showLabel=True):
         ''' Loads spectrogram from specData object '''
         # Extract grid info
         y, x = specData.get_bins()
@@ -1555,22 +1776,30 @@ class SpectrogramPlotItem(SimpleColorPlot):
         self.logYScale = specData.log_y_scale()
         if self.logYScale:
             self.setLogMode(x=False, y=True)
-        
+        else:
+            self.setLogMode(x=False, y=False)
+
         # Set gradient
         gradient = specData.get_gradient()
         self.setGradient(gradient)
 
         # Generate plot
         self.createPlot(y, grid, x, color_rng, specData.log_color_scale(),
-            winFrame, mask_info)
+            winFrame, mask_info, showLabel=showLabel)
+        
+        # Make sure plot labels are set correctly
+        self.specData.set_y_label(specData.get_y_label())
+        self.specData.set_name(specData.get_name())
+        self.specData.set_legend_label(specData.get_legend_label())
 
     # Takes the y-vals (length m), time ticks (length n), a matrix of values 
     # (of shape (m-1) x (n-1)), and a tuple of min/max values repres. by color gradient
     def createPlot(self, yVals, valueGrid, timeVals, colorRng, logColorScale=True, 
-        winFrame=None, maskInfo=None):
+        winFrame=None, maskInfo=None, showLabel=True):
         # Map values in grid to RGB colors
         self.specData = SpecData(yVals, timeVals, valueGrid, colorRng, logColorScale,
             maskInfo, self.logYScale)
+
         mappedGrid = self.specData.get_mapped_grid()
         self.valueRange = self.specData.grad_range
         self.logColor = self.specData.log_color_scale()
@@ -1580,8 +1809,9 @@ class SpectrogramPlotItem(SimpleColorPlot):
         self.fillPlot()
 
         # Set the time axis label
-        timeLbl = self.getAxis('bottom').tm.getTimeLabel(timeVals[-1]-timeVals[0])
-        self.getAxis('bottom').setLabel(timeLbl)
+        if showLabel:
+            timeLbl = self.getAxis('bottom').tm.getTimeLabel(timeVals[-1]-timeVals[0])
+            self.getAxis('bottom').setLabel(timeLbl)
 
         # Add in mask outlines
         mask_outline = self.specData.mask_outline()
@@ -1591,6 +1821,19 @@ class SpectrogramPlotItem(SimpleColorPlot):
         # Link tool's statusBar to clicks on the plot
         if winFrame:
             self.linkToStatusBar(winFrame)
+
+    def reloadPlot(self, specData):
+        ''' Reloads plot with given specData '''
+        # Save old x range
+        t0, t1 = self.getAxis('bottom').range
+        if self.gridItem:
+            # Remove old item and load specData
+            self.removeItem(self.gridItem)
+            self.loadPlot(specData, showLabel=False)
+
+            # Reset x range and z-value so it's underneath other items
+            self.setXRange(t0, t1, 0.0)
+            self.gridItem.setZValue(-100)
 
     def getSpecData(self):
         return self.specData

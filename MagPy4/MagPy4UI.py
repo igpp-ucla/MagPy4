@@ -986,6 +986,7 @@ class PlotGrid(pg.GraphicsLayout):
                 fontSize = lblFontSize
             else:
                 fontSize = min(lblFontSize, fontSize)
+        fontSize = min(16, fontSize)
 
         if self.colorPltInfo != {}:
             del lbl
@@ -1120,9 +1121,12 @@ class PlotGrid(pg.GraphicsLayout):
 
         # Get color bar and axis labels
         color_bar = plt.getGradLegend(specData.log_color_scale())
+        color_bar.setPlot(plt)
+        color_bar.enableMenu()
         color_lbl = specData.get_legend_label()
         color_lbl = StackedAxisLabel(color_lbl, angle=90)
         color_lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
+        color_bar.setLabel(color_lbl)
 
         # Set plot labels
         y_labels = specData.get_y_label()

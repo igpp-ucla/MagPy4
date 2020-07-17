@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.4.4.0 (July 14, 2020)'
+VERSION = f'Version 1.4.5.0 (July 17, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -433,6 +433,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     # this should also get called if flatfile changes
     def closeEvent(self, event):
         self.closeAllSubWindows()
+        if self.pltGrd:
+            self.pltGrd.deleteLater()
 
     def openWsOpenDialog(self):
         # Opens file dialog for user to select a workspace file to open
