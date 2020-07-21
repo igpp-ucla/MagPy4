@@ -1114,7 +1114,8 @@ class MagPyPlotDataItem(pg.PlotDataItem):
         # in and set the new connection value to zero
         for z in zeroIndices:
             i = int(z/ds)
-            segs[i] = 0
+            if i < len(segs):
+                segs[i] = 0
 
         return segs
 
@@ -1155,7 +1156,7 @@ class MagPyPlotDataItem(pg.PlotDataItem):
                     width = self.getViewBox().width()
 
                     # If plot not visible yet, try using the screen width
-                    if width == 0:
+                    if width == 0 or width < 100:
                         screenSize = QtGui.QGuiApplication.primaryScreen().geometry()
                         width = screenSize.width()
 
