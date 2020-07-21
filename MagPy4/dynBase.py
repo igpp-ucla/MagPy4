@@ -1351,7 +1351,7 @@ class SpecData():
         self.gradient_stops = stops
 
     def get_mapped_grid(self, color_rng=None):
-        grid = self.grid[:]
+        grid = np.array(self.grid)
         if color_rng is None:
             color_rng = self.val_range
 
@@ -1787,10 +1787,8 @@ class SpectrogramPlotItem(SimpleColorPlot):
         self.createPlot(y, grid, x, color_rng, specData.log_color_scale(),
             winFrame, mask_info, showLabel=showLabel)
         
-        # Make sure plot labels are set correctly
-        self.specData.set_y_label(specData.get_y_label())
-        self.specData.set_name(specData.get_name())
-        self.specData.set_legend_label(specData.get_legend_label())
+        # Make sure specData object is original one
+        self.specData = specData
 
     # Takes the y-vals (length m), time ticks (length n), a matrix of values 
     # (of shape (m-1) x (n-1)), and a tuple of min/max values repres. by color gradient
