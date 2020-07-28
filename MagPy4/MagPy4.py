@@ -16,7 +16,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.4.7.0 (July 21, 2020)'
+VERSION = f'Version 1.4.8.0 (July 28, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -192,6 +192,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.batchSelect = None
         self.fileNameLabel = None
         self.minimumPlotHeight = 3 # Inches
+
+        self.savedPlotInfo = None
 
         self.toolNames = ['Data', 'Edit', 'Plot Menu', 'Detrend', 'Spectra',
             'Dynamic Spectra', 'Dynamic Coh/Pha', 'Wave Analysis',
@@ -2090,8 +2092,30 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def plotDataDefault(self):
         dstrs, links = self.getDefaultPlotInfo()
+        heights = []
 
-        numPts = self.plotData(dstrs, links, [])
+        # If there is a saved plot default, make sure all 
+        if self.savedPlotInfo is not None:
+            missing = False
+            for plot in self.savedPlotInfo[0]:
+                for dstr, en in plot:
+                    # Check if special plot
+                    if en < 0 and (dstr not in self.SPECDICT):
+                        missing = True
+                        break
+                    # Check if variable is loaded
+                    elif en >= 0 and (dstr not in self.DATASTRINGS):
+                        missing = True
+                        break
+
+            # If all plot variables are loaded, use the saved plot settings
+            if not missing:
+                dstrs, links, heights = self.savedPlotInfo
+            else:
+                # Otherwise, reset the saved plot info
+                self.savedPlotInfo = None
+
+        numPts = self.plotData(dstrs, links, heights)
 
         # If a large number of points are plotted, enable downsampling for the plots
         if numPts > 2500000:
@@ -2322,7 +2346,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.plotData(self.lastPlotStrings, self.lastPlotLinks, 
             self.lastPlotHeightFactors)
 
-    def plotData(self, dataStrings, links, heightFactors):
+    def plotData(self, dataStrings, links, heightFactors, save=False):
         # Remove any saved linked regions from plots and save their state
         selectState = self.getSelectState()
         self.closeFixSelection()
@@ -2337,6 +2361,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.lastPlotStrings = dataStrings
         self.lastPlotLinks = links
         self.lastPlotHeightFactors = heightFactors
+
+        # Save plot strings when loading defaults
+        if save:
+            self.savedPlotInfo = (dataStrings, links, heightFactors)
 
         self.plotItems = []
         self.labelItems = []

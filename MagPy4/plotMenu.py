@@ -619,7 +619,6 @@ class PlotMenuUI(object):
                 checkBoxStyles.append(styleStr)
 
         checkBoxStyle = '\n'.join(checkBoxStyles)
-        Frame.setStyleSheet(checkBoxStyle)
 
         self.layout = QtWidgets.QVBoxLayout(Frame)
 
@@ -627,7 +626,7 @@ class PlotMenuUI(object):
         self.removePlotButton = QtWidgets.QPushButton('Remove Plot')
         self.addPlotButton = QtWidgets.QPushButton('Add Plot')
         self.defaultsButton = QtWidgets.QPushButton('Defaults')
-        self.switchButton = QtWidgets.QPushButton('Switch')
+        self.saveStringsBtn = QtWidgets.QCheckBox('Keep Plot Choices')
         self.plotButton = QtWidgets.QPushButton('Plot')
 
         self.errorFlagEdit = QtWidgets.QLineEdit('null')
@@ -648,6 +647,7 @@ class PlotMenuUI(object):
             btnNum += 1
 
         buttonLayout.addWidget(self.plotButton, 1, 0, 1, 3)
+        buttonLayout.addWidget(self.saveStringsBtn, 0, 4, 1, 1)
         buttonLayout.addLayout(errorFlagLayout, 1, 4, 1, 1)
 
         self.editCombo = QtWidgets.QComboBox()
@@ -669,6 +669,7 @@ class PlotMenuUI(object):
         self.fgridFrame.setToolTip('Link the Y axes of each plot in each group to have the same scale with each other')
         self.fgrid = QtWidgets.QGridLayout(self.fgridFrame)
         self.layout.addWidget(self.fgridFrame)
+        self.fgridFrame.setStyleSheet(checkBoxStyle)
 
 class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
     def __init__(self, window, parent=None):
@@ -688,9 +689,6 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.ui.removePlotButton.clicked.connect(self.removePlot)
         self.ui.plotButton.clicked.connect(self.plotData)
         self.ui.defaultsButton.clicked.connect(self.reloadDefaults)
-        self.ui.switchButton.clicked.connect(self.switchModes)
-
-        self.ui.switchButton.setText('Switch to Dropdown Lists' if self.tableMode else 'Switch to Table View')
         self.fcheckBoxes = []
 
         # add the edit name options to dropdown
@@ -700,6 +698,22 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks,
             self.window.lastPlotHeightFactors)
+        
+        # Check keep plot choices if there is saved plot info
+        if self.window.savedPlotInfo is not None:
+            self.ui.saveStringsBtn.setChecked(True)
+
+        # Save plot choices if toggled
+        self.ui.saveStringsBtn.toggled.connect(self.savePlotChoices)
+
+    def savePlotChoices(self, val):
+        if val:
+            dstrs = self.window.lastPlotStrings
+            links = self.window.lastPlotLinks
+            heights = self.window.lastPlotHeightFactors
+            self.window.savedPlotInfo = (dstrs, links, heights)
+        else:
+            self.window.savedPlotInfo = None
 
     def closeEvent(self, event):
         self.window.plotMenuTableMode = self.tableMode
@@ -709,12 +723,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
     def switchModes(self):
         # todo: save mode in magpy
-        if self.ui.switchButton.text() == 'Switch to Table View':
-            self.tableMode = True
-            self.ui.switchButton.setText('Switch to Dropdown Lists')
-        else:
-            self.tableMode = False
-            self.ui.switchButton.setText('Switch to Table View')
+        self.tableMode = True
 
         self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks,
             self.window.lastPlotHeightFactors)
@@ -896,7 +905,9 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
                 self.window.statusBar.showMessage(msg)
                 return
 
-        self.window.plotData(dstrs, links, heightFactors)
+        save = self.ui.saveStringsBtn.isChecked()
+
+        self.window.plotData(dstrs, links, heightFactors, save=save)
 
     def getHeightFactors(self):
         # Return empty list if in dropdown mode
