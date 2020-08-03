@@ -195,13 +195,13 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
     """ file data dialog """
     def __init__(self, window, FIDs, Title=None, parent=None):
         QtGui.QWidget.__init__(self, parent)
+        self.window = window
         self.ui = DataDisplayUI()
         self.ui.setupUi(self)
         self.title = Title
         self.FIDs = FIDs
         self.curFID = FIDs[0]
         self.updateFile()
-        self.window = window
         self.rangeSelection = None
 
         self.setFileComboNames()
@@ -257,6 +257,13 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.fileCombo.blockSignals(False)
 
     def updateFile(self):
+        if self.curFID.getFileType() == 'CDF':
+            self.window.ui.statusBar.showMessage('Error: Data display currently unavailable for CDFs')
+            nRows = 0
+            self.time = []
+            self.dataByRec = []
+            self.dataByCol = []
+            return
         nRows = self.curFID.getRows()
         self.time, self.dataByRec = self.curFID.getRecords()
         self.dataByCol = np.transpose(self.dataByRec)
@@ -417,6 +424,8 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 
     def updateFfData(self):
         self.setWindowTitle(self.title)
+        if len(self.time) == 0:
+            return
 
         # Create header
         self.headerStrings = self.curFID.getLabels()
@@ -438,6 +447,9 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.updtTimeEditAndStats(len(self.time), len(self.dataByCol), epoch)           
 
     def update(self):
+        if len(self.time) == 0:
+            return
+
         if self.ui.viewEdtdDta.isChecked():
             self.updateEditedData()
         else:

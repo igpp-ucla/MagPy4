@@ -8,6 +8,7 @@ import os
 import sys
 import pickle
 import argparse
+import re
 
 # so python looks in paths for these folders too
 # maybe make this into actual modules in future
@@ -16,7 +17,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.4.8.0 (July 28, 2020)'
+VERSION = f'Version 1.5.0.0 (August 3, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -46,6 +47,7 @@ from . import mms_formation
 from .dynBase import SimpleColorPlot
 from .detrendWin import DetrendWindow
 from .ASCII_Importer import Asc_Importer, ASC_Output
+from .dynBase import SpecData
 from .dynamicSpectra import DynamicSpectra, DynamicCohPha
 from .waveAnalysis import DynamicWave
 from .trajectory import TrajectoryAnalysis
@@ -57,7 +59,9 @@ import bisect
 from .timeManager import TimeManager
 from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect, SelectableViewBox
 from .layoutTools import BaseLayout
+from .dataUtil import merge_datas
 
+import cdflib
 import time
 import functools
 import multiprocessing as mp
@@ -82,7 +86,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.setupUI(self)
 
         global CANREADCDFS
-        self.ui.actionOpenCDF.setDisabled(not CANREADCDFS)
 
         self.OS = os.name
         if os.name == 'nt':
@@ -121,6 +124,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True, None))
         self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False, None))
         self.ui.actionOpenASCII.triggered.connect(functools.partial(self.openFileDialog, False, True, None))
+        self.ui.actionOpenCDF.triggered.connect(self.openCDF)
 
         self.ui.actionExportDataFile.triggered.connect(self.exportFile)
 
@@ -1605,6 +1609,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.DATADICT = {}  # dict mapping dstrs to lists of data where each element is a list of edited data (the first being unedited)
         self.UNITDICT = {} # dict mapping dstrs to unit strings
         self.SPECDICT = {}
+        self.CDFSPECS = {}
         self.TIMES = [] # list of time informations (3 part lists) [time series, resolutions, average res]
         self.TIMEINDEX = {} # dict mapping dstrs to index into times list
         self.EDITEDTIMES = {}
@@ -1669,7 +1674,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.updateAfterOpening()
         return True
 
-    def loadData(self, ffTime, newDataStrings, datas, units):
+    def loadData(self, ffTime, newDataStrings, datas, units, specDatas={}):
         # if all data strings currently exist in main data then append everything instead
         allMatch = True
         for dstr in newDataStrings:
@@ -1678,75 +1683,51 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 break
 
         if allMatch: # not sure if all dstrs need to necessarily match but simplest for now
+            ncols = len(newDataStrings)
+            timeIndices = []
+            genDstr = newDataStrings[0]
+            old_times = self.TIMES[self.TIMEINDEX[genDstr]][0]
+            for i in range(0, ncols):
+                dstr = newDataStrings[i]
+                data = datas[i]
+                old_data = self.ORIGDATADICT[dstr]
+                merged_times, merged_data = merge_datas(old_times, ffTime, old_data, data, self.errorFlag)
+                self.ORIGDATADICT[dstr] = merged_data
+                self.DATADICT[dstr] = [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]
 
-            # since all our dstrs are present just get the current time of the first one
-            arbStr = newDataStrings[0]
+                if (i == 0) and (not np.array_equal(merged_times, old_times)):
+                    diffs = np.diff(merged_times)
+                    diffs = np.concatenate([diffs, [diffs[-1]]])
+                    res = np.mean(diffs)
+                    self.TIMES[self.TIMEINDEX[dstr]] = (merged_times, diffs, res)
 
-            curTime, curRes, curAvgRes = self.getTimes(arbStr,0)
-            segments = Mth.getSegmentsFromTimeGaps(curRes, curAvgRes*2)
-            f0 = ffTime[0]
-            f1 = ffTime[-1]
-            segLen = len(segments)
-            for si in range(segLen): # figure out where this new file fits into current data based on time (before or after)
-                s0 = segments[si][0]
-                s1 = segments[si][1]
-                t0 = curTime[s0]
-                t1 = curTime[s1 - 1]
+            for spec in specDatas:
+                grid = specDatas[spec].get_grid()
+                y_bins, x_bins = specDatas[spec].get_bins(padded=False)
 
-                startsBefore = f0 < t0 and f1 < t0  # starts entirely before this time
-                startsAfter = f0 > t0 and f0 > t1   # starts entirely after this time
-                startsBeforeFirst = startsBefore and si == 0
-                startsAfterLast = startsAfter and si == segLen - 1
-                if startsBefore or startsAfterLast:
-                    if startsBeforeFirst:
-                        joined = (ffTime, curTime)
-                    elif startsAfterLast:
-                        joined = (curTime, ffTime)
-                    else:
-                        joined = (curTime[:segments[si - 1][1] + 1], ffTime, curTime[s0:])
+                oldSpec = self.CDFSPECS[spec]
+                old_y, old_x = oldSpec.get_bins(padded=False)
+                old_grid = oldSpec.get_grid()
 
-                    times = np.concatenate(joined)
-
-                    resolutions = np.diff(times)
-                    resolutions = np.append(resolutions, resolutions[-1]) # so same length as times
-                
-                    uniqueRes = np.unique(resolutions)
-                    print(f'detected {len(uniqueRes)} resolutions')
-                    #print(f'resolutions: {", ".join(map(str,uniqueRes))}')
-
-                    # compute dif between each value and average resolution
-                    avgRes = np.mean(resolutions)
-                    self.resolution = min(self.resolution, avgRes)
-                    self.TIMES[self.TIMEINDEX[arbStr]] = [times, resolutions, avgRes]
-
-                    for di,dstr in enumerate(newDataStrings):
-                        origData = self.ORIGDATADICT[dstr]
-
-                        if startsBeforeFirst:
-                            joinedData = (datas[di], origData)
-                        elif startsAfterLast:
-                            joinedData = (origData, datas[di])
-                        else:
-                            joinedData = (origData[:segments[si - 1][1] + 1], datas[di], origData[s0:])
-
-                        self.ORIGDATADICT[dstr] = np.concatenate(joinedData)
-                        self.DATADICT[dstr] = [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]
-
-                    print(f'CONCATENATING WITH EXISTING DATA')
-                    break
-                elif startsAfter:
-                    continue
-                else: # if flatfiles have overlapping time series then dont merge
-                    print(f'ERROR: times overlap, no merge operation is defined for this yet')
-                    return False
-
+                if not oldSpec.single_y_bins():
+                    data = np.hstack([y_bins, (grid.T)])
+                    oldData = np.hstack([old_y, old_grid.T])
+                    merged_x, merged_data = merge_datas(old_x, x_bins, oldData, data, self.errorFlag)
+                    new_y = merged_data[:,0:len(old_y[0])]
+                    new_grid = merged_data[:,len(old_y[0]):].T
+                    oldSpec.set_data(new_y, new_grid, merged_x)
+                else:
+                    data = grid.T
+                    oldData = old_grid.T
+                    merged_x, merged_data = merge_datas(old_x, x_bins, oldData, data, self.errorFlag)
+                    oldSpec.set_data(y_bins, merged_data.T, merged_x)
+            # TODO: Make sure labels are correct
         else: # this is just standard new flatfile, cant be concatenated with current because it doesn't have matching column names
 
             self.DATASTRINGS.extend(newDataStrings)
             resolutions = np.diff(ffTime)
             resolutions = np.append(resolutions, resolutions[-1]) # append last value to make same length as time series
             uniqueRes = np.unique(resolutions)
-            #print(uniqueRes)
             print(f'detected {len(uniqueRes)} resolutions')
             avgRes = np.mean(resolutions)
 
@@ -1758,6 +1739,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 self.ORIGDATADICT[dstr] = datas[i]
                 self.DATADICT[dstr] = [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]
                 self.UNITDICT[dstr] = units[i]
+
+            self.CDFSPECS.update(specDatas)
 
         return True
 
@@ -1793,105 +1776,293 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         print(f'slider ticks: {self.iiE}')
 
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
+    
+    def load_spec_data(self, cdf, label, times):
+        # Get general spectrogram information
+        attrs = cdf.varattsget(label)
 
+        # Get spectrogram values and y bins
+        grid = cdf.varget(label)
 
-    def openCDF(self,PATH):#,q):
-        """ opens a cdf file and loads the data into program structures """
+        yvar = attrs['DEPEND_1']
+        yvals = cdf.varget(yvar)
 
-        print(f'Opening CDF file: {PATH}')
-        cdf = pycdf.CDF(PATH)
-        if not cdf:
-            print('CDF LOAD FAILED')
-        self.cdfName = PATH
+        # Get y-axis label and units
+        yattrs = cdf.varattsget(yvar)
 
-        #cdf data gets converted into this time epoch
-        #this allows correct usage of FFTIME elsewhere in the code
-        self.epoch = 'J2000'
+        ylabel = yattrs.get('FIELDNAM')
+        if ylabel is None:
+            ylabel = yattrs.get('LABLAXIS')
+        if ylabel is None:
+            ylabel = ''
+        
+        yunits = cdf.varattsget(yvar)['UNITS']
 
-        datas = []
-        epochs = []
-        epochLengths = set()
-        for key,value in cdf.items():
-            print(f'{key} : {value}')
-            length = len(value)
-            item = (key,length)
-            if length <= 1:
+        ylbltxt = f'{ylabel} ({yunits})'
+
+        # Get plot name
+        name = attrs.get('FIELDNAM')
+        if name is None:
+            name = label
+
+        # Get legend label and units
+        legend_label = attrs.get('LABLAXIS')
+        legend_units = attrs.get('UNITS')
+        legend_lbls = [legend_label, legend_units]
+
+        # Create specData object
+        specData = SpecData(yvals, times, grid.T, log_color=True, log_y=True, 
+            y_label=ylbltxt, legend_label=legend_lbls, name=name)
+
+        return name, specData
+
+    def loadCDF(self, path, exclude_expr=[], label_func=None):
+        # Open CDF and get list of variables
+        cdf = cdflib.CDF(path)
+        labels = cdf.cdf_info()['zVariables']
+        labels.sort()
+
+        # Get all epochs in file
+        time_dict = {}
+        time_specs = {}
+        for label in labels:
+            # Get attributes for each variable
+            info = cdf.varinq(label)
+            attrs = cdf.varattsget(label)
+
+            # Skip non-time-series data
+            if 'Data_Type_Description' in info and info['Data_Type_Description'] == 'CDF_CHAR':
                 continue
 
-            if 'epoch' in key.lower() or 'time' in key.lower():
-                epochs.append(item)
-                # not sure how to handle this scenario tho I think it would be rare if anything
-                if length in epochLengths:
-                    print(f'WARNING: 2 epochs with same length detected')
-                epochLengths.add(length)
+            if 'DEPEND_0' not in attrs:
+                continue
+
+            # Get epoch variable
+            time_var = attrs['DEPEND_0']
+
+            # Check if this is a simple 2D spectrogram 
+            specVar = False
+            dtype = attrs.get('DISPLAY_TYPE')
+            specVar = (dtype is not None) and (dtype.lower() == 'spectrogram')
+
+            # Exclude spectrogram and support variables from data to be loaded later
+            if specVar:
+                if info.get('Num_Dims') == 1:
+                    yvar = attrs['DEPEND_1']
+                    exclude_expr.append(yvar)
+                exclude_expr.append(label)
+
+            # Save in dictionaries if not already present
+            if time_var not in time_dict:
+                time_dict[time_var] = []
+                time_specs[time_var] = []
+
+            # Keep track of which variables correspond to which epoch
+            if specVar:
+                time_specs[time_var].append(label)
             else:
-                datas.append(item)
+                time_dict[time_var].append(label)
 
-        # pair epoch name with lists of data names that use that time
-        epochsWithData = {}
-        for en, el in epochs:
-            edata = []
-            for dn, dl in datas:
-                if el == dl:
-                    edata.append(dn)
-            if len(edata) > 0:
-                epochsWithData[en] = edata
-            else:
-                print(f'no data found for this epoch: {en}')
+        # Read in CDF variable info for variables corresponding to each epoch
+        for epoch_lbl in time_dict:
+            # Skip non-TT2000 formatted epochs
+            mode = cdf.varinq(epoch_lbl)['Data_Type_Description']
+            if mode != 'CDF_TIME_TT2000':
+                continue
 
-        # iterate through each column and try to convert and add to storage structures
-        for key,dstrs in epochsWithData.items():
-            print(f'{key} {len(cdf[key])}')
+            # Get times and map from nanoseconds to SCET
+            times = cdf.varget(epoch_lbl)
+            times = times * 1e-9 - 32.184 # Nanoseconds to seconds, then remove leap ofst
 
-            startTime = time.time()
-            print(f'converting time...')
-            times = Mth.CDFEpochToTimeTicks(cdf[key][...])
-            print(f'converted time in {time.time() - startTime} seconds')
+            # Get data variables with this epoch and extract data
+            keys = time_dict[epoch_lbl]
+            tlen = len(times)
+            data_info = self.get_cdf_datas(cdf, keys, tlen, exclude_expr)
+            datas, data_labels, data_units = data_info
 
-            resolutions = np.diff(times)
-            resolutions = np.append(resolutions,resolutions[-1])
-            avgRes = np.mean(resolutions)
-            self.resolution = min(self.resolution, avgRes)
-            self.TIMES.append([times, resolutions, avgRes])
+            # Extract spectrogram data
+            specs = {}
+            for spec_var in time_specs[epoch_lbl]:
+                spec_name, spec_data = self.load_spec_data(cdf, spec_var, times)
+                specs[spec_name] = spec_data
 
-            for dstr in dstrs:
-                data = cdf[dstr]
-                zatrs = pycdf.zAttrList(data)
-                shape = np.shape(data)
-                fillVal = zatrs['FILLVAL']
-                units = zatrs['UNITS']
-                data = data[...]
-                #print(zatrs)
-                print(f'processing {dstr}, fillVal: {fillVal}, units: {units}')
-                if len(shape) >= 2:
-                    dim = shape[1]
-                    # specific case with 3 or 4 component vectors
-                    if len(shape) == 2 and (dim == 3 or dim == 4):
-                        fix = ['X','Y','Z','T']
-                        for i in range(dim):
-                            newDstr = f'{dstr}_{fix[i]}'
-                            self.DATASTRINGS.append(newDstr)
-                            self.TIMEINDEX[newDstr] = len(self.TIMES) - 1
-                            newData = data[:,i]
-                            self.ORIGDATADICT[newDstr] = newData
-                            self.DATADICT[newDstr] = [Mth.interpolateErrors(newData, fillVal)]
-                            self.UNITDICT[newDstr] = units
-                    else:
-                        print(f'    skipping column: {dstr}, unhandled shape: {shape}')
+            # Skip epochs with no data to load
+            if len(datas) == 0:
+                continue
+
+            # Stack data in records format
+            datas = np.hstack(datas)
+
+            # If a label formatting function is passed, apply to variable labels
+            if label_func is not None:
+                data_labels = list(map(label_func, data_labels))
+
+            # Set epoch and resolution before loading data
+            self.epoch = 'J2000'
+            self.resolution = times[1] - times[0]
+            self.errorFlag = 1e32
+
+            # Load data
+            self.loadData(times, data_labels, datas.T, data_units, specs)
+
+        # Update list of files
+        cdf_id = CDF_ID(path)
+        self.FIDs.append(cdf_id)
+        self.updateAfterOpening()
+
+    def clearPrevious(self):
+        ''' Clears information about previously loaded files '''
+        # Close all other files
+        for fid in self.FIDs:
+            fid.close()
+        self.FIDs = []
+
+        # Clear data structures
+        self.initDataStorageStructures()
+
+    def getCDFPaths(self):
+        fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open ASCII File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
+        return fileNames
+
+    def openCDF(self):
+        # Try loading in CDF datas, clearing any previous data
+        self.addCDF(clearPrev=True)
+
+    def addCDF(self, files=None, exclude_keys=[], label_func=None, clearPrev=False):
+        # Prompt for filenames if none are given
+        if files is None:
+            files = self.getCDFPaths()
+
+        # Ignore if no files selected
+        if len(files) == 0:
+            return
+
+        # Clear any previous files if clearPrev is True
+        if clearPrev:
+            self.clearPrevious()
+
+        # Load data for each CDF individually
+        for file in files:
+            self.loadCDF(file, exclude_keys, label_func=label_func)
+
+        # Additional post-opening tasks
+        self.finishOpenFileSetup()
+
+    def get_cdf_datas(self, cdf, labels, time_len, exclude_keys=[]):
+        ''' Reads in variables from the labels list in the given cdf
+            and returns the data, labels, and units
+            exclude_keys specifies a set of regular expressions or
+                variable names to exclude
+        '''
+        datas = []
+        data_labels = []
+        data_units = []
+
+        # For each label in the CDF
+        for label in labels:
+            # Check if this variable should be excluded
+            exclude = False
+            for exclude_key in exclude_keys:
+                if label == exclude_key or re.fullmatch(exclude_key, label):
+                    exclude = True
+                    break
+            if exclude:
+                continue
+
+            # Get information about variable
+            info = cdf.varinq(label)
+
+            num_dims = info.get('Num_Dims')
+            dims = info.get('Dim_Sizes')
+            attrs = cdf.varattsget(label)
+
+            if 'DISPLAY_TYPE' in attrs and 'spectogram' == attrs['DISPLAY_TYPE'].lower():
+                continue
+
+            # Skip non-time-series data
+            if 'DEPEND_0' not in attrs:
+                continue
+
+            # Single column data is added directly
+            if num_dims == 0:
+                # Get data from cdf
+                data = cdf.varget(label)
+
+                # Make sure data shape is correct
+                if len(data) != time_len:
+                    continue
+
+                # Replace nans with error flag
+                data = np.array(data, dtype='f4')
+                data[np.isnan(data)] = 1.0e32
+
+                # Determine base data label and units
+                data_lbl = label if 'FIELDNAM' not in attrs else attrs['FIELDNAM']
+                units = '' if 'UNITS' not in attrs else attrs['UNITS']
+
+                # Store data, reshaping so it is in column format
+                data_labels.append(data_lbl)
+                data_units.append(units)
+                datas.append(np.reshape(data, (len(data), 1)))
+
+            # Multi-dimensional data
+            if num_dims == 1:
+                # Get data and replace nans with error flags
+                data = cdf.varget(label)
+                data = np.array(data, dtype='f4')
+                data[np.isnan(data)] = 1.0e32
+
+                # Make sure data shape is correct
+                if len(data) != time_len:
+                    continue
+
+                # Get number of columns
+                cols = dims[0]
+                plot_label = label
+
+                # Use fieldnam attr for base label if present
+                if 'FIELDNAM' in attrs:
+                    plot_label = attrs['FIELDNAM']
+
+                # Otherwise check if lablaxis is present
+                if 'LABLAXIS' in attrs:
+                    plot_label = attrs['LABLAXIS']
+
+                # Lastly, use labl_ptr_1 to get a set of labels to apply to data
+                if 'LABL_PTR_1' in attrs:
+                    plot_labels = cdf.varget(attrs['LABL_PTR_1']).tolist()
+                    plot_labels = np.reshape(plot_labels, (cols))
                 else:
-                    self.DATASTRINGS.append(dstr)
-                    self.TIMEINDEX[dstr] = len(self.TIMES) - 1
-                    self.ORIGDATADICT[dstr] = data
-                    self.DATADICT[dstr] = [Mth.interpolateErrors(data, fillVal)]
-                    self.UNITDICT[dstr] = units
+                    plot_labels = [f'{plot_label}_{i}' for i in range(0, cols)]
 
-        self.calculateTimeVariables()
-        self.calculateAbbreviatedDstrs()
-        #print('\n'.join(self.ABBRV_DSTRS))
+                # Store data and make sure units are correct length
+                units = '' if 'UNITS' not in attrs else attrs['UNITS']
+                datas.append(data)
+                data_units.extend([units]*len(plot_labels))
+                data_labels.extend(plot_labels)   
 
-        self.enableToolsAndOptionsMenus(True)
+        # Remove extra whitespace and replace spaces with underscores
+        data_labels = [lbl.strip(' ').replace(' ', '_') for lbl in data_labels]
 
-        cdf.close()
+        # Count up how many times each data label appears
+        label_counts = {lbl:0 for lbl in data_labels}
+        for label in data_labels:
+            label_counts[label] += 1
+
+        # Remove duplicates for any variables that appear more than once, like Bt
+        for key in label_counts:
+            if label_counts[key] > 1:
+                repeat_indices = []
+                # Gather repeated indices
+                for i in range(0, len(data_labels)):
+                    if data_labels[i] == key:
+                        repeat_indices.append(i)
+                # Delete repeat indices from all lists
+                datas = [datas[i] for i in range(0, len(datas)) if i not in repeat_indices[1:]]
+                data_units = np.delete(np.array(data_units), repeat_indices[1:]).tolist()
+                data_labels = np.delete(np.array(data_labels), repeat_indices[1:]).tolist()
+
+        return datas, data_labels, data_units
 
     def calculateAbbreviatedDstrs(self):
         """
@@ -2334,6 +2505,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Add spectrogram to plotGrid and update state
         plt = self.pltGrd.addSpectrogram(specData)
+        plt.setDownsampling(True)
 
         self.plotItems.append(plt)
         self.lastPlotStrings.append([(specData.get_name(), -1)])
@@ -2406,7 +2578,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
             if colorPlt:
                 # Save old color plot info and generate spectrogram
-                specData = self.SPECDICT[colorPltName]
+                if colorPltName in self.CDFSPECS:
+                    specData = self.CDFSPECS[colorPltName]
+                    from copy import copy
+                    specData = copy(specData)
+                    specData.x_bins = specData.x_bins - self.tickOffset
+                else:
+                    specData = self.SPECDICT[colorPltName]
                 newSpec[colorPltName] = specData
                 plt = self.pltGrd.addSpectrogram(specData)
                 self.plotItems.append(plt)
@@ -3377,7 +3555,7 @@ class FF_FD():
     def getRecords(self):
         nRows = self.getRows()
         records = self.FID.DID.sliceArray(row=1, nRow=nRows)
-        return records["time"], records["data"]
+        return records['time'], records['data']
 
     def open(self):
         self.FID.open()
@@ -3417,6 +3595,45 @@ def startMagPy(ffLst=None):
     args = sys.argv
     sys.excepthook = myexepthook
     sys.exit(app.exec_())
+
+class CDF_ID():
+    def __init__(self, cdf):
+        self.name = cdf
+        self.cdf = None
+
+    def getFileType(self):
+        return 'CDF'
+
+    def getName(self):
+        return self.name
+
+    def open(self):
+        if self.cdf is None:
+            self.cdf = cdflib.CDF(self.name)
+
+    def getEpoch(self):
+        return 'J2000'
+
+    def getUnits(self):
+        labels = self.getLabels()
+        units = ['']*len(labels)
+        return labels
+    
+    def getLabels(self):
+        self.open()
+        labels = self.cdf.cdf_info()['zVariables']
+        return labels
+
+    def getRows(self, epoch_lbl='EPOCH'):
+        self.open()
+        return len(self.cdf.varinq(epoch_lbl))
+
+    def close(self):
+        if self.cdf:
+            self.cdf = None
+
+    def ffSearch(self):
+        return 0
 
 def runMarsPy():
     runMagPy()

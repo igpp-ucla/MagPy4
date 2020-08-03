@@ -197,6 +197,7 @@ class MagPy4UI(object):
         self.fileMenu.addAction(self.actionOpenFF)
         self.fileMenu.addAction(self.actionAddFF)
         self.fileMenu.addSeparator()
+        self.fileMenu.addAction(self.actionOpenCDF)
         self.fileMenu.addAction(self.actionOpenASCII)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.actionOpenWs)
@@ -429,6 +430,11 @@ class MagPy4UI(object):
         openFFBtn = QtWidgets.QPushButton('Open Flat File')
         openFFBtn.clicked.connect(self.actionOpenFF.triggered)
         modeLt.addWidget(openFFBtn, 0, 2, 1, 1)
+    
+        # Button to open CDF files
+        cdfBtn = QtWidgets.QPushButton('Open CDF')
+        cdfBtn.clicked.connect(self.actionOpenCDF.triggered)
+        modeLt.addWidget(cdfBtn, 0, 3, 1, 1)
 
         # Create a layout that will be centered within startLt
         frameLt = QtWidgets.QGridLayout()
@@ -1123,14 +1129,18 @@ class PlotGrid(pg.GraphicsLayout):
         color_bar = plt.getGradLegend(specData.log_color_scale())
         color_bar.setPlot(plt)
         color_bar.enableMenu()
+
         color_lbl = specData.get_legend_label()
+        if specData.log_color_scale() and (not color_lbl[0].startswith('Log')):
+            color_lbl[0] = f'Log {color_lbl[0]}'
         color_lbl = StackedAxisLabel(color_lbl, angle=90)
         color_lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
         color_bar.setLabel(color_lbl)
 
         # Set plot labels
         y_labels = specData.get_y_label()
-        plt.getAxis('left').setLabel(y_labels)
+        axis = plt.getAxis('left')
+        axis.setLabel(' '.join(y_labels.split('\n')))
 
         # Determine plot title
         name = specData.get_name()
@@ -1506,6 +1516,9 @@ class StackedAxisLabel(pg.GraphicsLayout):
         else:
             self.layout.setContentsMargins(0, 0, 0, 0)
         self.setupLabels(lbls)
+
+    def setHtml(self, *args):
+        return
 
     def getLabelText(self):
         return self.lblTxt
