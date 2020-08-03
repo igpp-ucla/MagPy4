@@ -737,6 +737,11 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             self.numThreads = 2
         else:
             self.numThreads = 1
+        
+        # Disable multiprocessing for windows
+        # TODO: Modify functions so calculations do not need to depend on main window
+        if window.OS == 'windows':
+            self.numThreads = 1
 
         self.mpPointBound = 5000 # Number of points needed to use multiprocessing
 
