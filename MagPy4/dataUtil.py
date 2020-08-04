@@ -21,7 +21,6 @@ def find_gaps(times):
     else:
         # Use the average if the values are different
         resolution = np.mean(diffs)
-    print ('RES', resolution)
     
     # Get mask for time gaps based on resolution
     gap_indices = np.indices([len(times)])[0][diffs > resolution*1.5]
@@ -30,9 +29,7 @@ def find_gaps(times):
 
 def merge_datas(ta, tb, dta_a, dta_b, flag):
     # Fill flag values before merging
-    # print ('GAPS PRE', dta_a, dta_b, len(dta_a), len(dta_b))
     dta_a, dta_b = fill_flags(ta, tb, dta_a, dta_b, flag)
-    # print ('GAPS FILLED', dta_a, dta_b, len(dta_a), len(dta_b))
 
     # Find indices corresponding to time gaps for each data set
     gaps_a = find_gaps(ta)
@@ -41,11 +38,9 @@ def merge_datas(ta, tb, dta_a, dta_b, flag):
     # Split data and times along gaps
     t_slices = np.split(ta, gaps_a)
     dta_slices = np.split(dta_a, gaps_a)
-    # print ('A Slices', t_slices, dta_slices, sep='\n')
 
     tb_slices = np.split(tb, gaps_b)
     dta_b_slices = np.split(dta_b, gaps_b)
-    # print ('B Slices', tb_slices, dta_b_slices, gaps_b, sep='\n')
 
     t_grps = []
     dta_grps = []
@@ -72,25 +67,13 @@ def merge_datas(ta, tb, dta_a, dta_b, flag):
             if t0 < t[0] and t1 > t[-1]:
                 t_slices[i] = []
                 dta_slices[i] = []
-            
-            # print ('Clipped', t, t_slices[i], i)
-        
-    
+
+    # Remove any empty slices
     t_slices = [t for t in t_slices if len(t) > 0]
     dta_slices = [d for d in dta_slices if len(d) > 0]
 
     tb_slices = [t for t in tb_slices if len(t) > 0]
     dta_b_slices = [d for d in dta_b_slices if len(d) > 0]
-    # print ('NEW SLICES', t_slices)
-
-    # new_t_slices = []
-    # new_dta_slices = []
-    # for t, dta in zip(t_slices, dta_slices):
-    #     t0, t1 = t[0], t[-1]
-    #     for other_t, other_dta in zip(tb_slices, dta_b_slices):
-    #         ta, tb = other_t[0], other_t[-1]
-
-    #         if ta < t1 and 
 
     # Sort times and data
     t_grps = t_slices[:]
@@ -104,55 +87,7 @@ def merge_datas(ta, tb, dta_a, dta_b, flag):
     
     times = np.concatenate(t_grps)
     data = np.concatenate(dta_grps)
-
-    # last_t, last_dta = None, None
-    # next_t, next_dta = t_slices.pop(0), dta_slices.pop(0)
-    # i = 0
-    # while (len(t_slices) > 0) and i < len(tb_slices):
-    #     t_slice = tb_slices[i]
-    #     dta_slice = dta_b_slices[i]
-    #     # Get end time of previous slice
-    #     if last_t is None:
-    #         t0 = 0
-    #     else:
-    #         t0 = last_t[-1]
-
-    #     # Get start time of next slice
-    #     t1 = next_t[0]
-
-    #     print( 'SLICE', t_slice, last_t, next_t)
-    #     if last_t is not None:
-    #         t_grps.append(last_t)
-    #         dta_grps.append(last_dta)
-
-    #     # If current b slice fits between selected slices
-    #     if t_slice[0] > t0 and t_slice[-1] < t1:
-    #         # Set current slice as the b slice
-    #         last_t = t_slice
-    #         last_dta = dta_slice
-    #         i += 1
-    #     else:
-    #         # Set current slice as the next data slice and
-    #         # move forward
-    #         last_t = next_t
-    #         last_dta = next_dta
-    #         next_t = t_slices.pop(0)
-    #         next_dta = dta_slices.pop(0)
-        
-    # if last_t is not None:
-    #     t_grps.append(last_t)
-    #     dta_grps.append(last_dta)
-    
-    # if i < len(tb_slices):
-    #     t_grps.extend(tb_slices[i:])
-    #     dta_grps.extend(dta_b_slices[i:])
-
-    print ('GRPS', times, data, '\n')
     return times, data        
-
-
-
-
 
 def single_fill_flags(ta, tb, dta_a, dta_b, flag):
     ''' Finds error flag values and fills in with non-error
@@ -201,7 +136,6 @@ def fill_flags(ta, tb, dta_a, dta_b, flag):
     shape_a = dta_a.shape
     shape_b = dta_b.shape
 
-    print ('SHAPES', shape_a, shape_b)
     # Make sure number of columns are the same
     valid_shape = False
     if len(shape_a) == 1 and len(shape_b) == 1:
@@ -225,60 +159,6 @@ def fill_flags(ta, tb, dta_a, dta_b, flag):
             dta_b[:,i] = new_b
 
     return dta_a, dta_b
-
-def merge_records(ta, tb, dta_a, dta_b):
-    # If an array is empty, return the other one
-    if len(ta) == 0:
-        return tb, dta_b
-    elif len(tb) == 0:
-        return ta, dta_a
-
-    # Determine which array goes first
-    if ta[0] > tb[0]:
-        ta, tb = tb, ta
-        dta_a, dta_b = dta_b, dta_a
-
-    # Get the sections where times do not overlap
-    start = bisect.bisect(ta, tb[0])
-    pre_t = ta[:start]
-    pre_data = dta_a[:start]
-
-    if tb[-1] < ta[-1]:
-        end = bisect.bisect(ta, tb[-1])
-        mid_a = (start, end)
-        mid_b = (0, len(dta_b))
-    else:
-        end = bisect.bisect(tb, ta[-1])
-        mid_a = (start, len(ta))
-        mid_b = (0, end)
-
-    # Get sections where times overlap    
-    a, b = mid_a
-    mid_ta = ta[a:b]
-    mid_dta_a = dta_a[a:b]
-    del a
-    del b
-
-    a, b = mid_b
-    mid_tb = tb[a:b]
-    mid_dta_b = dta_b[a:b]
-
-    sort_order = np.argsort(np.concatenate(mid_ta, mid_tb))
-    initial_mask = sort_order[sort_order < len(mid_ta)]
-
-# def merge_datas(times, datas):
-#     # Empty lists
-#     if len(times) == 0 or len(datas) == 0:
-#         return [], []
-
-#     # Single set of records
-#     if len(times) <= 1 and len(datas) <= 1:
-#         return times[0], datas[0]
-
-#     # Sort a pair of time arrays
-#     if len(times) == 2 and len(datas) == 2:
-#         pass
-
 
 def tests():
     # Test filling in small gaps
@@ -354,8 +234,4 @@ def tests():
     tb = np.delete(tb, [2,3,4])
     dta_b = np.delete(dta_b, [2,3,4])
     t, dta = merge_datas(ta, tb, dta_a, dta_b, flag)
-    print (len(t), len(dta))
     assert(np.array_equal(dta, test_arr))
-
-
-# tests()
