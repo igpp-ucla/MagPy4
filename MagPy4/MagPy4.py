@@ -8,6 +8,7 @@ import os
 import sys
 import pickle
 import argparse
+import json
 import re
 
 # so python looks in paths for these folders too
@@ -17,7 +18,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.5.0.0 (August 3, 2020)'
+VERSION = f'Version 1.5.1.0 (August 11, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -42,6 +43,7 @@ from .helpWindow import HelpWindow
 from .AboutDialog import AboutDialog
 from .plotBase import DateAxis, MagPyPlotItem, MagPyPlotDataItem
 from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni, PressureTool, FEEPS_EPAD
+from .mms_data import MMSDataDownloader
 from . import mms_orbit
 from . import mms_formation
 from .dynBase import SimpleColorPlot
@@ -158,6 +160,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionMMSPressure.triggered.connect(self.openPressure)
         self.ui.actionMMSOrbit.triggered.connect(self.openMMSOrbit)
         self.ui.actionMMSFormation.triggered.connect(self.openMMSFormation)
+        self.ui.actionLoadMMS.triggered.connect(self.openMMSData)
 
         # Selection menu actions
         self.ui.actionFixSelection.triggered.connect(self.fixSelection)
@@ -203,19 +206,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             'Dynamic Spectra', 'Dynamic Coh/Pha', 'Wave Analysis',
             'Trajectory Analysis', 'Stats', 'Electron/Ion Spectrum', 'FEEPS EPAD',
             'Electron PAD', 'Plane Normal', 'Curlometer', 'Curvature',
-            'MMS Orbit', 'MMSFormation', 'MMS Pressure']
+            'MMS Orbit', 'MMSFormation', 'MMS Pressure', 'MMSData']
 
         self.toolAbbrv = ['Data', 'Edit', 'PlotMenu', 'Detrend', 'Spectra',
             'DynSpectra', 'DynCohPha', 'DynWave', 'Traj', 'Stats',
             'EOMNI', 'FEEPS EPAD', 'EPAD', 'PlaneNormal', 'Curlometer', 
-            'Curvature', 'MMSOrbit', 'MMSFormation', 'Pressure']
+            'Curvature', 'MMSOrbit', 'MMSFormation', 'Pressure', 'MMSData']
 
         self.toolInitFuncs  = [self.showData, self.openEdit, self.openPlotMenu,
             self.startDetrend, self.startSpectra, self.startDynamicSpectra,
             self.startDynamicCohPha, self.startDynWave, self.openTraj,
             self.startTraceStats, self.startEOMNI, self.startFEEPSEPAD, self.startEPAD,
             self.openPlaneNormal, self.openCurlometer, self.openCurlometer,
-            self.openMMSOrbit, self.openMMSFormation, self.openPressure]
+            self.openMMSOrbit, self.openMMSFormation, self.openPressure,
+            self.openMMSData]
 
         self.tools = {}
         self.toolNameMap = {}
@@ -276,6 +280,30 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.startUp = True
         self.workspace = None
 
+    def updateStateFile(self, key, val):
+        ''' Updates state file with key value pair '''
+        # Get state file and read in contents
+        state_file_path = getRelPath('state.json')
+        state_dict = self.readStateFile()
+
+        # Update state dictionary
+        state_dict[key] = val
+
+        # Open state file for rewriting and close
+        fd = open(state_file_path, 'w')
+        json.dump(state_dict, fd)
+        fd.close()
+
+    def readStateFile(self):
+        ''' Read in state dictionary from file '''
+        state_file_path = getRelPath('state.json')
+        state_dict = {}
+        if os.path.exists(state_file_path):
+            fd = open(state_file_path, 'r')
+            state_dict = json.load(fd)
+            fd.close()
+        return state_dict
+
     def checkForUpdate(self):
         # Close window before updating
         self.close()
@@ -291,7 +319,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         width = pen.width()
         style = pen.style()
         return (color, width, style)
-    
+
     def makePen(self, color, width, style):
         pen = pg.mkPen(color)
         pen.setWidth(width)
@@ -799,6 +827,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeBatchSelect()
         self.closeMMSOrbit()
         self.closeMMSFormation()
+        self.closeMMSData()
 
     def closePlotTools(self):
         self.closeDetrend()
@@ -845,12 +874,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             batchVisible = False
             selectTools = False
             fixSelectVisible = True
-        
+
         if self.batchSelect:
             selectTools = False
             batchVisible = True
             fixSelectVisible = False
-        
+
         self.ui.actionBatchSelect.setVisible(batchVisible)
         for act in [self.ui.actionSelectByTime, self.ui.actionSelectView]:
             act.setVisible(selectTools)
@@ -901,6 +930,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeMMSFormation()
         self.closeMMSOrbit()
         self.closePressure()
+        self.closeMMSData()
 
     def startEOMNI(self):
         self.closeEOMNI()
@@ -930,7 +960,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if self.tools['EPAD']:
             self.tools['EPAD'].close()
             self.tools['EPAD'] = None
-    
+
     def showEPAD(self):
         if self.tools['EPAD']:
             self.clearStatusMsg()
@@ -942,7 +972,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.tools['FEEPS EPAD'] = FEEPS_EPAD(self)
         self.initGeneralSelect('FEEPS PAD', '#000000', self.tools['FEEPS EPAD'].ui.timeEdit,
             'Single', self.showFEEPSPAD, closeFunc=self.closeFEEPSEPAD)
-    
+
     def showFEEPSPAD(self):
         if self.tools['FEEPS EPAD']:
             self.clearStatusMsg()
@@ -1095,7 +1125,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.tools['Traj'].show()
             self.tools['Traj'].ui.altFrame.updatePlot()
             self.tools['Traj'].ui.orbitFrame.updatePlot()
-    
+
     def closeTraj(self):
         if self.tools['Traj'] is not None:
             self.tools['Traj'].close()
@@ -1167,6 +1197,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeData() # this isnt actually needed it still closes somehow?
         self.tools['Data'] = DataDisplay(self, self.FIDs, Title='Flatfile Data')
         self.tools['Data'].show()
+
+    def openMMSData(self):
+        self.closeMMSData()
+        self.tools['MMSData'] = MMSDataDownloader(self)
+        self.tools['MMSData'].show()
+
+    def closeMMSData(self):
+        if self.tools['MMSData']:
+            self.tools['MMSData'].close()
+            self.tools['MMSData'] = None
 
     def openTraceStats(self):
         if self.tools['Stats']:
@@ -1290,7 +1330,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.smoothing.close()
             self.smoothing = None
             self.endGeneralSelect()
-    
+
     def openHelp(self):
         self.closeHelp()
         self.helpWindow = HelpWindow(self)
@@ -1403,7 +1443,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         if len(fileNames) < 0 or not self.validFilenames(fileNames):
             return
-        
+
         if isFlatfile:
             self.openFileList(fileNames, isFlatfile, clearCurrent)
         else:
@@ -1613,6 +1653,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.TIMES = [] # list of time informations (3 part lists) [time series, resolutions, average res]
         self.TIMEINDEX = {} # dict mapping dstrs to index into times list
         self.EDITEDTIMES = {}
+        self.VECGRPS = {}
 
         self.minTime = None # minimum time tick out of all loaded times
         self.maxTime = None # maximum
@@ -1642,7 +1683,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.errorFlag = 1e16 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
         print(f'error flag: {self.errorFlag:.0e}') # not being used currently
         #self.errorFlag *= 0.9 # based off FFSpectra.py line 829
-        
+
         # load flatfile
         nRows = FID.getRows()
         records = FID.DID.sliceArray(row=1, nRow=nRows)
@@ -1701,15 +1742,24 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     res = np.mean(diffs)
                     self.TIMES[self.TIMEINDEX[dstr]] = (merged_times, diffs, res)
 
+            # Merge specDatas passed
             for spec in specDatas:
+                # Add to dictionary if not present
+                if spec not in self.CDFSPECS:
+                    self.CDFSPECS[spec] = specDatas[spec]
+                    continue
+
                 grid = specDatas[spec].get_grid()
                 y_bins, x_bins = specDatas[spec].get_bins(padded=False)
 
+                # Get old spec bins and grid info
                 oldSpec = self.CDFSPECS[spec]
                 old_y, old_x = oldSpec.get_bins(padded=False)
                 old_grid = oldSpec.get_grid()
 
+                # If 2D y bins
                 if not oldSpec.single_y_bins():
+                    # Merge y bins as well
                     data = np.hstack([y_bins, (grid.T)])
                     oldData = np.hstack([old_y, old_grid.T])
                     merged_x, merged_data = merge_datas(old_x, x_bins, oldData, data, self.errorFlag)
@@ -1717,13 +1767,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     new_grid = merged_data[:,len(old_y[0]):].T
                     oldSpec.set_data(new_y, new_grid, merged_x)
                 else:
+                    # Otherwise just merge grid
                     data = grid.T
                     oldData = old_grid.T
                     merged_x, merged_data = merge_datas(old_x, x_bins, oldData, data, self.errorFlag)
                     oldSpec.set_data(y_bins, merged_data.T, merged_x)
-            # TODO: Make sure labels are correct
-        else: # this is just standard new flatfile, cant be concatenated with current because it doesn't have matching column names
 
+        else: # this is just standard new flatfile, cant be concatenated with current because it doesn't have matching column names
             self.DATASTRINGS.extend(newDataStrings)
             resolutions = np.diff(ffTime)
             resolutions = np.append(resolutions, resolutions[-1]) # append last value to make same length as time series
@@ -1761,7 +1811,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # prob dont edit these two on subsequent file loads..?
         self.iO = 0
         self.iE = int((self.maxTime - self.minTime) / self.resolution)
-        
+
         tick = 1.0 / self.resolution
         print(f'tick resolution : {self.resolution}')
         print(f'time resolution : {tick} Hz')
@@ -1776,7 +1826,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         print(f'slider ticks: {self.iiE}')
 
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
-    
+
     def load_spec_data(self, cdf, label, times):
         # Get general spectrogram information
         attrs = cdf.varattsget(label)
@@ -1795,7 +1845,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             ylabel = yattrs.get('LABLAXIS')
         if ylabel is None:
             ylabel = ''
-        
+
         yunits = cdf.varattsget(yvar)['UNITS']
 
         ylbltxt = f'{ylabel} ({yunits})'
@@ -1856,7 +1906,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             if time_var not in time_dict:
                 time_dict[time_var] = []
                 time_specs[time_var] = []
-
             # Keep track of which variables correspond to which epoch
             if specVar:
                 time_specs[time_var].append(label)
@@ -1878,7 +1927,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             keys = time_dict[epoch_lbl]
             tlen = len(times)
             data_info = self.get_cdf_datas(cdf, keys, tlen, exclude_expr)
-            datas, data_labels, data_units = data_info
+            datas, data_labels, data_units, vec_grps = data_info
+            self.VECGRPS.update(vec_grps)
 
             # Extract spectrogram data
             specs = {}
@@ -1928,7 +1978,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Try loading in CDF datas, clearing any previous data
         self.addCDF(clearPrev=True)
 
-    def addCDF(self, files=None, exclude_keys=[], label_func=None, clearPrev=False):
+    def addCDF(self, files=None, exclude_keys=[], label_funcs=None,
+                clearPrev=False):
         # Prompt for filenames if none are given
         if files is None:
             files = self.getCDFPaths()
@@ -1942,8 +1993,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.clearPrevious()
 
         # Load data for each CDF individually
-        for file in files:
-            self.loadCDF(file, exclude_keys, label_func=label_func)
+        if label_funcs is not None: # Pass label_func if given
+            for file, label_func in zip(files, label_funcs):
+                self.loadCDF(file, exclude_keys, label_func=label_func)
+        else: # Otherwise just load file defaults
+            for file in files:
+                self.loadCDF(file, exclude_keys)
 
         # Additional post-opening tasks
         self.finishOpenFileSetup()
@@ -1957,6 +2012,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         datas = []
         data_labels = []
         data_units = []
+        vec_grps = {}
 
         # For each label in the CDF
         for label in labels:
@@ -1982,7 +2038,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # Skip non-time-series data
             if 'DEPEND_0' not in attrs:
                 continue
-
             # Single column data is added directly
             if num_dims == 0:
                 # Get data from cdf
@@ -2039,7 +2094,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 units = '' if 'UNITS' not in attrs else attrs['UNITS']
                 datas.append(data)
                 data_units.extend([units]*len(plot_labels))
-                data_labels.extend(plot_labels)   
+                data_labels.extend(plot_labels)
+
+                # Save vector grouping
+                vec_grps[label] = [lbl.strip(' ').replace(' ', '_') for lbl in plot_labels]
 
         # Remove extra whitespace and replace spaces with underscores
         data_labels = [lbl.strip(' ').replace(' ', '_') for lbl in data_labels]
@@ -2062,7 +2120,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 data_units = np.delete(np.array(data_units), repeat_indices[1:]).tolist()
                 data_labels = np.delete(np.array(data_labels), repeat_indices[1:]).tolist()
 
-        return datas, data_labels, data_units
+        return datas, data_labels, data_units, vec_grps
 
     def calculateAbbreviatedDstrs(self):
         """
@@ -2070,7 +2128,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         these abbreviations are used mainly for the cdf strings since those are longer so plots and things wont have super long strings in them
         """
         self.ABBRV_DSTR_DICT = {}
-        
+
         # common should be union of the splits
         common = None
         for dstr in self.DATASTRINGS:
@@ -2097,7 +2155,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         #for k,v in self.ABBRV_DSTR_DICT.items():
         #    print(f'{k} : {v}')
 
-    
+
     def getMinAndMaxDateTime(self):
         minDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.minTime, Epoch=self.epoch).UTC)
         maxDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.maxTime, Epoch=self.epoch).UTC)
@@ -2240,6 +2298,29 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             if row:
                 dstrs.append(row)
                 links.append(len(dstrs)-1)
+
+        mmsKws = []
+        missing = False
+        for kw in ['Bx', 'By', 'Bz']:
+            newKws = []
+            mmsKws.append(newKws)
+            for sc in ['1', '2', '3', '4']:
+                mmsKw = f'{kw}_GSM{sc}'
+                newKws.append((mmsKw, 0))
+                if mmsKw not in self.DATASTRINGS:
+                    missing = True
+                    break
+        newKws = []
+        mmsKws.append(newKws) 
+        for sc in ['1', '2', '3', '4']:
+            mmsKw = f'Bt{sc}'
+            newKws.append((mmsKw, 0))
+            if mmsKw not in self.DATASTRINGS:
+                missing = True
+
+        if not missing:
+            dstrs = mmsKws
+            links = [0,1,2,3,4]
 
         # MMS trace pen presets
         lstLens = list(map(len, dstrs))
@@ -2438,7 +2519,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             gradLbl = None
 
         return plt, gradLegend, gradLbl
-    
+
     def addPlot(self, plt, label, pltStrs, links=None, hf=None, pens=None):
         # Close any selected tools
         self.closeFixSelection()
@@ -2695,7 +2776,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         for pi in self.plotItems:
             for item in pi.items:
                 item.viewRangeChanged()
-            
+
         self.colorPlotInfo = newColorPlotInfo
 
         # Rebuild any saved selections
@@ -2710,7 +2791,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.SPECDICT = newSpec
         return numPts
-    
+
     def enableTracker(self):
         ''' Creates a new tracker line item '''
         if not self.hoverTracker:
@@ -2724,7 +2805,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.hoverTracker.deleteLater()
             self.hoverTracker = None
             self.ui.timeStatus.setText('')
-    
+
     def toggleTracker(self):
         ''' Toggles tracker line '''
         if self.hoverTracker:
@@ -2782,7 +2863,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def replotDataCallback(self):
         # done this way to ignore the additional information ui callbacks will provide
         self.replotData()
-        
+
     def replotData(self, desiredEdit=None):
         """simply redraws the traces and ensures y range is correct without rebuilding everything
            if desiredEdit is defined it will try to plot strings at that edit if they have data there
@@ -3281,7 +3362,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             timeEdit.linesConnected = False
         self.currSelect = GeneralSelect(self, mode, name, color, timeEdit,
             func=startFunc, updtFunc=updtFunc, closeFunc=closeFunc, maxSteps=maxSteps)
-        
+
         # Enable selection menu
         self.currSelect.setFullSelectionTrigger(self.updateSelectionMenu)
 
@@ -3461,7 +3542,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Set hover tracker visible
         for i in range(0, len(self.plotItems)):
             self.hoverTracker.setVisible(True, i)
-        
+
         # Set tracker position
         self.gridHover(pos)
 
@@ -3483,11 +3564,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         ''' Action when hover ends '''
         if not self.hoverTracker:
             return
-        
+
         # Set hover tracker hidden
         for i in range(0, len(self.plotItems)):
             self.hoverTracker.setVisible(False, i)
-        
+
         # Clear timestamp in statusbar
         self.ui.timeStatus.setText('')
 
@@ -3506,10 +3587,10 @@ class MagPyViewBox(SelectableViewBox): # custom viewbox event handling
         xAction, yAction, mouseAction = actions[1:4]
         for a in [xAction, mouseAction]:
             self.menu.removeAction(a)
-    
+
     def setPlotIndex(self, index):
         self.plotIndex = index
-    
+
     def hoverEvent(self, ev):
         # Update hover tracker position if present
         if ev.isEnter():
@@ -3524,7 +3605,7 @@ class MagPyViewBox(SelectableViewBox): # custom viewbox event handling
             pos = self.mapToView(ev.pos())
             self.window.hoverStart(pos)
             self.window.gridHover(pos)
-        
+
 # Wrapper class for Flat File FID functions
 class FF_FD():
     def __init__(self, filename, FID):
@@ -3618,7 +3699,7 @@ class CDF_ID():
         labels = self.getLabels()
         units = ['']*len(labels)
         return labels
-    
+
     def getLabels(self):
         self.open()
         labels = self.cdf.cdf_info()['zVariables']

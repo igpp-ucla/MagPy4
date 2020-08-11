@@ -15,6 +15,7 @@ from .mth import Mth
 from .layoutTools import BaseLayout
 from .simpleCalculations import ExpressionEvaluator
 import os
+from .dataUtil import find_gaps
 
 class GradEditor(QtWidgets.QFrame):
     def __init__(self, grad):
@@ -77,20 +78,11 @@ class GradEditor(QtWidgets.QFrame):
 
         # Update plot scaling and left axis label accordingly
         log_scale = self.logY.isChecked()
-
         self.spec.set_y_log_scale(log_scale)
-        y_label = self.spec.get_y_label()
-        if y_label.startswith('Log') and (not log_scale):
-            new_label = y_label
-            new_label = ' '.join(new_label.split(' ')[1:]).strip(' ')
-            self.spec.set_y_label(new_label)
-        elif (not y_label.startswith('Log')) and log_scale:
-            new_label = f'Log {y_label}'.strip(' ')
-            self.spec.set_y_label(new_label)
-        
+
         plt = self.grad.getPlot()
         plt.getAxis('left').setLabel(self.spec.get_y_label())
-        
+
         # Reload plot
         plt.reloadPlot(self.spec)
 
@@ -122,7 +114,7 @@ class GradEditor(QtWidgets.QFrame):
         # Set up default checkbox
         self.defaultRngBox = QtWidgets.QCheckBox(' Default Values')
         layout.addWidget(self.defaultRngBox, 0, 0, 1, 2)
-        
+
         # Set up min and max spinboxes
         lbls, boxes = [], []
         row = 1
@@ -138,7 +130,7 @@ class GradEditor(QtWidgets.QFrame):
             layout.addWidget(lbl, row, 0, 1, 1)
             layout.addWidget(box, row, 1, 1, 1)
             row += 1
-        
+
         self.minBox, self.maxBox = boxes
 
         # Set initial values for checkboxes
@@ -146,10 +138,10 @@ class GradEditor(QtWidgets.QFrame):
         if self.spec.log_color_scale():
             for box in boxes:
                 box.setPrefix('10^')
-        
+
         self.minBox.setValue(minVal)
         self.maxBox.setValue(maxVal)
-    
+
         # Connect default checkbox to toggleElems for min/max spinboxes
         toggleFunc = functools.partial(self.toggleElems, lbls+boxes)
         self.defaultRngBox.toggled.connect(toggleFunc)
@@ -159,7 +151,7 @@ class GradEditor(QtWidgets.QFrame):
             self.defaultRngBox.setChecked(True)
 
         return frame
-    
+
     def toggleElems(self, elems, val):
         for elem in elems:
             elem.setEnabled(not val)
@@ -478,16 +470,16 @@ class GradLegend(pg.GraphicsLayout):
 
         self.addItem(self.colorBar, 0, 0, 1, 1)
         self.addItem(self.axisItem, 0, 1, 1, 1)
-    
+
     def getPlot(self):
         return self.plot
-    
+
     def setPlot(self, plot):
         self.plot = plot
-    
+
     def getLabel(self):
         return self.label
-    
+
     def setLabel(self, label):
         self.label = label
 
@@ -526,7 +518,7 @@ class GradLegend(pg.GraphicsLayout):
 
     def setTickSpacing(self, major, minor):
         self.axisItem.setTickSpacing(major, minor)
-    
+
     def resetTickSpacing(self):
         self.axisItem.resetTickSpacing()
 
@@ -740,7 +732,7 @@ class DynamicAnalysisTool(SpectraBase):
 
     def getDetrendMode(self):
         return self.ui.detrendCheck.isChecked()
-    
+
     def setDetrendMode(self, val):
         self.ui.detrendCheck.setChecked(val)
 
@@ -868,7 +860,7 @@ class DynamicAnalysisTool(SpectraBase):
         if self.maskTool:
             self.maskTool.close()
             self.maskTool = None
-    
+
     def getToolType(self):
         pass
 
@@ -1005,7 +997,7 @@ class SpectraLegend(GradLegend):
             self.setTickSpacing(1, 0.5)
         else:
             self.setTickSpacing(None, None)
-        
+
         # Update label if there is one linked to this gradlegend
         if self.getLabel():
             # Get label and sublabel text
@@ -1021,7 +1013,7 @@ class SpectraLegend(GradLegend):
                 # Remove log from first label
                 elif (not logMode) and firstLabel.startswith('Log'):
                     firstLabel = ' '.join(firstLabel.split(' ')[1:])
-            
+
                 # Update label item with new list of sublabels
                 labels = [firstLabel] + subLabels[1:]
                 label.clear()
@@ -1053,8 +1045,16 @@ class SpectraGridItem(pg.PlotCurveItem):
         self.window = window
         self.prevPaths = []
 
-        times = list(times) * len(self.freqs)
-        freqs = list(freqs) * len(self.times)
+        # Determine path values to pass based on whether y bins
+        # are 2D or 1D
+        shape = np.array(freqs).shape
+        if len(shape) > 1 and shape[1] > 0:
+            times = list(times) * len(self.freqs[0])
+            freqs = np.ndarray.flatten(freqs)
+        else:
+            times = list(times) * len(self.freqs)
+            freqs = list(freqs) * len(self.times)
+
         pg.PlotCurveItem.__init__(self, x=times, y=freqs, *args, **kargs)
 
     def getGridData(self):
@@ -1097,6 +1097,27 @@ class SpectraGridItem(pg.PlotCurveItem):
                 p2.addRect(x0, y0, x1-x0, height)
                 yield p2
 
+    def setupMultiBinPath(self, p):
+        # Iterate over each frequency column and data column
+        pt = QtCore.QPointF(0, 0)
+        freqRows = np.array(self.freqs).T
+
+        for i in range(0, len(freqRows) - 1):
+            freqs0 = freqRows[i]
+            freqs1 = freqRows[i+1]
+            heights = freqs1 - freqs0
+
+            for j in range(0, len(self.times) - 1):
+                x0 = self.times[j]
+                x1 = self.times[j+1]
+
+                y0 = freqs0[j]
+                y1 = freqs1[j]
+
+                p2 = QtGui.QPainterPath(pt)
+                p2.addRect(x0, y0, x1 - x0, heights[j])
+                yield p2
+
     def paint(self, p, opt, widget):
         if self.xData is None or len(self.xData) == 0:
             return
@@ -1105,7 +1126,13 @@ class SpectraGridItem(pg.PlotCurveItem):
 
         # Generate subpaths if they haven't been generated yet
         if self.prevPaths == []:
-            self.prevPaths = list(self.setupPath(p))
+            # Check if frequency bins change over time and
+            # call setupMultiBinPath if appropriate
+            shape = np.array(self.freqs).shape
+            if len(shape) > 1 and shape[1] > 1:
+                self.prevPaths = list(self.setupMultiBinPath(p))
+            else:
+                self.prevPaths = list(self.setupPath(p))
 
         # Draw edges and fill rects for every point if exporting image
         if self.drawEdges:
@@ -1148,7 +1175,7 @@ class SpectraLine(pg.PlotCurveItem):
 
         yVals = [freq]*len(times)
         pg.PlotCurveItem.__init__(self, x=times, y=yVals, *args, **kargs)
-    
+
     def getLineData(self):
         return (self.freq, self.times, self.colors)
 
@@ -1210,7 +1237,7 @@ class SpectraLine(pg.PlotCurveItem):
             # Find the corresponding color and fill the rectangle
             color = self.colors[pairNum]
             p.fillPath(p2, color)
-    
+
     def linkToStatusBar(self, window):
         self.window = window
 
@@ -1240,10 +1267,10 @@ class RGBGradient(QtGui.QLinearGradient):
 
         for color, pos in zip(self.colors, self.colorPos):
             self.setColorAt(pos, QtGui.QColor(color[0], color[1], color[2]))
-    
+
     def getColors(self):
         return self.colors
-    
+
     def getColorPos(self):
         return self.colorPos
 
@@ -1264,7 +1291,7 @@ class PhaseGradient(QtGui.QLinearGradient):
 
     def getColors(self):
         return self.colors
-    
+
     def getColorPos(self):
         return self.colorPos
 
@@ -1295,14 +1322,68 @@ class SpecData():
         self.legend_label = legend_label
         self.name = name
 
+    def single_y_bins(self):
+        shape = self.y_bins.shape
+        if len(shape) <= 1:
+            return True
+        else:
+            return False
+
+    def print_values(self):
+        print ('Value Range:', self.val_range)
+        print ('log_color:', self.log_color)
+        print ('mask_info:', self.mask_info)
+        print ('log_scale:', self.log_scale)
+        print ('grad_range:', self.grad_range)
+        print ('gradient_stops:', self.gradient_stops)
+        print ('grid_range:', self.grid_range)
+
     def get_name(self):
         return self.name
 
     def get_labels(self):
         return self.y_label, self.legend_label
 
-    def get_bins(self):
-        return self.y_bins, self.x_bins
+    def get_bins(self, padded=True):
+        ''' Padded arg specifies whether to pad bins if # rows = # grid rows
+            or # cols = # grid cols
+        '''
+        y_bins = self.y_bins
+        x_bins = self.x_bins
+        if padded:
+            grid_shape = self.grid.shape
+            y_shape = y_bins.shape
+            padded_y = False
+
+            # If # of y bins == number of rows in grid
+            if len(y_shape) > 1 and y_shape[1] == grid_shape[0]:
+                padded_y = True
+                y_diff = y_bins[:,1] - y_bins[:,0]
+                last_y = y_bins[:,0] - y_diff
+                if sum(last_y < 0):
+                    last_y = y_bins[:,0] / 2
+                last_y = np.reshape(last_y, (len(last_y), 1))
+            elif len(y_shape) == 1 and len(y_bins) == grid_shape[0]:
+                padded_y = True
+                y_diff = y_bins[1] - y_bins[0]
+                last_y = y_bins[0] - y_diff
+                if last_y < 0:
+                    last_y = y_bins[0] / 2
+                last_y = [last_y]
+
+            if padded_y:
+                y_bins = np.hstack([last_y, y_bins])
+
+            if padded_y and len(y_shape) > 1 and y_shape[0] == grid_shape[1]:
+                bottom_row = y_bins[-1]
+                bottom_row = np.reshape(bottom_row, (1, len(bottom_row)))
+                y_bins = np.vstack([y_bins, bottom_row])
+
+            if len(x_bins) == len(self.grid[0]):
+                x_end = x_bins[-1] + (x_bins[-2] - x_bins[-1])
+                x_bins = np.hstack([x_bins, x_end])
+
+        return y_bins, x_bins
 
     def get_grid(self):
         return self.grid
@@ -1374,7 +1455,7 @@ class SpecData():
             mask = (grid <= 0)
             grid[mask] = 1
             grid = np.log10(grid)
-        
+
         self.grad_range = (minVal, maxVal)
 
         # Create color map
@@ -1401,6 +1482,12 @@ class SpecData():
             r, g, b = maskColor
             if not maskOutline:
                 mappedGrid[mask] = (r, g, b, 255)
+
+        # Mask out any time gaps with white
+        y_bins, x_bins = self.get_bins()
+        gap_indices = find_gaps(x_bins)
+        for index in gap_indices:
+            mappedGrid[:,index-1] = (255, 255, 255, 255)
 
         return mappedGrid
 
@@ -1447,6 +1534,12 @@ class SpecData():
     def set_name(self, name):
         self.name = name
 
+    def set_data(self, y, grid, x):
+        self.y_bins = y
+        self.x_bins = x
+        self.grid = grid
+        self.grid_range = None
+
 class SimpleColorPlot(MagPyPlotItem):
     def __init__(self, epoch, logYScale=False, vb=None, axItems=None):
         self.gradient = RGBGradient()
@@ -1477,7 +1570,7 @@ class SimpleColorPlot(MagPyPlotItem):
         info = (self.mappedGrid, self.xTicks, self.yTicks, self.logYScale, 
             self.logColor, self.valueRange, self.maskInfo)
         return info
-    
+
     def loadPlotInfo(self, plotInfo):
         grid, x, y, logY, logColor, valRng, maskInfo = plotInfo
 
@@ -1546,7 +1639,7 @@ class SimpleColorPlot(MagPyPlotItem):
         mappedGrid = colorMap.map(grid)
         if mask is not None:
             mappedGrid[mask] = (255, 255, 255, 255)
-        
+
         self.logColor = logColorScale
 
         return mappedGrid
@@ -1561,7 +1654,7 @@ class SimpleColorPlot(MagPyPlotItem):
         self.mappedGrid = mapGrid
         self.xTicks = xTicks
         self.yTicks = yTicks
-        
+
         return True
 
     def setYScaling(self, logScale=False):
@@ -1569,7 +1662,7 @@ class SimpleColorPlot(MagPyPlotItem):
 
     def setGradient(self, gradient):
         self.gradient = gradient
-    
+
     def getGradient(self):
         return self.gradient
 
@@ -1584,13 +1677,26 @@ class SimpleColorPlot(MagPyPlotItem):
         if self.logYScale:
             yTicks = np.log10(yTicks)
 
-        colorGrid = [list(map(self.getColor, self.mappedGrid[i])) for i in range(0, len(yTicks)-1)]
+        cols = len(yTicks) - 1
+        shape = np.array(yTicks).shape
+        # Use min and max of all y values if multiple bins
+        if len(shape) > 1 and shape[1] > 1:
+            cols = len(yTicks[0]) - 1
+            minY = np.min(yTicks)
+            maxY = np.max(yTicks)
+        else:
+            # Otherwise use standard bin range
+            minY = yTicks[0]
+            maxY = yTicks[-1]
+
+        # Create grid item
+        colorGrid = [list(map(self.getColor, self.mappedGrid[i])) for i in range(0, cols)]
         self.gridItem = SpectraGridItem(yTicks, colorGrid, self.xTicks)
         self.addItem(self.gridItem)
 
         # Set x and y ranges to min/max values of each range w/ no padding
         self.enableAutoRange(x=False, y=False)
-        self.setYRange(yTicks[0], yTicks[-1], 0.0)
+        self.setYRange(minY, maxY, 0.0)
         self.setXRange(self.xTicks[0], self.xTicks[-1], 0.0)
 
     def plotSetup(self):
@@ -1786,7 +1892,7 @@ class SpectrogramPlotItem(SimpleColorPlot):
         # Generate plot
         self.createPlot(y, grid, x, color_rng, specData.log_color_scale(),
             winFrame, mask_info, showLabel=showLabel)
-        
+
         # Make sure specData object is original one
         self.specData = specData
 
@@ -1845,7 +1951,7 @@ class SpectrogramPlotItem(SimpleColorPlot):
         grid = self.specData.get_grid()
         mappedGrid = self.specData.get_mapped_grid()
         mappedColors = [list(map(self.getColor, row)) for row in mappedGrid]
-    
+
         return (freqs, times, grid, mappedColors)
 
     def linkToStatusBar(self, window):
@@ -1902,7 +2008,7 @@ class MaskOutline(pg.PlotCurveItem):
             # Drop last column and fill first col w/ copy of mask's first col
             maskCopy[:,1:] = mask[:,0:-1]
             maskCopy[:,0] = mask[:,0]
-        
+
         return maskCopy
 
     def getMaskOutline(self, mask):
@@ -1927,7 +2033,7 @@ class MaskOutline(pg.PlotCurveItem):
             maskOutlineVals = maskOutlineVals + baseMask
 
         return maskOutlineVals
-    
+
     def getPoint(self, x, y):
         return QtCore.QPointF(x, y)
 

@@ -123,6 +123,10 @@ class MagPy4UI(object):
         self.actionMMSPressure.setText('Pressure...')
         self.actionMMSPressure.setStatusTip('Calculates magnetic, thermal, and total pressure')
 
+        self.actionLoadMMS = QtWidgets.QAction(window)
+        self.actionLoadMMS.setText('Load MMS Data...')
+        self.actionLoadMMS.setStatusTip('Download MMS Data from specified intervals and data types')
+
         self.actionMMSOrbit = QtWidgets.QAction(window)
         self.actionMMSOrbit.setText('MMS Orbit...')
         self.actionMMSOrbit.setStatusTip('Plots MMS spacecraft orbit')
@@ -222,6 +226,7 @@ class MagPy4UI(object):
         self.toolsMenu.addAction(self.actionDynWave)
 
         self.MMSMenu = self.menuBar.addMenu('&MMS Tools')
+        self.MMSMenu.addAction(self.actionLoadMMS)
         self.MMSMenu.addAction(self.actionPlaneNormal)
         self.MMSMenu.addAction(self.actionCurlometer)
         self.MMSMenu.addAction(self.actionCurvature)
@@ -408,17 +413,13 @@ class MagPy4UI(object):
         modeLt.addWidget(self.saveModeChkBx, 1, 1, 1, 1)
 
         # Initialize default mode based on state file
-        stateFileName = 'state.txt'
-        statePath = getRelPath(stateFileName)
-        try: # If file exists, use setting
-            fd = open(statePath, 'r')
-            mode = fd.readline()
-            nameLabel.setText(mode.strip('\n'))
-            fd.close()
-        except: # Otherwise MagPy is default
+        state_dict = self.window.readStateFile()
+        if 'mode' in state_dict:
+            mode = state_dict['mode']
+        else:
             mode = 'MagPy'
 
-        if mode.strip('\n').strip(' ') == 'MagPy':
+        if mode == 'MagPy':
             self.modeComboBx.setCurrentIndex(1)
             self.window.insightMode = False
         else:
@@ -430,11 +431,16 @@ class MagPy4UI(object):
         openFFBtn = QtWidgets.QPushButton('Open Flat File')
         openFFBtn.clicked.connect(self.actionOpenFF.triggered)
         modeLt.addWidget(openFFBtn, 0, 2, 1, 1)
-    
+
         # Button to open CDF files
         cdfBtn = QtWidgets.QPushButton('Open CDF')
         cdfBtn.clicked.connect(self.actionOpenCDF.triggered)
         modeLt.addWidget(cdfBtn, 0, 3, 1, 1)
+
+        # Button to load MMS data
+        loadMMSBtn = QtWidgets.QPushButton('Load MMS Data')
+        loadMMSBtn.clicked.connect(self.actionLoadMMS.triggered)
+        modeLt.addWidget(loadMMSBtn, 0, 4, 1, 1)
 
         # Create a layout that will be centered within startLt
         frameLt = QtWidgets.QGridLayout()
@@ -463,11 +469,7 @@ class MagPy4UI(object):
         # Save the current text in the mode combo box to the state file
         if self.saveModeChkBx.isChecked():
             mode = self.modeComboBx.currentText()
-            stateFileName = 'state.txt'
-            statePath = getRelPath(stateFileName)
-            fd = open(statePath, 'w')
-            fd.write(mode)
-            fd.close()
+            self.window.updateStateFile('mode', mode)
 
     def switchMainMode(self):
         # Set insightMode in window so it knows which defaults/settings to load
@@ -851,7 +853,7 @@ class PlotGrid(pg.GraphicsLayout):
         botmHt = bottomAxis.maximumHeight()
         self.layout.setRowMaximumHeight(self.startRow+self.numPlots, botmHt)
         self.layout.setRowMinimumHeight(self.startRow+self.numPlots, botmHt)
-    
+
     def updateLabelSets(self, ticks):
         if self.labelSetGrd:
             self.labelSetGrd.setTickLevels(ticks)
@@ -908,7 +910,7 @@ class PlotGrid(pg.GraphicsLayout):
         if self.numPlots == 0:
             pg.GraphicsLayout.resizeEvent(self, event)
             return
-        
+
         try:
             # Fill in factors w/ 1's to make sure # of factors = # of plots
             while len(self.factors) < self.count():
@@ -1084,7 +1086,7 @@ class PlotGrid(pg.GraphicsLayout):
         else:
             lbl = lblStr
             lblStr = ' '.join(lblStr)
-        
+
         lbl = StackedLabel(lbl, ['#000000']*len(lbl), units=units)
         colorBar.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
         colorBar.setMaximumHeight(1e28)
@@ -1343,7 +1345,7 @@ class PlotGrid(pg.GraphicsLayout):
 
     def getPlotLabel(self, plotNum):
         return self.labels[plotNum]
-    
+
     def setLabelFontSizes(self, val):
         for lbl in self.labels:
             lbl.setFontSize(val)
@@ -1602,7 +1604,7 @@ def checkForOrbitLibs():
         spec = importlib.util.find_spec(pkg)
         if spec is None:
             installed = False
-    
+
     return installed
 
 class ScrollSelector(QtWidgets.QAbstractSlider):
@@ -1634,7 +1636,7 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
 
         QtWidgets.QAbstractSlider.__init__(self)
         self.setMaximumHeight(self.max_height)
-    
+
     def setup_colors(self):
         # Set up gradient to use as brush for 'background' scroll area
         gradient = QtGui.QLinearGradient(0, 0, 0, 1)
@@ -1675,14 +1677,14 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
         self.start_pos = t
         self.update()
         self.startChanged.emit(t)
-    
+
     def set_end(self, t):
         ''' Sets the end tick value '''
         t = min(max(t, 0), self.get_num_ticks())
         self.end_pos = t
         self.update()
         self.endChanged.emit(t)
-    
+
     def set_range(self, t):
         ''' Sets the maximum number of ticks '''
         self.num_ticks = t
@@ -1691,7 +1693,7 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
     def get_num_ticks(self):
         ''' Returns the maximum number of ticks '''
         return self.num_ticks
-    
+
     def mouseReleaseEvent(self, ev):
         self.sliderReleased.emit()
 
@@ -1756,7 +1758,7 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
         # Map new positions in pixel coordinates to ticks
         self.start_pos = self.get_marker_pos(start)
         self.end_pos = self.get_marker_pos(end)
-    
+
         # If the new positions would shrink the scrollbar
         # set to lowest/highest values possible while still maintaining
         # the original size of the scroll bar
@@ -1808,7 +1810,7 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
         rect = self.rect()
         width = rect.width()
         avail_width = width - (self.mark_width*2)
-        
+
         # Convert x position into a tick value based on the overall
         # available space for placing ticks
         int_pos = (x - self.mark_width) * (self.get_num_ticks() / avail_width)

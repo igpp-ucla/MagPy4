@@ -384,6 +384,8 @@ class ListLayout(QtWidgets.QGridLayout):
         layout = self
 
         self.dstrTableFrame, self.dstrTable = self.setupDstrTable(layout)
+        self.addSpecs()
+
         layout.addWidget(self.dstrTableFrame, 0, 0, 1, 1)
 
         self.plotWrappers = []
@@ -560,6 +562,12 @@ class ListLayout(QtWidgets.QGridLayout):
                 item = VariableListItem(info)
                 self.dstrTable.addItem(item)
 
+    def addSpecs(self):
+        for k in self.window.CDFSPECS:
+            info = TraceInfo(k, -1, self.window)
+            item = VariableListItem(info)
+            self.dstrTable.addItem(item)
+
     def addDstrsToPlt(self, plotWidget):
         # Adds the selected dstrs from the dstr table to the given plot table
         selectedItems = self.dstrTable.selectedItems()
@@ -698,7 +706,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         self.initPlotMenu(self.window.lastPlotStrings, self.window.lastPlotLinks,
             self.window.lastPlotHeightFactors)
-        
+
         # Check keep plot choices if there is saved plot info
         if self.window.savedPlotInfo is not None:
             self.ui.saveStringsBtn.setChecked(True)
