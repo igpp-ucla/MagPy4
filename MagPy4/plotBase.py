@@ -138,6 +138,9 @@ class MagPyAxisItem(pg.AxisItem):
         self.levels = None
         pg.AxisItem.__init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True)
 
+    def getTickSpacing(self):
+        return self.tickDiff
+
     def getTickFont(self):
         if hasattr(self, 'tickFont'):
             return self.tickFont
@@ -145,7 +148,28 @@ class MagPyAxisItem(pg.AxisItem):
             return self.style['tickFont']
 
     def setCstmTickSpacing(self, diff):
-        self.setTickSpacing(major=diff, minor=diff*1000)
+        ''' Sets tick spacing to major/minor values in diff '''
+        if diff is None:
+            self.resetTickSpacing()
+            return
+
+        # If diff is a list, extract major and minor values
+        if isinstance(diff, (list, np.ndarray)):
+            if len(diff) > 1:
+                major, minor = diff[0], diff[1]
+                diff = [major, minor]
+            else:
+                major = diff[0]
+                minor = major * 1000
+                diff = [major]
+        else:
+            # Otherwise, make a list with just major in it
+            # and set minor to some very large value
+            major = diff
+            minor = major * 1000
+            diff = [major]
+
+        self.setTickSpacing(major=major, minor=minor)
         self.tickDiff = diff
 
     def resetTickSpacing(self):
@@ -679,7 +703,10 @@ class DateAxis(pg.AxisItem):
 
     def tickSpacing(self, minVal, maxVal, size):
         if self.tickDiff:
-            return [(self.tickDiff.total_seconds(), 0)]
+            seconds_diff = []
+            for val in self.tickDiff:
+                seconds_diff.append((val.total_seconds(), 0))
+            return seconds_diff
         else:
             spacing = self.defaultTickSpacing(minVal, maxVal, size)
             return spacing
@@ -1079,7 +1106,10 @@ class DateAxis(pg.AxisItem):
         return strings
 
     def setCstmTickSpacing(self, diff):
-        self.tickDiff = diff
+        if isinstance(diff, (list, np.ndarray)):
+            self.tickDiff = diff
+        else:
+            self.tickDiff = [diff]
         self.picture = None
         self.update()
 

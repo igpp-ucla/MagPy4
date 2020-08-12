@@ -2,7 +2,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .MagPy4UI import StackedLabel
 from .plotBase import DateAxis
-
+import re
 from datetime import datetime, timedelta
 import numpy as np
 from .layoutTools import BaseLayout
@@ -47,7 +47,7 @@ class PlotAppearanceUI(BaseLayout):
         # Set up label properties widget
         self.lblPropWidget = LabelAppear(window, plotItems, mainWindow)
         tw.addTab(self.lblPropWidget, 'Label Properties')
-    
+
     def getTracePropFrame(self, plotInfos):
         frame = QtWidgets.QFrame()
         layout = QtWidgets.QVBoxLayout(frame)
@@ -65,7 +65,7 @@ class PlotAppearanceUI(BaseLayout):
             self.colorGrps.append(colorBtns)
             layout.addWidget(plotFrame)
         layout.addStretch()
-        
+
         return frame
 
     def getPlotPropFrame(self, index, numTraces):
@@ -103,7 +103,7 @@ class PlotAppearanceUI(BaseLayout):
         lineStyle = QtWidgets.QComboBox()
         for t in ['Solid', 'Dashed', 'Dotted', 'DashDot']:
             lineStyle.addItem(t)
-        
+
         # Create all elements for choosing line thickness
         lineWidth = QtWidgets.QDoubleSpinBox()
         lineWidth.setMinimum(1)
@@ -163,7 +163,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
                 colorFunc = functools.partial(self.openColorSelect, color, line)
                 color.clicked.connect(colorFunc)
                 traceIndex += 1
-    
+
         self.plotInfo = plotsInfo
 
     def getPlotLineInfos(self):
@@ -181,7 +181,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         color = pen.color()
 
         return (style, width, color)
-    
+
     def initVars(self, plotsInfo):
         # Initializes all values in UI elements with current plot properties
         if self.plotItems == None:
@@ -206,7 +206,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
                     styleStr = styleMap[style]
                 else:
                     styleStr = 'Solid'
-                
+
                 # Set UI elements with values
                 self.ui.styleGrps[index][lineNum].setCurrentText(styleStr)
                 self.ui.widthGrps[index][lineNum].setValue(width)
@@ -260,7 +260,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         pen = lineInfo['pen']
         pen.setColor(color)
         lineInfo['pen'] = pen
-        
+
         line = lineInfo['item']
         line.setPen(pen)
 
@@ -380,277 +380,422 @@ class PressurePlotApp(PlotAppearance):
                 penIndex += 1
             plotIndex += 1
 
-class TickIntervalsUI(BaseLayout):
-    def setupUI(self, Frame, window, plotItems, links):
-        Frame.setWindowTitle('Set Tick Spacing')
-        Frame.resize(200, 100)
-        layout = QtWidgets.QGridLayout(Frame)
+class TimeIntBox(QtWidgets.QAbstractSpinBox):
+    ''' Input box for specifying time intervals '''
+    def __init__(self):
+        super().__init__()
+        # Default keys and values
+        self.keys = {
+            'days' : 0,
+            'hours' : 0,
+            'min' : 0,
+            'sec' : 0,
+        }
 
-        btmPlt = plotItems[-1]
+        # Regular expressions to match keyword pairs
+        self.exprs = {}
+        for key in self.keys:
+            expr = f'{key}=[0-9]+'
+            self.exprs[key] = expr
 
-        # Determine Y val with largest magnitude to set spinbox max for left axes
-        yMax = 100
-        for plt in plotItems:
-            if plt.isSpecialPlot():
-                continue
-            for pdi in plt.listDataItems():
-                yMax = max(yMax, max(np.absolute(pdi.yData)))
+        # Key ordering
+        self.order = ['days', 'hours', 'min', 'sec']
+        self.factors = [24*60*60, 60*60, 60, 1]
+        self.editingFinished.connect(self.validateAfterReturn)
 
-        # Collect UI boxes/buttons and information about the corresp. axis
-        self.intervalBoxes = []
-        self.timeLblBoxes = []
-        for name in ['left', 'bottom']:
-            if name == 'left' and not Frame.Frame.allowLeftAxisEditing():
-                continue
-            # Builds frames / UI elements for corresponding axis side
-            self.buildAxisBoxes(layout, name, plotItems, yMax, links)
-        spacer = QtWidgets.QSpacerItem(0, 0, QSizePolicy.Maximum, QSizePolicy.MinimumExpanding)
-        layout.addItem(spacer, layout.count(), 0, 1, 1)
+        # Set default text and minimum width
+        self.clear()
+        self.setMinimumWidth(275)
 
-    def getBoxName(self, axOrient, linkGrp):
-        # Create name for linked axes if more than one link grp
-        nameBase = 'Linked ' + axOrient[0].upper() + axOrient[1:] + ' Axes '
-        boxName = nameBase + str([pltNum + 1 for pltNum in linkGrp])
-        return boxName
+    def interpretText(self):
+        ''' Maps text to a timedelta value '''
+        # Get key/value pairs from text
+        text = self.lineEdit().text()
+        pairs = {k:v for k, v in self.keys.items()}
+        validExpr, keys = self.extractElements(text)
+        pairs.update(keys)
 
-    def setupBoxDefaults(self, ax, axType, box, name, yMax):
-        # Set maximum interval for left axes
-        if name == 'left' and axType == 'Regular':
-            box.setMaximum(yMax)
+        # Map all key/value pairs to seconds quantities
+        seconds = 0
+        for key, factor in zip(self.order, self.factors):
+            base_val = pairs[key]
+            base_val *= factor
+            seconds += base_val
 
-        if axType == 'DateTime':
-            # Determine initial time interval if previously set
-            if ax.tickDiff is not None:
-                hr = ax.tickDiff.seconds / 3600
-                minutes = (ax.tickDiff.seconds % 3600)/60
-                seconds = (ax.tickDiff.seconds % 60)
-                prevTime = QtCore.QTime(hr, minutes, seconds)
-                box.setTime(prevTime)
-            else:
-                # Otherwise, default to 10 minutes
-                hrtime = QtCore.QTime(0,10,0)
-                box.setTime(hrtime)
-            # Set label format if it is not set to default
-            if ax.labelFormat is not None:
-                for tickBox, labelBox in self.timeLblBoxes:
-                    if tickBox == box:
-                        # Get index associated w/ format
-                        itemIndex = 0
-                        items = [labelBox.itemText(i) for i in range(labelBox.count())]
-                        for item in items:
-                            if item == ax.labelFormat:
-                                labelBox.setCurrentIndex(itemIndex)
-                                break
-                            itemIndex += 1
+        # Create a timedelta object from the sum of all seconds quantities
+        td = timedelta(seconds=seconds)
+        return td
+
+    def getValue(self):
+        ''' Return timedelta represented by text '''
+        return self.interpretText()
+
+    def extractElements(self, text):
+        ''' Extracts key/value pairs from text '''
+        # Split entries by commas
+        if ',' not in text:
+            return True, {}
         else:
-            # Set initial value for spinbox if previously set
-            if ax.tickDiff is not None:
-                box.setValue(ax.tickDiff)
-            else:
-                box.setValue(1)
+            split_text = text.split(',')
+
+        # Try to match with one of the keyword regular expressions
+        invalidExpr = False
+        matching_keys = {}
+        for entry in split_text:
+            entry = entry.strip(' ')
+
+            for key in self.exprs:
+                expr = self.exprs[key]
+                # If expression matches, save key/value pair in dictionary
+                if re.fullmatch(expr, entry):
+                    value = entry.split('=')[1]
+                    value = int(value)
+                    matching_keys[key] = value
+                else:
+                    invalidExpr = True
+
+        # Return whether any invalid expressions were found and
+        # a dictionary of matching keys and their values
+        return (invalidExpr, matching_keys)
+
+    def clear(self):
+        # Sets text to display key=0 for all keys
+        text = self.formatPairs(self.keys)
+        self.lineEdit().setText(text)
+
+    def fixup(self, text):
+        ''' Adjusts text if not in valid form '''
+        # Get matching keys
+        invalid_expr, match_keys = self.extractElements(text)
+        pairs = {key:value for key, value in self.keys.items()}
+        if len(match_keys) == 0: # No keys match at all, use defaults
+            pairs = pairs
+        else: # Some keys match, display only theses
+            pairs.update(match_keys)
+
+        # Format key value pairs into a string using only
+        # the valid key/value pairs from the user and other
+        # values reset to zero
+        new_text = self.formatPairs(pairs)
+        self.lineEdit().setText(new_text)
+
+    def formatPairs(self, pairs):
+        ''' Formats items in pairs dictionary into
+            a string in 'key1=val1, key2=val2, ...' format
+        '''
+        text = []
+        for key in pairs:
+            value = pairs[key]
+            substr = f'{key}={value}'
+            text.append(substr)
+
+        text = ', '.join(text)
+        return text
+
+    def stepBy(self, steps):
+        ''' Increment/decrement timedelta object by {steps} seconds '''
+        td = self.interpretText()
+        td = td + timedelta(seconds=steps)
+        self.setValue(td)
+
+    def setValue(self, td):
+        ''' Sets key/value pair values based on timedelta's total seconds '''
+        td = max(timedelta(seconds=0), td)
+        remaining_td = td
+        pairs = {}
+        # For each key and corresponding multiplying factor
+        for key, factor in zip(self.order, self.factors):
+            # Get the quantity represented by the timedelta
+            # and update the current timedelta to the remaining
+            # seconds
+            amt, remaining_td = divmod(remaining_td, timedelta(seconds=factor))
+            amt = int(amt)
+            pairs[key] = amt
+
+        # Update text with new values
+        text = self.formatPairs(pairs)
+        self.lineEdit().setText(text)
+
+    def stepEnabled(self):
+        ''' Step up and step down should both be enabled '''
+        stepUp = QtWidgets.QAbstractSpinBox.StepDownEnabled
+        stepDown = QtWidgets.QAbstractSpinBox.StepUpEnabled
+        return  stepUp | stepDown
+
+    def minimum(self):
+        ''' Minimum timedelta is zero seconds '''
+        minimum = timedelta(seconds=0)
+        return minimum
+
+    def maximum(self):
+        ''' Maximum timedelta is system max '''
+        maximum = timedelta.max
+        return maximum
+
+    def validateAfterReturn(self):
+        ''' Fixup text if validator does not return 'Acceptable' '''
+        lineEdit = self.lineEdit()
+        text = lineEdit.text()
+        pos = lineEdit.cursorPosition()
+        val, text, pos = self.validate(text, pos)
+        if val != QtGui.QValidator.Acceptable:
+            self.fixup(text)
+
+    def validate(self, text, pos):
+        ''' Validate text while cursor is at given position '''
+        invalid_expr, match_keys = self.extractElements(text)
+        if len(match_keys) == 0: # No matching keys
+            val = QtGui.QValidator.Invalid
+        elif invalid_expr: # Some matching keys, others invalid
+            val = QtGui.QValidator.Intermediate
+        else: # All matching keys
+            val = QtGui.QValidator.Acceptable
+        return (val, text, pos)
+
+class TickIntBox(QtWidgets.QDoubleSpinBox):
+    def __init__(self):
+        super().__init__()
+
+    def setLogScale(self, val):
+        ''' Adjust prefix and decimal places based
+            on whether displaying log scale or not
+        '''
+        if val:
+            self.setPrefix('10^')
+            self.setDecimals(0)
+        else:
+            self.setPrefix('')
+            self.setDecimals(2)
+
+    def getValue(self):
+        return self.value()
+
+class TickWidget(QtWidgets.QGroupBox):
+    valueChanged = QtCore.pyqtSignal(object)
+
+    def __init__(self, plots, axis, *args):
+        # Map axis position to counterpart edge value
+        self.edge_map = {'left':'right', 'bottom':'top'}
+        self.name = axis # Axis edge
+        self.plots = plots # Plots affected by this widget
+        super().__init__(*args)
+        self.layout = self.setupUI()
+
+        # Initialize tick interval values with any values
+        # currently set for the plot items
+        self.initValues()
+
+        # Link buttons to actions
+        self.applyBtn.clicked.connect(self.apply)
+        self.defaultBtn.clicked.connect(self.default)
+
+    def setupUI(self):
+        layout = QtWidgets.QGridLayout(self)
+
+        # Set up major and minor tick boxes
+        self.majorBox = self.getWidget()
+        self.minorBox = self.getWidget()
+
+        boxLt = QtWidgets.QGridLayout()
+        row = 0
+        for label, box in zip(['Major:', 'Minor:'], [self.majorBox, self.minorBox]):
+            labelItem = QtWidgets.QLabel(label)
+            labelItem.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+            boxLt.addWidget(labelItem, row, 0, 1, 1)
+            boxLt.addWidget(box, row, 1, 1, 1)
+            row += 1
+
+        layout.addLayout(boxLt, 0, 0, 1, 1)
+
+        # Set up default and apply buttons
+        self.defaultBtn = QtWidgets.QPushButton('Default')
+        self.applyBtn = QtWidgets.QPushButton('Apply')
+
+        btnLt = QtWidgets.QVBoxLayout()
+        for btn in [self.defaultBtn, self.applyBtn]:
+            btnLt.addWidget(btn)
+
+        layout.addLayout(btnLt, 0, 1, 1, 1)
+
+        return layout
+
+    def getWidget(self):
+        ''' Return the widget to use for the tick interval '''
+        intBox = TickIntBox()
+        return intBox
+
+    def getValue(self):
+        ''' Return the tick spacing value(s) '''
+        # Extract values from UI
+        major = self.majorBox.getValue()
+        minor = self.minorBox.getValue()
+
+        # Add to list if not set to minimum
+        diff = []
+        if major != self.majorBox.minimum():
+            diff.append(major)
+        if minor != self.minorBox.minimum():
+            diff.append(minor)
+
+        # Ignore if both are not valid intervals
+        if len(diff) == 0:
+            diff = None
+
+        return diff
+
+    def setValue(self, val):
+        ''' Interprets interval value and sets major/min boxes
+            accordingly
+        '''
+        major, minor = None, None
+
+        # Map from list or only set major if it is a single number
+        if isinstance(val, (np.ndarray, list)):
+            if len(val) > 0:
+                major = val[0]
+            if len(val) > 1:
+                minor = val[1]
+        else:
+            major = val
+
+        # Set box values if available
+        if major:
+            self.majorBox.setValue(major)
+
+        if minor:
+            self.minorBox.setValue(minor)
+
+    def formatter(self):
+        ''' No tick label formatter is used by default '''
+        return None
+
+    def initValues(self):
+        ''' Initialize tick values and logScale settings
+            from plot settings '''
+        # Set value if plot has tickDiff set
+        ax = self.plots[-1].getAxis(self.name)
+        if ax.tickDiff is not None:
+            self.setValue(ax.tickDiff)
+
+        # Set log scaling if plots are in log scale
+        if ax.logMode:
+            self.majorBox.setLogScale(True)
+            self.minorBox.setLogScale(True)
+
+    def apply(self):
+        ''' Set tick spacing for plots '''
+        # Extract value from UI
+        value = self.getValue()
+
+        # Ignore if both are not valid
+        if len(value) == 0:
+            return
+
+        # Set tick spacing for both axes for all plots
+        for plot in self.plots:
+            edges = [self.name, self.edge_map[self.name]]
+            for edge in edges:
+                ax = plot.getAxis(edge)
+                ax.setCstmTickSpacing(value)
+
+        self.valueChanged.emit(value)
+
+    def default(self):
+        ''' Reset tick spacing for plots '''
+        # Get both axes for each plot and reset tick spacing
+        for plot in self.plots:
+            edges = [self.name, self.edge_map[self.name]]
+            for edge in edges:
+                ax = plot.getAxis(edge)
+                ax.resetTickSpacing()
+
+        self.valueChanged.emit(None)
+
+class TimeTickWidget(TickWidget):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        format_lt, self.formatBox = self.buildTimeLblLt()
+        self.layout.addLayout(format_lt, 1, 0, 1, 1)
+        self.formatBox.currentTextChanged.connect(self.setLabels)
+
+    def formatter(self):
+        ''' Returns the label formatter object '''
+        return self.formatBox
+
+    def getWidget(self):
+        ''' Returns a time interval widget '''
+        return TimeIntBox()
 
     def buildTimeLblLt(self):
         # Get time label formats
         fmts = DateAxis(orientation='bottom', epoch='J2000').timeModes
         fmts = ['Default'] + fmts
+
         # Build box and layout elements
-        layout = QtWidgets.QGridLayout()
+        layout = QtWidgets.QHBoxLayout()
         fmtBox = QtWidgets.QComboBox()
         fmtBox.addItems(fmts)
-        self.addPair(layout, 'Label Format: ', fmtBox, 0, 0, 1, 1)
-        # Add in a spacer
-        spacer = QtWidgets.QSpacerItem(0, 0, QSizePolicy.MinimumExpanding, QSizePolicy.Maximum)
-        layout.addItem(spacer, 0, 2, 1, 1)
+
+        label = QtWidgets.QLabel('Label Format: ')
+        label.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        layout.addWidget(label)
+        layout.addWidget(fmtBox)
         return layout, fmtBox
 
-    def buildAxisBoxes(self, layout, name, plotItems, yMax, links):
-        # For every linked axis group
-        numLinks = len(links) if (name == 'left' and links is not None) else 1
-        for i in range(0, numLinks):
-            # Get axis, axis type, and create UI elements as apprp.
-            if links:
-                linkSubset = links[i]
-                btmPlt = plotItems[linkSubset[-1]]
-            else:
-                btmPlt = plotItems[-1]
-            ax = btmPlt.getAxis(name)
-            axType = ax.axisType()
-
-            # Create box label, add numbers corresp. to links if more than one grp
-            boxName = name[0].upper() + name[1:] + ' Axis'
-            if numLinks > 1 and name == 'left':
-                if len(links[i]) > 1:
-                    boxName = self.getBoxName(name, links[i])
-                else:
-                    boxName = boxName + ' ' + str(links[i][0]+1)
-
-            # Builds the actual UI elements from info above
-            axisFrame, box, applyBtn, defBtn = self.buildIntervalUI(boxName, axType)
-            self.setupBoxDefaults(ax, axType, box, name, yMax)
-
-            # Store this axe's info/UI elements and add frame to layout
-            self.intervalBoxes.append((box, name, axType, applyBtn, defBtn))
-            layout.addWidget(axisFrame, layout.count(), 0)
-
-    def buildIntervalUI(self, name, axType):
-        # Initialize common UI elements
-        axisFrame = QtWidgets.QGroupBox(name + ':')
-        applyBtn = QtWidgets.QPushButton('Apply')
-        defBtn = QtWidgets.QPushButton('Default')
-
-        if axType == 'DateTime':
-            # Create layout w/ timeEdit and label to describe time sections
-            dateTimeLt = QtWidgets.QVBoxLayout(axisFrame)
-            lbl = QtWidgets.QLabel('HH:MM:SS')
-            intervalBox = QtWidgets.QTimeEdit()
-            intervalBox.setDisplayFormat('HH:mm:ss')
-            intervalBox.setMinimumTime(QtCore.QTime(0, 0, 1))
-
-            for rowLst in [[lbl], [intervalBox, defBtn, applyBtn]]:
-                hlt = QtWidgets.QHBoxLayout()
-                for elem in rowLst:
-                    hlt.addWidget(elem, QtCore.Qt.AlignLeft)
-                spacer = QtWidgets.QSpacerItem(0, 0, QSizePolicy.MinimumExpanding)
-                hlt.addItem(spacer)
-                dateTimeLt.addLayout(hlt)
-            
-            timestampLt, fmtBox = self.buildTimeLblLt()
-            dateTimeLt.addLayout(timestampLt)
-            self.timeLblBoxes.append((intervalBox, fmtBox))
+    def setLabels(self, val):
+        ''' Update tick label format for DateTime axes '''
+        if val == 'Default':
+            for plot in self.plots:
+                ax = plot.getAxis(self.name)
+                ax.resetLabelFormat()
         else:
-            # Create spinbox and add elements to horizontal layout
-            intervalLt = QtWidgets.QHBoxLayout(axisFrame)
-            intervalBox = QtWidgets.QDoubleSpinBox()
-            # Log spinbox should only take integers and is prefixed by '10^'
-            if axType == 'Log':
-                intervalBox = QtWidgets.QSpinBox()
-                intervalBox.setPrefix('10^')
-                intervalBox.setMinimum(1)
-            else:
-                intervalBox.setMinimum(0.01)
-            intervalLt.addWidget(intervalBox, QtCore.Qt.AlignLeft)
-            intervalLt.addWidget(defBtn, QtCore.Qt.AlignLeft)
-            intervalLt.addWidget(applyBtn, QtCore.Qt.AlignLeft)
-            spacer = QtWidgets.QSpacerItem(0, 0, QSizePolicy.MinimumExpanding)
-            intervalLt.addItem(spacer)
+            for plot in self.plots:
+                ax = plot.getAxis(self.name)
+                ax.setLabelFormat(val)
 
-        # Set maximums to adjust for resizing
-        for elem in [intervalBox, applyBtn, defBtn]:
-            elem.setMaximumWidth(150)
-
-        return axisFrame, intervalBox, applyBtn, defBtn
-
-class TickIntervals(QtGui.QFrame, TickIntervalsUI):
+class TickIntervals(QtGui.QFrame):
     def __init__(self, window, plotItems, Frame, parent=None, links=None):
         self.Frame = Frame
         super(TickIntervals, self).__init__(parent)
-        self.ui = TickIntervalsUI()
-        self.ui.setupUI(self, window, plotItems, links)
-        self.window = window
         self.plotItems = plotItems
+        self.window = window
+        # Update links to include all plots if links is empty or None
+        if links is None or len(links) == 0:
+            links = [[i for i in range(len(self.plotItems))]]
         self.links = links
 
-        # Connect 'apply' and 'default' buttons to appr functions
-        for i, (intBox, name, axType, applyBtn, defBtn) in enumerate(self.ui.intervalBoxes):
-            applyBtn.clicked.connect(functools.partial(self.applyChange, intBox, name, axType, i))
-            defBtn.clicked.connect(functools.partial(self.setDefault, name, i))
+        self.setupUI(window, plotItems, links)
 
-            # Connect date time axis label format box to appropriate axes
-            for refBox, lblBox in self.ui.timeLblBoxes:
-                if refBox == intBox:
-                    lblBox.currentIndexChanged.connect(functools.partial(self.updateLabels, lblBox, name, i))
-                    break
+    def setupUI(self, window, plotItems, links):
+        self.setWindowTitle('Set Tick Spacing')
+        self.resize(200, 100)
+        layout = QtWidgets.QVBoxLayout(self)
 
-    def updateLabels(self, box, name, index):
-        # Set date time axis labels format
-        pltIndices = self.getPlotIndices(name, index)
-        fmtKw = box.currentText()
+        # Assemble left axis tick widgets for each link group
+        for linkGrp in links:
+            plotGrp = [plotItems[i] for i in linkGrp]
+            if len(links) != 1:
+                label = f'Linked Axes {str(linkGrp)}'
+            else:
+                label = f'Left Axis'
+            widget = TickWidget(plotGrp, 'left', label)
+            layout.addWidget(widget)
 
-        for pltNum in pltIndices:
-            plt = self.plotItems[pltNum]
-            axis = plt.getAxis(name)
-            if fmtKw == 'Default':
-                axis.resetLabelFormat()
-            elif fmtKw is not None:
-                axis.setLabelFormat(fmtKw)
-            self.adjustOpposingAxis(plt, name)
-
-    def setDefault(self, name, index):
-        # Use all plots if no link settings, otherwise only update link grp
-        if self.links is not None and name == 'left':
-            pltIndices = self.links[index]
-        else:
-            pltIndices = [pltNum for pltNum in range(len(self.plotItems))]
-
-        # Have each plot's corresp. axes reset its tick spacing
-        for pltNum in pltIndices:
-            plt = self.plotItems[pltNum]
-            axis = plt.getAxis(name)
-            axis.resetTickSpacing()
-            self.adjustOpposingAxis(plt, name)
-
-        self.additionalUpdates(None, name)
-
-    def adjustOpposingAxis(self, plt, axName):
-        pairs = [('left', 'right'), ('top', 'bottom')]
-
-        for a, b in pairs:
-            if axName == a:
-                otherAx = b
-            elif axName == b:
-                otherAx = a
-        
-        refAxis = plt.getAxis(axName)
-        otherAxis = plt.getAxis(otherAx)
-
-        if otherAxis.style['tickLength'] == 0 or (not otherAxis.isVisible()):
-            return
-
-        # Set custom tick spacing
-        tickDiff = refAxis.tickDiff
-        otherAxis.setCstmTickSpacing(tickDiff)
-
-        # Set label format if a datetime axis
-        if refAxis.axisType() == 'DateTime':
-            label = refAxis.labelFormat
-            otherAxis.labelFormat = label
-
-        otherAxis.picture = None
-        otherAxis.update()
-
-    def getPlotIndices(self, name, index):
-        if self.links is not None and name == 'left':
-            pltIndices = self.links[index]
-        else:
-            pltIndices = [pltNum for pltNum in range(len(self.plotItems))]
-        return pltIndices
-
-    def applyChange(self, intBox, name, axType, index):
-        # Get spinbox value
+        # Determine what type of tick widget to use for bottom axes
+        axType = plotItems[-1].getAxis('bottom').axisType()
+        label = 'Bottom Axis'
         if axType == 'DateTime':
-            # Convert QTime object to a timedelta object for DateTime axes
-            value = intBox.time()
-            formatStr = '%H:%M:%S'
-            minBoxTime = datetime.strptime(QtWidgets.QTimeEdit().minimumTime().toString(), formatStr)
-            valTime = datetime.strptime(value.toString(), formatStr)
-            value = valTime - minBoxTime
+            widget = TimeTickWidget(plotItems, 'bottom', label)
         else:
-            value = intBox.value()
+            widget = TickWidget(plotItems, 'bottom', label)
+        layout.addWidget(widget)
+        layout.addStretch()
 
-        # Use all plots if no link settings, otherwise only update link grp
-        pltIndices = self.getPlotIndices(name, index)
+        # Connect changes in bottom axis to any additional update funcs
+        widget.valueChanged.connect(self.additionalUpdates)
 
-        # Have each plot's corresp. axes update its tick spacing with value
-        for pltNum in pltIndices:
-            plt = self.plotItems[pltNum]
-            axis = plt.getAxis(name)
-            axis.setCstmTickSpacing(value)
-            self.adjustOpposingAxis(plt, name)
-
-        self.additionalUpdates(value, name)
-
-    # Placeholder function to update plot ticks elsewhere as needed
-    def additionalUpdates(self, tickDiff, name):
+    def additionalUpdates(self, value):
         pass
 
 class MagPyTickIntervals(TickIntervals):
@@ -658,10 +803,9 @@ class MagPyTickIntervals(TickIntervals):
         links = window.lastPlotLinks
         TickIntervals.__init__(self, window, plotItems, parent, links=links)
 
-    def additionalUpdates(self, tickDiff, name):
-        # Update plot ranges so tick marks are uniform across axes/plots
-        if name == 'bottom' and self.window.pltGrd and self.window.pltGrd.labelSetGrd:
-            self.window.pltGrd.labelSetGrd.setCstmTickSpacing(tickDiff)
+    def additionalUpdates(self, value):
+        if self.window.pltGrd and self.window.pltGrd.labelSetGrd:
+            self.window.pltGrd.labelSetGrd.setCstmTickSpacing(value)
         self.window.updateXRange()
         self.window.updateYRange()
 
