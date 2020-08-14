@@ -18,7 +18,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.5.2.0 (August 12, 2020)'
+VERSION = f'Version 1.5.3.0 (August 14, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -62,6 +62,7 @@ from .timeManager import TimeManager
 from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect, SelectableViewBox
 from .layoutTools import BaseLayout
 from .dataUtil import merge_datas
+import numpy.lib.recfunctions as rfn
 
 import cdflib
 import time
@@ -1940,9 +1941,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             if len(datas) == 0:
                 continue
 
-            # Stack data in records format
-            datas = np.hstack(datas)
-
             # If a label formatting function is passed, apply to variable labels
             if label_func is not None:
                 data_labels = list(map(label_func, data_labels))
@@ -1957,6 +1955,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Update list of files
         cdf_id = CDF_ID(path)
+        cdf_id.window = self
+        cdf_id.setGroups(time_dict)
+        cdf_id.setExclude(exclude_expr)
         self.FIDs.append(cdf_id)
         self.updateAfterOpening()
 
@@ -2107,6 +2108,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         for label in data_labels:
             label_counts[label] += 1
 
+        datas = np.hstack(datas)
+
         # Remove duplicates for any variables that appear more than once, like Bt
         for key in label_counts:
             if label_counts[key] > 1:
@@ -2116,7 +2119,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     if data_labels[i] == key:
                         repeat_indices.append(i)
                 # Delete repeat indices from all lists
-                datas = [datas[i] for i in range(0, len(datas)) if i not in repeat_indices[1:]]
+                datas = np.delete(datas, repeat_indices[1:], axis=1)
                 data_units = np.delete(np.array(data_units), repeat_indices[1:]).tolist()
                 data_labels = np.delete(np.array(data_labels), repeat_indices[1:]).tolist()
 
@@ -3633,10 +3636,31 @@ class FF_FD():
     def ffSearch(self, tick, startRow, endRow):
         return self.FID.ffsearch(tick, startRow, endRow)
 
-    def getRecords(self):
+    def getRecords(self, epoch_var=None):
+        # Get time and data records from file
         nRows = self.getRows()
         records = self.FID.DID.sliceArray(row=1, nRow=nRows)
-        return records['time'], records['data']
+        times, datas = records['time'], records['data']
+
+        # Add units to column labels
+        labels = self.getLabels()
+        units = self.getUnits()
+        new_labels = []
+        for label, unit in zip(labels, units):
+            if unit:
+                label = f'{label} ({unit})'
+            new_labels.append(label)
+
+        # Create dtype for table
+        dtype = [(label, 'f4') for label in new_labels]
+        dtype = np.dtype(dtype)
+
+        # Restructure records into a numpy records table
+        nRows = self.getRows()
+        table = np.hstack([np.reshape(times, (nRows, 1)), datas])
+        datas = rfn.unstructured_to_structured(table, dtype=dtype)
+
+        return datas
 
     def open(self):
         self.FID.open()
@@ -3681,6 +3705,9 @@ class CDF_ID():
     def __init__(self, cdf):
         self.name = cdf
         self.cdf = None
+        self.epoch_grps = {}
+        self.exclude_vars = {}
+        self.window = None
 
     def getFileType(self):
         return 'CDF'
@@ -3700,12 +3727,12 @@ class CDF_ID():
         units = ['']*len(labels)
         return labels
 
-    def getLabels(self):
+    def getLabels(self, epoch_var=None):
         self.open()
         labels = self.cdf.cdf_info()['zVariables']
         return labels
 
-    def getRows(self, epoch_lbl='EPOCH'):
+    def getRows(self, epoch_lbl=None):
         self.open()
         return len(self.cdf.varinq(epoch_lbl))
 
@@ -3713,8 +3740,57 @@ class CDF_ID():
         if self.cdf:
             self.cdf = None
 
-    def ffSearch(self):
+    def ffSearch(self, a, b, c):
         return 0
+    
+    def setGroups(self, grps):
+        self.epoch_grps = grps
+    
+    def getEpochVars(self):
+        return list(self.epoch_grps.keys())
+    
+    def setExclude(self, exclude_expr):
+        self.exclude_vars = exclude_expr
+    
+    def getRecords(self, epoch_var=None, window=None):
+        # Use first epoch_var as default
+        if epoch_var is None:
+            epoch_var = self.getEpochVars()[0]
+
+        # Open file and read times and data from CDF
+        self.open()
+        times = self.getTimes(epoch_var)
+        labels = self.epoch_grps[epoch_var]
+        info = self.window.get_cdf_datas(self.cdf, labels, len(times), 
+            self.exclude_vars)
+        datas, data_labels, data_units, vec_grps = info
+
+        # Add units to labels
+        new_labels = []
+        for label, unit in zip(data_labels, data_units):
+            if unit:
+                label = f'{label} ({unit})'
+            new_labels.append(label)
+
+        # Create dtype for table
+        dtype = [(label, 'f4') for label in new_labels]
+        dtype = [('Time', 'f8')] + dtype
+        dtype = np.dtype(dtype)
+
+        # Restructure data into a numpy records table
+        table = np.hstack([np.reshape(times, (len(times), 1)), datas])
+        datas = rfn.unstructured_to_structured(table, dtype=dtype)
+
+        return datas
+
+    def getTimes(self, epoch_var=None):
+        if epoch_var is None:
+            epoch_var = self.getEpochVars()[0]
+        
+        self.open()
+        times = self.cdf.varget(epoch_var)
+        times = times / 1e9 - 32.128
+        return times
 
 def runMarsPy():
     runMagPy()

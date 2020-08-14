@@ -7,6 +7,7 @@ import numpy as np
 from bisect import bisect
 import time
 import re
+import numpy.lib.recfunctions as rfn
 
 class TextFD():
     def __init__(self, filename, fileType, ancInfo):
@@ -53,8 +54,26 @@ class TextFD():
     def getRows(self):
         return len(self.times)
 
-    def getRecords(self):
-        return self.times, self.records
+    def getRecords(self, epoch_var=None):
+        # Add units to column labels
+        labels = self.getLabels()
+        units = self.getUnits()
+        new_labels = []
+        for label, unit in zip(labels, units):
+            if unit:
+                label = f'{label} ({unit})'
+            new_labels.append(label)
+
+        # Create array dtype
+        dtype = [(label, 'f4') for label in new_labels]
+        dtype = np.dtype(dtype)
+
+        # Restructure data in a numpy records table with the times
+        # set as the first column
+        nRows = self.getRows()
+        table = np.hstack([np.reshape(self.times, (nRows, 1)), self.records])
+        datas = rfn.unstructured_to_structured(table, dtype=dtype)
+        return datas
 
     def close(self):
         if self.fd:

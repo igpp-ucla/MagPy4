@@ -7,6 +7,7 @@ import numpy as np
 import datetime, time
 import bisect, functools
 import os
+import numpy.lib.recfunctions as rfn
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -41,8 +42,12 @@ class DataDisplayUI(object):
         filePathLayout = QtGui.QHBoxLayout()
         self.filePathCB = QtGui.QCheckBox('Show Full &Path')
         self.viewEdtdDta = QtGui.QCheckBox('View Edited Data')
+        self.timeVarLabel = QtWidgets.QLabel('Time Variable:')
+        self.timeVarBox = QtWidgets.QComboBox()
         filePathLayout.addWidget(self.filePathCB)
         filePathLayout.addWidget(self.viewEdtdDta)
+        filePathLayout.addWidget(self.timeVarLabel)
+        filePathLayout.addWidget(self.timeVarBox)
         filePathLayout.addStretch()
         fileHL.addLayout(filePathLayout, 1, 1, 1, 1)
         topHL.addLayout(fileHL)
@@ -132,17 +137,16 @@ class UTCQDate():
         return dateTime[:5] + DOY + dateTime[4:]
 
 class FFTableModel(QtCore.QAbstractTableModel):
-    def __init__(self, time_in, datain, headerdata, parent=None, epoch=None, *args):
+    def __init__(self, datain, parent=None, epoch=None, *args):
         QtCore.QAbstractTableModel.__init__(self, parent, *args)
-        self.time = time_in
         self.arraydata = datain
-        self.headerdata = headerdata
+        self.headers = list(datain.dtype.names)
         self.epoch = FF_EPOCH.Y2000
         self.UTCMode = True
         if epoch:
             self.epoch = epoch
-        self.nColumns = len(datain) + 1
-        self.nRows = len(time_in)
+        self.nColumns = len(datain[0])
+        self.nRows = len(self.arraydata)
 
     def rowCount(self, parent):
         return self.nRows
@@ -159,7 +163,7 @@ class FFTableModel(QtCore.QAbstractTableModel):
         elif role != QtCore.Qt.DisplayRole:
             return None
         if index.column() == 0:
-            t = self.time[index.row()]
+            t = self.arraydata[index.row()][index.column()]
             if self.UTCMode:
                 if isinstance(t, FFTIME):
                     utc = t.UTC
@@ -170,7 +174,7 @@ class FFTableModel(QtCore.QAbstractTableModel):
             else:
                 value = "%16.4f" % t
         else:
-            d = self.arraydata[index.column()-1][index.row()]
+            d = self.arraydata[index.row()][index.column()]
             value = str(d)
         return value
 
@@ -179,7 +183,7 @@ class FFTableModel(QtCore.QAbstractTableModel):
             return QtCore.Qt.AlignLeft
         if role == QtCore.Qt.DisplayRole:
             if orientation == QtCore.Qt.Horizontal: # column labels
-                return self.headerdata[section]
+                return self.headers[section]
             else: # row labels
                 # We add 1 so that row numbers start with 1 rather than 0
                 return section + 1
@@ -188,7 +192,7 @@ class FFTableModel(QtCore.QAbstractTableModel):
     def tableDetailHeader(self, col, orientation, role): # i think this is unused
         print("TableDetailHeader")
         if orientation == QtCore.Qt.Horizontal and role == QtCore.Qt.DisplayRole:
-            return self.headerdata[col]
+            return self.headers[col]
         return "section"
 
 class DataDisplay(QtGui.QFrame, DataDisplayUI):
@@ -202,6 +206,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.FIDs = FIDs
         self.curFID = FIDs[0]
         self.updateFile()
+        self.table = None
         self.rangeSelection = None
 
         self.setFileComboNames()
@@ -221,6 +226,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.moveByTime.clicked.connect(self.moveByTime)
         self.ui.moveByRow.clicked.connect(self.moveByRow)
 
+        self.updateTimeVarBox()
         self.update()
         self.clip = QtGui.QApplication.clipboard()
 
@@ -229,6 +235,8 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             self.ui.viewEdtdDta.setEnabled(False)
         else:
             self.ui.viewEdtdDta.setEnabled(True)
+
+        self.ui.timeVarBox.currentIndexChanged.connect(self.epochChanged)
 
     def closeEvent(self, event):
         self.closeRangeSelection()
@@ -243,8 +251,28 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 
     def fileComboChanged(self,i):
         self.curFID = self.FIDs[i]
+        self.updateTimeVarBox()
         self.updateFile()
         self.update()
+    
+    def updateTimeVarBox(self):
+        ''' Update time variable option box when file is changed '''
+        # Clear previous combo box options
+        showTimeVar = False
+        self.ui.timeVarBox.clear()
+
+        # If file is a CDF and more than one epoch is loaded,
+        # display timeVarBox and add epoch variables to box
+        if self.curFID.getFileType() == 'CDF':
+            showTimeVar = True
+            timeVars = self.curFID.getEpochVars()
+            if len(timeVars) <= 1:
+                showTimeVar = False
+            self.ui.timeVarBox.addItems(timeVars)
+
+        # Hide/show timeVarBox and its label
+        self.ui.timeVarBox.setVisible(showTimeVar)
+        self.ui.timeVarLabel.setVisible(showTimeVar)
 
     def setFileComboNames(self):
         self.ui.fileCombo.blockSignals(True)
@@ -256,17 +284,18 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.fileCombo.adjustSize()
         self.ui.fileCombo.blockSignals(False)
 
+    def epochChanged(self):
+        self.updateFile()
+        self.update()
+
     def updateFile(self):
-        if self.curFID.getFileType() == 'CDF':
-            self.window.ui.statusBar.showMessage('Error: Data display currently unavailable for CDFs')
-            nRows = 0
-            self.time = []
-            self.dataByRec = []
-            self.dataByCol = []
-            return
-        nRows = self.curFID.getRows()
-        self.time, self.dataByRec = self.curFID.getRecords()
-        self.dataByCol = np.transpose(self.dataByRec)
+        timeVar = None
+        if self.ui.timeVarBox.currentText() != '':
+            timeVar = self.ui.timeVarBox.currentText()
+
+        self.dataByRec = self.curFID.getRecords(timeVar)
+        time_key = self.dataByRec.dtype.names[0]
+        self.time = np.array(self.dataByRec[time_key])
 
     def edtdDtaMode(self):
         if self.ui.viewEdtdDta.isChecked():
@@ -331,6 +360,7 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
                 # Look for the most recent edit number that has data for it
                 while dataValsList[en] == [] and en >= 0:
                     en = en - 1
+
             # If only unedited data available, skip this datastring
             if en == 0:
                 continue
@@ -395,8 +425,8 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         self.ui.timesLabel.setText(stats)    
 
     def createTable(self, header, epoch):
-        if self.dataByCol is not None:        
-            tm = FFTableModel(self.time, self.dataByCol, header, parent=None, epoch=epoch)
+        if self.dataByRec is not None:        
+            tm = FFTableModel(self.dataByRec, parent=None, epoch=epoch)
             tm.setUTC(not self.ui.checkBox.isChecked())
             self.ui.dataTableView.setModel(tm)
             self.ui.dataTableView.resizeColumnToContents(0) # make time column resize to fit        
@@ -406,10 +436,16 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 
         # Get edited data and update class info/data
         dta, tms, hdrs = self.getEditedData()
-        self.dataByCol = dta
-        self.dataByRec = np.transpose(dta)
-        self.time = tms
+
+        # Reformat data into a structured numpy array
+        records = np.hstack([np.vstack(tms), np.transpose(dta)])
+        dtype = np.dtype([(label, 'f4') for label in hdrs])
+        records = rfn.unstructured_to_structured(records, dtype=dtype)
+
+        self.dataByRec = records
+        self.time = records[hdrs[0]]
         self.headerStrings = hdrs
+
         header = [h for h in hdrs]
 
         # Set table row settings
@@ -420,7 +456,6 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         epoch = self.window.epoch
         self.createTable(header, epoch)
         self.updtTimeEditAndStats(len(tms), len(dta)+1, epoch)
-
 
     def updateFfData(self):
         self.setWindowTitle(self.title)
@@ -433,18 +468,15 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         header = [f'{h} ({u})' if u else f'{h}' for h,u in zip(self.headerStrings,units)]
 
         # Update row settings in table
-        nRow = self.curFID.getRows()
-        rO = self.curFID.ffSearch(self.time[0], 1, nRow)
-        rE = self.curFID.ffSearch(self.time[-1], 1, nRow)
-        if rE is None:
-            rE = nRow
+        rO = 1
+        rE = len(self.dataByRec)
         self.ui.Row.setMinimum(rO)
         self.ui.Row.setMaximum(rE)
 
         # Create table from flatfile data
         epoch = self.curFID.getEpoch()
         self.createTable(header, epoch)
-        self.updtTimeEditAndStats(len(self.time), len(self.dataByCol), epoch)           
+        self.updtTimeEditAndStats(len(self.time), len(self.dataByRec[0]), epoch)           
 
     def update(self):
         if len(self.time) == 0:
@@ -475,36 +507,21 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 
         # Shape data
         selectedDta = self.dataByRec
-        selectedTime = self.time
         if indices is not None:
             startIndex, endIndex = indices
             selectedDta = selectedDta[startIndex:endIndex+1]
-            selectedTime = selectedTime[startIndex:endIndex+1]
-
-        shape = np.shape(selectedDta)
-        dataShaped = np.zeros((shape[0], shape[1]+1))
-        dataShaped[:,1:] = selectedDta
-        dataShaped[:,0] = selectedTime
-        nRows = len(selectedTime)
 
         # Create header to write at top of file
-        header = ''
-        numCols = len(self.headerStrings)
-        for i in range(0, numCols-1):
-            header = header + self.headerStrings[i] + ','
-        header += self.headerStrings[numCols-1] # No delimiter after last col name
+        header = ','.join(list(selectedDta.dtype.names))
 
         # If file name doesn't end with default suffix, add it before saving
         filename = fullname[0]
         if filename.endswith(defaultSfx) == False:
             filename += defaultSfx
-        # Write data to file
-        print(f'Writing {nRows} records to {fullname[0]}...')
-        np.savetxt(filename, dataShaped, fmt = '%.10f', header=header, 
-            delimiter=',', comments='')
 
-        print(f'Save complete')
-        # should auto open the file here afterwards?
+        # Write data to file
+        np.savetxt(filename, selectedDta, fmt = '%.10f', header=header, 
+            delimiter=',', comments='')
 
     def toggleTimeDisplay(self):
         self.update()
@@ -532,36 +549,6 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         # grab data ui.Row
         row = self.ui.Row.value() - 1
         self.ui.dataTableView.selectRow(row)
-
-    # this doesn't work anymore. the key value looks like its just wrong?
-    def keyPressEvent(self, e):
-        #if (e.modifiers() & QtCore.Qt.ControlModifier):
-        #    print(f'{QtCore.Qt.Key_C} {e.key()}')
-        #    if e.key() == QtCore.Qt.Key_C: #copy
-        if e.matches(QtGui.QKeySequence.Copy):
-            selected = self.ui.dataTableView.selectedIndexes()
-            if selected:
-                # sort the indexes to get them in order and put them in string table
-                rows = sorted(index.row() for index in selected)
-                columns = sorted(index.column() for index in selected)
-                rowcount = rows[-1] - rows[0] + 1
-                colcount = columns[-1] - columns[0] + 1
-
-                table = [[''] * colcount for _ in range(rowcount)]
-                for index in selected:
-                    row = index.row() - rows[0]
-                    column = index.column() - columns[0]
-                    table[row][column] = index.data()
-                # build final string to copy to clipboard
-                s = 'Record\t' + '\t'.join(self.headerStrings[columns[0]:columns[-1]+1])
-                for r,row in enumerate(table):
-                    s = f'{s}\n{rows[0]+r}\t'
-                    s = s + '\t'.join(row)
-                    s = s[:-1]
-                print(s)
-                self.clip.setText(s)
-
-        e.accept()
 
 class RangeSelectionUI(object):
     def setupUI(self, Frame, window):
