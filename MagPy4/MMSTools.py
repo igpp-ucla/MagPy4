@@ -11,8 +11,11 @@ from .selectionManager import SelectableViewBox
 from .layoutTools import BaseLayout
 from .plotAppearance import PressurePlotApp
 
+from .qtThread import TaskRunner
+
 import scipy
 from scipy import constants
+from scipy.interpolate import CubicSpline
 
 import pyqtgraph as pg
 import numpy as np
@@ -37,7 +40,13 @@ class MMSTools():
             self.raiseErrorMsg()
             return
 
-        self.initArrays()
+        self.pool = QtCore.QThreadPool()
+        worker = TaskRunner(self.initArrays)
+        self.pool.start(worker)
+
+    def waitForData(self):
+        while (self.pool.activeThreadCount()) > 0:
+            pass
 
     def inValidState(self):
         return self.mmsState
@@ -69,15 +78,20 @@ class MMSTools():
         return self.vecArrays['Field'][scNum][:,startIndex:endIndex]
 
     def initArrays(self):
-        # Creates dictionary of arrays s.t. a column within the array
-        # corresponds to a field/position vector at a given data index
-        # i.e. vecArrays['Field'][4] = [[bx4 data] [by4 data] [bz4 data]]
+        '''
+        Creates dictionary of arrays s.t. a column within the array
+        corresponds to a field/position vector at a given data index
+        i.e. vecArrays['Field'][4] = [[bx4 data] [by4 data] [bz4 data]]
+        '''
+        # Check if data previously interpolated
+        if self.checkForPrev():
+            self.vecArrays = {k:v for k, v in self.window.mmsInterp.items()}
+            return
+
         self.vecArrays = {}
 
-        if self.diffMode: # Get MMS1 pos dta if in diff mode
-            mms1Pos = [self.window.getData(dstr) * 6371 for dstr in self.mms1Vec]
-
-        for grp in ['Pos', 'Field']:
+        refTimes = None
+        for grp in ['Field', 'Pos']:
             self.vecArrays[grp] = {}
             for scNum in [1,2,3,4]:
                 dstrs = self.getDstrsBySpcrft(scNum, grp)
@@ -85,120 +99,148 @@ class MMSTools():
                 axisIndex = 0
                 for dstr in dstrs:
                     dta = self.window.getData(dstr)
+                    times = self.window.getTimes(dstr, 0)[0]
 
-                    # Add in MMS1 coordinates if scNum corresp. to difference vector
-                    if self.diffMode and grp == 'Pos':
-                        if scNum != 1:
-                            dta = dta + mms1Pos[axisIndex]
-                        else:
-                            dta = mms1Pos[axisIndex]
+                    # Interpolate data along MMS1 times using Cubic Splines
+                    if refTimes is None:
+                        refTimes = times
+                    else:
+                        cs = CubicSpline(times, dta)
+                        dta = cs(refTimes)
                     vecArr.append(dta)
                     axisIndex += 1
                 self.vecArrays[grp][scNum] = np.array(vecArr)
 
-    def getDiffMode(self, posDstrs):
-        # Checks if position dstrs are in difference format or direct coordinates
-        # format
-        posKeys = ['DX', 'DY', 'DZ']
-        for dstr in posDstrs:
-            for pk in posKeys:
-                if pk.lower() in dstr.lower():
-                    return True
+        # Update in main window
+        self.window.mmsInterp.update(self.vecArrays)
 
-        return False
+    def checkForPrev(self):
+        # Check if previous interpolations are empty
+        mmsInterp = self.window.mmsInterp
+        if len(self.window.mmsInterp) == 0:
+            return False
+
+        # Get keyword for MMS1 FGM data
+        mms1Kw = self.scGrps['Field'][1][0]
+        data = self.window.getData(mms1Kw, 0)
+
+        # Check if interpolated data and loaded MMS1 FGM data have same length
+        if 'Field' not in mmsInterp or len(mmsInterp['Field']) == 0:
+            return False
+
+        interp = mmsInterp['Field'][1][0]
+        if len(interp) != len(data):
+            return False
+
+        return True
 
     def initGroups(self):
-        # Extract all position datastrings and field datastrings separately
-        regPosKeys = ['X','Y','Z']
-        diffPosKeys = ['DX', 'DY', 'DZ']
-        posKeys = regPosKeys + diffPosKeys
-        fieldKeys = ['Bx', 'By', 'Bz']
-        positionDstrs = []
-        fieldDstrs = []
-        for dstr in self.window.DATASTRINGS:
-            if dstr in self.window.cstmVars:
-                continue
-            for pk in posKeys:
-                if pk.lower() == dstr.lower()[:len(pk)] and 'b'+pk.lower() not in dstr.lower():
-                    positionDstrs.append(dstr)
-            for fk in fieldKeys:
-                if fk.lower() in dstr.lower():
-                    fieldDstrs.append(dstr)
+        self.scGrps = self.getMMSGrps()
+        self.grps = self.getAxisGrps(self.scGrps)
 
-        # Pre-sort
-        positionDstrs.sort()
-        fieldDstrs.sort()
+    def getMMSGrps(self):
+        ''' Get groups of variable names by vector '''
+        # Determine coordinate system being used
+        coords = 'gsm'
+        for lst in self.window.lastPlotStrings:
+            for dstr, en in lst:
+                if 'gse' in dstr.lower():
+                    coords = 'gse'
 
-        # Organize by field vectors
-        self.diffMode = self.getDiffMode(positionDstrs)
-        vecKeys = ['X', 'Y', 'Z']
-        posDict = {}
-        fieldDict = {}
-        for vk in vecKeys: # For every axis, look for matching position dstrs
-            vecPosDstrs = []
-            for posDstr in positionDstrs:
-                if vk.lower() in posDstr.lower():
-                    vecPosDstrs.append(posDstr)
-            posDict[vk] = vecPosDstrs
+        # Get position and field variables
+        full_grps = {}
+        for label, name in [('r', 'Pos'), ['b', 'Field']]:
+            grps = {}
+            full_grps[name] = grps
+            # Iterate over spacecraft
+            for sc_id in [1,2,3,4]:
+                # Iterate over data rate
+                for data_rate in ['brst', 'srvy']:
+                    key = f'mms{sc_id}_fgm_{label}_{coords}_{data_rate}_l2'
+                    # Check if vector variable name in window's VECGRPS
+                    # and save its list of dstrs if found
+                    if key in self.window.VECGRPS:
+                        grp = self.window.VECGRPS[key]
+                        grps[sc_id] = [f'{lbl}{sc_id}' for lbl in grp[:3]]
 
-            vecFieldDstrs = [] # Repeat for field dstrs
-            for fieldDstr in fieldDstrs:
-                if vk.lower() in fieldDstr.lower():
-                    vecFieldDstrs.append(fieldDstr)
-            fieldDict[vk] = vecFieldDstrs
+                        if len(grp) == 4 and label == 'b':
+                            bt_lbl = f'{grp[3]}{sc_id}'
+                            self.btotDstrs.append(bt_lbl)
 
-        # Get MMS1 pos dstrs at end of each dictionary if in diff mode
-        self.mms1Vec = []
-        if self.diffMode:
-            for key in posDict:
-                mms1Dstr = None
-                for dstr in posDict[key]:
-                    if 'D'.lower() != dstr.lower()[0]:
-                        self.mms1Vec.append(dstr)
-                        mms1Dstr = dstr
+        return full_grps
 
-                # Rearrange position so MMS1 dstr is in front
-                if mms1Dstr:
-                    if mms1Dstr in posDict[key]:
-                        posDict[key].remove(mms1Dstr)
-                        posDict[key] = [mms1Dstr] + posDict[key]
+    def getAxisGrps(self, scGrps):
+        ''' Group variables by axes '''
+        full_axes_grps = {}
+        # Iterate over data type groups
+        for grp in scGrps:
+            grps = scGrps[grp]
+            axes = ['X', 'Y', 'Z']
+            axes_grp = {axis:[] for axis in axes}
+            full_axes_grps[grp] = axes_grp
+            # Iterate over spacecraft groups (BX1, BY1, BZ1), (BX2, BY2,..),
+            for sc_id in grps:
+                sc_grp = grps[sc_id]
 
-        self.grps['Pos'] = posDict
-        self.grps['Field'] = fieldDict
+                # Create groups from each axis in the spacecraft group
+                # so we have groups like (BX1, BX2, BX3, BX4)
+                i = 0
+                while i < len(sc_grp) and i < len(axes):
+                    axis = axes[i]
+                    axes_grp[axis].append(sc_grp[i])
+                    i += 1
 
-        # Check state here before proceeding
-        posLens = [len(v) for k, v in posDict.items()]
-        fieldLens = [len(v) for k, v in fieldDict.items()]
-        minPL, maxPL = min(posLens), max(posLens)
-        minFL, maxFL = min(fieldLens), max(fieldLens)
-        if minPL != 4 or maxPL != 4 or minFL != 4 or maxFL != 4:
-            self.mmsState = False
-            return
+        return full_axes_grps
 
-        # Organize by spacecraft number
-        spcrftNums = [1, 2, 3, 4]
-        scPosDict = {}
-        scFieldDict = {}
-        for spcrftNum in spcrftNums:
-            scPosDstrs = [] # For every spacecraft, get its position dstrs
-            for pos in posDict.keys():
-                scPosDstrs.append(posDict[pos][spcrftNum-1])
-            scPosDict[spcrftNum] = scPosDstrs
+    def getFPITempPerpKws(self):
+        # Determine what keywords should be found for ion/electron data
+        kws = {'I':[], 'E':[]}
+        for sc_id in [1,2,3,4]:
+            for data_type in kws:
+                kw = f'MMS{sc_id}_FPI{sc_id}/D{data_type}S_tempPerp'
+                kws[data_type].append(kw)
 
-            scFieldDstrs = [] # Repeat for its field dstrs
-            for field in fieldDict.keys():
-                scFieldDstrs.append(fieldDict[field][spcrftNum-1])
-            scFieldDict[spcrftNum] = scFieldDstrs
+        # Determine which keywords are actually loaded
+        foundKWs = {kw:[] for kw in kws}
+        for data_type in kws:
+            for kw in kws[data_type]:
+                if kw in self.window.DATASTRINGS:
+                    foundKWs[data_type].append(kw)
 
-        self.scGrps['Pos'] = scPosDict
-        self.scGrps['Field'] = scFieldDict
+        ionKw, electronKw = '', ''
 
-        # Identify and B_TOTAL keywords
-        for dstr in self.window.DATASTRINGS:
-            if dstr.startswith('BT'):
-                self.btotDstrs.append(dstr)
+        if len(foundKWs['I']) > 0:
+            ionKw = foundKWs['I'][0]
 
-        self.btotDstrs.sort()
+        if len(foundKWs['E']) > 0:
+            electronKw = foundKWs['E'][0]
+
+        return (ionKw, electronKw)
+
+    def getNumberDensKws(self):
+        # Determine what keywords should be found for ion/electron data
+        kws = {'I':[], 'E':[]}
+        for sc_id in [1,2,3,4]:
+            for data_type in kws:
+                kw = f'MMS{sc_id}_FPI/D{data_type}S_number_density'
+                kws[data_type].append(kw)
+
+        # Determine which keywords are actually loaded
+        foundKWs = {kw:[] for kw in kws}
+        for data_type in kws:
+            for kw in kws[data_type]:
+                if kw in self.window.DATASTRINGS:
+                    foundKWs[data_type].append(kw)
+
+        ionKw, electronKw = '', ''
+
+        if len(foundKWs['I']) > 0:
+            ionKw = foundKWs['I'][0]
+
+        if len(foundKWs['E']) > 0:
+            electronKw = foundKWs['E'][0]
+
+        return (ionKw, electronKw)
 
 class PlaneNormalUI(object):
     def setupUI(self, Frame, window):
@@ -395,22 +437,22 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         thresh = self.getThreshold()
         avgInfo = self.lastAvgInfo # If calculating average over a range of thresholds
         return (axis, thresh, avgInfo)
-    
+
     def loadState(self, state):
         axis, thresh, avgInfo = state
         self.setAxis(axis)
         self.setThreshold(thresh)
         self.avgInfo = avgInfo # Set after axis is changed (due to signals)
-    
+
     def setAxis(self, axis):
         self.ui.axisComboBox.setCurrentText(axis)
-    
+
     def setThreshold(self, val):
         self.ui.threshBox.setValue(val)
 
     def getAxis(self):
         return self.ui.axisComboBox.currentText()
-    
+
     def getThreshold(self):
         return self.ui.threshBox.value()
 
@@ -561,6 +603,8 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         return self.avgInfo
 
     def update(self):
+        self.waitForData()
+
         axis = self.getAxis()
         dataRanges, maxMin, minMax = self.getDataRange(axis)
 
@@ -848,6 +892,7 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         # Determine data index corresponding to selected time
         if specIndex is not None:
             index = specIndex
+            self.waitForData()
         else:
             tO, tE = self.window.getSelectionStartEndTimes()
             times = self.window.getTimes(self.window.DATASTRINGS[0], 0)[0]
@@ -1063,7 +1108,7 @@ class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
         QtCore.QTimer.singleShot(2000, self.setProgressVis)
 
         return mat
-    
+
     def lineMode(self):
         regions = self.window.currSelect.regions
         if len(regions) == 1 and regions[0].isLine():
@@ -1158,10 +1203,10 @@ class CurvatureUI(BaseLayout):
         timeLt.addWidget(self.timeEdit.start)
         timeLt.addWidget(self.timeEdit.end)
         timeLt.addStretch()
-    
+
         # Hide and uncheck gyroradius buttons if missing data
-        etempKw = 'TempPer'
-        itempKw = etempKw + '_I'
+        etempKw = Frame.electronKw
+        itempKw = Frame.ionKw
         tempKws = [etempKw, itempKw]
 
         for tempKw, boxText in zip(tempKws, ['Electron Gyroradius', 'Ion Gyroradius']):
@@ -1174,7 +1219,7 @@ class CurvatureUI(BaseLayout):
         layout.addWidget(timeFrm, 2, 0, 1, 1)
 
     def setupPlotFrame(self, Frame):
-        plotFrame = QtWidgets.QGroupBox('Selected Variables: ')
+        plotFrame = QtWidgets.QGroupBox('Variables: ')
         plotLt = QtWidgets.QHBoxLayout(plotFrame)
 
         # Set up variable checkboxes
@@ -1200,6 +1245,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         super(Curvature, self).__init__(parent)
         MMSTools.__init__(self, window)
         self.window = window
+        self.ionKw, self.electronKw = self.getFPITempPerpKws()
         self.ui = CurvatureUI()
         self.lastCalc = None
 
@@ -1239,20 +1285,28 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         self.close()
 
     def update(self):
+        self.waitForData()
+
         # Get start/end indices and time array
         edit = 0
         arbDstr = self.getDstrsBySpcrft(1)[0]
         sI, eI = self.window.calcDataIndicesFromLines(arbDstr, edit)
         times = self.window.getTimes(arbDstr, edit)[0][sI:eI]
 
-        # Calculate results over given interval
-        results = self.calcOverRng(sI, eI)
+        # Store time array for plotting later
+        self.lastCalc = {'times' : times}
+
+        # Calculate values
+        worker = TaskRunner(self.calcOverRng, sI, eI)
+        worker.signals.result.connect(self.calcFinished)
+        self.pool.start(worker)
+
+    def calcFinished(self, result):
+        self.lastCalc['data'] = result
+        times = self.lastCalc['times']
 
         # Plot time series
-        self.plot(results, times)
-
-        # Store result
-        self.lastCalc = {'data':results, 'times':times}
+        self.plot(result, times)
 
     def plot(self, results, times, copy=False):
         ''' Plots the calculated variables in the plot grid;
@@ -1300,6 +1354,7 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         pltGrd.setLabelFontSizes(12)
         pltGrd.lockLabelSizes()
 
+        self.ui.glw.update()
         return plotItems
 
     def createVariables(self, sigHand=None, close=True):
@@ -1398,9 +1453,9 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
 
     def interpParticleDta(self, mode='Electron'):
         # Determine temperature variable name
-        tempKw = 'TempPer'
+        tempKw = self.electronKw
         if mode == 'Ion':
-            tempKw = tempKw + '_I'
+            tempKw = self.ionKw
 
         # Create a cubic splines interpolater on ion/electron data
         # and interpolate along magnetic field data times
@@ -1417,12 +1472,11 @@ class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
         # Use electron omni tool to check for ion/electron data dstrs
         # and interpolate particle data before doing computations
         if self.eDta is None or self.iDta is None:
-            electOmni = ElectronOmni(self.window)
             self.iDta = []
             self.eDta = []
-            if electOmni.electronDstrs != []:
+            if self.electronKw != '':
                 self.interpParticleDta()
-            if electOmni.ionDstrs != []:
+            if self.ionKw != '':
                 self.interpParticleDta('Ion')
 
         # Set formula coefficients and which array to get temperature from
@@ -1779,7 +1833,7 @@ class MMSColorPltTool():
         # Update ranges and resize
         self.window.updateXRange()
         self.close()
-    
+
     def getRangeSettings(self):
         valRngs = []
         toggles, boxes = self.ui.getRangeChksAndBoxes()
@@ -1791,7 +1845,7 @@ class MMSColorPltTool():
                 valRngs.append(None)
 
         return valRngs
-    
+
     def setRangeSettings(self, valRngs):
         toggles, boxes = self.ui.getRangeChksAndBoxes()
         for rng, toggle, (minBox, maxBox) in zip(valRngs, toggles, boxes):
@@ -1803,16 +1857,16 @@ class MMSColorPltTool():
 
     def getColorScaleMode(self):
         return self.ui.scaleModeBox.currentText()
-    
+
     def setColorScaleMode(self, val):
         self.ui.scaleModeBox.setCurrentText(val)
-    
+
     def getState(self):
         state = {}
         state['Scale'] = self.getColorScaleMode()
         state['Ranges'] = self.getRangeSettings()
         return state
-    
+
     def loadState(self, state):
         if 'Scale' in state:
             self.setColorScaleMode(state['Scale'])
@@ -2079,7 +2133,7 @@ class ElectronOmniUI(BaseLayout):
         self.addToMainBtn = QtWidgets.QPushButton('Add To Main Window')
         sideBarLt.addWidget(self.addToMainBtn)
         return sideBarLt
-    
+
     def getRangeChksAndBoxes(self):
         toggles = []
         boxes = []
@@ -2087,7 +2141,7 @@ class ElectronOmniUI(BaseLayout):
             if kw in self.valBoxes:
                 toggles.append(self.valToggles[kw])
                 boxes.append(self.valBoxes[kw])
-        
+
         return toggles, boxes
 
     def colorScaleToggled(self, val):
@@ -2356,7 +2410,7 @@ class FEEPS_EPAD_UI(BaseLayout):
         self.addToMainBtn = QtWidgets.QPushButton('Add To Main Window')
         for btn in [self.addToMainBtn, self.updateBtn]:
             btnLt.addWidget(btn)
-    
+
         leftLt = QtWidgets.QVBoxLayout()
         for elem in [self.selectList, self.logCheck]:
             leftLt.addWidget(elem)
@@ -2390,7 +2444,7 @@ class FEEPS_EPAD(QtWidgets.QFrame):
         self.lastCalc = None
         self.ui.updateBtn.clicked.connect(self.update)
         self.ui.addToMainBtn.clicked.connect(self.addToMainWindow)
-    
+
     def findGrps(self):
         ''' Find groups of PAD variables for each energy type and
             splits by energy bins
@@ -2708,10 +2762,8 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         self.pa_to_npa = 1e9
 
         # Variable names
-        self.e_dstr = 'N_Dens' 
-        self.temp_kw_e = 'TempPer'
-        self.i_dstr = 'N_Dens_I'
-        self.temp_kw_i = 'TempPer_I'
+        self.i_dstr, self.e_dstr = self.getNumberDensKws()
+        self.temp_kw_i, self.temp_kw_e = self.getFPITempPerpKws()
 
         # Plot label maps to variable name and units
         self.plot_labels = ['Magnetic Pressure', 'Thermal Pressure', 
@@ -2842,6 +2894,8 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         return mag_times, magn_press
 
     def update(self):
+        self.waitForData()
+
         times = None
         magn_press, therm_press, total_press = None, None, None
         plasma_beta = None
@@ -2857,7 +2911,7 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         # Calculate total pressure
         if self.available_kws[self.total_lbl]:
             total_press = magn_press + therm_press
-        
+
         # Calculate plasma beta
         if self.available_kws[self.plasma_beta_lbl]:
             plasma_beta = therm_press / magn_press
@@ -2903,7 +2957,7 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
             # Create plot item for each group
             vb = SelectableViewBox(None, 0)
             plt = MagPyPlotItem(epoch=self.window.epoch, viewBox=vb)
-            
+
             # Create plot appearance menu action
             apprAct = QtWidgets.QAction('Plot Appearance...')
             apprAct.triggered.connect(self.openPlotAppr)
@@ -3001,7 +3055,7 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
                 # Initialize a new variable in main window
                 self.window.initNewVar(var_name, dta, units=units, times=timeInfo)
                 penIndex += 1
-            
+
             # Skip any empty plot groups
             if len(grpStrings) > 0:
                 plotStrings.append(grpStrings)

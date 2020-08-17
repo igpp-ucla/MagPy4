@@ -18,7 +18,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.5.3.0 (August 14, 2020)'
+VERSION = f'Version 1.5.4.0 (August 17, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -234,6 +234,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.plotMenuTableMode = True
         self.traceStatsOnTop = True
         self.mouseEnabled = False
+
+        self.mmsInterp = {}
 
         self.initDataStorageStructures()
 

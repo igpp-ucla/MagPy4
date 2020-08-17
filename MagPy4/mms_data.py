@@ -946,8 +946,9 @@ class MMSDataDownloader(QtWidgets.QFrame):
                     if not os.path.exists(date_dirs):
                         os.makedirs(date_dirs)
 
+                    # TODO: Single file not correctly loaded for fpi des, dis = 2020 Jan 01 00:00:00, 2020 Jan 01 01:00:00
                     # Move file to directory
-                    shutil.move(temp_file,os.path.join(date_dirs, filename))
+                    shutil.move(temp_file, os.path.join(date_dirs, filename))
                     singleFile = True
 
             # Remove zip file if extracted successfully

@@ -230,9 +230,6 @@ class MagPy4UI(object):
         self.MMSMenu.addAction(self.actionPlaneNormal)
         self.MMSMenu.addAction(self.actionCurlometer)
         self.MMSMenu.addAction(self.actionCurvature)
-        self.MMSMenu.addAction(self.actionEPAD)
-        self.MMSMenu.addAction(self.actionEOmni)
-        self.MMSMenu.addAction(self.actionFEEPSPAD)
         self.MMSMenu.addAction(self.actionMMSPressure)
         self.MMSMenu.addSeparator()
 
