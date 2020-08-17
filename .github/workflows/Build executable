@@ -1,0 +1,30 @@
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        python-version: [3.7]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version}}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install pynsist
+      run: pip3 install pynsist
+    
+    - name: Download nsis
+      run: curl -L https://sourceforge.net/projects/nsis/files/latest/download > nsis_installer.exe
+      
+    - name: Install nsis
+      run: nsis_installer.exe /S
+    
+    - name: Download cdflib
+      run: git clone https://github.com/MAVENSDC/cdflib
