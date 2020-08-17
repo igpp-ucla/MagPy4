@@ -1949,7 +1949,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
             # Set epoch and resolution before loading data
             self.epoch = 'J2000'
-            self.resolution = times[1] - times[0]
+            self.resolution = min(times[1] - times[0], self.resolution)
             self.errorFlag = 1e32
 
             # Load data
