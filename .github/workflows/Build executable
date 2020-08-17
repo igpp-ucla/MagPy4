@@ -1,6 +1,6 @@
 on:
   push:
-    branches: [ master ]
+    branches: [ pbravo-igpp-patch-1 ]
 
 jobs:
   build:
