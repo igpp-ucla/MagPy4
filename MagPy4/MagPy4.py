@@ -18,7 +18,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.5.4.0 (August 17, 2020)'
+VERSION = f'Version 1.5.5.0 (August 18, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -69,6 +69,7 @@ import time
 import functools
 import multiprocessing as mp
 import traceback
+from copy import copy
 
 from . import getRelPath # Function to get path to use to refer to data/img files
 
@@ -1830,17 +1831,23 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
 
-    def load_spec_data(self, cdf, label, times):
+    def load_spec_data(self, cdf, label, times, clip=None):
         # Get general spectrogram information
         attrs = cdf.varattsget(label)
 
+        # Determine clip range
+        if clip:
+            startIndex, endIndex = clip
+        else:
+            startIndex, endIndex = 0, None
+
         # Get spectrogram values and y bins
-        grid = cdf.varget(label)
+        grid = cdf.varget(label, startrec=startIndex, endrec=endIndex)
 
         yvar = attrs['DEPEND_1']
         yvals = cdf.varget(yvar)
 
-        # Get y-axis label and units
+        # Get y-axis label, and units
         yattrs = cdf.varattsget(yvar)
 
         ylabel = yattrs.get('FIELDNAM')
@@ -1852,6 +1859,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         yunits = cdf.varattsget(yvar)['UNITS']
 
         ylbltxt = f'{ylabel} ({yunits})'
+
+        # Adjust y-variable if clip range is specified
+        if clip:
+            shape = yvals.shape
+            if len(shape) > 0 and shape[0] > 1:
+                yvals = yvals[startIndex:endIndex+1]
 
         # Get plot name
         name = attrs.get('FIELDNAM')
@@ -1869,15 +1882,32 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         return name, specData
 
-    def loadCDF(self, path, exclude_expr=[], label_func=None):
+    def get_cdf_indices(self, times, clip_range):
+        start_dt, end_dt = clip_range
+        tm = TimeManager(0, 0, 'J2000')
+        start_tick = tm.getTickFromDateTime(start_dt)
+        end_tick = tm.getTickFromDateTime(end_dt)
+
+        start_index = 0
+        if start_tick > times[0]:
+            start_index = bisect.bisect_left(times, start_tick)
+            start_index = max(start_index-1, 0)
+        
+        end_index = len(times) - 1
+        if end_tick < times[-1]:
+            end_index = bisect.bisect_right(times, end_tick)
+        
+        return (start_index, end_index)
+
+    def loadCDF(self, path, exclude_expr=[], label_func=None, clip_range=None):
         # Open CDF and get list of variables
         cdf = cdflib.CDF(path)
         labels = cdf.cdf_info()['zVariables']
         labels.sort()
 
         # Get all epochs in file
-        time_dict = {}
-        time_specs = {}
+        time_dict = {} # Each epoch and corresponding variables
+        time_specs = {} # Spectrograms assoc. with epoch
         for label in labels:
             # Get attributes for each variable
             info = cdf.varinq(label)
@@ -1926,17 +1956,26 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             times = cdf.varget(epoch_lbl)
             times = times * 1e-9 - 32.184 # Nanoseconds to seconds, then remove leap ofst
 
+            # Get indices for clipping if time range specified
+            if clip_range:
+                indices = self.get_cdf_indices(times, clip_range)
+                times = times[indices[0]:indices[1]+1]
+            else:
+                indices = [0, None]
+
             # Get data variables with this epoch and extract data
             keys = time_dict[epoch_lbl]
             tlen = len(times)
-            data_info = self.get_cdf_datas(cdf, keys, tlen, exclude_expr)
+            data_info = self.get_cdf_datas(cdf, keys, tlen, exclude_expr, 
+                clip=indices)
             datas, data_labels, data_units, vec_grps = data_info
             self.VECGRPS.update(vec_grps)
 
             # Extract spectrogram data
             specs = {}
             for spec_var in time_specs[epoch_lbl]:
-                spec_name, spec_data = self.load_spec_data(cdf, spec_var, times)
+                spec_name, spec_data = self.load_spec_data(cdf, spec_var, 
+                    times, clip=indices)
                 specs[spec_name] = spec_data
 
             # Skip epochs with no data to load
@@ -1982,7 +2021,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.addCDF(clearPrev=True)
 
     def addCDF(self, files=None, exclude_keys=[], label_funcs=None,
-                clearPrev=False):
+                clearPrev=False, clip_range=None):
         # Prompt for filenames if none are given
         if files is None:
             files = self.getCDFPaths()
@@ -1998,15 +2037,16 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Load data for each CDF individually
         if label_funcs is not None: # Pass label_func if given
             for file, label_func in zip(files, label_funcs):
-                self.loadCDF(file, exclude_keys, label_func=label_func)
+                self.loadCDF(file, exclude_keys, label_func=label_func,
+                    clip_range=clip_range)
         else: # Otherwise just load file defaults
             for file in files:
-                self.loadCDF(file, exclude_keys)
+                self.loadCDF(file, exclude_keys, clip_range=clip_range)
 
         # Additional post-opening tasks
         self.finishOpenFileSetup()
 
-    def get_cdf_datas(self, cdf, labels, time_len, exclude_keys=[]):
+    def get_cdf_datas(self, cdf, labels, time_len, exclude_keys=[], clip=None):
         ''' Reads in variables from the labels list in the given cdf
             and returns the data, labels, and units
             exclude_keys specifies a set of regular expressions or
@@ -2016,6 +2056,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         data_labels = []
         data_units = []
         vec_grps = {}
+
+        if clip:
+            startIndex, endIndex = clip
+        else:
+            startIndex = 0
+            endIndex = None
 
         # For each label in the CDF
         for label in labels:
@@ -2041,10 +2087,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # Skip non-time-series data
             if 'DEPEND_0' not in attrs:
                 continue
+
             # Single column data is added directly
             if num_dims == 0:
                 # Get data from cdf
-                data = cdf.varget(label)
+                data = cdf.varget(label, startrec=startIndex, endrec=endIndex)
 
                 # Make sure data shape is correct
                 if len(data) != time_len:
@@ -2066,7 +2113,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # Multi-dimensional data
             if num_dims == 1:
                 # Get data and replace nans with error flags
-                data = cdf.varget(label)
+                data = cdf.varget(label, startrec=startIndex, endrec=endIndex)
                 data = np.array(data, dtype='f4')
                 data[np.isnan(data)] = 1.0e32
 
@@ -2666,7 +2713,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 # Save old color plot info and generate spectrogram
                 if colorPltName in self.CDFSPECS:
                     specData = self.CDFSPECS[colorPltName]
-                    from copy import copy
                     specData = copy(specData)
                     specData.x_bins = specData.x_bins - self.tickOffset
                 else:
@@ -3791,7 +3837,7 @@ class CDF_ID():
         
         self.open()
         times = self.cdf.varget(epoch_var)
-        times = times / 1e9 - 32.128
+        times = times / 1e9 - 32.184
         return times
 
 def runMarsPy():

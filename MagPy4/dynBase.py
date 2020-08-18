@@ -1350,6 +1350,8 @@ class SpecData():
         '''
         y_bins = self.y_bins
         x_bins = self.x_bins
+
+        # Pad y bins if padded=True
         if padded:
             grid_shape = self.grid.shape
             y_shape = y_bins.shape
@@ -1552,6 +1554,7 @@ class SimpleColorPlot(MagPyPlotItem):
         self.valueRange = (0, 1) # Gradient legend value range
         self.baseOffset = None # Parameter used when exporting as SVG
         self.maskInfo = None
+        self.tickOffset = 0
 
         # Initialize default viewbox and axis items
         vb = SpectrogramViewBox() if vb is None else vb

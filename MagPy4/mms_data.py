@@ -1033,7 +1033,7 @@ class MMSDataDownloader(QtWidgets.QFrame):
             return
 
         # Keys (regex expressions) for variables to ignore in file
-        exclude_keys = ['.*_dmpa_.*', '.*_bcs_.*', '.*energy_delta.*']
+        exclude_keys = ['.*_dmpa_.*', '.*_bcs_.*', '.*_dbcs_.*', '.*energy_delta.*']
 
         # Generate labeling functions for variable names
         label_funcs = []
@@ -1041,8 +1041,10 @@ class MMSDataDownloader(QtWidgets.QFrame):
             lblfunc = functools.partial(MMSDataDownloader.name_func, info)
             label_funcs.append(lblfunc)
 
-        # Load list of files in main window        
-        self.window.addCDF(files, exclude_keys, label_funcs, clearPrev=True)
+        # Load list of files in main window
+        clip_range = self.currParams['Time Range']
+        self.window.addCDF(files, exclude_keys, label_funcs, clearPrev=True,
+            clip_range=clip_range)
 
     def name_func(info, s):
         ''' Adjusts variable names according to data type '''
