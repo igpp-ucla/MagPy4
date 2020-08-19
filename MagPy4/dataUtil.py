@@ -23,7 +23,7 @@ def find_gaps(times):
         resolution = np.mean(diffs)
     
     # Get mask for time gaps based on resolution
-    gap_indices = np.indices([len(times)])[0][diffs > resolution*1.5]
+    gap_indices = np.indices([len(times)])[0][diffs > resolution*2]
 
     return gap_indices
 

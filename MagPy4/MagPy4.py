@@ -18,7 +18,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.5.5.0 (August 18, 2020)'
+VERSION = f'Version 1.5.6.0 (August 19, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -1840,6 +1840,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             startIndex, endIndex = clip
         else:
             startIndex, endIndex = 0, None
+
+        if endIndex is None:
+            endIndex = len(times) - 1
 
         # Get spectrogram values and y bins
         grid = cdf.varget(label, startrec=startIndex, endrec=endIndex)

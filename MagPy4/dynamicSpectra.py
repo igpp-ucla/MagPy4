@@ -13,7 +13,6 @@ import bisect
 import functools
 from .mth import Mth
 from .layoutTools import BaseLayout
-from .simpleCalculations import ExpressionEvaluator
 from .dynBase import DynamicAnalysisTool, SpectraLineEditor, SpectrogramPlotItem, SpectraLegend, SpectraBase, PhaseGradient
 import os
 

@@ -13,7 +13,7 @@ import bisect
 import functools
 from .mth import Mth
 from .layoutTools import BaseLayout
-from .simpleCalculations import ExpressionEvaluator
+from .simpleCalculations import simpleCalc
 import os
 from .dataUtil import find_gaps
 
@@ -278,49 +278,53 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         line = pg.PlotDataItem(times, dta, pen=pen)
         return line
 
-    def evalExpr(self, exprStr, sI, eI):
+    def evalExpr(self, exprStr, tO, tE):
         # Attempt to evaluate expression, print error if an exception occurs
-        try:
-            rng = (sI, eI)
-            name, dta = ExpressionEvaluator.evaluate(exprStr, self.window, rng)
-            if dta is None:
-                return None
-
-            # Reshape constants to match times length
-            if isinstance(dta, (float, int)):
-                dta = [dta] * (eI-sI)
-
-            # Adjust values if plot is in log scale
-            if self.isLogMode():
-                dta = np.log10(dta)
-
-            return dta
-
-        except:
+        rng = (tO, tE)
+        tool = simpleCalc(None, self.window)
+        result = tool.evaluate(exprStr, rng)
+        if result is None:
             return None
+
+        # Extract values from data
+        name, data = result
+
+        # Reshape constants to match times length
+        if isinstance(data, (float, int)):
+            times = np.array([tO, tE])
+            data = np.array([data, data])
+        else:
+            times, data = data.value()
+
+        # Adjust values if plot is in log scale
+        if self.isLogMode():
+            data = np.log10(data)
+
+        return (times, data)
 
     def addToPlot(self):
         if not self.keepMode():
             self.clearPlot()
-        sI, eI = self.spectraFrame.getDataRange()
+        tO, tE = self.spectraFrame.getTimeRange()
         exprStr = self.ui.textBox.toPlainText()
         if exprStr == '':
             return
 
-        dta = self.evalExpr(exprStr, sI, eI)
-        if dta is None: # Return + print error message for invalid expression
+        result = self.evalExpr(exprStr, tO, tE)
+        if result is None: # Return + print error message for invalid expression
             self.ui.statusBar.showMessage('Error: Invalid operation')
             return
 
+        times, data = result
+
         # Extract line settings from UI and times to use for data
         arbDstr = self.window.DATASTRINGS[0]
-        times = self.window.getTimes(arbDstr, 0)[0][sI:eI]
         color = self.ui.lineColor
         width = self.ui.lineWidth.value()
         lineStyle = self.ui.lineStyles[self.ui.lineStyle.currentText()]
 
         # Create line from user input and add it to the plot item
-        lineItem = self.createLine(dta, times, color, lineStyle, width)
+        lineItem = self.createLine(data, times, color, lineStyle, width)
         self.spectraFrame.addLineToPlot(lineItem)
         self.spectraFrame.lineInfoHist.add(self.getLineInfo())
         self.saveLineInfo()
@@ -698,6 +702,10 @@ class DynamicAnalysisTool(SpectraBase):
         # Set detrend mode and plot scale
         self.setDetrendMode(detrend)
         self.setAxisScaling(scale)
+
+    def getTimeRange(self):
+        minTime, maxTime = self.window.getSelectionStartEndTimes()
+        return (minTime, maxTime)
 
     def setGradRange(self, rng):
         if rng is None:
