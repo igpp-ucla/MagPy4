@@ -137,8 +137,8 @@ class MMSLibrary():
         matching_attrs = []
         missing_data_attrs = []
         for paths, grp_attrs in zip(path_grps, attrs):
+            data_found = False
             for path in paths:
-                data_found = False
 
                 # If path exists
                 if os.path.exists(path):

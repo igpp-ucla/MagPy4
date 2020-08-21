@@ -66,6 +66,10 @@ class MagPy4UI(object):
         self.actionPlotMenu.setText('&Plot Menu...')
         self.actionPlotMenu.setStatusTip('Opens the plot menu')
 
+        self.actionTraceStats = QtWidgets.QAction(window)
+        self.actionTraceStats.setText('Trace Statistics')
+        self.actionTraceStats.setStatusTip('Displays statistics about plotted variables')
+
         self.actionSpectra = QtWidgets.QAction(window)
         self.actionSpectra.setText('&Spectra...')
         self.actionSpectra.setStatusTip('Opens spectral analysis window')

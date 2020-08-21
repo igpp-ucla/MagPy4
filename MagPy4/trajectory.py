@@ -109,7 +109,11 @@ class TrajectoryAnalysis(QtGui.QFrame, TrajectoryUI):
 
         self.ui.setupUI(self, window)
         self.ui.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
-    
+
+    def update(self):
+        self.ui.altFrame.updatePlot()
+        self.ui.orbitFrame.updatePlot()
+
     def getState(self):
         generalState = {}
         generalState['Vecs'] = (self.getFieldVec(), self.getPosVec())

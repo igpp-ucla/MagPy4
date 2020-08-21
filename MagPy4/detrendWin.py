@@ -249,7 +249,6 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
     def closeSpectra(self):
         if self.tools['Spectra']:
-            self.endGeneralSelect()
             self.tools['Spectra'].close()
             self.tools['Spectra'] = None
 
@@ -269,7 +268,6 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
     def closeDynSpectra(self):
         if self.tools['DynSpectra']:
-            self.endGeneralSelect()
             self.tools['DynSpectra'].close()
             self.tools['DynSpectra'] = None
 
@@ -289,7 +287,6 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
     def closeDynCohPha(self):
         if self.tools['DynCohPha']:
-            self.endGeneralSelect()
             self.tools['DynCohPha'].close()
             self.tools['DynCohPha'] = None
 

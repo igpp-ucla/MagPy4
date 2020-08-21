@@ -18,7 +18,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.5.6.0 (August 19, 2020)'
+VERSION = f'Version 1.5.7.0 (August 21, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -52,6 +52,7 @@ from .ASCII_Importer import Asc_Importer, ASC_Output
 from .dynBase import SpecData
 from .dynamicSpectra import DynamicSpectra, DynamicCohPha
 from .waveAnalysis import DynamicWave
+from .structureUtil import CircularList
 from .trajectory import TrajectoryAnalysis
 from .smoothingTool import SmoothingTool
 from .ffCreator import createFF
@@ -136,33 +137,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionExit.triggered.connect(self.close)
         self.ui.actionOpenWs.triggered.connect(self.openWsOpenDialog)
         self.ui.actionSaveWs.triggered.connect(self.openWsSaveDialog)
-        self.ui.actionShowData.triggered.connect(self.showData)
-        self.ui.actionPlotMenu.triggered.connect(self.openPlotMenu)
-        self.ui.actionSpectra.triggered.connect(self.startSpectra)
-        self.ui.actionDynamicSpectra.triggered.connect(self.startDynamicSpectra)
-        self.ui.actionDynamicCohPha.triggered.connect(self.startDynamicCohPha)
-        self.ui.actionDynWave.triggered.connect(self.startDynWave)
-        self.ui.actionTraj.triggered.connect(self.openTraj)
-        self.ui.actionDetrend.triggered.connect(self.startDetrend)
-        self.ui.actionEdit.triggered.connect(self.openEdit)
         self.ui.actionHelp.triggered.connect(self.openHelp)
         self.ui.actionAbout.triggered.connect(self.openAbout)
         self.ui.switchMode.triggered.connect(self.swapMode)
         self.ui.runTests.triggered.connect(self.runTests)
         self.ui.actionBatchSelect.triggered.connect(self.openBatchSelect)
         self.ui.actionChkForUpdt.triggered.connect(self.checkForUpdate)
-
-        # MMS Tool actions
-        self.ui.actionPlaneNormal.triggered.connect(self.openPlaneNormal)
-        self.ui.actionCurlometer.triggered.connect(self.openCurlometer)
-        self.ui.actionCurvature.triggered.connect(self.openCurvature)
-        self.ui.actionEPAD.triggered.connect(self.startEPAD)
-        self.ui.actionEOmni.triggered.connect(self.startEOMNI)
-        self.ui.actionFEEPSPAD.triggered.connect(self.startFEEPSEPAD)
-        self.ui.actionMMSPressure.triggered.connect(self.openPressure)
-        self.ui.actionMMSOrbit.triggered.connect(self.openMMSOrbit)
-        self.ui.actionMMSFormation.triggered.connect(self.openMMSFormation)
-        self.ui.actionLoadMMS.triggered.connect(self.openMMSData)
 
         # Selection menu actions
         self.ui.actionFixSelection.triggered.connect(self.fixSelection)
@@ -204,32 +184,100 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.savedPlotInfo = None
 
+        # Tool full names
         self.toolNames = ['Data', 'Edit', 'Plot Menu', 'Detrend', 'Spectra',
             'Dynamic Spectra', 'Dynamic Coh/Pha', 'Wave Analysis',
-            'Trajectory Analysis', 'Stats', 'Electron/Ion Spectrum', 'FEEPS EPAD',
-            'Electron PAD', 'Plane Normal', 'Curlometer', 'Curvature',
-            'MMS Orbit', 'MMSFormation', 'MMS Pressure', 'MMSData']
+            'Trajectory Analysis', 'Stats', 'Plane Normal', 'Curlometer', 
+            'Curvature', 'MMS Orbit', 'MMSFormation', 'MMS Pressure', 'MMSData']
 
+        # Internal tool abbreviation
         self.toolAbbrv = ['Data', 'Edit', 'PlotMenu', 'Detrend', 'Spectra',
-            'DynSpectra', 'DynCohPha', 'DynWave', 'Traj', 'Stats',
-            'EOMNI', 'FEEPS EPAD', 'EPAD', 'PlaneNormal', 'Curlometer', 
+            'DynSpectra', 'DynCohPha', 'DynWave', 'Traj', 'Stats', 'PlaneNormal', 'Curlometer', 
             'Curvature', 'MMSOrbit', 'MMSFormation', 'Pressure', 'MMSData']
+        
+        # Tools that are 'selectable'
+        self.select_opts = self.toolAbbrv[3:13] + [self.toolAbbrv[15]]
 
-        self.toolInitFuncs  = [self.showData, self.openEdit, self.openPlotMenu,
-            self.startDetrend, self.startSpectra, self.startDynamicSpectra,
-            self.startDynamicCohPha, self.startDynWave, self.openTraj,
-            self.startTraceStats, self.startEOMNI, self.startFEEPSEPAD, self.startEPAD,
-            self.openPlaneNormal, self.openCurlometer, self.openCurlometer,
-            self.openMMSOrbit, self.openMMSFormation, self.openPressure,
-            self.openMMSData]
+        # Tool actions to trigger
+        self.toolActions = [self.ui.actionShowData, self.ui.actionEdit,
+            self.ui.actionPlotMenu, self.ui.actionDetrend, self.ui.actionSpectra,
+            self.ui.actionDynamicSpectra, self.ui.actionDynamicCohPha, self.ui.actionDynWave,
+            self.ui.actionTraj, self.ui.actionTraceStats, self.ui.actionPlaneNormal,
+            self.ui.actionCurlometer, self.ui.actionCurvature, self.ui.actionMMSOrbit,
+            self.ui.actionMMSFormation, self.ui.actionMMSPressure, self.ui.actionLoadMMS]
+        
+        # Object classes for each tool
+        self.widget_classes = {}
+        toolClasses = [DataDisplay, Edit, PlotMenu, DetrendWindow, Spectra,
+            DynamicSpectra, DynamicCohPha, DynamicWave, TrajectoryAnalysis,
+            TraceStats, PlaneNormal, Curlometer, Curvature, PlaneNormal,
+            mms_orbit.MMS_Orbit, mms_formation.MMS_Formation,
+            PressureTool, MMSDataDownloader]
 
+        # Functions for opening non-select tools
+        self.toolInitFuncs = {
+            'Data' : self.showData,
+            'Edit' : self.openEdit,
+            'PlotMenu' : self.openPlotMenu,
+            'MMSOrbit' : self.openMMSOrbit,
+            'MMSFormation' : self.openMMSFormation,
+            'MMSData' : self.openMMSData,
+        }
+
+        # Selection colors
+        colors = {
+            'red' : '#a60000',
+            'green' : '#59bf00',
+            'aqua': '#09b8b2',
+            'blue': '#0949b8',
+            'purple': '#5509b8',
+            'pink': '#d92b9c',
+            'gold' : '#d19900',
+        }
+
+        # Selection colors given to each tool
+        colors_list = CircularList(list(colors.keys()))
+        self.select_colors = {}
+        for tool in self.toolAbbrv:
+            if tool not in self.toolInitFuncs:
+                color = colors_list.next_val()
+                self.select_colors[tool] = colors[color]
+
+        # Selection types applied to specific tools, default is 'Single'
+        self.tool_select_types = {
+            'Stats' : 'Adjusting',
+            'Curlometer' : 'Multi',
+            'Curvature' : 'Multi'
+        }
+
+        # Functions for updating specific tools
+        self.tool_updt_funcs = {
+            'Stats' : self.updateTraceStats,
+            'DynSpectra' : self.updateDynamicSpectra,
+            'DynCohPha' : self.updateDynCohPha,
+            'Curlometer' : self.updateCurlometer,
+            'DynWave' : self.updateDynWave
+        }
+
+        # Initialize tool values and triggers
         self.tools = {}
         self.toolNameMap = {}
-        self.toolFuncs = {}
-        for name, abbrv, f in zip(self.toolNames, self.toolAbbrv, self.toolInitFuncs):
+        self.toolAbbrToName = {}
+        for name, abbrv, act, cls in zip(self.toolNames, self.toolAbbrv, self.toolActions, toolClasses):
+            # Tool attributes
             self.toolNameMap[name] = abbrv
+            self.toolAbbrToName[abbrv] = name
             self.tools[abbrv] = None
-            self.toolFuncs[abbrv] = f
+            self.widget_classes[abbrv] = cls
+
+            # Tool 'start' function
+            if abbrv in self.toolInitFuncs:
+                toolFunc = self.toolInitFuncs[abbrv]
+            else:
+                toolFunc = functools.partial(self.startTool, abbrv)
+
+            # Connect action to start trigger
+            act.triggered.connect(toolFunc)
 
         # these are saves for options for program lifetime
         self.plotMenuTableMode = True
@@ -811,37 +859,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     self.tools[toolName].loadState(toolState)
 
     def closeAllSubWindows(self):
-        self.closePlotMenu()
-        self.closePlotAppr()
-        self.closeEdit()
-        self.closeData()
-        self.closeTraceStats()
-        self.closeSpectra()
-        self.closeSmoothing()
-        self.closeAddTickLbls()
-        self.closePlaneNormal()
-        self.closeDynamicSpectra()
-        self.closeDynamicCohPha()
-        self.closeDynWave()
-        self.closeMMSTools()
-        self.closeDetrend()
-        self.closeTraj()
+        for tool in self.toolAbbrv:
+            self.closeTool(tool)
         self.closeFixSelection()
         self.closeTimeSelect()
         self.closeBatchSelect()
-        self.closeMMSOrbit()
-        self.closeMMSFormation()
-        self.closeMMSData()
 
     def closePlotTools(self):
-        self.closeDetrend()
-        self.closeSpectra()
-        self.closeDynamicCohPha()
-        self.closeDynamicSpectra()
-        self.closeDynWave()
-        self.closeTraceStats()
-        self.closeTraj()
-        self.closeMMSTools()
+        for tool in self.select_opts:
+            self.closeTool(tool)
 
     def initVariables(self):
         """init variables here that should be reset when file changes"""
@@ -928,132 +954,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closePlaneNormal()
         self.closeCurlometer()
         self.closeCurvature()
-        self.closeEPAD()
-        self.closeEOMNI()
-        self.closeFEEPSEPAD()
         self.closeMMSFormation()
         self.closeMMSOrbit()
         self.closePressure()
         self.closeMMSData()
-
-    def startEOMNI(self):
-        self.closeEOMNI()
-        if self.tools['EOMNI'] is None or self.tools['EOMNI'].wasClosed:
-            self.tools['EOMNI'] = ElectronOmni(self)
-            self.initGeneralSelect('Electron/Ion Spectrum', None, self.tools['EOMNI'].ui.timeEdit,
-            'Single', self.showEOMNI, closeFunc=self.closeEOMNI)
-
-    def showEOMNI(self):
-        if self.tools['EOMNI']:
-            self.tools['EOMNI'].show()
-            self.tools['EOMNI'].update()
-
-    def closeEOMNI(self):
-        if self.tools['EOMNI']:
-            self.tools['EOMNI'].close()
-            self.tools['EOMNI'] = None
-
-    def startEPAD(self):
-        self.closeEPAD()
-        if self.tools['EPAD'] is None or self.tools['EPAD'].wasClosed:
-            self.tools['EPAD'] = ElectronPitchAngle(self)
-            self.initGeneralSelect('Electron PAD', '#0a22ff', self.tools['EPAD'].ui.timeEdit, 
-            'Single', self.showEPAD, closeFunc=self.closeEPAD)
-
-    def closeEPAD(self):
-        if self.tools['EPAD']:
-            self.tools['EPAD'].close()
-            self.tools['EPAD'] = None
-
-    def showEPAD(self):
-        if self.tools['EPAD']:
-            self.clearStatusMsg()
-            self.tools['EPAD'].show()
-            self.tools['EPAD'].update()
-
-    def startFEEPSEPAD(self):
-        self.closeFEEPSEPAD()
-        self.tools['FEEPS EPAD'] = FEEPS_EPAD(self)
-        self.initGeneralSelect('FEEPS PAD', '#000000', self.tools['FEEPS EPAD'].ui.timeEdit,
-            'Single', self.showFEEPSPAD, closeFunc=self.closeFEEPSEPAD)
-
-    def showFEEPSPAD(self):
-        if self.tools['FEEPS EPAD']:
-            self.clearStatusMsg()
-            self.tools['FEEPS EPAD'].show()
-            self.tools['FEEPS EPAD'].update()
-
-    def closeFEEPSEPAD(self):
-        if self.tools['FEEPS EPAD']:
-            self.tools['FEEPS EPAD'].close()
-            self.tools['FEEPS EPAD'] = None
-
-    def openCurlometer(self):
-        self.closeMMSTools()
-        self.tools['Curlometer'] = Curlometer(self)
-        self.initGeneralSelect('Curlometer', '#ffa500', self.tools['Curlometer'].ui.timeEdit, 
-            'Adjusting', self.showCurlometer, self.updateCurlometer, 
-            closeFunc=self.closeCurlometer, maxSteps=-1)
-
-    def showCurlometer(self):
-        if self.tools['Curlometer']:
-            self.tools['Curlometer'].show()
-            self.tools['Curlometer'].calculate()
-
-    def closeCurlometer(self):
-        if self.tools['Curlometer']:
-            self.tools['Curlometer'].close()
-            self.tools['Curlometer'] = None
-
-    def openCurvature(self):
-        self.closeMMSTools()
-        self.tools['Curvature'] = Curvature(self)
-        self.initGeneralSelect('Curvature', '#ff4242', self.tools['Curvature'].ui.timeEdit,
-            'Single', self.showCurvature, closeFunc=self.closeCurvature)
-
-    def showCurvature(self):
-        if self.tools['Curvature']:
-            self.tools['Curvature'].show()
-            self.tools['Curvature'].update()
-
-    def closeCurvature(self):
-        if self.tools['Curvature']:
-            self.endGeneralSelect()
-            self.tools['Curvature'].close()
-
-    def openPlaneNormal(self):
-        self.closeMMSTools()
-        self.tools['PlaneNormal'] = PlaneNormal(self)
-        self.initGeneralSelect('Plane Normal', '#42f495', None, 'Single',
-            startFunc=self.showNormal, closeFunc=self.closePlaneNormal)
-
-    def showNormal(self):
-        if self.tools['PlaneNormal']:
-            self.tools['PlaneNormal'].show()
-            self.tools['PlaneNormal'].update()
-
-    def closePlaneNormal(self):
-        if self.tools['PlaneNormal']:
-            self.tools['PlaneNormal'].close()
-            self.tools['PlaneNormal'] = None
-            self.endGeneralSelect()
-
-    def openPressure(self):
-        self.closePressure()
-        self.tools['Pressure'] = PressureTool(self)
-        self.initGeneralSelect('Pressure', '#9200EE', 
-            self.tools['Pressure'].ui.timeEdit, 'Single', 
-            startFunc=self.showPressure, closeFunc=self.closePressure)
-
-    def showPressure(self):
-        if self.tools['Pressure']:
-            self.tools['Pressure'].show()
-            self.tools['Pressure'].update()
-
-    def closePressure(self):
-        if self.tools['Pressure']:
-            self.tools['Pressure'].close()
-            self.tools['Pressure'] = None
 
     def openMMSOrbit(self):
         self.closeMMSOrbit()
@@ -1074,6 +978,68 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if self.tools['MMSOrbit']:
             self.tools['MMSOrbit'].close()
             self.tools['MMSOrbit'] = None
+
+    def openMMSData(self):
+        self.closeMMSData()
+        self.tools['MMSData'] = MMSDataDownloader(self)
+        self.tools['MMSData'].show()
+
+    def closeMMSData(self):
+        if self.tools['MMSData']:
+            self.tools['MMSData'].close()
+            self.tools['MMSData'] = None
+
+    def startTool(self, name):
+        # End current selection to start new one
+        self.endGeneralSelect()
+
+        # Close tool if previously opened
+        self.closeTool(name)
+
+        # Get parameters specific to tool
+        ## Selection color and labrl
+        color = self.select_colors.get(name)
+        label = self.toolAbbrToName[name]
+        
+        ## Selection type
+        if name in self.tool_select_types:
+            select_type = self.tool_select_types[name]
+        else:
+            select_type = 'Single'
+
+        ## Update function
+        if name in self.tool_updt_funcs:
+            updt_func = self.tool_updt_funcs[name]
+        else:
+            updt_func = None
+
+        ## Widget class
+        WidgetClass = self.widget_classes[name]
+
+        # Create tool
+        tool = WidgetClass(self)
+        self.tools[name] = tool
+
+        # Create show/close functions
+        showFunc = functools.partial(self.showTool, name)
+        closeFunc = functools.partial(self.closeTool, name)
+
+        # Start general selection
+        self.initGeneralSelect(label, color, tool.ui.timeEdit, 
+            select_type, startFunc=showFunc, updtFunc=updt_func, 
+            closeFunc=closeFunc)
+
+    def showTool(self, name):
+        ''' Displays tool if present '''
+        if self.tools[name]:
+            self.tools[name].show()
+            self.tools[name].update()
+
+    def closeTool(self, name):
+        ''' Closes tool if exists '''
+        if self.tools[name]:
+            self.tools[name].close()
+            self.tools[name] = None
 
     def openPlotMenu(self):
         self.closePlotMenu()
@@ -1108,32 +1074,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeEdit()
         self.tools['Edit'] = Edit(self)
         self.tools['Edit'].show()
-
-    def openTraj(self):
-        self.closeTraceStats()
-        self.closeTraj()
-        self.tools['Traj'] = TrajectoryAnalysis(self)
-
-        if not self.tools['Traj'].validState():
-            self.tools['Traj'].close()
-            self.tools['Traj'] = None
-            errMsg = 'Error: Cannot open trajectory analysis window without position data'
-            self.ui.statusBar.showMessage(errMsg)
-            return
-
-        self.initGeneralSelect('Trajectory Analysis', '#34ebdc', self.tools['Traj'].ui.timeEdit, 'Single',
-            self.startTraj, closeFunc=self.closeTraj)
-
-    def startTraj(self):
-        if self.tools['Traj']:
-            self.tools['Traj'].show()
-            self.tools['Traj'].ui.altFrame.updatePlot()
-            self.tools['Traj'].ui.orbitFrame.updatePlot()
-
-    def closeTraj(self):
-        if self.tools['Traj'] is not None:
-            self.tools['Traj'].close()
-            self.tools['Traj'] = None
 
     def fixSelection(self):
         if self.currSelect is None or self.currSelect.regions == []:
@@ -1183,7 +1123,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def selectTimeRegion(self, t0, t1):
         if self.currSelect is None:
-            self.startTraceStats()
+            self.startTool('Stats')
 
         if self.currSelect:
             self.currSelect.addRegion(t0-self.tickOffset, t1-self.tickOffset)
@@ -1201,125 +1141,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeData() # this isnt actually needed it still closes somehow?
         self.tools['Data'] = DataDisplay(self, self.FIDs, Title='Flatfile Data')
         self.tools['Data'].show()
-
-    def openMMSData(self):
-        self.closeMMSData()
-        self.tools['MMSData'] = MMSDataDownloader(self)
-        self.tools['MMSData'].show()
-
-    def closeMMSData(self):
-        if self.tools['MMSData']:
-            self.tools['MMSData'].close()
-            self.tools['MMSData'] = None
-
-    def openTraceStats(self):
-        if self.tools['Stats']:
-            self.tools['Stats'].show()
-
-    def startTraceStats(self):
-        self.closePlotTools()
-        self.closeTraceStats()
-        self.tools['Stats'] = TraceStats(self)
-        self.initGeneralSelect('Stats', None, self.tools['Stats'].ui.timeEdit,
-            'Adjusting', self.openTraceStats, self.updateTraceStats, closeFunc=self.closeTraceStats, 
-            maxSteps=-1)
-
-    def startDynamicSpectra(self):
-        self.closePlotTools()
-        if not self.tools['DynSpectra'] or self.tools['DynSpectra'].wasClosed:
-            self.tools['DynSpectra'] = DynamicSpectra(self)
-            self.initGeneralSelect('Dynamic Spectra', '#c700ff', self.tools['DynSpectra'].ui.timeEdit,
-                'Single', self.showDynamicSpectra, self.updateDynamicSpectra,
-                closeFunc=self.closeDynamicSpectra)
-            self.showStatusMsg('Selecting dynamic spectrogram range...')
-
-    def showDynamicSpectra(self):
-        if self.tools['DynSpectra']:
-            self.clearStatusMsg()
-            self.tools['DynSpectra'].show()
-            self.tools['DynSpectra'].update()
-
-    def closeDynamicSpectra(self):
-        if self.tools['DynSpectra']:
-            self.clearStatusMsg()
-            self.tools['DynSpectra'].close()
-            self.tools['DynSpectra'] = None
-
-    def startDynamicCohPha(self):
-        self.closePlotTools()
-        if not self.tools['DynCohPha'] or self.tools['DynCohPha'].wasClosed:
-            self.tools['DynCohPha'] = DynamicCohPha(self)
-            self.showStatusMsg('Selecting dynamic coherence/phase range...')
-            self.initGeneralSelect('Dynamic Coh/Pha', '#c551ff', self.tools['DynCohPha'].ui.timeEdit,
-                'Single', self.showDynamicCohPha, self.updateDynCohPha, 
-                closeFunc=self.closeDynamicCohPha)
-
-    def showDynamicCohPha(self):
-        if self.tools['DynCohPha']:
-            self.clearStatusMsg()
-            self.tools['DynCohPha'].show()
-            self.tools['DynCohPha'].update()
-
-    def closeDynamicCohPha(self):
-        if self.tools['DynCohPha']:
-            self.clearStatusMsg()
-            self.tools['DynCohPha'].close()
-            self.tools['DynCohPha'] = None
-
-    def startSpectra(self):
-        self.closePlotTools()
-        if not self.tools['Spectra'] or self.tools['Spectra'].wasClosed:
-            self.tools['Spectra'] = Spectra(self)
-            spectra = self.tools['Spectra']
-            self.showStatusMsg('Selecting spectra range...')
-            self.initGeneralSelect('Spectra', '#c551ff', spectra.ui.timeEdit,
-                'Single', self.showSpectra, closeFunc=self.closeSpectra)
-
-    def showSpectra(self):
-        if self.tools['Spectra']:
-            self.clearStatusMsg()
-            self.tools['Spectra'].show()
-            self.tools['Spectra'].update()
-            PyQtUtils.moveToFront(self.tools['Spectra'])
-            QtCore.QTimer.singleShot(100, self.tools['Spectra'].setAspect)
-
-    def startDynWave(self):
-        self.closeDynWave()
-        if not self.tools['DynWave'] or self.tools['DynWave'].wasClosed:
-            self.tools['DynWave'] = DynamicWave(self)
-            self.tools['DynWave'].showPreSelectWin()
-            self.initGeneralSelect('Wave Analysis', None, self.tools['DynWave'].ui.timeEdit,
-                'Single', self.showDynWave, self.updateDynWave,
-                closeFunc=self.closeDynWave)
-
-    def showDynWave(self):
-        if self.tools['DynWave']:
-            self.tools['DynWave'].show()
-            self.tools['DynWave'].setUserSelections()
-            self.tools['DynWave'].update()
-
-    def closeDynWave(self):
-        if self.tools['DynWave']:
-            self.tools['DynWave'].close()
-            self.tools['DynWave'] = None
-
-    def startDetrend(self):
-        self.closePlotTools()
-        self.tools['Detrend'] = DetrendWindow(self)
-        self.showStatusMsg('Selecting region of data to detrend...')
-        self.initGeneralSelect('Detrend', '#00d122', self.tools['Detrend'].ui.timeEdit,
-            'Single', self.showDetrend, closeFunc=self.closeDetrend)
-
-    def showDetrend(self):
-        if self.tools['Detrend']:
-            self.clearStatusMsg()
-            self.tools['Detrend'].update()
-            self.tools['Detrend'].show()
-
-    def closeDetrend(self):
-        if self.tools['Detrend']:
-            self.tools['Detrend'].close()
-            self.tools['Detrend'] = None
 
     def startSmoothing(self):
         self.closeSmoothing()
@@ -3550,14 +3371,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Automatically select the section currently being viewed
         t0, t1 = self.tO-self.tickOffset, self.tE-self.tickOffset
         if self.currSelect == None:
-            self.startTraceStats()
+            self.startTool('Stats')
         self.currSelect.addRegion(t0, t1)
 
     def getCurrentTool(self, setTrace=True):
         if self.currSelect:
             return self.currSelect
         elif setTrace:
-            self.startTraceStats()
+            self.startTool('Stats')
             return self.currSelect
         else:
             return None
@@ -3724,7 +3545,7 @@ def myexepthook(type, value, tb):
     traceback.print_tb(tb,limit=5)
     os.system('pause')
 
-def startMagPy(ffLst=None):
+def startMagPy(ffLst=None, display=True):
     '''
     Main function for creating MagPy4Window object and starting program
     '''
@@ -3742,15 +3563,19 @@ def startMagPy(ffLst=None):
 
     # Create the MagPy4 window
     main = MagPy4Window(app)
-    main.showMaximized()
+    if display:
+        main.showMaximized()
 
     # Initialize any files passed
     if ffLst is not None:
         main.openFileList(ffLst, True, True)
 
-    args = sys.argv
-    sys.excepthook = myexepthook
-    sys.exit(app.exec_())
+    if display:
+        args = sys.argv
+        sys.excepthook = myexepthook
+        sys.exit(app.exec_())
+    else:
+        return main
 
 class CDF_ID():
     def __init__(self, cdf):

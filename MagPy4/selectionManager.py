@@ -43,6 +43,10 @@ class GeneralSelect(object):
             Multi-Strict - Line by default, other regions must use ctrl
             maxSteps parameter determines how many regions can be created
         '''
+
+        if mode in ['Mulit', 'Adjusting']:
+            self.maxSteps = -1
+
         self.regions = []
         self.lblPos = 'top'
         self.movable = True # Whether user can adjust the regions
@@ -203,7 +207,11 @@ class GeneralSelect(object):
             if self.name == 'Stats':
                 self.updtFunc()
 
-    def closeAllRegions(self):
+    def closeAllRegions(self, closeTool=True):
+        # Close tool
+        if closeTool and self.closeFunc:
+            self.closeFunc()
+
         # Removes all regions from plot items
         for region in self.regions:
             region.removeRegionItems()
