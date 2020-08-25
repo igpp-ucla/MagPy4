@@ -1030,129 +1030,113 @@ class SpectraLegend(GradLegend):
     def logModeSetting(self):
         return self.logMode
 
-class SpectraGridItem(pg.PlotCurveItem):
+class SpectraGridItem(pg.GraphicsObject):
     '''
     Grid version of a set of SpectraLine items; Optimized for performance
     '''
     def __init__(self, freqs, colors, times, window=None, *args, **kargs):
-        # Takes the y-values, mapped color values, and time ticks
-        self.freqs = freqs
-        self.times = times
-
-        # Attributes used when drawing as an SVG image
-        self.drawEdges = False # Draw corners so they are visible
-        self.offset = 0 # Tick offset for x-axis
-
-        # Flatten colors into a list so they can be zipped with the pre-generated
-        # subpaths in the paint method
-        self.flatColors = []
-        for row in colors:
-            self.flatColors.extend(row)
+        # Data bounds
+        self.x_bound = times[[0, -1]]
+        self.y_bound = freqs[[0, -1]]
 
         # Used to update window's status bar w/ the clicked value if passed
         self.window = window
-        self.prevPaths = []
 
-        # Determine path values to pass based on whether y bins
-        # are 2D or 1D
-        shape = np.array(freqs).shape
-        if len(shape) > 1 and shape[1] > 0:
-            times = list(times) * len(self.freqs[0])
-            freqs = np.ndarray.flatten(freqs)
+        # Color and rect tuples to draw on plot
+        self.paths = list(self.setupPath(freqs, colors, times))
+
+        self._boundingRect = None
+
+        super().__init__()
+
+        self.setCacheMode(QtGui.QGraphicsItem.NoCache)
+    
+    def dataBounds(self, ax, frac=1.0, orthoRange=None):
+        if ax == 0:
+            b = self.x_bound
         else:
-            times = list(times) * len(self.freqs)
-            freqs = list(freqs) * len(self.times)
+            b = self.y_bound
+        return b
 
-        pg.PlotCurveItem.__init__(self, x=times, y=freqs, *args, **kargs)
+    def pixelPadding(self):
+        return 0
 
-    def getGridData(self):
-        return (self.freqs, self.flatColors, self.times)
+    def boundingRect(self):
+        if self._boundingRect is None:
+            (xmn, xmx) = self.dataBounds(ax=0)
+            if xmn is None or xmx is None:
+                return QtCore.QRectF()
+            (ymn, ymx) = self.dataBounds(ax=1)
+            if ymn is None or ymx is None:
+                return QtCore.QRectF()
 
-    def setEdgeMode(self, val=True):
-        '''
-        Enables/disables drawing edge paths
-        '''
-        self.drawEdges = val
+            px = py = 0.0
+            pxPad = self.pixelPadding()
+            if pxPad > 0:
+                # determine length of pixel in local x, y directions
+                px, py = self.pixelVectors()
+                try:
+                    px = 0 if px is None else px.length()
+                except OverflowError:
+                    px = 0
+                try:
+                    py = 0 if py is None else py.length()
+                except OverflowError:
+                    py = 0
 
-    def setOffset(self, ofst=None):
-        '''
-        Sets the value offset for time ticks
-        '''
-        self.times = np.array(self.times) + self.offset
-        if ofst is None:
-            self.offset = 0
-        else:
-            self.times -= ofst
-            self.offset = ofst
+                # return bounds expanded by pixel size
+                px *= pxPad
+                py *= pxPad
+            self._boundingRect = QtCore.QRectF(xmn-px, ymn-py, (2*px)+xmx-xmn, (2*py)+ymx-ymn)
+        return self._boundingRect
 
-        times = list(self.times) * len(self.freqs)
-        self.prevPaths = []
-        self.setData(x=times, y=self.yData)
-
-    def setupPath(self, p):
+    def setupPath(self, freqs, colors, times):
         # Creates subpath for each rect in the grid
-        pt = QtCore.QPointF(0, 0)
-        for r in range(0, len(self.freqs)-1):
-            y0 = self.freqs[r]
-            y1 = self.freqs[r+1]
+        for r in range(0, len(freqs)-1):
+            y0 = freqs[r]
+            y1 = freqs[r+1]
             height = y1 - y0
-            for c in range(0, len(self.times)-1):
-                x0 = self.times[c]
-                x1 = self.times[c+1]
+            row_colors = colors[r]
+            for c in range(0, len(times)-1):
+                x0 = times[c]
+                x1 = times[c+1]
+                color = row_colors[c]
 
                 # Upper left corner
-                p2 = QtGui.QPainterPath(pt)
-                p2.addRect(x0, y0, x1-x0, height)
-                yield p2
+                rect = QtCore.QRectF(x0, y0, x1-x0, height)
+                yield (color, rect)
 
-    def setupMultiBinPath(self, p):
+    def setupMultiBinPath(self, freqs, colors, times):
         # Iterate over each frequency column and data column
         pt = QtCore.QPointF(0, 0)
-        freqRows = np.array(self.freqs).T
+        freqRows = np.array(freqs).T
 
         for i in range(0, len(freqRows) - 1):
             freqs0 = freqRows[i]
             freqs1 = freqRows[i+1]
             heights = freqs1 - freqs0
 
-            for j in range(0, len(self.times) - 1):
-                x0 = self.times[j]
-                x1 = self.times[j+1]
+            for j in range(0, len(times) - 1):
+                x0 = times[j]
+                x1 = times[j+1]
 
                 y0 = freqs0[j]
                 y1 = freqs1[j]
 
-                p2 = QtGui.QPainterPath(pt)
-                p2.addRect(x0, y0, x1 - x0, heights[j])
-                yield p2
+                color = colors[i][j]
+
+                rect = QtCore.QRectF(x0, y0, x1 - x0, heights[j])
+                yield (color, rect)
 
     def paint(self, p, opt, widget):
-        if self.xData is None or len(self.xData) == 0:
+        if len(self.paths) == 0:
             return
 
         p.setRenderHint(p.Antialiasing, False)
 
-        # Generate subpaths if they haven't been generated yet
-        if self.prevPaths == []:
-            # Check if frequency bins change over time and
-            # call setupMultiBinPath if appropriate
-            shape = np.array(self.freqs).shape
-            if len(shape) > 1 and shape[1] > 1:
-                self.prevPaths = list(self.setupMultiBinPath(p))
-            else:
-                self.prevPaths = list(self.setupPath(p))
-
-        # Draw edges and fill rects for every point if exporting image
-        if self.drawEdges:
-            for color, subpath in zip(self.flatColors, self.prevPaths):
-                p.setBrush(color)
-                p.setPen(pg.mkPen(color))
-                p.drawPath(subpath)
-            return
-
         # Draws filled rects for every point using designated colors
-        for color, subpath in zip(self.flatColors, self.prevPaths):
-            p.fillPath(subpath, color)
+        for color, rect in self.paths:
+            p.fillRect(rect, color)
 
     def linkToStatusBar(self, window):
         self.window = window
@@ -1495,7 +1479,8 @@ class SpecData():
 
         # Mask out any time gaps with white
         y_bins, x_bins = self.get_bins()
-        gap_indices = find_gaps(x_bins)
+        diff = np.mean(np.diff(x_bins))
+        gap_indices = find_gaps(x_bins, diff*2)
         for index in gap_indices:
             mappedGrid[:,index-1] = (255, 255, 255, 255)
 

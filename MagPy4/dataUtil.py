@@ -1,7 +1,7 @@
 from bisect import bisect, bisect_left, bisect_right
 import numpy as np
 
-def find_gaps(times):
+def find_gaps(times, comp_res=None):
     if len(times) == 0:
         return []
 
@@ -22,8 +22,10 @@ def find_gaps(times):
         # Use the average if the values are different
         resolution = np.mean(diffs)
     
+    comp_res = resolution*2 if comp_res is None else comp_res
+
     # Get mask for time gaps based on resolution
-    gap_indices = np.indices([len(times)])[0][diffs > resolution*2]
+    gap_indices = np.indices([len(times)])[0][diffs > comp_res]
 
     return gap_indices
 
