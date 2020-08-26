@@ -947,13 +947,15 @@ class BatchSelectUI(BaseLayout):
         # Remove last row if nothing is selected
         if len(rows) == 0 and self.table.count() > 0:
             rows = [self.table.count()-1]
-        
+
+        # Remove regions from plot grid
+        for row in sorted(rows, reverse=True):
+            self.frame.removeRegionFromGrid(row)
+
         # Remove rows from table
         self.table.removeRows(rows)
 
-        # Remove regions from plot grid
-        for row in rows:
-            self.frame.removeRegionFromGrid(row)
+        # Update labels
         self.frame.updateRegionLabels()
 
     def moveLower(self):
@@ -1268,6 +1270,7 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
         return table_data.datetimes()
     
     def update(self, row=None):
+        # Update active row
         if row is not None:
             self.linkedRegion.setActiveRegion(row)
 

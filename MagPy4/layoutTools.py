@@ -229,23 +229,27 @@ class TableWidget(QtWidgets.QTableWidget):
             data = '\n'.join(data)
             QtGui.QApplication.clipboard().setText(data)
 
+    def removeRow(self, row):
+        ''' Removes row without sending out signals
+        '''
+        # Remove row from layout
+        self.blockSignals(True)
+        super().removeRow(row)
+        self.blockSignals(False)
+
     def removeRows(self, rows):
         ''' Removes each row from a given list of row numbers '''
-        # Remove duplicates and sort row numbers
-        rows = sorted(list(set(rows)))
-
-        # Remove each row one by one
-        max_row = self.rowCount()
-        num_rmvd = 0
+        # Remove duplicates and sort row numbers in reverse
+        # order so there isn't a need to adjust indices as
+        # rows are removed
+        rows = sorted(list(set(rows)), reverse=True)
         for row in rows:
-            # Skip invalid rows
-            if row < 0 or row >= max_row:
-                continue
-        
-            # Adjust row number based on previously removed
-            row = row - num_rmvd
             self.removeRow(row)
-    
+
+        # Update row to next row item if it exists
+        if (len(rows) > 0) and rows[-1] < self.rowCount():
+            self.selectRow(rows[-1])
+
     def removeSelected(self):
         ''' Remove selected rows from table '''
         selected = self.getSelectedRows()
