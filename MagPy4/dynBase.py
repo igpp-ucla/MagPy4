@@ -1043,7 +1043,12 @@ class SpectraGridItem(pg.GraphicsObject):
         self.window = window
 
         # Color and rect tuples to draw on plot
-        self.paths = list(self.setupPath(freqs, colors, times))
+        shape = np.array(freqs).shape
+        if len(shape) > 1 and shape[1] > 0:
+            self.paths = list(self.setupMultiBinPath(freqs, colors, times))
+            self.y_bound = [np.min(freqs), np.max(freqs)]
+        else:
+            self.paths = list(self.setupPath(freqs, colors, times))
 
         self._boundingRect = None
 
