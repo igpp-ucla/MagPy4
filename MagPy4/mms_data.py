@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from . import getRelPath
 from .qtThread import TaskRunner
+from .selectionManager import TimeFormatWidget
 
 import requests
 import json
@@ -15,7 +16,6 @@ import numpy as np
 import zipfile
 import shutil
 from copy import copy
-import time as tm
 
 from bisect import bisect_left, bisect_right
 from datetime import datetime, timedelta, time
@@ -423,23 +423,7 @@ class MMSDataUI():
         layout = QtWidgets.QGridLayout(frame)
 
         # Set up time format line edit
-        timeFmtLt = QtWidgets.QHBoxLayout()
-
-        ## Label
-        timeFmtLbl = QtWidgets.QLabel('Format: ')
-        timeFmtLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-
-        ## Time format string
-        self.timeFmt = QtWidgets.QLineEdit()
-        self.timeFmt.setText('%Y %b %d %H:%M:%S')
-        self.timeFmt.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
-
-        ## Format description button
-        self.fmtInfo = QtWidgets.QPushButton('?')
-        self.fmtInfo.setMaximumWidth(25)
-
-        for elem in [timeFmtLbl, self.timeFmt, self.fmtInfo]:
-            timeFmtLt.addWidget(elem)
+        self.timeFmt = TimeFormatWidget()
 
         # Set up event list box
         self.timeList = QtWidgets.QLineEdit()
@@ -447,7 +431,7 @@ class MMSDataUI():
         self.timeList.setPlaceholderText(test_text)
 
         # Add to layout
-        layout.addLayout(timeFmtLt, 1, 0, 1, 1)
+        layout.addWidget(self.timeFmt, 1, 0, 1, 1)
         layout.addWidget(self.timeList, 0, 0, 1, 1)
 
         return frame
@@ -519,39 +503,12 @@ class MMSDataDownloader(QtWidgets.QFrame):
         self.ui = MMSDataUI()
         self.ui.setupUI(self, self.window)
 
-        # Set up time format window
-        self.formatDesc = None
-
         self.ui.downBtn.clicked.connect(self.loadFiles)
-        self.ui.fmtInfo.clicked.connect(self.showFormatInfo)
         self.ui.queryBtn.clicked.connect(self.queryLASP)
         self.ui.dirBtn.clicked.connect(self.setLoadDir)
 
-    def showFormatInfo(self):
-        ''' Displays strftime formatting options in a separate window '''
-        self.closeFormatInfo()
-
-        # Create a read-only text view
-        self.formatDesc = QtWidgets.QTextEdit()
-        self.formatDesc.setReadOnly(True)
-        self.formatDesc.setWindowTitle('Time Format Descriptions')
-        self.formatDesc.resize(500, 400)
-
-        # Get strftime documentation and set formatDesc's text
-        doc = tm.strftime.__doc__
-        start = doc.find('Commonly used')
-        text = doc[start:]
-        self.formatDesc.setPlainText(text)
-        self.formatDesc.show()
-
-    def closeFormatInfo(self):
-        ''' Closes format description window '''
-        if self.formatDesc:
-            self.formatDesc.close()
-            self.formatDesc = None
-
     def closeEvent(self, ev):
-        self.closeFormatInfo()
+        self.ui.timeFmt.closeFormatInfo()
         self.close()
 
     def setLoadDir(self):

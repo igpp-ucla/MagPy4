@@ -99,6 +99,13 @@ class BaseLayout(object):
         self.gview.setCentralItem(self.glw)
         return self.glw
 
+class TableItem(QtWidgets.QTableWidgetItem):
+    def value(self):
+        return self.data(QtCore.Qt.UserRole)
+    
+    def setValue(self, value):
+        self.setData(QtCore.Qt.UserRole, value)
+
 # Subclass of Qt's Table Widget w/ a simplified interface for adding
 # rows to a table
 class TableWidget(QtWidgets.QTableWidget):
@@ -118,38 +125,59 @@ class TableWidget(QtWidgets.QTableWidget):
         # Add a copy shortcut
         copyShrtct = QtWidgets.QShortcut('Ctrl+c', self)
         copyShrtct.activated.connect(self.copyData)
-    
+
     def setTableData(self, table):
+        ''' Sets table as data for table '''
         table = np.array(table)
         rows, cols = table.shape
         for i in range(0, rows):
             self.addRowItem(table[row])
 
     def setHeader(self, colNames):
+        ''' Sets labels for columns '''
         if len(colNames) != self.columnCount():
             return
 
         self.setHorizontalHeaderLabels(colNames)
     
-    def addRowItem(self, item, row=None):
+    def addRowItem(self, item, data=None, row=None):
+        ''' Adds a row and inserts item into row '''
         if len(item) != self.columnCount():
             return
         
+        # Get item row and add a row to table
         row = self.rowCount() if row is None else row
         self.insertRow(row)
+
+        # Set row item and data if given
         self.setRowItem(row, item)
+        if data is not None:
+            self.setRowData(row, data)
 
     def setRowItem(self, row, item):
+        ''' Sets item text values for each item in row '''
         if len(item) != self.columnCount() or row < 0 or row >= self.count():
             return
 
         for col in range(0, self.columnCount()):
             itemText = str(item[col])
-            tableItem = QtWidgets.QTableWidgetItem()
+            tableItem = TableItem()
             tableItem.setText(itemText)
             self.setItem(row, col, tableItem)
+    
+    def setRowData(self, row, data):
+        ''' Sets the internal item data for the given row '''
+        if row < 0 or row >= self.count():
+            return
+        
+        # Get each item in row and set its corresponding internal data item
+        for col in range(0, self.columnCount()):
+            item_data = data[col]
+            item = self.item(row, col)
+            item.setValue(item_data)
 
     def count(self):
+        ''' Number of rows in table '''
         return self.rowCount()
     
     def setCurrentRow(self, row):
@@ -170,12 +198,24 @@ class TableWidget(QtWidgets.QTableWidget):
         return list(set(rows)) # Remove duplicates
 
     def getRowItem(self, row):
+        ''' Returns a list of text values for each item in given row '''
         rowItems = []
         for col in range(0, self.columnCount()):
             rowItems.append(self.item(row, col).text())
         return rowItems
 
+    def getRowData(self, row):
+        ''' Returns a list of internal data objects for each item in given row '''
+        rowItems = []
+        for col in range(0, self.columnCount()):
+            item = self.item(row, col)
+            data = item.value()
+            rowItems.append(data)
+        
+        return rowItems
+
     def copyData(self):
+        ''' Gets selected rows and adds to clipboard '''
         rows = self.getSelectedRows()
         rows.sort()
 
@@ -188,3 +228,58 @@ class TableWidget(QtWidgets.QTableWidget):
         if len(data) > 0:
             data = '\n'.join(data)
             QtGui.QApplication.clipboard().setText(data)
+
+    def removeRows(self, rows):
+        ''' Removes each row from a given list of row numbers '''
+        # Remove duplicates and sort row numbers
+        rows = sorted(list(set(rows)))
+
+        # Remove each row one by one
+        max_row = self.rowCount()
+        num_rmvd = 0
+        for row in rows:
+            # Skip invalid rows
+            if row < 0 or row >= max_row:
+                continue
+        
+            # Adjust row number based on previously removed
+            row = row - num_rmvd
+            self.removeRow(row)
+    
+    def removeSelected(self):
+        ''' Remove selected rows from table '''
+        selected = self.getSelectedRows()
+        self.removeRows(selected)
+
+class SplitHandle(QtWidgets.QSplitterHandle):
+    ''' SplitterHandle with modified appearance '''
+    def __init__(self, *arg, **kwarg):
+        super().__init__(*arg, **kwarg)
+        self.setCursor(QtCore.Qt.SplitVCursor)
+
+    def paintEvent(self, ev):
+        ''' Draws a gray line across splitter region '''
+        if not self.isVisible():
+            return
+
+        # Set up painter and pen
+        painter = QtGui.QPainter(self)
+        pen = pg.mkPen(200, 200, 200)
+        pen.setWidth(2)
+        painter.setPen(pen)
+
+        # Get rect width
+        rect = self.rect()
+        y = rect.center().y()
+        start = rect.left()
+        stop = rect.right()
+
+        # Draw line
+        painter.drawLine(start, y, stop, y)
+        painter.end()
+    
+class SplitterWidget(QtWidgets.QSplitter):
+    ''' Splitter with modified SplitterHandle appearance '''
+    def createHandle(self):
+        orientation = self.orientation()
+        return SplitHandle(orientation, self)

@@ -8,9 +8,10 @@ from FF_File import FFTIME
 import functools
 import re
 import time
+import time as tm
 import numpy as np
 from datetime import datetime
-from .layoutTools import BaseLayout, TableWidget
+from .layoutTools import BaseLayout, TableWidget, SplitterWidget
 
 class GeneralSelect(object):
     '''
@@ -360,6 +361,23 @@ class GeneralSelect(object):
         if self.timeEdit:
             self.timeEdit.setLinkedRegion(region)
 
+    def getRegion(self, regionIndex):
+        if regionIndex >= 0 and regionIndex < self.numRegions():
+            region = self.regions[regionIndex]
+            tick_range = region.getRegion()
+            return tick_range
+        return None
+    
+    def setActiveRegion(self, index):
+        if index >= 0 and index < self.numRegions():
+            region = self.regions[index]
+        else:
+            region = None
+
+        if region:
+            self.regionActivated(region)
+            self.updateTimeEdit(region)
+
 class BatchSelectRegions(GeneralSelect):
     '''
         Custom GeneralSelect object for BatchSelect tool:
@@ -555,6 +573,108 @@ class TimeRegionSelector(QtWidgets.QFrame):
         self.window.selectTimeRegion(t0, t1)
         self.window.closeTimeSelect()
 
+class TimeFormatWidget(QtGui.QWidget):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setupLayout()
+        self.fmtInfo.clicked.connect(self.showFormatInfo)
+        self.formatDesc = None
+
+    def setupLayout(self):
+        timeFmtLt = QtWidgets.QHBoxLayout(self)
+        timeFmtLt.setContentsMargins(0, 0, 0, 0)
+
+        # Label
+        timeFmtLbl = QtWidgets.QLabel('Format: ')
+        timeFmtLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+
+        # Time format string
+        self.timeFmt = QtWidgets.QLineEdit()
+        self.timeFmt.setText('%Y %b %d %H:%M:%S')
+        self.timeFmt.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
+
+        # Format description button
+        self.fmtInfo = QtWidgets.QPushButton('?')
+        self.fmtInfo.setMaximumWidth(25)
+
+        for elem in [timeFmtLbl, self.timeFmt, self.fmtInfo]:
+            timeFmtLt.addWidget(elem)
+
+    def getLineEdit(self):
+        ''' Returns line edit widget '''
+        return self.timeFmt
+    
+    def text(self):
+        ''' Returns text in line edit widget '''
+        return self.timeFmt.text()
+
+    def showFormatInfo(self):
+        ''' Displays strftime formatting options in a separate window '''
+        self.closeFormatInfo()
+
+        # Create a read-only text view
+        self.formatDesc = QtWidgets.QTextEdit()
+        self.formatDesc.setReadOnly(True)
+        self.formatDesc.setWindowTitle('Time Format Descriptions')
+        self.formatDesc.resize(500, 400)
+
+        # Get strftime documentation and set formatDesc's text
+        doc = tm.strftime.__doc__
+        start = doc.find('Commonly used')
+        text = doc[start:]
+        self.formatDesc.setPlainText(text)
+        self.formatDesc.show()
+
+    def closeFormatInfo(self):
+        ''' Closes format description window '''
+        if self.formatDesc:
+            self.formatDesc.close()
+            self.formatDesc = None
+
+class TimeRangeData():
+    def __init__(self, dates, ticks, fmt=None, epoch=None):
+        self.dates = dates
+        self.values = ticks
+    
+        # Default timestamp format
+        if fmt is None:
+            self.fmt = '%Y %b %m %H:%M:%S.%f'
+        else:
+            self.fmt = fmt
+
+        # Epoch values if any
+        self.epoch = epoch
+
+    def datetimes(self):
+        return self.dates
+
+    def ticks(self):
+        return self.values
+
+    def timestamps(self, fmt=None):
+        # Get format string
+        fmt = self.fmt if fmt is None else fmt
+
+        # Extract start/stop datetimes and map to timestamp
+        # using given format
+        start, stop = self.datetimes()
+        start_ts = start.strftime(fmt)
+        stop_ts = stop.strftime(fmt)
+
+        return (start_ts, stop_ts)
+    
+    def __eq__(self, val):
+        if isinstance(val, TimeRangeData):
+            start, stop = self.datetimes()
+            ref_start, ref_stop = val.datetimes()
+            same_start = (start == ref_start)
+            same_stop = (stop == ref_stop)
+            return (same_start and same_stop)
+        elif isinstance(val, tuple):
+            return (val == self.datetimes())
+        else:
+            return False
+
 class BatchSelectUI(BaseLayout):
     def setupUI(self, frame):
         self.frame = frame
@@ -562,26 +682,35 @@ class BatchSelectUI(BaseLayout):
         frame.resize(425, 350)
         frame.move(1000, 100)
 
-        frameLt = QtWidgets.QGridLayout(frame)
+        self.fmtBox = None
         self.layout = self.setupTimeSelect()
+        frameLt = QtWidgets.QGridLayout(frame)
         frameLt.addLayout(self.layout, 0, 0, 1, 1)
 
         # Connect input type box to function that updates layout
         self.inputTypeBox.currentTextChanged.connect(self.inputMethodChanged)
 
     def getTextInputFrame(self):
+        # Set up format layout
+        self.fmtBox = TimeFormatWidget()
+
         # Set up user input text box
         self.inputBox = QtWidgets.QPlainTextEdit()
         self.inputBox.setWindowFlag(QtCore.Qt.Window)
         self.inputBox.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
 
         # Set the placeholder text to indicate format
-        placeText = '[2016 Feb 21 01:00:30.250, 2016 Feb 21 02:00:00.000], '
-        placeText += '[2001 Mar 1 23:15:00.000, 2001 Mar 1 23:45:00.500]'
+        fmt = self.fmtBox.text()
+        dt0 = datetime(2020, 1, 2, 10, 45).strftime(fmt)
+        dt1 = datetime(2020, 1, 2, 13).strftime(fmt)
+        placeText = f'{dt0}, {dt1}'
+        dt0 = datetime(2020, 6, 12, 1, 15).strftime(fmt)
+        dt1 = datetime(2020, 6, 12, 1, 20).strftime(fmt)
+        placeText += f'\n{dt0}, {dt1}'
         self.inputBox.setPlaceholderText(placeText)
 
         # Add an 'instructions' label
-        inputLbl = QtWidgets.QLabel('Enter a list of UTC-formatted times:')
+        inputLbl = QtWidgets.QLabel("Enter a list of times and press the '+' button:")
         inputLbl.setSizePolicy(self.getSizePolicy('Max', 'Max'))
 
         # Wrap in a frame
@@ -590,6 +719,7 @@ class BatchSelectUI(BaseLayout):
         textLt.setContentsMargins(0, 0, 0, 0)
         textLt.addWidget(inputLbl, 0, 0, 1, 1)
         textLt.addWidget(self.inputBox, 1, 0, 1, 1)
+        textLt.addWidget(self.fmtBox, 2, 0, 1, 1)
 
         return textFrm
 
@@ -726,38 +856,75 @@ class BatchSelectUI(BaseLayout):
         btnLt = self.setupBtnLt()
 
         # Set up input frame (mouse-mode is default)
-        self.inputFrm = self.getInputFrame(self.inputTypeBox.currentText())
+        mode = self.inputTypeBox.currentText()
+        self.inputFrm = self.getInputFrame(mode)
         self.addBtn.setVisible(False)
 
         # Set up item history box
-        self.regionList = TableWidget(2)
-        self.regionList.setHeader(['Start Time', 'End Time'])
-        self.regionList.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.table = TableWidget(2)
+        self.table.setHeader(['Start Time', 'End Time'])
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.table.setMinimumHeight(250)
 
         # Get status bar and keepOnTop checkbox layout
         statusLt = self.setupStatusBarLt()
 
+        # Wrap table and options layouts in a separate widget/frame
+        self.tableFrm = QtWidgets.QWidget()
+        tableLt = QtWidgets.QVBoxLayout(self.tableFrm)
+        tableLt.setContentsMargins(0, 0, 0, 0)
+        tableLt.addLayout(btnLt)
+        tableLt.addWidget(self.table)
+        tableLt.addLayout(optionsLt)
+        tableLt.addLayout(statusLt)
+
         # Add everything to layout
         layout.addLayout(inputTypeLt, 0, 0, 1, 1)
         layout.addWidget(self.inputFrm, 1, 0, 1, 1)
-        layout.addLayout(optionsLt, 4, 0, 1, 1)
-        layout.addLayout(btnLt, 2, 0, 1, 1)
-        layout.addWidget(self.regionList, 3, 0, 1, 1)
-        layout.addLayout(statusLt, 5, 0, 1, 1)
+        layout.addWidget(self.tableFrm)
 
         return layout
 
+    def setupSplitter(self):
+        # Add items to splitter and adjust handle height
+        splitLt = SplitterWidget()
+        splitLt.setOrientation(QtCore.Qt.Vertical)
+        splitLt.setChildrenCollapsible(False)
+        splitLt.addWidget(self.inputFrm)
+        splitLt.addWidget(self.tableFrm)
+        splitLt.setHandleWidth(18)
+        return splitLt
+
+    def setupFrame(self, mode):
+        # Remove previous widget from layout, if any
+        widget = self.layout.itemAtPosition(1, 0)
+        if widget is not None:
+            widget = widget.widget()
+            self.layout.removeWidget(widget)
+        
+        # Get new input widget
+        self.inputFrm = self.getInputFrame(mode)
+
+        # Adjust splitter layout or remove
+        if mode == 'List':
+            inputWidget = self.setupSplitter()
+        else:
+            inputWidget = self.inputFrm
+            self.layout.addWidget(self.tableFrm, 2, 0, 1, 1)
+
+        # Add new layout to main layout
+        self.layout.addWidget(inputWidget, 1, 0, 1, 1)
+
+        # Delete old widget
+        if widget is not None:
+            widget.deleteLater()
+        
     def inputMethodChanged(self):
         # Get current input method
         mode = self.inputTypeBox.currentText()
 
-        # Get old frame and remove/delete it
-        self.layout.removeWidget(self.inputFrm)
-        self.inputFrm.deleteLater()
-
-        # Generate new frame and place it in the layout
-        self.inputFrm = self.getInputFrame(mode)
-        self.layout.addWidget(self.inputFrm, 1, 0, 1, 1)
+        # Adjust layout and input widgets
+        self.setupFrame(mode)
 
         # Enable/disable related buttons
         lockEnabled = True
@@ -773,46 +940,37 @@ class BatchSelectUI(BaseLayout):
         self.frame.inputModeChanged()
 
     def removeItems(self):
-        # Get selected rows, sort them, and convert to numpy array
-        rows = self.regionList.getSelectedRows()
-        rows.sort()
-        origRows = rows[:]
-        rows = np.array(rows)
+        ''' Remove selected rows from table or last item if none are selected '''
+        # Get list of selected rows
+        rows = self.table.getSelectedRows()
 
         # Remove last row if nothing is selected
-        if len(rows) == 0 and self.regionList.count() > 0:
-            rows = [self.regionList.count()-1]
+        if len(rows) == 0 and self.table.count() > 0:
+            rows = [self.table.count()-1]
+        
+        # Remove rows from table
+        self.table.removeRows(rows)
 
-        # Remove each selected row
-        for i in range(0, len(rows)):
-            row = rows[i]
-            self.removeItem(row)
+        # Remove regions from plot grid
+        for row in rows:
+            self.frame.removeRegionFromGrid(row)
+        self.frame.updateRegionLabels()
 
-            # Adjust indices for rows above current index that need to be removed
-            # since they are no longer valid
-            if i < (len(rows) - 1):
-                rows[i:] -= 1
-
-    def removeItem(self, row):
-        if row >= 0:
-            self.regionList.removeRow(row)
-            self.frame.rmvRegion(row)
-    
     def moveLower(self):
         row = self.getCurrentRow()
         if row <= 0:
             return
-        self.regionList.setCurrentRow(row - 1)
+        self.table.setCurrentRow(row - 1)
     
     def moveUpper(self):
         row = self.getCurrentRow()
-        if row >= self.regionList.count() - 1:
+        if row >= self.table.count() - 1:
             return
-        self.regionList.setCurrentRow(row + 1)
+        self.table.setCurrentRow(row + 1)
 
     def getCurrentRow(self):
-        currRow = self.regionList.currentRow()
-        count = self.regionList.count()
+        currRow = self.table.currentRow()
+        count = self.table.count()
         # If there are items in list and none are selected, default is first row
         if count > 0 and currRow < 0:
             currRow = 0
@@ -827,10 +985,11 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
 
         # Window flags settings
         self.normFlags = self.windowFlags()
+        self.table_fmt = '%Y %b %d %H:%M:%S.%f'
 
         # Button and checkbox connections
         self.ui.addBtn.clicked.connect(self.addRegionsToList)
-        self.ui.regionList.currentCellChanged.connect(self.update)
+        self.ui.table.currentCellChanged.connect(self.update)
         self.ui.highlightChk.toggled.connect(self.setRegionsVisible)
         self.ui.lockCheck.toggled.connect(self.lockSelections)
 
@@ -850,8 +1009,6 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
         self.linkedTimeEdit = None
         self.updateFunc = None
 
-        # Timestamp regex string
-        self.timeRegex = self.getTimestampRegex()
         self.inputModeChanged()
 
     def toggleWindowOnTop(self, val):
@@ -922,143 +1079,130 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
 
     def updateTableRegions(self):
         # Do not modify if regions are locked or there are no regions selected
-        if self.lockChecked() or self.linkedRegion.numRegions() < 1:
+        if self.lockChecked() or self.numRegions() < 1:
             return
 
         # Get the currently active linked region
-        regionNum = self.linkedRegion.getActiveRegion()
-        if regionNum is None:
+        index = self.linkedRegion.getActiveRegion()
+        if index is None or index >= self.numRegions():
             return
 
-        # Map region to timestamps/ticks
-        regionItem = self.linkedRegion.regions[regionNum]
-        ticks, timestamps = self.mapRegionToInfo(regionItem)
-        oldTimestamps = self.regions[regionNum]
+        # Get selection start/end ticks
+        select_ticks = self.linkedRegion.getRegion(index)
 
-        # Do not modify table if region is the same as before
-        if oldTimestamps == timestamps:
+        # Get table item's start/end tick values
+        table_data = self.ui.table.getRowData(index)[0]
+        table_ticks = table_data.ticks()
+
+        # Skip if values are the same
+        if table_ticks == select_ticks:
             return
 
-        # Remove region from internal state and add new region info in its place
-        self.rmvRegion(regionNum, rmvFromGrid=False)
-        self.timeRegions[timestamps] = ticks
-        self.regions.insert(regionNum, timestamps)
+        # Create table text and data
+        timestamps, data = self.ticks_to_data(select_ticks)
 
-        # Update the table item
-        self.ui.regionList.setRowItem(regionNum, list(timestamps))
+        # Update the table item text and data
+        self.ui.table.setRowItem(index, list(timestamps))
+        self.ui.table.setRowData(index, [data, None])
+
+    def ticks_to_timestamps(self, ticks):
+        ''' Map ticks time range to strings '''
+        start, stop = ticks
+        start = FFTIME(start, Epoch=self.window.epoch).UTC
+        stop = FFTIME(stop, Epoch=self.window.epoch).UTC
+
+        # Remove day of year
+        start = start[:4] + start[8:]
+        stop = stop[:4] + stop[8:]
+
+        return (start, stop)
     
-    def getTimestampRegex(self):
-        # Get months in abbreviated format and generate regular expr for this group
-        months = [datetime(2000, mon, 1).strftime('%b') for mon in range(1, 12+1)]
-        monthRegex = '('+'|'.join(months)+')'
-
-        # Year and day regular expressions
-        yearRegex = '(19|20)[0-9]{2}'
-        dayRegex = '([0-2][1-9]|[1-3][0-1])' # 1-9 ending, 0-1 ending
-
-        # Hour, minute/seconds, milliseconds regular expressions
-        hrRegex = '([0-1][0-9]|2[0-3])'
-        minSecRegex = '[0-5][0-9]'
-        msRegex = '[0-9]{3}'
-
-        # Combine section regular expressions to form a UTC timestamp
-        # regular expression
-        dateExpr = ' '.join([yearRegex, monthRegex, dayRegex])
-        timeExpr = hrRegex + ':' + minSecRegex + ':' + minSecRegex + '\.' + msRegex
-        expr = dateExpr + ' ' + timeExpr
-
-        return expr
-
     def setRegionsVisible(self, val):
         self.linkedRegion.setAllRegionsVisible(val)
 
     def numRegions(self):
-        return self.ui.regionList.count()
+        return self.ui.table.count()
 
     def addRegionsToList(self):
-        txt = self.ui.inputBox.toPlainText()
-        txt = txt.strip('\n')
+        # Read text from inputBox and split into lines
+        txt = self.ui.inputBox.toPlainText().strip('\n')
+        lines = txt.split('\n')
 
-        if len(txt) < 10:
+        # Return if no lines in text
+        if len(lines) < 1:
             return
-
-        # Regular expressing matching single pairs of matched brackets w/
-        # commas between the brackets
-        bracketExpr = '\[[^\[\]]+,[^\[\]]+\]'
-
-        if not self.validateInputFormat(txt, bracketExpr):
-            self.ui.statusBar.showMessage('Error: Input not formatted correctly')
-            return
-
-        # Split text by brackets
-        pairs = re.findall(bracketExpr, txt)
-
-        # Split text within brackets by commas and remove any extra lists
-        pairs = [expr.strip('[').strip(']').split(',') for expr in pairs]
-        pairs = [(pair[0].strip(' '), pair[1].strip(' ')) for pair in pairs if len(pair) == 2]
-
+        
         # Separate out properly formatted timestamps
         correctPairs = []
-        oddPairs = []
-        for x, y in pairs:
-            if self.validateTimestamp(x) and self.validateTimestamp(y):
-                correctPairs.append((x,y))
+        invalidPairs = []
+        for line in lines:
+            pair = self.mapInput(line)
+            if pair is None:
+                invalidPairs.append(line)
             else:
-                oddPairs.append((x,y))
+                correctPairs.append(pair)
 
         # Add regions to list and clear text box
         for x, y in correctPairs:
+            # Map to strings before adding region
+            x = x.strftime(self.table_fmt)[:-3]
+            y = y.strftime(self.table_fmt)[:-3]
             self.addRegion(x, y)
 
         self.ui.inputBox.clear()
         self.ui.statusBar.clearMessage()
 
         # Add in improperly formatted timestamps back into input box
-        if len(oddPairs) > 0:
-            oddPairs = ['[' + x + ', ' + y + ']' for x, y in oddPairs]
-            boxText = ', '.join(oddPairs)
+        if len(invalidPairs) > 0:
+            boxText = '\n'.join(invalidPairs)
             self.ui.inputBox.setPlainText(boxText)
             self.ui.statusBar.showMessage('Error: Timestamps not formatted correctly')
-    
-    def validateInputFormat(self, txt, bracketExpr):
-        # Split everything outside of properly formatted brackets into groups
-        groups = re.split(bracketExpr, txt)
-        # Join groups together into a single string and check that it's only made up of
-        # spaces and commas and newlines
-        txt = ''.join(groups)
-        chars = set(txt)
-        allowedChars = set([',', ' ', '\n'])
-        setDiff = chars - allowedChars
-        if len(setDiff) > 0:
-            return False
-        return True
-    
-    def validateTimestamp(self, timestamp):
-        # Check if timestamp fully matches regular expression
-        if re.fullmatch(self.timeRegex, timestamp):
-            return True
-        return False
+
+    def mapInput(self, line):
+        # Check if times are comma-separated
+        delim = ','
+        line = line.strip(delim)
+        if delim not in line:
+            return None
+        
+        # Split into start/stop times and remove whitespace
+        start, stop = line.split(delim)[:2]
+        start = start.strip(' ')
+        stop = stop.strip(' ')
+
+        # Get format and convert to datetimes
+        fmt = self.ui.fmtBox.text()
+        try:
+            start_date = datetime.strptime(start, fmt)
+            end_date = datetime.strptime(stop, fmt)
+            return (start_date, end_date)
+        except:
+            return None
 
     def addRegion(self, startTime, endTime, addToGrid=True):
-        # Check if region was previously added; If so, ignore it
-        pair = (startTime, endTime)
-        if pair in self.timeRegions:
-            return
+        # Sort times
+        startTime, endTime = sorted([startTime, endTime])
 
-        # Update table
-        self.ui.regionList.addRowItem([startTime, endTime])
+        # Map time range to datetimes
+        start_dt = datetime.strptime(startTime, self.table_fmt)
+        end_dt = datetime.strptime(endTime, self.table_fmt)
+        dates = (start_dt, end_dt)
 
-        # Internal state updates
-        # Map regions to formatted timestamps and time ticks
-        timestamps = (startTime, endTime)
-        startTime = self.mapTimestamp(startTime)
-        endTime = self.mapTimestamp(endTime)
+        # Check if data was previously added and ignore if so
+        for i in range(self.ui.table.count()):
+            item = self.ui.table.getRowData(i)[0]
+            if item.datetimes() == dates:
+                return
+
+        # Map regions to time ticks
         tO = self.window.getTickFromTimestamp(startTime)
         tE = self.window.getTickFromTimestamp(endTime)
         tO, tE = min(tO, tE), max(tO, tE)
+        ticks = (tO, tE)
 
-        self.timeRegions[timestamps] = (tO, tE)
-        self.regions.append(timestamps)
+        # Update table with timestamps and data
+        data = TimeRangeData(dates, ticks)
+        self.ui.table.addRowItem([startTime, endTime], data=[data, None])
 
         # Add to plot grid if new region was not added through mouse selection
         if addToGrid:
@@ -1067,41 +1211,17 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
         # Update labels for all of the regions in the plot grid
         self.updateRegionLabels()
 
-    def rmvRegion(self, regionNum, rmvFromGrid=True):
-        # Get corresponding region and remove it from list + dictionary
-        region = self.regions.pop(regionNum)
-        del self.timeRegions[region]
-
-        if rmvFromGrid:
-            self.removeRegionFromGrid(regionNum)
-
     def getRegion(self, rowNum):
-        return self.timeRegions[self.regions[rowNum]]
+        table_data = self.ui.table.getRowData(rowNum)[0]
+        return table_data
     
     def getRegions(self, ticks=True):
+        n = self.numRegions()
+        table_data = [self.getRegion(i) for i in range(0, n)]
         if ticks:
-            return [self.getRegion(rowNum) for rowNum in range(0, len(self.regions))]
+            return [data.ticks() for data in table_data]
         else:
-            return self.timeRegions
-
-    def mapTimestamp(self, timestmp):
-        # Map UTC timestamp into a time (library) tuple/struct
-        splitStr = timestmp.split('.')
-        if len(splitStr) > 1:
-            dateStr, msStr = splitStr
-        else:
-            dateStr = splitStr[0]
-            msStr = ''
-        fmtStr = '%Y %b %d %H:%M:%S'
-        ffFmtStr = '%Y %j %b %d %H:%M:%S'
-        utcTime = time.strptime(dateStr, fmtStr)
-        if msStr != '':
-            msStr = '.' + msStr
-
-        # Map the tuple back to a UTC timestamp in the format that
-        # FFTime recognizes and then map this timestamp into a time tick
-        ffUtcTime = time.strftime(ffFmtStr, utcTime)+msStr
-        return ffUtcTime
+            return [data.datetimes() for data in table_data]
 
     def addRegionToGrid(self, tO, tE):
         # Create a new linked region for the added region
@@ -1111,45 +1231,56 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
     def removeRegionFromGrid(self, regionNum):
         # Remove the linked region
         self.linkedRegion.removeRegion(regionNum)
-        self.updateRegionLabels()
-
-    def mapRegionToInfo(self, region):
-        # Map linked region selection to timestamps and time ticks
-        start, stop = region.getRegion()
-        fmtTime = lambda s : s[0:5] + s[9:]
-        startTime = self.window.getTimestampFromTick(start)
-        stopTime = self.window.getTimestampFromTick(stop)
-        startTime, stopTime = fmtTime(startTime), fmtTime(stopTime)
-        timestamps = (startTime, stopTime)
-        return (start, stop), timestamps
 
     def mouseAddedRegion(self):
-        region = self.linkedRegion.regions[-1]
-        (start, stop), (startTime, stopTime) = self.mapRegionToInfo(region)
-        self.addRegion(startTime, stopTime, False)
+        ticks = self.linkedRegion.getRegion(self.numRegions())
+        start_ts, end_ts = self.ticks_to_timestamps(ticks)
+        self.addRegion(start_ts, end_ts, False)
+    
+    def ticks_to_data(self, ticks):
+        # Map ticks to timestamps
+        timestamps = self.ticks_to_timestamps(ticks)
+
+        # Map timestamps to datetimes
+        datetimes = self.timestamps_to_datetimes(timestamps, self.table_fmt)
+
+        # Create data item
+        data = TimeRangeData(datetimes, ticks)
+
+        return list(timestamps), data
+    
+    def timestamps_to_datetimes(self, timestamps, fmt):
+        start_ts, end_ts = timestamps
+        start_dt = datetime.strptime(start_ts, fmt)
+        end_dt = datetime.strptime(end_ts, fmt)
+        return (start_dt, end_dt)
 
     def updateRegionLabels(self):
         # Update region labels to match their row index in the table
-        for i in range(0, len(self.regions)):
-            self.linkedRegion.setLabelText('Region ' + str(i+1), i)
+        for i in range(0, self.numRegions()):
+            self.linkedRegion.setLabelText(f' {i+1} ', i)
     
     def getCurrentRegion(self):
         regNum = self.ui.getCurrentRow()
         if regNum < 0: # No regions in list
             return None
-        return self.timeRegions[self.regions[regNum]]
+        table_data = self.ui.table.getRowData(regNum)[0]
+        return table_data.datetimes()
+    
+    def update(self, row=None):
+        if row is not None:
+            self.linkedRegion.setActiveRegion(row)
 
-    def update(self):
         # Get the currently selected region if there are any in the list
         region = self.getCurrentRegion()
         if not region:
             return
 
         # Set current row to zero if none are currently selected
-        if self.ui.regionList.currentRow() < 0:
-            self.ui.regionList.blockSignals(True)
-            self.ui.regionList.setCurrentRow(0)
-            self.ui.regionList.blockSignals(False)
+        if self.ui.table.currentRow() < 0:
+            self.ui.table.blockSignals(True)
+            self.ui.table.setCurrentRow(0)
+            self.ui.table.blockSignals(False)
 
         # Set view range in the plot grid to current selection
         if self.autoDispChecked():
@@ -1165,10 +1296,8 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
         self.updateFunc = updateFunc
     
     def updateByTimeEdit(self, timeEdit, region, updateFunc=None):
-        # Extract region and map to datetime objects
-        tO, tE = region
-        startDt = self.window.getDateTimeFromTick(tO)
-        endDt = self.window.getDateTimeFromTick(tE)
+        # Extract region datetimes
+        startDt, endDt = region
 
         # Set time edit values
         timeEdit.start.setDateTime(startDt)

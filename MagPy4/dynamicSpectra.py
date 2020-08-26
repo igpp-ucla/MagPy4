@@ -256,6 +256,17 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
 
     def setVarParams(self, var):
         self.ui.dstrBox.setCurrentText(var)
+    
+    def getParams(self):
+        params = {}
+        params['interval'] = self.ui.fftInt.value()
+        params['shift'] = self.ui.fftShift.value()
+        params['bw'] = self.ui.bwBox.value()
+        params['variable'] = self.ui.dstrBox.currentText()
+        params['detrend'] = self.ui.detrendCheck.isChecked()
+        params['log_y'] = self.ui.scaleModeBox.currentText() == 'Logarithmic'
+        params['color_rng'] = self.getGradRange()
+        params['time_rng'] = (None)
 
     def update(self):
         # Determine data indices from lines
@@ -274,7 +285,7 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
 
         # Error checking for user parameters
         if self.checkParameters(interval, shift, bw, numPoints) == False:
-            return
+            return False
 
         # Calculate grid values and set up the plot layout
         grid, freqs, times = self.calcGrid(dataRng, fftParam, dstr, detrendMode)
@@ -301,6 +312,8 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
             self.lineInfoHist = []
             self.addSavedLine()
             self.savedLineInfo = None
+        
+        return True
 
     def getGradRange(self):
         if self.ui.selectToggle.isChecked():

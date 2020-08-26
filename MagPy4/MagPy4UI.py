@@ -537,6 +537,10 @@ class TimeEdit():
 
     def setEndNoCallback(self, dt):
         TimeEdit.setWithNoCallback(self.end, dt)
+    
+    def setTimeRange(self, start_dt, end_dt):
+        self.start.setDateTime(start_dt)
+        self.end.setDateTime(end_dt)
 
     def setLinkedRegion(self, region):
         ''' 

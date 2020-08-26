@@ -18,7 +18,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.5.7.0 (August 21, 2020)'
+VERSION = f'Version 1.5.8.0 (August 26, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -389,6 +389,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.closeFixSelection()
             self.closeBatchSelect()
             self.closePlotTools()
+
         self.batchSelect = BatchSelect(self)
         self.batchSelect.show()
         self.updateSelectionMenu()
@@ -1100,7 +1101,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def closeSavedRegion(self):
         if self.savedRegion:
-            self.savedRegion.closeAllRegions()
+            self.savedRegion.closeAllRegions(closeTool=False)
             self.savedRegion = None
 
     def closeFixSelection(self):
@@ -3373,7 +3374,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if self.currSelect == None:
             self.startTool('Stats')
         self.currSelect.addRegion(t0, t1)
-
+    
     def getCurrentTool(self, setTrace=True):
         if self.currSelect:
             return self.currSelect
