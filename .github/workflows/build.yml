@@ -32,6 +32,9 @@ jobs:
         mkdir pynsist_pkgs
         py pynsist_helper.py
 
+    - name: Create pip_wheels directory
+      run: mkdir pip_wheels
+
     - name: Clone ffPy
       uses: actions/checkout@v2
       with:
@@ -40,10 +43,7 @@ jobs:
         path: ffPy
 
     - name: Create ffPy wheel
-      run: pip3 wheel ffPy/
-
-    - name: Create pip_wheels directory
-      run: mkdir pip_wheels
+      run: pip3 wheel ffPy/ -w pip_wheels
 
     - name: Create cdflib wheel
       run: pip3 wheel cdflib -w pip_wheels
