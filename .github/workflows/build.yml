@@ -1,0 +1,61 @@
+on:
+  workflow_dispatch:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        python-version: [3.8]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version}}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install pynsist
+      run: pip3 install git+https://github.com/pbravo-igpp/pynsist.git
+
+    - name: Install wheel
+      run: pip3 install wheel
+
+    - name: Extract build scripts
+      run: move build/* .
+    
+    - name: Copy over files needed for tkinter
+      run: |
+        mkdir lib
+        mkdir pynsist_pkgs
+        py pynsist_helper.py
+
+    - name: Clone ffPy
+      uses: actions/checkout@v2
+      with:
+        repository: igpp-ucla/ffPy
+        token : ${{ secrets.FFPY_TOKEN }} # `GitHub_PAT` is a secret that contains your PAT
+        path: ffPy
+
+    - name: Create ffPy wheel
+      run: pip3 wheel ffPy/
+
+    - name: Create pip_wheels directory
+      run: mkdir pip_wheels
+
+    - name: Create cdflib wheel
+      run: pip3 wheel cdflib -w pip_wheels
+
+    - name: Create installer.cfg
+      run: py create_config.py
+
+    - name: Build executable
+      run: pynsist installer.cfg
+
+    - name: Zip up build
+      run: compress-archive .\build\nsis\* mp.zip
+
+    - name: Create release
+      run: py release.py ${{ secrets.GITHUB_TOKEN }} --zip=mp.zip
