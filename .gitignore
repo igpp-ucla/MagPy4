@@ -3,30 +3,26 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-#mac trash
+# Mac
 ._*
 .DS_Store
 
-#ignore vim temp stuff 
+# Vim
 *~
 *.swp
 *.swo
 
-#ignore idea config files
-.idea/
-
-#ignore user specific visual studio files
-*.suo
-
-#ignore build folders
-build/build/*
-build/dist/*
-build/Output/*
-
-credentials.txt
-
-testData/L2*
-
-test.py
+# VS Code
 .vscode/launch.json
-save.txt
+.idea
+MagPy4/.idea
+
+# Development environment
+env/
+tests/
+test.py
+terminal.py
+
+# User created data
+state.json
+mms_data/

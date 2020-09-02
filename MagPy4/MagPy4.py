@@ -57,7 +57,6 @@ from .trajectory import TrajectoryAnalysis
 from .smoothingTool import SmoothingTool
 from .ffCreator import createFF
 from .mth import Mth
-from .tests import Tests
 import bisect
 from .timeManager import TimeManager
 from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect, SelectableViewBox
