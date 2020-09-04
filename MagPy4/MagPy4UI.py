@@ -367,34 +367,38 @@ class MagPy4UI(object):
     def showSelectionMenu(self, visible):
         self.selectMenu.menuAction().setVisible(visible)
 
-    def startUp(self, window):
-        # Create frame and insert it into main layout
-        self.startFrame = QtWidgets.QFrame()
-        self.layout.insertWidget(0, self.startFrame)
+    def getTitleFrame(self):
+        ''' Set up frame that displays title of program
+            and other information
+        '''
+        frame = QtWidgets.QFrame()
+        layout = QtWidgets.QVBoxLayout(frame)
+        layout.setContentsMargins(10, 25, 10, 25)
 
-        # Set frame background to white
-        startLt = QtWidgets.QVBoxLayout(self.startFrame)
-        styleSheet = ".QFrame { background-color:" + '#ffffff' + '}'
-        self.startFrame.setStyleSheet(styleSheet)
+        # Label text, font size, and colors
+        labels = ['MarsPy / MagPy', 'Magnetic Field Analysis Program',
+            'IGPP / UCLA']
+        pt_sizes = [40, 16, 12]
+        colors = [(10, 0, 25, 200), (50, 50, 50, 250), (60, 60, 60, 250)]
 
-        # Set up main title, its font size, and color
-        nameLabel = QtWidgets.QLabel('MarsPy / MagPy4')
-        font = QtGui.QFont()
-        font.setPointSize(40)
-        font.setBold(True)
-        font.setWeight(75)
-        nameLabel.setFont(font)
-        styleSheet = "* { color:" + '#f44242' + " }"
-        nameLabel.setStyleSheet(styleSheet)
+        # Create each label item and add to layout
+        for lbl, pt, color in zip(labels, pt_sizes, colors):
+            label = QtWidgets.QLabel(lbl)
 
-        descLbl = QtWidgets.QLabel('Magnetic Field Analysis Program')
-        font = QtGui.QFont()
-        font.setPointSize(16)
-        descLbl.setFont(font)
-        ownerLbl = QtWidgets.QLabel('IGPP / UCLA')
-        font.setPointSize(12)
-        ownerLbl.setFont(font)
+            # Font size
+            font = QtGui.QFont()
+            font.setPointSize(pt)
+            label.setFont(font)
 
+            # Color
+            style = f' * {{ color: rgba{str(color)}; }}'
+            label.setStyleSheet(style)
+
+            layout.addWidget(label, alignment=QtCore.Qt.AlignHCenter)
+
+        return frame
+
+    def getModeFrame(self):
         # Mode selection UI elements
         modeLbl = QtWidgets.QLabel('Mode: ')
         self.modeComboBx = QtWidgets.QComboBox()
@@ -410,10 +414,12 @@ class MagPy4UI(object):
 
         # Layout for mode box + openFFBtn
         modeFrame = QtWidgets.QFrame()
-        modeLt = QtWidgets.QGridLayout(modeFrame)
-        modeLt.addWidget(modeLbl, 0, 0, 1, 1)
-        modeLt.addWidget(self.modeComboBx, 0, 1, 1, 1)
-        modeLt.addWidget(self.saveModeChkBx, 0, 2, 1, 1)
+        modeLt = QtWidgets.QHBoxLayout(modeFrame)
+        modeLt.addStretch()
+        modeLt.addWidget(modeLbl)
+        modeLt.addWidget(self.modeComboBx)
+        modeLt.addWidget(self.saveModeChkBx)
+        modeLt.addStretch()
 
         # Initialize default mode based on state file
         state_dict = self.window.readStateFile()
@@ -428,40 +434,84 @@ class MagPy4UI(object):
         else:
             self.modeComboBx.setCurrentIndex(0)
             self.window.insightMode = True
-        self.modeComboBx.currentTextChanged.connect(nameLabel.setText)
 
-        # Buttons to open the various file types
+        return modeFrame
+
+    def getButtonFrame(self):
+        ''' Returns frame for buttons to open the various file types'''
         btnFrm = QtWidgets.QFrame()
         btnLt = QtWidgets.QHBoxLayout(btnFrm)
+
+        # Button labels and corresponding actions
         labels = ['Open Flat File', 'Open ASCII File', 'Open CDF', 'Load MMS Data']
         actions = [self.actionOpenFF, self.actionOpenASCII, self.actionOpenCDF,
                 self.actionLoadMMS]
+        colors = ['#4a5582', '#804d4d', '#9e8d54', '#54999e']
+
+        # Create each button, add to layout, and connect to action
         for i in range(0, len(labels)):
+            # Button object set up
             btn = QtWidgets.QPushButton(' ' + labels[i] + ' ')
             btn.setMinimumHeight(30)
-            btn.clicked.connect(actions[i].triggered)
             btnLt.addWidget(btn)
 
+            # Connect to action
+            btn.clicked.connect(actions[i].triggered)
+
+            # Set color
+            style = f'''QPushButton {{
+                background-color: {colors[i]};
+                color: white;
+                }}
+            '''
+            btn.setStyleSheet(style)
+
+        return btnFrm
+
+    def startUp(self, window):
+        # Create frame and insert it into main layout
+        self.startFrame = QtWidgets.QFrame()
+        self.startFrame.setObjectName('background_frame')
+        self.layout.insertWidget(0, self.startFrame)
+        startLt = QtWidgets.QVBoxLayout(self.startFrame)
+
+        # Set background image
+        img_path = getRelPath('magpy_background.png')
+        style = f'''
+            #background_frame {{
+                border-image: url({img_path}) 0 0 0 0 stretch stretch;
+            }}
+        '''
+        self.startFrame.setStyleSheet(style)
+
         # Create a layout that will be centered within startLt
-        frameLt = QtWidgets.QGridLayout()
+        centerFrame = QtWidgets.QFrame()
+        style = ".QFrame { background-color: rgba(255, 255, 255, 100); }"
+        centerFrame.setStyleSheet(style)
+        centerFrame.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
+
+        # Add main widgets to center layout
+        centerLt = QtWidgets.QVBoxLayout(centerFrame)
+        centerLt.setContentsMargins(25, 25, 25, 25)
+        centerLt.setSpacing(14)
+
+        titleFrm = self.getTitleFrame()
+        modeFrm = self.getModeFrame()
+        btnFrm = self.getButtonFrame()
+        for elem in [titleFrm, modeFrm, btnFrm]:
+            centerLt.addWidget(elem)
+
+        # Center horizontally
+        hwrapLt = QtWidgets.QHBoxLayout()
+        hwrapLt.addStretch()
+        hwrapLt.addWidget(centerFrame)
+        hwrapLt.addStretch()
+
+        # Add wrapper layout and center vertically
         startLt.addStretch()
-        startLt.addLayout(frameLt)
+        startLt.addLayout(hwrapLt)
         startLt.addStretch()
 
-        # Add all elements into layout
-        alignCenter = QtCore.Qt.AlignCenter
-        spacer1 = QtWidgets.QSpacerItem(0, 10)
-        spacer2 = QtWidgets.QSpacerItem(0, 10)
-        spacer3 = QtWidgets.QSpacerItem(0, 10)
-
-        frameLt.addWidget(nameLabel, 0, 0, 1, 1, alignCenter)
-        frameLt.addItem(spacer1, 1, 0, 1, 1, alignCenter)
-        frameLt.addWidget(descLbl, 2, 0, 1, 1, alignCenter)
-        frameLt.addWidget(ownerLbl, 3, 0, 1, 1, alignCenter)
-        frameLt.addItem(spacer2, 4, 0, 1, 1)
-        frameLt.addWidget(modeFrame, 5, 0, 1, 1, alignCenter)
-        frameLt.addItem(spacer3, 6, 0, 1, 1)
-        frameLt.addWidget(btnFrm, 7, 0, 1, 1, alignCenter)
         self.startLt = startLt
 
         # Disable UI elements for interacting with plots
