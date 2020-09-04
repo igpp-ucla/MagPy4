@@ -18,7 +18,7 @@ sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
 NAME = f'MagPy4'
-VERSION = f'Version 1.5.8.0 (August 26, 2020)'
+VERSION = f'Version 1.5.9.0 (September 4th, 2020)'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -48,7 +48,6 @@ from . import mms_orbit
 from . import mms_formation
 from .dynBase import SimpleColorPlot
 from .detrendWin import DetrendWindow
-from .ASCII_Importer import Asc_Importer, ASC_Output
 from .dynBase import SpecData
 from .dynamicSpectra import DynamicSpectra, DynamicCohPha
 from .waveAnalysis import DynamicWave
@@ -63,6 +62,7 @@ from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector,
 from .layoutTools import BaseLayout
 from .dataUtil import merge_datas
 import numpy.lib.recfunctions as rfn
+from .ASCII_Importer import TextReader
 
 import cdflib
 import time
@@ -70,6 +70,7 @@ import functools
 import multiprocessing as mp
 import traceback
 from copy import copy
+from datetime import datetime
 
 from . import getRelPath # Function to get path to use to refer to data/img files
 
@@ -164,6 +165,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
         self.DATASTRINGS = []
         self.enableToolsAndOptionsMenus(False)
+
+        self.epoch = None
+        self.errorFlag = None
 
         self.plotAppr = None
         self.addTickLbls = None
@@ -1259,20 +1263,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         return filename
 
-    def openFileDialog(self, isFlatfile, clearCurrent, ascState=None):
-        fileNames = []
+    def openFileDialog(self, isFlatfile, clearCurrent, ascState={}):
         if isFlatfile:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open Flat File", options = QtWidgets.QFileDialog.ReadOnly, filter='Flat Files (*.ffd)')[0]
+            caption = 'Open Flat File'
+            filt = 'Flat Files (*.ffd)'
         else:
-            fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open ASCII File", options = QtWidgets.QFileDialog.ReadOnly, filter='ASCII Files (*.csv *.tsv *.txt)')[0]
+            caption = 'Open ASCII File'
+            filt = 'Text Files (*.txt *.tab *.csv *.dat *.tsv)'
 
-        if len(fileNames) < 0 or not self.validFilenames(fileNames):
+        dg = QtWidgets.QFileDialog
+        opts = QtWidgets.QFileDialog.ReadOnly
+        files = dg.getOpenFileNames(caption=caption, options=opts, filter=filt)[0]
+        if len(files) < 0 or not self.validFilenames(files):
             return
 
-        if isFlatfile:
-            self.openFileList(fileNames, isFlatfile, clearCurrent)
-        else:
-            self.openAscDialog(fileNames, ascState)
+        self.openFileList(files, isFlatfile, clearCurrent)
 
     def validFilenames(self, fileNames):
         for fileName in fileNames:
@@ -1305,9 +1310,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.ui.statusBar.showMessage('Error: Could not open file', 5000)
             return res
 
-        # Close any opened ASCII file format dialog windows
-        self.closeAscDialog() 
-
         # Update other state information and finish setup
         self.finishOpenFileSetup()
 
@@ -1334,57 +1336,43 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.plotDataDefault()
         self.workspace = None
 
-    def openAscDialog(self, filenames, ascState=None):
-        # Open a dialog box to specify settings for opening this ASCII file
-        # and link its apply btn to the openTextFile function
-        self.closeAscDialog()
-        self.asc = Asc_Importer(self, filenames[-1], self)
-
-        # If opening from user-interface, open dialog
-        if ascState is None:
-            openFunc = functools.partial(self.openFileList, filenames, False, True)
-            self.asc.linkApplyBtn(openFunc)
-            self.asc.show()
-
-            # Bring to front
-            self.asc.activateWindow()
-        else: # Otherwise load file state info into dialog and open files directly
-            self.asc.loadStateInfo(ascState)
-
-    def closeAscDialog(self):
-        if self.asc:
-            self.asc.close()
-            self.asc = None
-
     def openTextFile(self, filename):
-        # Set current file for ascii importer
-        self.asc.setFile(filename)
+        ''' Open an ASCII file '''
+        # Get default error flag and epoch values
+        if self.errorFlag is not None:
+            self.errorFlag = min(1e32, self.errorFlag)
+        else:
+            self.errorFlag = 1e32
 
-        # Try to read in times, data, and other file info
-        try:
-            times, data, info = self.asc.readFile()
-        except:
-            self.ui.statusBar.showMessage('Error: Could not open ASCII file')
-            return False
+        if self.epoch is None:
+            self.epoch = 'J2000'
 
-        # Extract other file info from tuple
-        labels, units, epoch, errFlag, fd = info
+        # Read in data using TextReader
+        reader = TextReader(filename)
+        data = reader.get_data(epoch=self.epoch)
+        self.FIDs.append(reader)
 
-        # Set error flag, epoch, and calculate a new resolution
-        self.errorFlag = self.asc.getErrorFlag()
-        self.epoch = epoch
+        # Get labels and set up default units
+        labels = data.dtype.names
+        units = [''] * (len(labels) - 1)
+
+        # Extract time information and set up resolution info
+        time_lbl = labels[0]
+        times = data[time_lbl]
         res = np.median(np.diff(times))
         self.resolution = min(self.resolution, res)
 
-        # Load data into appropriate structures
-        res = self.loadData(times, labels, data, units)
+        # Assemble data into list format
+        datas = [data[lbl] for lbl in labels[1:]]
+
+        # Attempt to load data into program
+        res = self.loadData(times, labels[1:], datas, units)
         if res is None:
             return False
 
-        # Update FD list
-        self.FIDs.append(fd)
+        # Additional program updates after file is loaded
         self.updateAfterOpening()
-        return True
+        return res
 
     def updateAfterOpening(self):
         self.calculateAbbreviatedDstrs()
@@ -1837,7 +1825,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.initDataStorageStructures()
 
     def getCDFPaths(self):
-        fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open ASCII File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
+        fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
         return fileNames
 
     def openCDF(self):
@@ -3074,26 +3062,57 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def exportASCII(self, name):
         ''' Exports latest edited data as an ASCII file '''
-        # Get original file ID
-        FID = self.FIDs[0]
-
-        # Get information about original file
-        filename = FID.getName()
-        asc_imp = Asc_Importer(self, filename)
-        header = asc_imp.header
-        asc_type = FID.fileType
-        epoch = FID.ancInfo['Epoch']
-        timeMode = FID.ancInfo['TimeMode']
-        cols = None
-        if asc_type == 'Fixed Columns':
-            cols = asc_imp.guessColumns(header, asc_imp.lines[1])
-
-        # Build records
+        # Get latest records
         records, labels = self.getLatestRecords()
+        times = records[:,0]
+        data = records[:,1:]
 
-        # Pass the old file format to ASC_Output and generate the new file
-        asc_out = ASC_Output(name, records, header, (timeMode == 'Seconds'), asc_type, cols, epoch)
-        asc_out.write()
+        # Get latest file and reader
+        FID = self.FIDs[0]
+        reader = FID.get_reader()
+        header = reader.get_header().strip('\n')
+
+        # Map ticks to strings again
+        date_to_ts = lambda dt : datetime.isoformat(dt)[:-3]
+        dates = list(map(self.datetime_from_tick, times))
+        ts = list(map(date_to_ts, dates))
+
+        # Determine delimeter and data format based on file type
+        fmt = ['%s'] + ['%.7f'] * len(labels)
+        if reader.subtype() == 'CSV':
+            delim = ','
+        else:
+            delim = ''
+            # Adjust formats based on fixed-width column lengths
+            slices = reader.get_slices()
+
+            ## Format first record of data according to format strings
+            test_record = [ts[0]] + data[0].tolist()
+            test_record = [fmtstr % val for fmtstr, val in zip(fmt, test_record)]
+
+            ## Adjust widths so data will fit in each column
+            widths = []
+            for test_str, (a, b) in zip(test_record, slices):
+                width = max(len(test_str) + 1, b-a)
+                widths.append(width)
+
+            # Left-align format strings
+            fmt = [f'%-{n}'+fmtstr.split('%')[1] for (n, fmtstr) in zip(widths, fmt)]
+
+            # Split and rejoin header items based on slices
+            cols = [header[slice(*s)].strip(' ') for s in slices]
+            hdr_fmt = ''.join([f'%-{n}s' for n in widths])
+            header = hdr_fmt % tuple(cols)
+
+        # Create a structured array from the data and mapped times
+        dtype = [('time', 'U72')] + [(label, 'f8') for label in labels]
+        dtype = np.dtype(dtype)
+        records = np.hstack([np.vstack(ts), data])
+        table = rfn.unstructured_to_structured(records, dtype=dtype)
+
+        # Save table to file
+        np.savetxt(name, table, fmt=fmt, delimiter=delim, header=header, 
+            comments='')
 
     def exportFlatFileCopy(self, name):
         ''' Create a new flat file based on the loaded flat file 

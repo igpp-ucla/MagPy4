@@ -292,6 +292,9 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         timeVar = None
         if self.ui.timeVarBox.currentText() != '':
             timeVar = self.ui.timeVarBox.currentText()
+        
+        if self.curFID.getFileType() == 'ASCII':
+            timeVar = self.window.epoch
 
         self.dataByRec = self.curFID.getRecords(timeVar)
         time_key = self.dataByRec.dtype.names[0]
@@ -462,11 +465,6 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         if len(self.time) == 0:
             return
 
-        # Create header
-        self.headerStrings = self.curFID.getLabels()
-        units = self.curFID.getUnits()
-        header = [f'{h} ({u})' if u else f'{h}' for h,u in zip(self.headerStrings,units)]
-
         # Update row settings in table
         rO = 1
         rE = len(self.dataByRec)
@@ -475,7 +473,9 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 
         # Create table from flatfile data
         epoch = self.curFID.getEpoch()
-        self.createTable(header, epoch)
+        if epoch is None:
+            epoch = self.window.epoch
+        self.createTable([], epoch)
         self.updtTimeEditAndStats(len(self.time), len(self.dataByRec[0]), epoch)           
 
     def update(self):
@@ -486,8 +486,10 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             self.updateEditedData()
         else:
             self.updateFfData()
-            # dateTimeEdit wasn't updating after switching back to flatfile data
-            start = FFTIME(self.time[0], Epoch=self.curFID.getEpoch())
+            epoch = self.curFID.getEpoch()
+            if epoch is None:
+                epoch = self.window.epoch
+            start = FFTIME(self.time[0], Epoch=epoch)
             self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))        
 
     # saves flatfile data to a plain text file
@@ -540,7 +542,10 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         dtInt = [int(item) for item in dtList]
         doy = datetime.datetime(*dtInt).timetuple().tm_yday
         UTC = dtList[0] + " " + str(doy) + DTSTRM[4:]
-        t = FFTIME(UTC, Epoch=self.curFID.getEpoch()).tick
+        epoch = self.curFID.getEpoch()
+        if epoch is None:
+            epoch = self.window.epoch
+        t = FFTIME(UTC, Epoch=epoch).tick
         iRow = 0
         iRow = bisect.bisect(self.time, t)
         return iRow

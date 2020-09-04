@@ -49,7 +49,7 @@ class MagPy4UI(object):
 
         self.actionExportDataFile = QtWidgets.QAction(window)
         self.actionExportDataFile.setText('Export Data File...')
-        self.actionExportDataFile.setStatusTip('Exports current data in original file format')
+        self.actionExportDataFile.setStatusTip('Exports current data in original file format (only data shape is same as original)')
         self.actionExportDataFile.setVisible(False)
 
         self.actionExit = QtWidgets.QAction(window)
@@ -401,6 +401,8 @@ class MagPy4UI(object):
         self.modeComboBx.addItem('MarsPy')
         self.modeComboBx.addItem('MagPy')
         self.modeComboBx.currentTextChanged.connect(self.switchMainMode)
+        self.modeComboBx.setMinimumHeight(28)
+        self.modeComboBx.setMinimumWidth(100)
 
         # Checkbox to save mode for next time
         self.saveModeChkBx = QtWidgets.QCheckBox('Set As Default')
@@ -411,7 +413,7 @@ class MagPy4UI(object):
         modeLt = QtWidgets.QGridLayout(modeFrame)
         modeLt.addWidget(modeLbl, 0, 0, 1, 1)
         modeLt.addWidget(self.modeComboBx, 0, 1, 1, 1)
-        modeLt.addWidget(self.saveModeChkBx, 1, 1, 1, 1)
+        modeLt.addWidget(self.saveModeChkBx, 0, 2, 1, 1)
 
         # Initialize default mode based on state file
         state_dict = self.window.readStateFile()
@@ -428,20 +430,17 @@ class MagPy4UI(object):
             self.window.insightMode = True
         self.modeComboBx.currentTextChanged.connect(nameLabel.setText)
 
-        # Button to open a flat file
-        openFFBtn = QtWidgets.QPushButton('Open Flat File')
-        openFFBtn.clicked.connect(self.actionOpenFF.triggered)
-        modeLt.addWidget(openFFBtn, 0, 2, 1, 1)
-
-        # Button to open CDF files
-        cdfBtn = QtWidgets.QPushButton('Open CDF')
-        cdfBtn.clicked.connect(self.actionOpenCDF.triggered)
-        modeLt.addWidget(cdfBtn, 0, 3, 1, 1)
-
-        # Button to load MMS data
-        loadMMSBtn = QtWidgets.QPushButton('Load MMS Data')
-        loadMMSBtn.clicked.connect(self.actionLoadMMS.triggered)
-        modeLt.addWidget(loadMMSBtn, 0, 4, 1, 1)
+        # Buttons to open the various file types
+        btnFrm = QtWidgets.QFrame()
+        btnLt = QtWidgets.QHBoxLayout(btnFrm)
+        labels = ['Open Flat File', 'Open ASCII File', 'Open CDF', 'Load MMS Data']
+        actions = [self.actionOpenFF, self.actionOpenASCII, self.actionOpenCDF,
+                self.actionLoadMMS]
+        for i in range(0, len(labels)):
+            btn = QtWidgets.QPushButton(' ' + labels[i] + ' ')
+            btn.setMinimumHeight(30)
+            btn.clicked.connect(actions[i].triggered)
+            btnLt.addWidget(btn)
 
         # Create a layout that will be centered within startLt
         frameLt = QtWidgets.QGridLayout()
@@ -453,14 +452,16 @@ class MagPy4UI(object):
         alignCenter = QtCore.Qt.AlignCenter
         spacer1 = QtWidgets.QSpacerItem(0, 10)
         spacer2 = QtWidgets.QSpacerItem(0, 10)
+        spacer3 = QtWidgets.QSpacerItem(0, 10)
 
         frameLt.addWidget(nameLabel, 0, 0, 1, 1, alignCenter)
         frameLt.addItem(spacer1, 1, 0, 1, 1, alignCenter)
         frameLt.addWidget(descLbl, 2, 0, 1, 1, alignCenter)
         frameLt.addWidget(ownerLbl, 3, 0, 1, 1, alignCenter)
-        frameLt.addItem(spacer2, 4, 0, 1, 1, alignCenter)
+        frameLt.addItem(spacer2, 4, 0, 1, 1)
         frameLt.addWidget(modeFrame, 5, 0, 1, 1, alignCenter)
-
+        frameLt.addItem(spacer3, 6, 0, 1, 1)
+        frameLt.addWidget(btnFrm, 7, 0, 1, 1, alignCenter)
         self.startLt = startLt
 
         # Disable UI elements for interacting with plots

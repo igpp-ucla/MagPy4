@@ -42,4 +42,3 @@ class TaskRunner(QtCore.QRunnable):
 
     def update_progress(self, val):
         self.signals.progress.emit(val)
-
