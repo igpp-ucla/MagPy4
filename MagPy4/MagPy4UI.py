@@ -7,6 +7,7 @@ import importlib.util
 import numpy as np
 import pyqtgraph as pg
 import functools
+import os
 
 from .pyqtgraphExtensions import GridGraphicsLayout,BLabelItem
 from . import getRelPath
@@ -379,7 +380,7 @@ class MagPy4UI(object):
         labels = ['MarsPy / MagPy', 'Magnetic Field Analysis Program',
             'IGPP / UCLA']
         pt_sizes = [40, 16, 12]
-        colors = [(10, 0, 25, 200), (50, 50, 50, 250), (60, 60, 60, 250)]
+        colors = [(15, 28, 61, 200), (50, 50, 50, 250), (60, 60, 60, 250)]
 
         # Create each label item and add to layout
         for lbl, pt, color in zip(labels, pt_sizes, colors):
@@ -477,6 +478,9 @@ class MagPy4UI(object):
 
         # Set background image
         img_path = getRelPath('magpy_background.png')
+        if os.name == 'nt':
+            img_path = img_path.replace('\\', '/')
+
         style = f'''
             #background_frame {{
                 border-image: url({img_path}) 0 0 0 0 stretch stretch;
@@ -486,7 +490,11 @@ class MagPy4UI(object):
 
         # Create a layout that will be centered within startLt
         centerFrame = QtWidgets.QFrame()
-        style = ".QFrame { background-color: rgba(255, 255, 255, 100); }"
+        style = '''.QFrame { 
+            background-color: rgba(255, 255, 255, 125);
+            border-radius: 2px;
+        }
+        '''
         centerFrame.setStyleSheet(style)
         centerFrame.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
 
