@@ -594,9 +594,14 @@ class MMSDataDownloader(QtWidgets.QFrame):
         self.currParams = params
 
         # Check if it's possible to write to the load_dir
-        if not os.access(self.load_dir, os.W_OK):
-            msg = f'{self.load_dir} not writable. Skipping file download...'
+        try:
+            if not os.path.exists(self.load_dir):
+                os.makedirs(self.load_dir)
+            if not os.access(self.load_dir, os.W_OK):
+                raise Exception()
+        except:
             # If not, read from local files only
+            msg = f'{self.load_dir} not writable. Skipping file download...'
             self.downloadFinished(msg=msg)
             return
 

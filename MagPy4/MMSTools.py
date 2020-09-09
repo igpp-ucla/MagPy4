@@ -24,6 +24,38 @@ import functools
 import bisect
 import re
 
+def get_mms_grps(window):
+    ''' Get groups of variable names by vector '''
+    # Determine coordinate system being used
+    coords = 'gsm'
+    for lst in window.lastPlotStrings:
+        for dstr, en in lst:
+            if 'gse' in dstr.lower():
+                coords = 'gse'
+
+    # Get position and field variables
+    btot_dstrs = []
+    full_grps = {}
+    for label, name in [('r', 'Pos'), ['b', 'Field']]:
+        grps = {}
+        full_grps[name] = grps
+        # Iterate over spacecraft
+        for sc_id in [1,2,3,4]:
+            # Iterate over data rate
+            for data_rate in ['brst', 'srvy']:
+                key = f'mms{sc_id}_fgm_{label}_{coords}_{data_rate}_l2'
+                # Check if vector variable name in window's VECGRPS
+                # and save its list of dstrs if found
+                if key in window.VECGRPS:
+                    grp = window.VECGRPS[key]
+                    grps[sc_id] = grp[:3]
+
+                    if len(grp) == 4 and label == 'b':
+                        bt_lbl = f'{grp[3]}'
+                        btot_dstrs.append(bt_lbl)
+
+    return full_grps, btot_dstrs 
+
 class MMSTools():
     def __init__(self, window):
         self.earthRadius = 6371
@@ -139,34 +171,7 @@ class MMSTools():
         self.grps = self.getAxisGrps(self.scGrps)
 
     def getMMSGrps(self):
-        ''' Get groups of variable names by vector '''
-        # Determine coordinate system being used
-        coords = 'gsm'
-        for lst in self.window.lastPlotStrings:
-            for dstr, en in lst:
-                if 'gse' in dstr.lower():
-                    coords = 'gse'
-
-        # Get position and field variables
-        full_grps = {}
-        for label, name in [('r', 'Pos'), ['b', 'Field']]:
-            grps = {}
-            full_grps[name] = grps
-            # Iterate over spacecraft
-            for sc_id in [1,2,3,4]:
-                # Iterate over data rate
-                for data_rate in ['brst', 'srvy']:
-                    key = f'mms{sc_id}_fgm_{label}_{coords}_{data_rate}_l2'
-                    # Check if vector variable name in window's VECGRPS
-                    # and save its list of dstrs if found
-                    if key in self.window.VECGRPS:
-                        grp = self.window.VECGRPS[key]
-                        grps[sc_id] = [f'{lbl}{sc_id}' for lbl in grp[:3]]
-
-                        if len(grp) == 4 and label == 'b':
-                            bt_lbl = f'{grp[3]}{sc_id}'
-                            self.btotDstrs.append(bt_lbl)
-
+        full_grps, self.btotDstrs = get_mms_grps(self.window)
         return full_grps
 
     def getAxisGrps(self, scGrps):

@@ -6,7 +6,7 @@ import os
 with open('README.md', 'r') as fh:
 	long_description = fh.read()
 
-with open('version.txt', 'r') as fh:
+with open('MagPy4/version.txt', 'r') as fh:
 	versionNum = fh.read()
 
 setuptools.setup(

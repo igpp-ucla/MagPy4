@@ -5,4 +5,4 @@ recursive-include MagPy4/images *
 recursive-include MagPy4/ *.png
 recursive-include MagPy4/testData/ *
 include MagPy4/orbittable.txt
-
+include MagPy4/version.txt

@@ -17,8 +17,10 @@ sys.path.insert(0, 'ffPy')
 sys.path.insert(0, 'cdfPy')
 
 # Version number and copyright notice displayed in the About box
+from . import getRelPath, MAGPY_VERSION
+
 NAME = f'MagPy4'
-VERSION = f'Version 1.5.10.0 (September 4th, 2020)'
+VERSION = f'Version {MAGPY_VERSION}'
 COPYRIGHT = f'Copyright © 2020 The Regents of the University of California'
 
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -42,7 +44,7 @@ from .traceStats import TraceStats
 from .helpWindow import HelpWindow
 from .AboutDialog import AboutDialog
 from .plotBase import DateAxis, MagPyPlotItem, MagPyPlotDataItem
-from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni, PressureTool, FEEPS_EPAD
+from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni, PressureTool, FEEPS_EPAD, get_mms_grps
 from .mms_data import MMSDataDownloader
 from . import mms_orbit
 from . import mms_formation
@@ -60,7 +62,7 @@ import bisect
 from .timeManager import TimeManager
 from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect, SelectableViewBox
 from .layoutTools import BaseLayout
-from .dataUtil import merge_datas
+from .dataUtil import merge_datas, find_vec_grps
 import numpy.lib.recfunctions as rfn
 from .ASCII_Importer import TextReader
 
@@ -72,7 +74,6 @@ import traceback
 from copy import copy
 from datetime import datetime
 
-from . import getRelPath # Function to get path to use to refer to data/img files
 
 CANREADCDFS = False
 
@@ -875,7 +876,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def initVariables(self):
         """init variables here that should be reset when file changes"""
-        self.lastPlotStrings = None
+        self.lastPlotStrings = []
         self.lastPlotLinks = None
         self.lastPlotHeightFactors = None
         self.selectMode = None
@@ -1309,6 +1310,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if res is False: # If a file was not successfully opened, return
             self.ui.statusBar.showMessage('Error: Could not open file', 5000)
             return res
+
+        # Get field and position groups and add to VECGRPS
+        b_grps, pos_grps = find_vec_grps(self.DATASTRINGS)
+        b_grps = {f'B{key}':val for key, val in b_grps.items()}
+        pos_grps = {f'R{key}':val for key, val in pos_grps.items()}
+        self.VECGRPS.update(b_grps)
+        self.VECGRPS.update(pos_grps)
 
         # Update other state information and finish setup
         self.finishOpenFileSetup()
@@ -1781,7 +1789,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             data_info = self.get_cdf_datas(cdf, keys, tlen, exclude_expr, 
                 clip=indices)
             datas, data_labels, data_units, vec_grps = data_info
-            self.VECGRPS.update(vec_grps)
 
             # Extract spectrogram data
             specs = {}
@@ -1797,11 +1804,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # If a label formatting function is passed, apply to variable labels
             if label_func is not None:
                 data_labels = list(map(label_func, data_labels))
+                vec_grps = {k:list(map(label_func, v)) for k, v in vec_grps.items()}
 
             # Set epoch and resolution before loading data
             self.epoch = 'J2000'
             self.resolution = min(times[1] - times[0], self.resolution)
             self.errorFlag = 1e32
+            self.VECGRPS.update(vec_grps)
 
             # Load data
             self.loadData(times, data_labels, datas.T, data_units, specs)
@@ -2143,49 +2152,38 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def getDefaultPlotInfo(self):
         dstrs = []
         links = []
-        keywords = ['BX','BY','BZ']
-        if not self.insightMode:
-            keywords.append('BT')
-        for ki,kw in enumerate(keywords):
-            row = []
-            for dstr,abbrDstr in self.ABBRV_DSTR_DICT.items():
-                allIn = True
-                for c in kw:
-                    if c.lower() not in abbrDstr.lower():
-                        allIn = False
-                        break
-                if allIn:
-                    row.append((dstr,0))
-                    if self.insightMode:
-                        break # only find one of each keyword
-                    row.sort()
-            if row:
-                dstrs.append(row)
-                links.append(len(dstrs)-1)
 
-        mmsKws = []
-        missing = False
-        for kw in ['Bx', 'By', 'Bz']:
-            newKws = []
-            mmsKws.append(newKws)
-            for sc in ['1', '2', '3', '4']:
-                mmsKw = f'{kw}_GSM{sc}'
-                newKws.append((mmsKw, 0))
-                if mmsKw not in self.DATASTRINGS:
-                    missing = True
-                    break
-        newKws = []
-        mmsKws.append(newKws) 
-        for sc in ['1', '2', '3', '4']:
-            mmsKw = f'Bt{sc}'
-            newKws.append((mmsKw, 0))
-            if mmsKw not in self.DATASTRINGS:
-                missing = True
+        # Get filetype mode
+        mode = self.FIDs[0].getFileType()
 
-        if not missing:
-            dstrs = mmsKws
-            links = [0,1,2,3,4]
+        # If CDF is open and in MMS mode
+        if mode == 'CDF' and not self.insightMode:
+            # Get MMS variable groups in spacecraft groupings
+            # and map to axis grouping and plotStrings format
+            grps, btots = get_mms_grps(self)
+            grps = grps['Field']
+            mms_dstrs = [[],[],[]]
+            for sc_id in [1,2,3,4]:
+                if sc_id not in grps:
+                    continue
+                sc_grp = grps[sc_id]
+                for i in range(0, len(sc_grp)):
+                    mms_dstrs[i].append((sc_grp[i], 0))
+            
+            mms_dstrs.append([(dstr, 0) for dstr in btots])
 
+            # Check if full set of MMS variables loaded
+            if set(list(map(len, mms_dstrs))) == set([4]):
+                dstrs = mms_dstrs
+                links = [0,1,2,3]
+
+        # If VECGRPS is not empty, try using the first vecgrp
+        if len(dstrs) == 0 and len(self.VECGRPS) > 0:
+            key = list(self.VECGRPS.keys())[0]
+            variables = self.VECGRPS[key]
+            dstrs = [[(dstr, 0)] for dstr in variables]
+            links = [i for i in range(len(dstrs))]
+        
         # MMS trace pen presets
         lstLens = list(map(len, dstrs))
         if not self.insightMode and lstLens != [] and min(lstLens) == 4 and max(lstLens) == 4:
@@ -2198,7 +2196,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.customPens = []
 
         # If num plots <= 1 (non-standard file), try to plot first 3 variables
-        if not links or len(dstrs) == 1:
+        if not links or len(dstrs) <= 1:
             dstrs = [[(dstr, 0)] for dstr in self.DATASTRINGS[0:3]]
             links = [[i] for i in range(0, len(dstrs))]
         else:

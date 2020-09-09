@@ -1,4 +1,4 @@
-#compiled py code should NOT be stored on repo and shared
+# Ignore compiled code
 __pycache__/
 *.py[cod]
 *$py.class
@@ -22,6 +22,7 @@ env/
 tests/
 test.py
 terminal.py
+version.py
 build.sh
 token.txt
 
