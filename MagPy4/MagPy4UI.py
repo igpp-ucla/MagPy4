@@ -1123,7 +1123,7 @@ class PlotGrid(pg.GraphicsLayout):
 
         for ax in ['top', 'right']:
             plt.getAxis(ax).setStyle(showValues=False)
-
+        
         # Update state information
         self.labels.insert(index, lbl)
         self.plotItems.insert(index, plt)
@@ -1420,6 +1420,20 @@ class MainPlotGrid(PlotGrid):
         self.menu = QtGui.QMenu()
         self.menu.addAction(self.window.ui.plotApprAction) # Plot appearance
         self.menu.addAction(self.window.ui.addTickLblsAction) # Additional labels
+
+    def addPlt(self, plt, lbl, index=None):
+        super().addPlt(plt, lbl, index)
+
+        # Clicking on axes opens plot appearance
+        plotFunc = self.window.openPlotAppr
+        plotFunc = functools.partial(plotFunc, 1)
+        for ax in ['left', 'bottom']:
+            # Connect signal to plot appearance function
+            bar = plt.getAxis(ax)
+            bar.axisClicked.connect(plotFunc)
+
+            # Set cursor
+            bar.setCursor(QtCore.Qt.OpenHandCursor)
 
     def menuEnabled(self):
         return True

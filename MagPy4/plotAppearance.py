@@ -48,6 +48,9 @@ class PlotAppearanceUI(BaseLayout):
         self.lblPropWidget = LabelAppear(window, plotItems, mainWindow)
         tw.addTab(self.lblPropWidget, 'Label Properties')
 
+    def setTab(self, tab_num):
+        self.tabWidget.setCurrentIndex(tab_num)
+
     def getTracePropFrame(self, plotInfos):
         frame = QtWidgets.QFrame()
         layout = QtWidgets.QVBoxLayout(frame)

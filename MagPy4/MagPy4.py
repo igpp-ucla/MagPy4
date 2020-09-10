@@ -85,7 +85,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
         pg.setConfigOption('antialias', True) #todo add option to toggle this
-        #pg.setConfigOption('useOpenGL', True)
 
         self.app = app
         self.ui = MagPy4UI()
@@ -1054,9 +1053,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.tools['PlotMenu'].move(geo.x() + 200, geo.y() + 100)
         self.tools['PlotMenu'].show()
 
-    def openPlotAppr(self):
+    def openPlotAppr(self, tab=None):
         self.closePlotAppr()
         self.plotAppr = MagPyPlotApp(self, self.plotItems)
+
+        if tab is not None:
+            self.plotAppr.ui.setTab(tab)
+
         self.plotAppr.show()
 
     def closePlotAppr(self):

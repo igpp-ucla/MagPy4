@@ -440,6 +440,12 @@ class SelectableViewBox(pg.ViewBox):
         x = mc.x()
         y = mc.y()
 
+        pos = ev.scenePos()
+        rect = self.sceneBoundingRect()
+
+        if not rect.contains(pos):
+            return
+
         # Apply left click to plot grid; Window manages behavior
         ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
         self.window.gridLeftClick(x, self.plotIndex, ctrlPressed)

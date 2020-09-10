@@ -132,6 +132,7 @@ class MagPyColorPlot(MagPyPlotItem):
 
 class MagPyAxisItem(pg.AxisItem):
     textSizeChanged = QtCore.pyqtSignal(object)
+    axisClicked = QtCore.pyqtSignal()
     def __init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True):
         self.tickDiff = None
         self.minWidthSet = False
@@ -515,8 +516,13 @@ class MagPyAxisItem(pg.AxisItem):
 
         return (axisSpec, tickSpecs, textSpecs)
 
+    def mouseClickEvent(self, ev):
+        super().mouseClickEvent(ev)
+        self.axisClicked.emit()
+
 class DateAxis(pg.AxisItem):
     ticksChanged = QtCore.pyqtSignal(object)
+    axisClicked = QtCore.pyqtSignal()
     def __init__(self, epoch, orientation, offset=0, *args, **kwargs):
         self.tickOffset = offset
         self.timeRange = None
@@ -1120,6 +1126,10 @@ class DateAxis(pg.AxisItem):
 
     def axisType(self):
         return 'DateTime'
+
+    def mouseClickEvent(self, ev):
+        super().mouseClickEvent(ev)
+        self.axisClicked.emit()
 
 class MagPyPlotDataItem(pg.PlotDataItem):
     def __init__(self, *args, **kwargs):
