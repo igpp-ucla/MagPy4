@@ -868,6 +868,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeFixSelection()
         self.closeTimeSelect()
         self.closeBatchSelect()
+        self.closePlotAppr()
 
     def closePlotTools(self):
         for tool in self.select_opts:
@@ -2836,7 +2837,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         resolutions = np.concatenate([resolutions, [resolutions[-1]]])
 
         # Find smallest tick in data
-        ofst = self.minTime
+        ofst = int(self.minTime)
         self.tickOffset = ofst
         pi.tickOffset = ofst
         pi.getAxis('bottom').tickOffset = ofst

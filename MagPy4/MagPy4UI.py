@@ -882,45 +882,70 @@ class PlotGrid(pg.GraphicsLayout):
     def setHeightFactors(self, heightFactors):
         self.factors = heightFactors
 
-    def setTimeLabel(self):
+    def linkTicks(self):
         if self.plotItems == []:
             return
-
-        # Hide tick values for all other plots
+        
+        # Hide tick values/labels for all other plots and disconnect
+        # signals from update function
         for plt in self.plotItems[:-1]:
             self.hideTickValues(plt)
             ba = plt.getAxis('bottom')
             if ba.receivers(ba.ticksChanged) > 0:
                 ba.ticksChanged.disconnect(self.updateLabelSets)
 
-        # Set time label for bottom axis
+        # Link signal from bottom axis to update func
         bottomAxis = self.plotItems[-1].getAxis('bottom')
         bottomAxis.setStyle(showValues=True)
-        bottomAxis.setLabel(bottomAxis.getDefaultLabel())
+        bottomAxis.setLabelVisible(True)
         bottomAxis.ticksChanged.connect(self.updateLabelSets)
+
+    def setTimeLabel(self):
+        if self.plotItems == []:
+            return
+
+        # Link/unlink tick changes for bottom axes and set
+        # bottom axis label visible
+        self.linkTicks()
 
         # If label sets are enabled on bottom, set the text for the
         # spacer/label item next to the axis, and hide the original
         # axis label
-        spacerLbl = self.getSideTimeLabel()
-        if self.labelSetGrd is not None and self.labelSetLoc == 'bottom':
-            bottomAxis.showLabel(False)
-            bottomAxis.picture = None
-            if spacerLbl is not None:
-                spacerLbl.setText(bottomAxis.getDefaultLabel())
-        else:
-            # Otherwise, make the label item a spacer again
-            if spacerLbl is not None:
-                spacerLbl.setText('')
-
-        # Adjust layout row minimum/maximum height
-        botmHt = bottomAxis.maximumHeight()
-        self.layout.setRowMaximumHeight(self.startRow+self.numPlots, botmHt)
-        self.layout.setRowMinimumHeight(self.startRow+self.numPlots, botmHt)
+        self.updateTimeSpacerLabel()
 
     def updateLabelSets(self, ticks):
         if self.labelSetGrd:
             self.labelSetGrd.setTickLevels(ticks)
+        
+        self.updateTimeSpacerLabel()
+
+    def updateTimeSpacerLabel(self):
+        ''' Updates time spacer label if labelSetGrid is visible
+            or resets to empty string otherwise
+        '''
+        if len(self.plotItems) == 0:
+            return
+        
+        # Get spacer label item and bottom axis
+        spacerLbl = self.getSideTimeLabel()
+        ax = self.plotItems[-1].getAxis('bottom')
+
+        # If in bottom axis mode, set spacer text to axis label
+        if self.labelSetGrd and self.labelSetLoc == 'bottom':
+            # Hide label for bottom axis
+            ax.setLabelVisible(False)
+
+            # Set spacer label to bottom axis label format
+            if spacerLbl is not None:
+                spacerLbl.setText(ax.get_label())
+        # Reset to empty string otherwise
+        elif spacerLbl is not None:
+            spacerLbl.setText('')
+
+        # Adjust layout row minimum/maximum height
+        botmHt = ax.maximumHeight()
+        self.layout.setRowMaximumHeight(self.startRow+self.numPlots, botmHt)
+        self.layout.setRowMinimumHeight(self.startRow+self.numPlots, botmHt)
 
     def getSideTimeLabel(self):
         # If label sets are enabled on bottom axis, the label item
@@ -1816,10 +1841,6 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
 
         else: # No slider selected
             self.current_slider = -2
-
-    # def saveBarDistances(self, x_pos):
-    #     ''' Save relative positions of start/end sliders from mouse position '''
-
 
     def moveBar(self, x_center):
         ''' Moves bar so that it's centered at x_center but maintains

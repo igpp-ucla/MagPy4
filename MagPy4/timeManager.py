@@ -83,7 +83,7 @@ class TimeManager(object):
         dt = UTCQDate.UTC2QDateTime(self.getTimestampFromTick(tick))
         date = dt.date()
         timeObj = dt.time()
-        dt = datetime(date.year(), date.month(), date.day(), timeObj.hour(), timeObj.minute(), timeObj.second(), timeObj.msec())
+        dt = datetime(date.year(), date.month(), date.day(), timeObj.hour(), timeObj.minute(), timeObj.second(), timeObj.msec()*1000)
         return dt
     
     def getTickFromTimestamp(self, ts):

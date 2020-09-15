@@ -720,6 +720,7 @@ class TimeTickWidget(TickWidget):
         format_lt, self.formatBox = self.buildTimeLblLt()
         self.layout.addLayout(format_lt, 1, 0, 1, 1)
         self.formatBox.currentTextChanged.connect(self.setLabels)
+        self.initFormat()
 
     def formatter(self):
         ''' Returns the label formatter object '''
@@ -731,7 +732,7 @@ class TimeTickWidget(TickWidget):
 
     def buildTimeLblLt(self):
         # Get time label formats
-        fmts = DateAxis(orientation='bottom', epoch='J2000').timeModes
+        fmts = DateAxis(orientation='bottom', epoch='J2000').get_label_modes()
         fmts = ['Default'] + fmts
 
         # Build box and layout elements
@@ -751,11 +752,20 @@ class TimeTickWidget(TickWidget):
         if val == 'Default':
             for plot in self.plots:
                 ax = plot.getAxis(self.name)
-                ax.resetLabelFormat()
+                ax.set_label_fmt(None)
         else:
             for plot in self.plots:
                 ax = plot.getAxis(self.name)
-                ax.setLabelFormat(val)
+                ax.set_label_fmt(val)
+
+    def initFormat(self):
+        ''' Set label format if default is not used for
+            current axis
+        '''
+        ax = self.plots[-1].getAxis(self.name)
+        if ax.get_label_fmt():
+            fmt = ax.get_label_fmt()
+            self.formatBox.setCurrentText(fmt)
 
 class TickIntervals(QtGui.QFrame):
     def __init__(self, window, plotItems, Frame, parent=None, links=None):

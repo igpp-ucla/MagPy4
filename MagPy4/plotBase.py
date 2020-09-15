@@ -5,6 +5,9 @@ from .timeManager import TimeManager
 from datetime import datetime, timedelta
 from FF_Time import FFTIME
 from bisect import bisect_left, bisect_right
+from dateutil import rrule
+from dateutil.rrule import rrule
+from dateutil.rrule import rrule, SECONDLY, MINUTELY, HOURLY, DAILY, MONTHLY, YEARLY
 
 class MagPyPlotItem(pg.PlotItem):
     def __init__(self, epoch=None, name=None, selectable=False, *args, **kwargs):
@@ -523,53 +526,87 @@ class MagPyAxisItem(pg.AxisItem):
 class DateAxis(pg.AxisItem):
     ticksChanged = QtCore.pyqtSignal(object)
     axisClicked = QtCore.pyqtSignal()
+    formatChanged = QtCore.pyqtSignal(str)
     def __init__(self, epoch, orientation, offset=0, *args, **kwargs):
         self.tickOffset = offset
         self.timeRange = None
         self.epoch = epoch
         self.levels = None
         self.tm = TimeManager(0, 0, self.epoch)
-        pg.AxisItem.__init__(self, orientation,  *args, **kwargs)
+        self.label_visible = False # Keeps track of whether label is visible
+
+        super().__init__(orientation, *args, **kwargs)
         self.enableAutoSIPrefix(False)
 
-        # Dictionary holding default increment values for ticks
-        self.modeToDelta = {}
-        self.modeToDelta['DAY'] = timedelta(hours=6)
-        self.modeToDelta['HR'] = timedelta(minutes=30)
-        self.modeToDelta['MIN'] = timedelta(minutes=5)
-        self.modeToDelta['MS'] = timedelta(milliseconds=500)
+        # Time mode information
+        self.order = ['ms', 'sec', 'min', 'hours', 'days', 'months', 'years']
+        self.factors = { # Factor to multiply units by to convert to seconds
+            'ms' : 1,
+            'sec' : 1,
+            'min' : 60,
+            'hours': 60 ** 2,
+            'days' : timedelta(days=1).total_seconds(),
+            'months' : timedelta(days=30).total_seconds(),
+            'years' : timedelta(days=365).total_seconds()
+        }
 
-        # Increment values in seconds respective to each time unit
-        # Year, month, day, hours, minutes, seconds, ms
-        self.addVals = [24*60*60, 24*60*60, 24*60*60, 60*60, 60, 1, 0]
+        self.modes = { # Default label format for each mode
+            'ms' : 'SS.SSSSS',
+            'sec' : 'MM:SS',
+            'min' : 'HH:MM:SS',
+            'hours' : 'HH:MM',
+            'days' : 'DATE HH:MM',
+            'months' : 'DATE',
+            'years' : 'DATE'
+        }
 
-        # Custom interval base lists to use for hours, min, sec, ms; See tickSpacing()
-        refDays = np.array([1,3, 6, 12]) * self.addVals[-5]
-        refHrs = np.array([1, 2, 6, 12]) * self.addVals[-4]
-        refMin = np.array([1, 2, 5, 10, 15, 30]) * self.addVals[-3]
-        refSec = np.array([1, 2, 5, 10, 15, 30]) * self.addVals[-2]
-        refMs = np.array([0.1, 0.25, 0.5])
+        self.rule_keys = { # Maps time mode to a frequency key for rrule
+            'sec' : SECONDLY,
+            'min' : MINUTELY,
+            'hours' : HOURLY,
+            'days' : DAILY,
+            'months' : MONTHLY,
+            'years' : YEARLY,
+        }
 
-        self.intervalLists = [None, None, refDays, np.concatenate([refHrs, refDays]), 
-            np.concatenate([refMin, refHrs, refDays]), np.concatenate([refSec, refMin, refHrs]), 
-            np.concatenate([refMs, refSec, refMin, refHrs])]
+        self.min_ticks = 4 # Minimum number of ticks
 
-        # String used by strftime/strptime to parse UTC strings
-        self.fmtStr = '%Y %j %b %d %H:%M:%S.%f'
+        # Lower bounds for time length or each time mode (in seconds)
+        self.bases = {} 
+        for key in self.order:
+            self.bases[key] = timedelta(seconds=self.factors[key]*self.min_ticks)
 
+        # Fixed set of spacers for selected time modes
+        self.spacers = {
+            'months' : [1, 2, 3, 6, 12],
+            'hours' : [1, 2, 3, 6, 12],
+            'min' : [1, 2, 5, 10, 15, 30],
+            'sec' : [1, 2, 5, 10, 15, 30],
+            'ms' : [0.1, 0.2, 0.5, 1, 2, 5],
+        }
         # Custom tick spacing
         self.tickDiff = None
 
         # Custom label formatting
-        self.labelFormat = None
-        self.timeModes = ['DATE', 'DATE HH:MM', 'DATE HH:MM:SS', 'HH',
-            'HH:MM', 'HH:MM:SS', 'MM', 'MM:SS', 'MM:SS.SSS', 'SS.SSS']
-        self.refIndices = [[1,2], [1,2,3,4], [1,2,3,4,5], [3], [3,4],
-            [3,4,5], [4], [4,5], [4,5,6], [5,6]] # Sections of time to use for each time mode
-        self.kwSeparators = [' ', ' ', ' ', ':', ':', '.', ' '] # Suffix for each time section
-        self.timeDict = {} # Maps time modes to indices
-        for timeMode, indexLst in zip(self.timeModes, self.refIndices):
-            self.timeDict[timeMode] = indexLst
+        self.lbl_fmt = None
+        self.curr_mode = None
+
+        fmts = ['DATE', 'DATE HH:MM', 'DATE HH:MM:SS', 'HH',
+            'HH:MM', 'HH:MM:SS', 'MM', 'MM:SS', 'MM:SS.SSS', 'SS.SSSSS']
+
+        format_modes = ['days', 'min', 'sec', 'hours', 
+            'min', 'sec', 'min', 'sec', 'ms', 'ms']
+
+        date = '%Y %b %d'
+        format_strs = [date, f'{date} %H:%M', f'{date} %H:%M:%S', '%H',
+            '%H:%M', '%H:%M:%S', '%M', '%M:%S', '%M:%S.%f', '%S.%f']
+        
+        # Create dictionaries for each label format --> mode and formatting string
+        self.fmt_modes = {}
+        self.fmt_strs = {}
+        for fmt, fmt_mode, fmt_str in zip(fmts, format_modes, format_strs):
+            self.fmt_modes[fmt] = fmt_mode
+            self.fmt_strs[fmt] = fmt_str
 
     def getTickFont(self):
         if hasattr(self, 'tickFont'):
@@ -577,278 +614,246 @@ class DateAxis(pg.AxisItem):
         else:
             return self.style['tickFont']
 
-    def splitTimestamp(self, tmstmp):
-        # Break down timestamp into its components and return a list of strings
-        dateSplit = tmstmp.split(' ')
-        year = dateSplit[0]
-        month = dateSplit[2]
-        day = dateSplit[3]
-
-        # Split time into its units
-        timeSplit1 = dateSplit[4].split(':')
-        timeSplit2 = timeSplit1[2].split('.')
-        hours, minutes = timeSplit1[0:2]
-        seconds, ms = timeSplit2[0:2]
-
-        return [year, month, day, hours, minutes, seconds, ms]
-
-    def setLabelFormat(self, kw):
-        self.labelFormat = kw
-        # Update axis label
-        if self.label and (self.label.isVisible()):
-            kw = kw.strip('DATE ')
-            if kw == '':
-                kw = 'Time'
-            self.setLabel(kw)
-        self.picture = None
-        self.update()
-
     def resetLabelFormat(self):
-        self.labelFormat = None
-        # Reset axis label
-        if self.label and (self.label.isVisible()):
-            label = self.tm.getTimeLabel(self.tm.getSelectedTimeRange())
-            self.setLabel(label)
+        self.set_label_fmt(None)
         self.picture = None
         self.update()
 
     def setRange(self, mn, mx):
-        pg.AxisItem.setRange(self, mn, mx)
+        super().setRange(mn, mx)
         self.tm.tO = mn + self.tickOffset
         self.tm.tE = mx + self.tickOffset
 
-    # Format a timestamp according to format underneath axis
-    def fmtTimeStmp(self, times):
-        # Get a formatted timestamp based on user-set format or default format
-        splits = times.split(' ')
-        t = splits[4]
+    def get_label_modes(self):
+        ''' Returns the full list of label formats available '''
+        return list(self.fmt_strs.keys())
 
-        if self.labelFormat:
-            fmt = self.labelFormat
-            return self.specificSplitStr(times, fmt)
+    def get_range(self):
+        ''' Returns the range of the axis item '''
+        return (self.tm.tO, self.tm.tE)
+
+    def get_default_mode(self):
+        ''' Returns the time mode set for the axis item '''
+        if self.curr_mode is None:
+            # If no current time mode is set, get the time
+            # range delta and guess mode
+            minVal, maxVal = self.get_range()
+            start = self.tm.getDateTimeObjFromTick(minVal)
+            end = self.tm.getDateTimeObjFromTick(maxVal)
+            td = abs(end-start)
+            mode = self.guess_mode(td)
         else:
-            fmt = self.defaultLabelFormat()
-            return self.specificSplitStr(times, fmt)
+            mode = self.curr_mode
+        return mode
+    
+    def set_label_fmt(self, fmt):
+        ''' Sets the label format for the axis item '''
+        old_fmt = self.lbl_fmt
 
-    def getLabelFormat(self):
-        if self.labelFormat:
-            return self.labelFormat
+        # Set label format and reset curr_mode
+        self.lbl_fmt = fmt
+        self.curr_mode = None
+
+        # Update text if visible
+        if self.label_visible:
+            label = self.get_label()
+            self.setLabel(label)
+
+        # Reset image
+        self.picture = None
+        self.update()
+
+        # Emit signal if format changed
+        if old_fmt != fmt:
+            self.formatChanged.emit(fmt)
+
+    def get_label_fmt(self):
+        ''' Returns label format value, None if not set '''
+        return self.lbl_fmt
+
+    def showLabel(self, show=True):
+        super().showLabel(show)
+        self.label_visible = show
+
+    def get_label(self):
+        ''' Returns the label format '''
+        if self.lbl_fmt:
+            return self.lbl_fmt
+        else: # Default time label
+            return self.modes[self.get_default_mode()]
+
+    def setLabelVisible(self, val):
+        if val:
+            label = self.get_label()
+            self.setLabel(label)
         else:
-            return self.defaultLabelFormat()
+            self.showLabel(False)
 
-    def specificSplitStr(self, timestamp, fmt):
-        # Get indices associated with label format and split timestamp into components
-        indices = self.timeDict[fmt]
-        splitStr = self.splitTimestamp(timestamp)
-
-        # Build timestamp from components corresp. to indices, using the
-        # appropriate suffix/prefix as needed
-        newStr = ''
-        for index in indices[::-1]:
-            if newStr != '':
-                sep = self.kwSeparators[index]
-                newStr = splitStr[index] + sep + newStr
-            else:
-                newStr = splitStr[index]
-        return newStr
-
-    def defaultLabelFormat(self):
-        # Get time label format based on range visible
-        if self.timeRange is not None:
-            rng = abs(self.timeRange[1] - self.timeRange[0])
-        else:
-            rng = self.tm.getSelectedTimeRange()
+    def guess_mode(self, td):
+        ''' Get the default time mode by comparing
+            the timedelta to the lower bounds for the
+            time range for each time mode
+        '''
+        mode = 'ms'
+        for key in self.order[::-1]:
+            if td > self.bases[key]:
+                mode = key
+                break
         
-        fmt = 'MS' # Show mm:ss.mmm
+        return mode
 
-        if rng > self.tm.dayCutoff: # if over day show MMM dd hh:mm:ss
-            fmt = 'DAY'
-        elif rng > self.tm.hrCutoff: # if over half hour show hh:mm:ss
-            fmt = 'HR'
-        elif rng > self.tm.minCutoff: # if over 10 seconds show mm:ss
-            fmt = 'MIN'
-        
-        fmt = self.formatSplitStr(fmt)
-        return fmt
+    def get_default_spacer(self, td, mode, num_ticks=6):
+        ''' Returns the default spacer values for the
+            time range length and time mode
+        '''
 
-    def getDefaultLabel(self):
-        return self.defaultLabelFormat().strip('DATE ')
-
-    def formatSplitStr(self, fmt='MS'):
-        # Format timestamp based on selected keyword
-        if fmt == 'DAY':
-            return 'DATE HH:MM'
-        elif fmt == 'HR':
-            return 'HH:MM'
-        elif fmt == 'MIN':
-            return 'MM:SS'
+        # Get spacer values to search through
+        if mode in self.spacers:
+            bins = self.spacers[mode]
         else:
-            return 'MM:SS.SSS'
+            # Get bins in [1**i, 2**i, 5**i] format,
+            # similar to original algorithm
+            bins = []
+            upper = np.ceil(np.log10(td.total_seconds()))
+            for i in range(0, int(upper)):
+                level = [n * (10**i) for n in [1,2,5]]
+                bins.extend(level)
 
-    # Helper functions for convert between datetime obj, timestamp, and tick val
-    def tmstmpToDateTime(self, timeStr):
-        return datetime.strptime(timeStr, self.fmtStr)
-    def dateTimeToTmstmp(self, dt):
-        return dt.strftime(self.fmtStr)[:-3] # Remove extra 3 millisecond digits
-    def tickStrToVal(self, tickStr):
-        return (FFTIME(tickStr, Epoch=self.window.epoch)).tick
+        # Estimate timedelta for ticks, map to time mode units,
+        # and get nearest value in bin
+        frac = td / num_ticks
+        num = np.round(frac.total_seconds() / self.factors[mode])
+        index = bisect_left(bins, num)
+        if index >= len(bins):
+            index = len(bins) - 1
 
-    # Used to zero out insignificant values in a datetime object (wrt time label res)
-    def zeroLowerVals(self, dt, delta):
-        if delta >= timedelta(days=1):
-            dt = dt.replace(day=0)
-        if delta >= timedelta(hours=1):
-           dt = dt.replace(hour = 0)
-        if delta >= timedelta(minutes=1):
-            dt = dt.replace(minute = 0)
-        if delta >= timedelta(seconds=1):
-            dt = dt.replace(second = 0)
-        if delta >= timedelta(milliseconds=1):
-            dt = dt.replace(microsecond = 0)
-        return dt
+        # Map bin value back to time
+        spacer_vals = [bins[index]]
+        if index >= 2:
+            lower = index - 2
+            # Map odd-indexed spacer's minor values to
+            # the previous index's spacer
+            if (index + 1) % 2 == 0:
+                lower = index - 1
+            spacer_vals.append(bins[lower])
+        elif index == 1:
+            spacer_vals.append(bins[0])
 
-    def tickSpacing(self, minVal, maxVal, size):
-        if self.tickDiff:
-            seconds_diff = []
-            for val in self.tickDiff:
-                seconds_diff.append((val.total_seconds(), 0))
-            return seconds_diff
+        return spacer_vals
+
+    def get_tick_dates(self, start, end, mode, spacer, cstm=False):
+        # Get 'floor' date relative to start date and
+        # calculate difference
+        start_day = start.date()
+        start_day = datetime.combine(start_day, datetime.min.time())
+        start_diff = start - start_day
+
+        # Map spacer to seconds
+        if cstm:
+            spacer_secs = spacer
         else:
-            spacing = self.defaultTickSpacing(minVal, maxVal, size)
-            return spacing
+            spacer_secs = spacer * self.factors[mode]
 
-    def timeSpacingBase(self):
-        fmt = self.getLabelFormat()
-        indexLst = self.timeDict[fmt]
-        minIndex = max(indexLst[-1], 2) # Only need to offset times
-        return minIndex, self.addVals[minIndex]
+        # Get number of spacer values need to round up to
+        # nearest 'whole' time in spacer quantities
+        num_to_start = start_diff.total_seconds() / spacer_secs
+        num_to_start = np.ceil(num_to_start)
+        clean_start = start_day + num_to_start * timedelta(seconds=spacer_secs)
 
-    def defaultTickSpacing(self, minVal, maxVal, size):
-        # First check for override tick spacing
-        if self._tickSpacing is not None:
-            return self._tickSpacing
+        # Monthly spacers do not work properly with seconds calculation
+        if mode == 'months':
+            clean_start = datetime(start.year, start.month, 1)
 
-        dif = abs(maxVal - minVal)
-        if dif == 0:
-            return []
-        
-        ## decide optimal minor tick spacing in pixels (this is just aesthetics)
-        optimalTickCount = max(2., np.log(size))
-        
-        ## optimal minor tick spacing 
-        optimalSpacing = dif / optimalTickCount
-        
-        intervals = np.array([1., 2., 10., 20., 100.])
-        minIndex, base = self.timeSpacingBase()
-        refIntervals = self.intervalLists[minIndex]
-        if refIntervals is not None:
-            intervals = refIntervals
-        elif base > 0:
-            intervals = intervals * base
+        # Get tick dates using rrule from dateutil
+        if mode != 'ms' and not cstm:
+            key = self.rule_keys[mode]
+            dates = rrule(key, dtstart=clean_start, until=end, interval=spacer)
+            dates = list(dates)
         else:
-            p10unit = 10 ** np.floor(np.log10(optimalSpacing))
-            intervals = intervals * p10unit  
-
-        ## Determine major/minor tick spacings which flank the optimal spacing.
-        minorIndex = 0
-        while (minorIndex + 2 < len(intervals)) and intervals[minorIndex+1] < optimalSpacing:
-            minorIndex += 1
-
-        upperIndex = minorIndex + 1
-        lowerIndex = minorIndex 
-
-        levels = [
-            (intervals[upperIndex], 0),
-            (intervals[lowerIndex], 0),
-        ]
+            dates = []
+            num_dates = int(abs(end-start).total_seconds() / spacer)
+            for i in range(0, num_dates):
+                dates.append(clean_start + timedelta(seconds=spacer)*i)
         
-        if refIntervals is not None:
-            level = intervals[minorIndex]
-            levels = [
-                (level*2, 0),
-                (level, 0)
-            ]
-            return levels
-
-        if self.style['maxTickLevel'] >= 2:
-            ## decide whether to include the last level of ticks
-            minSpacing = min(size / 20., 30.)
-            maxTickCount = size / minSpacing
-            if dif / intervals[minorIndex] <= maxTickCount:
-                levels.append((intervals[minorIndex], 0))
-            return levels
-
-    def getZeroPaddedInt(self, val):
-        if val < 10:
-            return '0'+str(int(val))
-        else:
-            return str(int(val))
-
-    def getOffset(self, minVal, maxVal):
-        fmt = self.getLabelFormat()
-        indexLst = self.timeDict[fmt]
-        spacers = [' ', ' ', ' ', ':', ':', '.']
-        zeroVals = ['', '', '', '00', '00', '00', '000'] # Hours, minutes, seconds, ms
-
-        # Convert minVal to a timestamp and then to its elements
-        baseTick = minVal
-        baseUTC = (FFTIME(baseTick, Epoch=self.tm.epoch)).UTC
-        splitUTC = self.splitTimestamp(baseUTC)
-        splitUTC[1] = datetime.strptime(splitUTC[1], '%b').strftime('%m')
-
-        # Extract day of year and map month to a number
-        doy = baseUTC.split(' ')[1]
-
-        # Zero out lower values in the split timestamp
-        # year, month, day, hours, minutes, seconds, ms
-        minIndex = max(indexLst[-1], 2) # Only need to offset times
-        count = 0
-        for z in range(minIndex+1, 7):
-            if splitUTC[z] != zeroVals[z]:
-                count += 1
-            splitUTC[z] = zeroVals[z]
-
-        # Build timestamp from edited values
-        splitUTC[1] = datetime.strptime(splitUTC[1], '%m').strftime('%b')
-        newUTC = splitUTC[0] + ' ' + doy
-        for z in range(1, 7):
-            newUTC = newUTC + spacers[z-1] + splitUTC[z]
-
-        newTick = (FFTIME(newUTC, Epoch=self.tm.epoch)).tick
-
-        # If zero-ed out timestamp is different from original timestamp
-        # increment the smallest time unit that will be visible in the
-        # tick label
-        if minIndex > 2 and minIndex < 6 and count > 0:
-            newTick = newTick + self.addVals[minIndex]
-        
-        # Return the difference between the original and new starting ticks
-        # if the difference is positive
-        diff = newTick - baseTick
-
-        if diff < 0:
-            return 0
-        else:
-            return diff
+        return dates
 
     def tickValues(self, minVal, maxVal, size):
-        # Get tick values for standard range and then subtract the offset
-        # (keeps the spacing on neat numbers (i.e. 25 vs 23.435 seconds)
-        # since offset must be added back in when generating strings)
-        minVal = minVal + self.tickOffset
-        maxVal = maxVal + self.tickOffset
-        vals = pg.AxisItem.tickValues(self, minVal, maxVal, size)
-        newVals = []
-        for ts, tlst in vals:
-            if len(tlst) < 1:
-                continue
-            # Adjust starting tick for each spacing group to start
-            # on a neat number
-            diff = self.getOffset(min(tlst), max(tlst))
-            newtlst = [v - self.tickOffset + diff for v in tlst]
-            newVals.append((ts, newtlst))
+        # Map to timedelta
+        start = self.tm.getDateTimeObjFromTick(minVal+self.tickOffset)
+        end = self.tm.getDateTimeObjFromTick(maxVal+self.tickOffset)
+        td = abs(end-start)
 
-        return newVals
+        # Get label format mode and spacer values
+        lbl_str = ''
+        if self.lbl_fmt is None:
+            mode = self.guess_mode(td)
+            lbl_str = self.modes[mode]
+        else:
+            # If using a custom label, guess the mode from the tick range
+            # and then use the larger of the two quantities
+            tick_mode = self.guess_mode(td)
+            label_mode = self.fmt_modes[self.lbl_fmt]
+            if self.order.index(tick_mode) < self.order.index(label_mode):
+                mode = label_mode
+            else:
+                mode = tick_mode
+
+            lbl_str = self.lbl_fmt
+        self.curr_mode = mode
+
+        # Get tick spacings
+        if self.tickDiff:
+            spacer_vals = [int(diff.total_seconds()) for diff in self.tickDiff]
+            cstm = True
+        else:
+            spacer_vals = self.get_default_spacer(td, mode)
+            cstm = False
+
+        # Get tick dates for each spacer group and map
+        # to tick values
+        vals = []
+        seen = []
+        for spacer in spacer_vals:
+            # Get tick dates in range with given spacer and map to ticks
+            dates = self.get_tick_dates(start, end, mode, spacer, cstm)
+            ticks = [self.tm.getTickFromDateTime(date) for date in dates]
+            ticks = [tick - self.tickOffset for tick in ticks]
+
+            # Remove previously seen ticks
+            unique_ticks = []
+            for t in ticks:
+                if t not in seen:
+                    unique_ticks.append(t)
+            ticks = unique_ticks
+
+            # Add ticks to list if ticks are not empty
+            if len(ticks) > 0:
+                vals.append((0, ticks))
+                seen.extend(ticks)
+
+        return vals
+
+    def tickStrings(self, values, scale, spacing):
+        # Get formatting string
+        fmt_str = ''
+        if self.lbl_fmt is None:
+            # Use default label format
+            lbl_fmt = self.modes[self.curr_mode]
+            fmt_str = self.fmt_strs[lbl_fmt]
+        else:
+            # Map set label format to formatting string
+            fmt_str = self.fmt_strs[self.lbl_fmt]
+
+        # Map each tick value to a datetime object
+        # and use strftime to format into a string
+        strs = []
+        for value in values:
+            value = value + self.tickOffset
+            date = self.tm.getDateTimeObjFromTick(value)
+            ts = date.strftime(fmt_str)
+            strs.append(ts)
+
+        return strs
 
     def generateDrawSpecs(self, p):
         """
@@ -1101,15 +1106,6 @@ class DateAxis(pg.AxisItem):
         self.levels = visibleLevels
 
         return (axisSpec, tickSpecs, textSpecs)
-
-    def tickStrings(self, values, scale, spacing):
-        # Convert start/end times to strings
-        strings = []
-        for v in values:
-            ts = (FFTIME(v+self.tickOffset, Epoch=self.tm.epoch)).UTC
-            s = self.fmtTimeStmp(ts)
-            strings.append(s)
-        return strings
 
     def setCstmTickSpacing(self, diff):
         if isinstance(diff, (list, np.ndarray)):
