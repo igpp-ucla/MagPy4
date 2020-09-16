@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import numpy as np
 import re
 from scipy.interpolate import CubicSpline
+from bisect import bisect_left, bisect_right
 
 class Vector():
     def __init__(self, values, times):
@@ -114,7 +115,6 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
         en = self.window.currentEdit
         vecDict = {}
         for dstr in self.window.DATASTRINGS:
-            from bisect import bisect_left, bisect_right
             data = self.window.getData(dstr, en)
             times = self.window.getTimes(dstr, en)[0]
             if time_range:
@@ -158,7 +158,7 @@ class simpleCalc(QtGui.QFrame, simpleCalcUI):
             return
 
         # Break down expression into list of var/num/op strings and create an Expr obj
-        result = self.evaluate(exprStr, self.window)
+        result = self.evaluate(exprStr)
 
         # Try evaluating exprObj, catch exceptions by printing error message to user
         if result is not None:
