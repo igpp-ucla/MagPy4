@@ -435,6 +435,7 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
         self.ui.axisComboBox.currentIndexChanged.connect(self.update)
 
         self.state = 0 # Startup state, nothing has been calculated yet
+        self.closed = False
 
     def getState(self):
         # Get axis and default threshold information
@@ -476,14 +477,16 @@ class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
 
     def closeEvent(self, event):
         # Remove all threshold lines before closing
-        plotNum = 0
-        for plt, line in zip(self.window.plotItems, self.lines):
-            plt.removeItem(line)
-            plotNum += 1
+        if not self.closed:
+            plotNum = 0
+            for plt, line in zip(self.window.plotItems, self.lines):
+                plt.removeItem(line)
+                plotNum += 1
+            self.window.endGeneralSelect()
+            self.closeRangeSelect()
+            super().closeEvent(event)
 
-        self.window.endGeneralSelect()
-        self.closeRangeSelect()
-        self.close()
+        self.closed = True
 
     def getDstr(self, scNum, axis):
         return self.getDstrsByVec(axis)[scNum-1]

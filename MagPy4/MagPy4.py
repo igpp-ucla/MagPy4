@@ -225,6 +225,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             'MMSOrbit' : self.openMMSOrbit,
             'MMSFormation' : self.openMMSFormation,
             'MMSData' : self.openMMSData,
+            'PlaneNormal': self.startPlaneNormal,
         }
 
         # Selection colors
@@ -955,15 +956,28 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.aboutDialog.close()
             self.aboutDialog = None
 
-    def closeMMSTools(self):
-        self.closePlaneNormal()
-        self.closeCurlometer()
-        self.closeCurvature()
-        self.closeMMSFormation()
-        self.closeMMSOrbit()
-        self.closePressure()
-        self.closeMMSData()
+    def startPlaneNormal(self):
+        self.endGeneralSelect()
+        self.closeTool('PlaneNormal')
 
+        # Get color and label
+        color = '#039dfc'
+        name = 'PlaneNormal'
+        label = 'PlaneNormal'
+        select_type = 'Single'
+
+        # Create show/close functions
+        showFunc = functools.partial(self.showTool, name)
+        closeFunc = functools.partial(self.closeTool, name)
+
+        # Create tool
+        self.tools['PlaneNormal'] = PlaneNormal(self)
+
+        # Start general selection
+        self.initGeneralSelect(label, color, None, 
+            select_type, startFunc=showFunc, updtFunc=None, 
+            closeFunc=None)
+    
     def openMMSOrbit(self):
         self.closeMMSOrbit()
         self.tools['MMSOrbit'] = mms_orbit.MMS_Orbit(self)
