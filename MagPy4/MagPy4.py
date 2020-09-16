@@ -213,7 +213,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.widget_classes = {}
         toolClasses = [DataDisplay, Edit, PlotMenu, DetrendWindow, Spectra,
             DynamicSpectra, DynamicCohPha, DynamicWave, TrajectoryAnalysis,
-            TraceStats, PlaneNormal, Curlometer, Curvature, PlaneNormal,
+            TraceStats, PlaneNormal, Curlometer, Curvature,
             mms_orbit.MMS_Orbit, mms_formation.MMS_Formation,
             PressureTool, MMSDataDownloader]
 

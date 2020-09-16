@@ -400,6 +400,7 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
 
     def closeEvent(self, event):
         self.window.endGeneralSelect()
+        self.close()
 
     def paintEvent(self, event):
         if self.shouldResizeWindow:
@@ -476,8 +477,8 @@ class MinVar(QtWidgets.QFrame, MinVarUI):
         ts = self.ui.timeEdit.toString()
         labelText = f'{", ".join(vstrs)}\n{eigenText}\n{ts[0]}->{ts[1]}'
         self.edit.apply(eigen, labelText, 'MinVar', 'L')
-        #self.edit.closeMinVar()
         PyQtUtils.moveToFront(self.edit)
+        self.edit.closeMinVar()
 
 class DataFlagTool(QtWidgets.QFrame):
     def __init__(self, window, editFrame):
