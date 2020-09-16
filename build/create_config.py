@@ -4,7 +4,7 @@ import requests
 special_libs = ['scipy', 'matplotlib', 'numpy', 'pillow', 'cdflib', 'PyQt5-sip']
 
 # Get MagPy version number
-with open('version.txt', 'r') as fd:
+with open('MagPy4/version.txt', 'r') as fd:
     lines = fd.readlines()
     version = lines[0].strip('\n')
 
