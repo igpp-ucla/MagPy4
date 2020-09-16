@@ -140,7 +140,20 @@ class TrajectoryAnalysis(QtGui.QFrame, TrajectoryUI):
 
     def validState(self):
         # Checks if at least one field vec and pos vec could be identified
-        return len(self.fieldVecs) > 0 and len(self.posVecs) > 0
+        minLength = (len(self.fieldVecs) > 0 and len(self.posVecs) > 0)
+        if not minLength:
+            return False
+
+        # Check that lengths of times for field vectors
+        # and position vectors are the same
+        fieldDstr = self.fieldVecs[0]
+        posDstr = self.posVecs[0]
+        fieldTimes = self.getTimes(fieldDstr[0], 0)
+        posTimes = self.getTimes(posDstr[-1], 0)
+        if len(fieldTimes) != len(posTimes):
+            return False
+        
+        return True
 
     def getSegments(self, sI, eI, vec='pos'):
         # Finds the time gap indices and returns a list indicating
