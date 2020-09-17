@@ -36,7 +36,7 @@ def main():
     upload_only = result.upload_only
 
     # Read in version
-    with open('version.txt', 'r') as fd:
+    with open('MagPy4/version.txt', 'r') as fd:
         version = fd.readline().strip('\n')
 
     # Create new release request or get latest release info
