@@ -44,7 +44,15 @@ class Vector():
             vals = self.values * o
         
         return Vector(vals, self.times)
-    
+
+    def __truediv__(self, o):
+        if isinstance(o, Vector):
+            vals = self.values / o.interp(self.times)
+        else:
+            vals = self.values / o
+        
+        return Vector(vals, self.times)
+
     def __neg__(self):
         vals = self.values * (-1)
         return Vector(vals, self.times)
