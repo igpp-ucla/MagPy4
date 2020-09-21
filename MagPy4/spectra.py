@@ -19,6 +19,57 @@ from .dynBase import SpectraBase
 import functools
 import time
 from .mth import Mth
+import os
+from bisect import bisect_left
+from scipy.interpolate import CubicSpline
+
+class ColorPlotTitle(pg.LabelItem):
+    ''' LabelItem with horizontally stacked labels in given colors '''
+    def __init__(self, labels, colors, sep=', ', *args, **kwargs):
+        self.labels = labels
+        self.colors = colors
+        self.sep = sep
+
+        super().__init__('', size='11pt')
+
+        self.updateText()
+
+    def getColors(self):
+        return self.colors
+
+    def setColors(self, colors):
+        ''' Set new colors for the sublabels '''
+        self.colors = colors
+        self.updateText()
+    
+    def setLabels(self, labels):
+        ''' Set new sublabels '''
+        self.labels = labels
+        self.updateText()
+
+    def updateText(self):
+        ''' Update HTML with current labels and colors '''
+        substrs = []
+        for label, color in zip(self.labels, self.colors):
+            html = self.htmlColor(label, color)
+            substrs.append(html)
+        
+        self.item.setHtml(self.sep.join(substrs))
+
+    def htmlColor(self, txt, color):
+        ''' Formats text with color in HTML string '''
+        return f'<span style="color:{color}">{txt}</span>'
+
+class SpectraPlot(MagPyPlotItem):
+    def setTitleObject(self, titleObj):
+        ''' Replaces title label object '''
+        self.layout.removeItem(self.titleLabel)
+        self.layout.addItem(titleObj, 0, 1)
+        self.titleLabel = titleObj
+
+    def getTitleObject(self):
+        ''' Returns title label object '''
+        return self.titleLabel
 
 class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
     def __init__(self, window, parent=None):
@@ -29,587 +80,654 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         
         self.ui.updateButton.clicked.connect(self.update)
         self.ui.bandWidthSpinBox.valueChanged.connect(self.update)
-        self.ui.separateTracesCheckBox.stateChanged.connect(self.clearAndUpdate)
-        self.ui.aspectLockedCheckBox.stateChanged.connect(self.setAspect)
+        self.ui.separateTracesCheckBox.stateChanged.connect(self.toggleSepTraces)
+        self.ui.aspectLockedCheckBox.stateChanged.connect(self.toggleLockAspect)
         self.ui.waveAnalysisButton.clicked.connect(self.openWaveAnalysis)
-        self.ui.logModeCheckBox.toggled.connect(self.updateScaling)
-        self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
-        self.ui.unitRatioCheckbox.stateChanged.connect(self.squarePlots)
+        self.ui.logModeCheckBox.toggled.connect(self.toggleLogScale)
+        self.ui.unitRatioCheckbox.stateChanged.connect(self.toggleUnitRatio)
 
-        self.plotItems = []
-        self.sumPlots = []
-        self.cohPhaPlots = []
-        self.rowItems = []
-        self.tracePenList = []
+        # Cached data
+        self.currRange = None # Current index range
+        self.selectInfo = None # Currently selected plots
+        self.dataState = None # If data are all the same length
+        self.powers = {}
+        self.ffts = {}
+        self.data = {}
+        self.pens = {}
+        self.maxN = 0
         self.wasClosed = False
+
+        # Stored plot items
+        self.plots = {}
+
+        # Wave analysis and plot appearance objects
         self.waveAnalysis = None
         self.plotAppr = None
-        self.linearMode = False
-        self.bTotalKw = '-bt'
-        self.ffts = {}
 
-        self.savedData = None
-        self.waveState = None # Vec/freq info to use when loading wave analysis
-                                  # window from state
-
-    def getCheckboxes(self):
-        boxes = [self.ui.logModeCheckBox, self.ui.separateTracesCheckBox, 
-            self.ui.aspectLockedCheckBox, self.ui.unitRatioCheckbox]
-        return boxes
+    def getRange(self):
+        return self.ui.timeEdit.getRange()
     
-    def isSumPlotsChecked(self):
-        return self.ui.combinedFrame.isChecked()
-
-    def setSumPlotsChecked(self, val=True):
-        self.ui.combinedFrame.setChecked(val)
-
-    def getAxisBoxes(self):
-        return self.ui.axisBoxes
+    def checkCache(self):
+        ''' Checks if cache and previous plots need to be cleared '''
+        currRange = self.getRange()
+        clear = not (self.currRange == currRange)
+        self.currRange = currRange
+        return clear
     
-    def getAxisValues(self):
-        return [box.currentText() for box in self.getAxisBoxes()]
+    def checkSelection(self, selectInfo):
+        ''' Checks if selection has changed when replotting '''
+        res = not (self.selectInfo == selectInfo)
+        if not res:
+            self.dataState = self.getDataState(selectInfo)
+        return res
 
-    def getState(self):
-        state = {}
-        # User-selected parameters
-        state['pair'] = self.getPair()
-        state['bandwidth'] = self.getBw()
-
-        # Only save sum plots info if checked and also visible
-        sumPlots = self.isSumPlotsChecked() and self.ui.tabs.isTabEnabled(3)
-        if sumPlots:
-            sumPlots = self.getVecDstrs()
+    def getDataState(self, selectInfo):
+        # Extract all plot variables
+        dstrs = []
+        for plot_dstrs, pens in selectInfo:
+            dstrs.extend(plot_dstrs)
+        
+        # Check time lengths of dstrs
+        time_indices = set()
+        for dstr, en in dstrs:
+            index = self.window.getTimeIndex(dstr, en)
+            time_indices.add(index)
+        
+        # Check if times do not match
+        if len(time_indices) > 1:
+            self.interpData(dstrs)
+            return True
         else:
-            sumPlots = None
-        state['sumPlots'] = sumPlots
+            return False
 
-        # Checkboxes values
-        state['checkVals'] = [box.isChecked() for box in self.getCheckboxes()]
+    def interpData(self, dstrs):
+        ''' Finds the largest time array for the given plot
+            variables and interpolates all variable along
+            that time array and stores it in dictionary
+        '''
+        # Get largest time range
+        max_tlen = 0
+        max_times = []
+        for dstr, en in dstrs:
+            # Get and clip time range for each variable within
+            # the selected interval
+            times = self.window.getTimes(dstr, en)[0]
+            sI, eI = self.getIndices(dstr, en)
+            times = times[sI:eI]
 
-        # Get wave analysis state info
-        waveState = None
-        if self.waveAnalysis:
-            waveState = self.waveAnalysis.getState()
-        state['waveState'] = waveState
+            # Check if this is the longest time array
+            if len(times) > max_tlen:
+                max_tlen = len(times)
+                max_times = times
+        
+        # Interpolate data along max times and save in cache
+        interpTimes = max_times
+        for dstr, en in dstrs:
+            times = self.window.getTimes(dstr, en)[0]
+            data = self.window.getData(dstr, en)
+            cs = CubicSpline(times, data, extrapolate=False)
+            interpData = cs(interpTimes)
 
-        return state
+            self.data[(dstr, en)] = interpData
 
-    def loadState(self, state):
-        c0, c1 = state['pair']
-        self.setCohPhaPair(c0, c1)
-        self.setBandwidth(state['bandwidth'])
+    def update(self):
+        ''' Update all plots '''
+        # Clear cache if indices have changed
+        clear = self.checkCache()
+        if clear:
+            self.data = {}
+            self.maxN = 0
+            self.ffts = {}
 
-        for box, val in zip(self.getCheckboxes(), state['checkVals']):
-            box.setChecked(val)
+        # Re-initialize plots if selected plot variables have changed
+        info = self.window.getSelectedPlotInfo()
+        if clear or not self.checkSelection(info):
+            split_trace = self.ui.separateTracesCheckBox.isChecked()
+            self.initPlots(split_trace)
 
-        if state['sumPlots'] is not None:
-            self.setSumPlotsChecked(True)
-            for box, (dstr, en) in zip(self.getAxisBoxes(), state['sumPlots']):
-                box.setCurrentText(dstr)
+        # Get parameters
+        params = self.getParams()
 
-        if state['waveState'] is not None:
-            self.waveState = state['waveState']
+        # Update each plot group
+        self.updateSpectra(info, params)
+        self.updateCohPha(params)
+        self.updateSumPowers(params)
 
-    def setCohPhaPair(self, c0, c1):
-        self.ui.cohPair0.setCurrentText(c0)
-        self.ui.cohPair1.setCurrentText(c1)
+        # Update y-axis ranges
+        self.updateRanges()
 
-    def setBandwidth(self, bw):
-        self.ui.bandWidthSpinBox.setValue(bw)
+    def getParams(self):
+        ''' Get parameters from UI '''
+        # Get bandwidth
+        bw = self.ui.bandWidthSpinBox.value()
+
+        # Get coherence/phase pair
+        c0 = self.ui.cohPair0.currentText()
+        c1 = self.ui.cohPair1.currentText()
+
+        # Get sum of powers bool and vector
+        sum_powers = self.ui.combinedFrame.isChecked()
+        sum_vec = []
+        if sum_powers:
+            sum_vec = [box.currentText() for box in self.ui.axisBoxes]
+
+        # Get separate traces bool
+        split_trace = self.ui.separateTracesCheckBox.isChecked()
+
+        # Assemble parameters dictionary
+        params = {
+            'bandwidth' : bw,
+            'pair' : (c0, c1),
+            'sum_powers' : (sum_powers),
+            'sum_vec' : (sum_vec),
+            'split_trace' : split_trace,
+        }
+
+        return params
+
+    def initPlots(self, split_trace):
+        ''' Initialize all plot grids
+            - split_trace indicates whether spectra plots
+              should have a new plot for each variable
+        '''
+        # Clear previous plots
+        grids = [self.ui.grid, self.ui.cohGrid, self.ui.phaGrid, 
+            self.ui.sumGrid]
+        for grid in grids:
+            grid.clear()
+
+        # Get previous plot info        
+        plotInfo = self.window.getSelectedPlotInfo()
+
+        # Get each set of plots
+        self.plots['spectra'] = self.setupSpectraPlots(plotInfo, split_trace)
+        coh, pha = self.setupCohPhaPlots()
+        self.plots['coherence'] = [coh]
+        self.plots['phase'] = [pha]
+        self.plots['sum'] = []
+
+        # Add plots to respective grids
+        groups = ['spectra', 'coherence', 'phase']
+        for grp, grid in zip(groups, grids):
+            for plot in self.plots[grp]:
+                # Add plot to grid
+                grid.addItem(plot)
+
+                # Create a plot appearance action and add to plot
+                act = QtWidgets.QAction(self)
+                act.setText('Change Plot Appearance...')
+
+                func = functools.partial(self.openPlotAppr, grp)
+                act.triggered.connect(func)
+
+                plot.getViewBox().menu.addAction(act)
+
+        # Update y scaling
+        self.toggleLogScale(self.ui.logModeCheckBox.isChecked())
+    
+    def splitTraceInfo(self, plotInfo, split_trace):
+        ''' Split plot variable and pen info, individually
+            if split_trace is True
+        '''
+        dstrs = []
+        pens = {'spectra':[]}
+        for plot in plotInfo:
+            plot_dstrs, plot_pens = plot
+            if split_trace:
+                dstrs.extend([[dstr] for dstr in plot_dstrs])
+                pen_set = [[pen] for pen in plot_pens]
+            else:
+                dstrs.append(plot_dstrs)
+                pen_set = [plot_pens]
+            
+            pens['spectra'].extend(pen_set)
+
+        return dstrs, pens
+
+    def setupSpectraPlots(self, plotInfo, split_trace=False):
+        ''' Initialize spectra plots '''
+        plot_dstrs, self.pens = self.splitTraceInfo(plotInfo, split_trace)
+
+        # Iterate over each plot variable list to create a plot item for it
+        plots = []
+        for dstrs, pens in zip(plot_dstrs, self.pens['spectra']):
+            # Create plot item
+            plot = SpectraPlot()
+            plots.append(plot)
+
+            # Set plot item title
+            var_labels = [self.window.getLabel(dstr, en) for (dstr, en) in dstrs]
+            colors = [pen.color().name() for pen in pens]
+            label = ColorPlotTitle(var_labels, colors)
+            plot.setTitleObject(label)
+
+            # Set axis labels
+            plot.getAxis('left').setLabel('Power (nT<sup>2</sup> Hz<sup>-1</sup>)')
+            plot.getAxis('bottom').setLabel('Frequency (Hz)')
+            plot.setLogMode(y=True)
+
+            # Disable auto range
+            plot.enableAutoRange(y=False, x=True)
+
+        # Link plot y axes
+        for i in range(1, len(plots)):
+            plot_a = plots[i-1]
+            plot_b = plots[i]
+            plot_b.setYLink(plot_a.getViewBox())
+        
+        # Add in time label
+        self.ui.labelLayout.clear()
+        start, end = self.getRange()
+        start = start.strftime('%Y %b %d %H:%M:%S.%f')[:-3]
+        end = end.strftime('%Y %b %d %H:%M:%S.%f')[:-3]
+        label = f'Time: {start} to {end}'
+        self.ui.labelLayout.addLabel(label)
+
+        return plots
+
+    def setupCohPhaPlots(self):
+        ''' Initialize coherence and phase plots '''
+        # Attributes for each plot
+        labels = ['Coherence', 'Phase']
+        units = ['Coherence', 'Angle (deg)']
+        spacing = [[(0.2, 0), (0.1, 0)], [(30, 0), (15, 0)]]
+        ranges = [(0., 1.), (-200, 200)]
+
+        # Iterate over plot items and create each plot item
+        plots = []
+        for label, unit, spacers, rng in zip(labels, units, spacing, ranges):
+            plot = MagPyPlotItem()
+            plots.append(plot)
+
+            # Set attributes
+            plot.setTitle(label)
+            left_axis = plot.getAxis('left')
+            left_axis.setLabel(unit)
+            left_axis.setTickSpacing(levels=spacers)
+            plot.getAxis('bottom').setLabel('Frequency (Hz)')
+
+            # Set plot ranges
+            vb = plot.getViewBox()
+            min_val, max_val = rng
+            vb.setLimits(yMin=min_val, yMax=max_val)
+
+        return plots
+
+    def setupSumPlots(self):
+        ''' Set up sum of powers spectra plots '''
+        # Get general pens from main window
+        pens = self.window.pens[:3]
+
+        # Set up plot attributes
+        labels = [['Px + Py + Pz'], ['Pt'], ['|Px + Py + Pz - Pt|'], 
+            ['|Px + Py + Pz - Pt|', 'Pt']]
+        trace_pens = [[pens[0]], [pens[1]], [pens[2]], [pens[2], pens[1]]]
+
+        left_label = 'Power (nT<sup>2</sup> Hz<sup>-1</sup>)'
+        btm_label = 'Frequency (Hz)'
+
+        # Create plots
+        plots = []
+        self.pens['sum'] = {}
+        for label_set, pen_set in zip(labels, trace_pens):
+            plot = SpectraPlot()
+            plots.append(plot)
+
+            # Set plot labels
+            plot.setLabel('left', left_label)
+            plot.setLabel('bottom', btm_label)
+
+            # Plot title
+            colors = [pen.color().name() for pen in pen_set]
+            title = ColorPlotTitle(label_set, colors)
+            plot.setTitleObject(title)
+
+            # Log scale for power
+            plot.setLogMode(y=True)
+
+            # Save plot pens
+            for label, pen in zip(label_set, pen_set):
+                self.pens['sum'][label] = pen
+
+        return plots
+
+    def updateSpectra(self, info=None, params={}):
+        ''' Calculate and re-plot spectra plots '''
+        if info is None:
+            info = self.window.getSelectedPlotInfo()
+
+        split_trace = params.get('split_trace')
+        plot_dstrs, pens = self.splitTraceInfo(info, split_trace)
+
+        # Iterate over each plot variable list, plot items, and pens
+        freq = None
+        datas = []
+        plots = self.plots['spectra']
+        plot_pens = self.pens['spectra']
+        for dstrs, plot, pens in zip(plot_dstrs, plots, plot_pens):
+            # Clear plot
+            plot.clear()
+            for (dstr, en), pen in zip(dstrs, pens):
+                # Get frequencies and n
+                if freq is None:
+                    n = len(self.getData(dstr, en))
+                    bw = params.get('bandwidth')
+                    freq = self.calculateFreqList(bw, n)
+                    self.maxN = max(self.maxN, n)
+
+                # Calculate power
+                fft = self.getfft(dstr, en)
+                power = self.calculatePower(bw, fft, n)
+                datas.append(power)
+
+                # Plot trace
+                plot.plot(freq, power, pen=pen)
+        
+        return freq, datas
+    
+    def updateCohPha(self, params={}):
+        ''' Calculate and replot coherence/phase plots '''
+        # Clear previous plots
+        self.plots['coherence'][0].clear()
+        self.plots['phase'][0].clear()
+
+        # Get variable pair
+        vara, varb = params.get('pair')
+        
+        # Calculate FFT
+        fft0 = self.getfft(vara, 0)
+        fft1 = self.getfft(varb, 0)
+
+        # Calculate coherence and phase and frequency
+        bw = params.get('bandwidth')
+        n = len(self.getData(varb, 0))
+        freq = self.calculateFreqList(bw, n)
+        coh, pha = self.calculateCoherenceAndPhase(bw, fft0, fft1, n)
+
+        # Get pen and plot
+        pen = self.window.pens[0]
+        self.plots['coherence'][0].plot(freq, coh, pen=pen)
+        self.plots['phase'][0].plot(freq, pha, pen=pen)
+
+        return (freq, [coh, pha])
+
+    def updateSumPowers(self, params):
+        ''' Calculate and plot sum of power spectra plots '''
+        # Check if this needs to be calculated
+        val = params.get('sum_powers')
+        if not val:
+            self.ui.tabs.setTabEnabled(3, False)
+            return
+        
+        # If not enabled, enable tab and set up plots
+        if not self.ui.tabs.isTabEnabled(3) or len(self.ui.sumGrid.items) < 1:
+            self.ui.sumGrid.clear()
+            self.plots['sum'] = self.setupSumPlots()
+            for plot in self.plots['sum']:
+                self.ui.sumGrid.addItem(plot)
+                plot.setLogMode(x=self.ui.logModeCheckBox.isChecked())
+
+            self.ui.tabs.setTabEnabled(3, True)
+
+        # Calculate variables
+        sum_powers, pt, sum_minus, freq = self.calculateSumOfPowers(params)
+
+        # Plot traces
+        labels = [['Px + Py + Pz'], ['Pt'], ['|Px + Py + Pz - Pt|'], 
+            ['|Px + Py + Pz - Pt|', 'Pt']]
+        groups = [[sum_powers], [pt], [sum_minus], [sum_minus, pt]]
+        plots = self.plots['sum']
+
+        for plot, label_set, values in zip(plots, labels, groups):
+            plot.clear()
+            for label, value in zip(label_set, values):
+                plot.plot(freq, value, pen=self.pens['sum'][label])
+        
+        return freq, [sum_powers, pt, sum_minus]
+    
+    def calculateSumOfPowers(self, params):
+        ''' Calculates the sum of powers spectra plot variables '''
+        # Extract parameters
+        bw = params.get('bandwidth')
+        vec = params.get('sum_vec')
+
+        # Calculate powers Px, Py, Pz
+        powers = []
+        freq, n = None, None
+        for dstr in vec:
+            if freq is None:
+                n = len(self.getData(dstr, 0))
+                freq = self.calculateFreqList(bw, n)
+            fft = self.getfft(dstr, 0)
+            power = np.array(self.calculatePower(bw, fft, n))
+            powers.append(power)
+        
+        # Calculate Pt
+        datas = [self.getData(dstr, 0)**2 for dstr in vec]
+        bt = np.sqrt(np.sum(datas, axis=0))
+        b_fft = self.data_fft(bt)
+        pt = np.array(self.calculatePower(bw, b_fft, n))
+
+        # Calculate all plot variables
+        sum_powers = powers[0] + powers[1] + powers[2]
+        sum_minus = np.abs(sum_powers - pt)
+
+        return sum_powers, pt, sum_minus, freq
+
+    def updateRanges(self):
+        ''' Updates y-ranges for all plots '''
+        # Iterate over each plot group
+        for grp in self.plots:
+            lower, upper = None, None
+            # Find the plot data items for each plot in group
+            # and find the min and max y values in the plot
+            # traces
+            for plot in self.plots[grp]:
+                pdis = plot.listDataItems()
+                for pdi in pdis:
+                    ymin, ymax = pdi.dataBounds(ax=1)
+                    if lower is None:
+                        lower = ymin
+                        upper = ymax
+                    else:
+                        lower = min(ymin, lower)
+                        upper = max(ymax, upper)
+            
+            # Set y ranges for all groups to extreme values and add padding
+            for plot in self.plots[grp]:
+                plot.setYRange(lower, upper, 0.01)
+
+    def getFreqs(self, dstr, en):
+        ''' Get the frequency list of the given data variable '''
+        bw = self.ui.bandWidthSpinBox.value()
+        n = len(self.getData(dstr, en))
+        freq = self.calculateFreqList(bw, n)
+        return freq
+
+    def getData(self, dstr, en):
+        ''' Returns the data for the given variable,
+            interpolated if there are multiple time
+            arrays for the selected set of variables
+        '''
+        # Return interpolated data if saved
+        if (dstr, en) in self.data:
+            return self.data[(dstr, en)]
+
+        # Get data and start/end indices
+        data = self.window.getData(dstr, en)
+        sI, eI = self.getIndices(dstr, en)
+
+        return data[sI:eI]
+
+    def getIndices(self, dstr, en):
+        ''' Returns start/end indices for variable '''
+        # Get start/end datetimes
+        start, end = self.getRange()
+
+        # Convert to ticks
+        start = self.window.getTickFromDateTime(start)
+        end = self.window.getTickFromDateTime(end)
+
+        # Find indices in time array
+        times = self.window.getTimes(dstr, en)[0]
+        sI = bisect_left(times, start)
+        eI = bisect_left(times, end)
+
+        return (sI, eI)
+
+    def getfft(self, dstr, en):
+        ''' Return FFT for data, calculate if not
+            cached
+        '''
+        # Calculate fft if not in cache
+        if (dstr, en) not in self.ffts:
+            data = self.getData(dstr, en)
+            fft = self.data_fft(data)
+            self.ffts[(dstr, en)] = fft
+
+        return self.ffts[(dstr, en)]
 
     def closeWaveAnalysis(self):
+        ''' Closes wave analysis window '''
         if self.waveAnalysis:
             self.waveAnalysis.close()
             self.waveAnalysis = None
 
     def openWaveAnalysis(self):
+        ''' Opens wave analysis window '''
         self.closeWaveAnalysis()
         self.waveAnalysis = WaveAnalysis(self, self.window)
         self.waveAnalysis.show()
 
-    def openPlotAppr(self, sig, plotItems=None):
-        if plotItems == None:
-            plotItems = self.plotItems
-            self.plotAppr = SpectraPlotApp(self, plotItems)
-        else:
-            self.plotAppr = PlotAppearance(self, plotItems)
+    def openPlotAppr(self, grp):
+        ''' Opens plot appearance tool for the given plot group '''
+        self.closePlotAppr()
+        plots = self.plots[grp]
+        self.plotAppr = PlotAppearance(self.window, plots)
+        self.plotAppr.colorsChanged.connect(self.updateTitleColors)
         self.plotAppr.show()
 
     def closePlotAppr(self):
+        ''' Closes plot appearance tool '''
         if self.plotAppr:
             self.plotAppr.close()
-            self.plotAppr = None
-
-    def updateDelayed(self):
-        self.ui.bandWidthSpinBox.setReadOnly(True)
-        QtCore.QTimer.singleShot(100, self.update)
 
     def closeEvent(self, event):
+        if self.wasClosed:
+            return
+
         self.closeWaveAnalysis()
         self.closePlotAppr()
+        self.wasClosed = True
         self.window.endGeneralSelect()
-        self.wasClosed = True # setting self.window.spectra=None caused program to crash with no errors.. couldnt figure out why so switched to this
 
-    # return start and stop indices of selected data
-    def getIndices(self, dstr, en):
-        if dstr not in self.indices:
-            i0,i1 = self.window.calcDataIndicesFromLines(dstr, en)
-            self.indices[dstr] = (i0,i1)
-        return self.indices[dstr]
-
-    def getPoints(self, dstr, en):
-        i0,i1 = self.getIndices(dstr, en)
-        return i1-i0
-
-    def getBw(self):
-        bw = self.ui.bandWidthSpinBox.value()
-        return bw
-
-    def getFreqs(self, dstr, en):
-        N = self.getPoints(dstr, en)
-        if N not in self.freqs:
-            self.freqs[N] = self.calculateFreqList(self.getBw(), N)
-        return self.freqs[N]
-
-    def getfft(self, dstr, en):
-        if dstr not in self.ffts:
-            i0,i1 = self.getIndices(dstr, en)
-            fft = SpectraBase.getfft(self, dstr, en, i0, i1)
-            self.ffts[dstr] = fft
-        return self.ffts[dstr]
-
-    # Used to make the appearance of logAxis axes and linear axes more uniform
-    def setAxisAppearance(self, lst):
-        for v in lst:
-            v.tickFont = QtGui.QFont()
-            v.tickFont.setPixelSize(14)
-
-    def squarePlots(self):
-        # If unit ratio, set plots to be square and axes to have same scaling
-        if self.ui.unitRatioCheckbox.isChecked():
-            for plt in self.plotItems + self.sumPlots:
-                plt.squarePlot = True
-                plt.getViewBox().setAspectLocked(lock=True, ratio=1.0)
-                # Update plot sizes
-                plt.resizeEvent(None)
-        else:
-            # Unlock aspect ratio and reset sizes to fill expand w/ grid
-            for plt in self.plotItems + self.sumPlots:
-                plt.squarePlot = False
-                plt.getViewBox().setAspectLocked(lock=False)
-                plt.adjustSize()
-        self.ui.grid.resizeEvent(None)
-        self.setAspect()
-
-    def updateScaling(self, val=None):
-        # TODO: Reset tick diff after updating scaling mode
-        # Set the mode parameter
-        if val is None:
-            val = self.ui.logModeCheckBox.isChecked()
-        self.linearMode = not val
-
-        # Disable/Enable auto-range and set scaling mode for spectra plots
-        for pi in self.plotItems:
-            pi.enableAutoRange(x=True, y=False) # disable y auto scaling
-
-            # Set up range/scaling modes
-            if self.linearMode:
-                pi.setLogMode(False, True)
-            else:
-                pi.setLogMode(True, True)
-    
-        # Manually set y-scale for each row in spectra plots
-        for row in self.rowItems:
-            self.setYRangeForRow(row)
-
-        # Set log mode for coh/pha plots
-        for pi in self.cohPhaPlots:
-            if self.linearMode:
-                pi.setLogMode(False, False)
-            else:
-                pi.setLogMode(True, False)
-
-        # Set log mode for sum of power spectra plots
-        for pi in self.sumPlots:
-            if self.linearMode:
-                pi.setLogMode(False, True)
-            else:
-                pi.setLogMode(True, True)
-
-        # Set the bottom axis labels for all plots
-        btmLabel = 'Log Frequency (Hz)'
-        if self.linearMode:
-            btmLabel = 'Frequency (Hz)'
-
-        for plt in self.sumPlots + self.cohPhaPlots + self.plotItems:
-            plt.getAxis('bottom').setLabel(btmLabel)
-
-        # Reset aspect ratios
-        self.setAspect(False)
-
-        # Adjust aspect ratio settings w/ delay in case plots haven't been shown yet
-        QtCore.QTimer.singleShot(100, self.setAspect)
-
-    def setAspect(self, val=None):
-        if val is None:
-            val = self.ui.aspectLockedCheckBox.isChecked()
-        if val:
-            # Setting ratio to None locks in current aspect ratio
-            for pi in self.plotItems + self.sumPlots:
-                ratio = None
-                pi.setAspectLocked(True, ratio=ratio)
-        else: # Unlock aspect ratio for each plot and update graphs
-            for pi in self.plotItems + self.sumPlots:
-                pi.setAspectLocked(False)
-
-    def getPair(self):
-        c0 = self.ui.cohPair0.currentText()
-        c1 = self.ui.cohPair1.currentText()
-        return c0, c1
-
-    def updateCalculations(self):
-        plotInfos = self.window.getSelectedPlotInfo()
-
-        self.indices = {}
-        self.freqs = {}
-        self.ffts = {}
-        self.powers = {}
-        self.maxN = 0
-
-        for li, (strList, penList) in enumerate(plotInfos):
-            for i,(dstr,en) in enumerate(strList):
-                fft = self.getfft(dstr,en)
-                N = self.getPoints(dstr,en)
-                self.maxN = max(self.maxN,N)
-                power = self.calculatePower(self.getBw(), fft, N)
-                self.powers[dstr] = power
-
-        # Calculate coherence and phase from pairs
-        c0, c1 = self.getPair()
-        coh,pha = self.calculateCoherenceAndPhase(self.getBw(), self.getfft(c0,0), self.getfft(c1,0), self.getPoints(c0,0))
-        self.coh = coh
-        self.pha = pha
-
-        # Additional updates for sum of powers
-        if self.isSumPlotsChecked():
-            vecDstrs = self.getVecDstrs()
-            self.powers[self.bTotalKw] = self.calcMagPower(vecDstrs)
-
-    # Initialize all plots that will be used with the current scaling
-    # Sets up initial plots, label formats, axis types, and plot placement
-    def initPlots(self, plotStrings, plotPens):
-        # Clear all current plots
+    def toggleSepTraces(self, val):
+        ''' Toggles whether each variable should have its own plot
+            or not
+        '''
+        # Clear and rebuild spectra plots
         self.ui.grid.clear()
-        self.ui.grid.setNumCols(4)
-        self.ui.labelLayout.clear()
-        self.plotItems = []
-        self.cohPhaPlots = []
-        self.tracePenList = []
-
-        # Get updated information about plots/settings
-        oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
-        aspectLocked = self.ui.aspectLockedCheckBox.isChecked()
-
-        # Build a plot item for each sub-list of traces/pens
-        for pltStrsLst, plotPensLst in zip(plotStrings, plotPens):
-            pi = self.buildPlotItem()
-            self.plotItems.append(pi)
-            self.ui.grid.addItem(pi, rowspan=1, colspan=1)
-
-            # Set title font size
-            pi.titleLabel.setAttr('size', '12pt')
-
-            # Update trace pen list
-            plotPensLst = [pg.mkPen(pen) for pen in plotPensLst]
-            self.tracePenList.append(plotPensLst)
-
-        # Update plot titles
-        self.updateTitleColors()
-
-        # Find largest title width and use it to set the minimum width
-        # for all columns so they all have the same width
-        maxWidth = 0
-        for pi in self.plotItems:
-            piw = pi.titleLabel._sizeHint[0][0] + 60 # gestimating padding
-            maxWidth = max(maxWidth, piw)
-
-        for c in range(0, self.ui.grid.layout.columnCount()):
-            self.ui.grid.layout.setColumnMinimumWidth(c, maxWidth)
-
-        # Add info about time range / frequency bands
-        leftLabel = BLabelItem({'justify':'left'})
-        rightLabel = BLabelItem({'justify':'left'})
-        leftLabel.setHtml('File:<br>Frequency Bands:<br>Time:')
-
-        self.ui.labelLayout.addItem(leftLabel)
-        self.ui.labelLayout.nextColumn()
-        self.ui.labelLayout.addItem(rightLabel)
-        self.updateInfoLabel()
-
-        # Set row items to be used when updating range for each row
-        self.rowItems = self.ui.grid.getRowItems()
-
-        # Add plot appearance menu to context menu for each plot:
-        for plt in self.plotItems:
-            plt.getViewBox().menu.addAction(self.ui.plotApprAction)
-
-    def updateInfoLabel(self):
-        # Get max label width and use it to align the info for
-        # the file, frequency bands, and start/end times
-        lbl = self.ui.labelLayout.getItem(0, 2)
-        if lbl is None:
-            return
-        maxLabelWidth = BaseLayout.getMaxLabelWidth(lbl, self.ui.grid)
-        t0,t1 = self.window.getSelectionStartEndTimes()
-        startDate = UTCQDate.removeDOY(FFTIME(t0, Epoch=self.window.epoch).UTC)
-        endDate = UTCQDate.removeDOY(FFTIME(t1, Epoch=self.window.epoch).UTC)
-        lbl.setHtml(f'{self.window.getFileNameString(maxLabelWidth)}<br>{self.maxN}<br>{startDate} to {endDate}')
-
-    def clearAndUpdate(self):
-        self.ui.grid.clear()
-        self.ui.labelLayout.clear()
+        info = self.window.getSelectedPlotInfo()
+        self.plots['spectra'] = self.setupSpectraPlots(info, val)
+        for plot in self.plots['spectra']:
+            self.ui.grid.addItem(plot)
+        
+        self.toggleLogScale(self.ui.logModeCheckBox.isChecked())
         self.update()
 
-    # Updates all current plots currently being viewed (unless scaling mode changes)
-    def update(self):
-        # Re-calculate power spectra and coh/pha
-        self.updateCalculations()
+    def toggleLogScale(self, logScale):
+        ''' Toggles log y-axis scaling '''
+        for grp in self.plots:
+            for plot in self.plots[grp]:
+                plot.setLogMode(x=logScale)
 
-        # Get plot info and parameters
-        plotInfos = self.window.getSelectedPlotInfo()
-        oneTracePerPlot = self.ui.separateTracesCheckBox.isChecked()
-        plotStrings, plotPens = self.splitPlotInfo(plotInfos, oneTracePerPlot)
+    def toggleUnitRatio(self, val):
+        ''' Toggles 1:1 aspect ratio '''
+        ratio = 1.0 if val else None
+        for grp in ['spectra', 'sum']:
+            for plot in self.plots[grp]:
+                plot.setAspectLocked(val, ratio=ratio)
+        self.updateRanges()
 
-        # If grid is empty (nothing plotted yet), initialize plot items
-        if self.ui.grid.layout.count() < 1:
-            self.initPlots(plotStrings, plotPens)
+    def toggleLockAspect(self, val):
+        ''' Toggles a locked aspect ratio '''
+        for grp in ['spectra', 'sum']:
+            for plot in self.plots[grp]:
+                plot.setAspectLocked(val, ratio=None)
 
-        plotPens = self.tracePenList
-        plts = self.plotItems
-        # Clear each plot and re-plot traces w/ updated power results
-        for plotDstrs, plotPenList, plt in zip(plotStrings, plotPens, plts):
-            plt.clear()
-            for (dstr, en), pen in zip(plotDstrs, plotPenList):
-                freq = self.getFreqs(dstr, en)
-                power = self.powers[dstr]
-                plt.plot(freq, power, pen=pen)
+    def updateTitleColors(self, result):
+        # Extract line and pen info
+        lineInfo, pen = result
+        plotNum = lineInfo['plotIndex']
+        traceNum = lineInfo['traceIndex']
 
-        self.updateTitleColors()
-        self.updateInfoLabel()
+        # Update state and title colors
+        self.pens['spectra'][plotNum][traceNum] = pen
+        plotTitle = self.plots['spectra'][plotNum].getTitleObject()
+        colors = plotTitle.getColors()
+        colors[traceNum] = pen.color().name()
+        plotTitle.setColors(colors)
 
-        # Update coherence and phase graphs
-        self.updateCohPha()
-        self.updateCombined()
-        self.updateScaling()
+class SpectraTests():
+    def __init__(self, window):
+        self.window = window
+        self.file_folder = 'test_files'
+        self.specFiles = ['spec_bx.csv', 'spec_by.csv', 'spec_bz.csv']
+        self.cohFiles = ['coh_bx_by.csv']
+        self.phaseFiles = ['phase_bx_by.csv']
+        self.sumFiles = ['sum_spec.csv', 'pt_spec.csv', 'sum_minus.csv']
 
-        # Open wave analysis if loading from state
-        if self.waveState is not None:
-            self.openWaveAnalysis()
-            self.waveAnalysis.loadState(self.waveState)
-            self.waveAnalysis.updateCalculations()
-            self.waveState = None # Clear state after loading
+        self.window.startTool('Spectra')
+        self.tool = self.window.tools['Spectra']
+        self.window.currSelect.setPostFunc(self.runTests)
+        self.window.show()
+        self.window.autoSelectRange()
 
-    def buildPlotItem(self):
-        pi = SpectraPlotItem(viewBox = SpectraViewBox())
-        pi.hideButtons() # hide autoscale button
+    def runTests(self):
+        self.tool.ui.combinedFrame.setChecked(True)
+        self.tool.update()
+        params = self.tool.getParams()
+        self.test_spectra(params)
+        self.test_coh_pha(params)
+        self.test_sum_powers(params)
 
-        return pi
+    def test_spectra(self, params):
+        ''' Test spectra plot results '''
+        freq, datas = self.tool.updateSpectra(info=None, params=params)
+        self.test_datas(freq, datas, self.specFiles, True)
 
-    def getPower(self, dstr, en):
-        # Return power for a dstr, calculating it if its not in the dictionary
-        if dstr not in self.powers:
-            bw = self.getBw()
-            fft = self.getfft(dstr, en)
-            a, b = self.getIndices(dstr, en)
-            self.powers[dstr] = self.calculatePower(bw, fft, b-a)
-        return self.powers[dstr]
+    def test_coh_pha(self, params):
+        ''' Test coherence and phase calculations '''
+        freq, data = self.tool.updateCohPha(params)
+        files = self.cohFiles + self.phaseFiles
+        self.test_datas(freq, data, files, False)
 
-    def calcSumOfPowers(self, vecDstrs):
-        powerLst = []
-        for dstr, en in vecDstrs:
-            powerLst.append(np.array(self.getPower(dstr, en)))
-        sumOfPowers = powerLst[0] + powerLst[1] + powerLst[2]
-        return sumOfPowers
+    def test_sum_powers(self, params):
+        ''' Test sum of powers calculations '''
+        freq, datas = self.tool.updateSumPowers(params)
+        self.test_datas(freq, datas, self.sumFiles, True)
 
-    def calcMagPower(self, vecDstrs):
-        # Calculates the magnitude and then gets its power spectra
-        bw = self.getBw()
-        a, b = self.getIndices(vecDstrs[0][0], vecDstrs[0][1])
-        dtaLst = [self.window.getData(dstr, en)[a:b] for dstr, en in vecDstrs]
-        dtaLst = [dta ** 2 for dta in dtaLst]
-        b_tot = np.sqrt(dtaLst[0] + dtaLst[1] + dtaLst[2])
-        fft = fftpack.rfft(b_tot.tolist())
-        power = self.calculatePower(bw, fft, b-a)
-        return power
+    def test_datas(self, freq, datas, files, log_y):
+        ''' Iterate over datas and files to see if
+            the y values are the same and that the x values
+            match the calculated frequencies
 
-    def getVecDstrs(self):
-        # Get list of dstrs from vector combo boxes
-        dstrs = self.getAxisValues()
+            log_y specifies whether y-values should be log-scaled
+        '''
+        axes = np.arange(len(files))
 
-        # Make a dictionary of the plotted dstrs and the maximum edit number shown
-        enDict = {}
-        plotInfo = self.window.lastPlotStrings
-        for dstrLst in plotInfo:
-            for dstr, en in dstrLst:
-                if dstr in enDict:
-                    enDict[dstr] = max(enDict[dstr], en)
-                else:
-                    enDict[dstr] = en
-
-        # Return a list of tuples of the selected dstrs and their edit numbers
-        vecDstrs = []
-        for dstr in dstrs:
-            if dstr in enDict:
-                vecDstrs.append((dstr, enDict[dstr]))
+        for axis, file in zip(axes, files):
+            file = os.path.join(self.file_folder, file)
+            test_data = np.loadtxt(file, delimiter=',', skiprows=1, usecols=[0,1])
+            
+            x0 = 10 ** test_data[:,0]
+            if log_y:
+                y0 = 10 ** test_data[:,1]
             else:
-                vecDstrs.append((dstr, self.window.currentEdit))
+                y0 = test_data[:,1]
 
-        return vecDstrs
+            calc_data = np.array(datas[axis])
+            calc_freq = np.array(freq)
 
-    def updateCombined(self):
-        if not self.ui.combinedFrame.isChecked():
-            return
-        elif not self.ui.tabs.isTabEnabled(3):
-            self.ui.tabs.setTabEnabled(3, True)
-
-        # Reset grid
-        self.ui.sumGrid.clear()
-
-        # Get default plot info
-        self.sumPlots = []
-        pltNames = ['Px + Py + Pz', 'Pt', '|Px + Py + Pz - Pt|']
-        pens = [pg.mkPen(pen) for pen in self.window.pens]
-
-        # Calculate/fetch sum of powers and related data
-        vecDstrs = self.getVecDstrs()
-        freq = self.getFreqs(vecDstrs[0][0], self.window.currentEdit)
-        sumOfPowers = self.calcSumOfPowers(vecDstrs)
-        magPower = self.powers[self.bTotalKw]
-        absSumMinusPt = abs(sumOfPowers - magPower)
-
-        # Create plots and set titles for plots w/ only one trace
-        dta = [sumOfPowers, magPower, absSumMinusPt]
-        coords = [(0, 0), (0, 1), (1, 0)]
-        for dta, (x, y), pen, title in zip(dta, coords, pens[0:3], pltNames[0:3]):
-            pi = self.buildPlotItem()
-            self.ui.sumGrid.addItem(pi, x, y)
-            self.sumPlots.append(pi)
-            pi.plot(freq, dta, pen=pen)
-            title = f"<span style='color:{pen.color().name()};'>{title}</span>"
-            pi.titleLabel.setAttr('size', '12pt')
-            pi.setTitle(title)
-
-        # Build bottom right plot with |Px + Py + Pz - Pt| & Pt traces
-        pi = self.buildPlotItem()
-        self.ui.sumGrid.addItem(pi, 1, 1, 1, 1)
-        pi.plot(freq, absSumMinusPt, pen=pens[2])
-        pi.plot(freq, magPower, pen=pens[1])
-
-        # Custom title string
-        titleString = self.formatPltTitle(pltNames[2], pens[2].color().name())
-        titleString = f"{titleString} & "
-        titleString = f"{titleString}{self.formatPltTitle(pltNames[1], pens[1].color().name())}"
-        pi.titleLabel.setAttr('size', '12pt')
-
-        pi.setTitle(titleString)
-        self.sumPlots.append(pi)
-
-        # Set axis labels for all plots
-        for pi in self.sumPlots:
-            pi.setLabels(left='Power (nT<sup>2</sup> Hz<sup>-1</sup>)')
-
-    def splitPlotInfo(self, plotInfos, sepTraceMode=False):
-        # Determine which plot strings correspond to which plots
-        # based on whether plotting separate traces or not
-        plotStrings = []
-        plotPens = []
-        for dstrList, plotPenList in plotInfos:
-            if sepTraceMode:
-                for dstrInfo, penInfo in zip(dstrList, plotPenList):
-                    plotStrings.append([dstrInfo])
-                    plotPens.append([penInfo])
-            else:
-                plotStrings.append(dstrList)
-                plotPens.append(plotPenList)
-
-        return plotStrings, plotPens
-
-    def updateTitleColors(self):
-        # Update title colors to match colors from a list of pens
-        plotInfos = self.window.getSelectedPlotInfo()
-        titleString = ''
-        sepTraceMode = self.ui.separateTracesCheckBox.isChecked()
-
-        # Determine which plot strings correspond to which plots
-        # based on whether plotting separate traces or not
-        plotStrings, prevPlotPens = self.splitPlotInfo(plotInfos, sepTraceMode)
-
-        # Loop through each set of plot strings and the corresponding set of pens
-        # in penList
-        plotIndex = 0
-        for stringInfo, plotPenList in zip(plotStrings, self.tracePenList):
-            pi = self.plotItems[plotIndex]
-            titleString = ''
-            # Update title string for every plot w/ new pen color
-            for (dstr, en), pen in zip(stringInfo, plotPenList):
-                pstr = self.window.getLabel(dstr, en)
-                titleString = f"{titleString} <span style='color:{pen.color().name()};'>{pstr}</span>"
-            pi.setTitle(titleString)
-            plotIndex += 1
-
-    def formatPltTitle(self, titleStr, color):
-        return f"<span style='color:{color};'>{titleStr}</span>"
-
-    # remove limits later incase they want to type in directly
-    def removeLimits(self):
-        self.ui.bandWidthSpinBox.setMinimum(1)
-        self.ui.bandWidthSpinBox.setMaximum(99)
-    
-    def updateCohPha(self):
-        c0, c1 = self.getPair()
-        abbrv0 = self.window.getAbbrvDstr(c0)
-        abbrv1 = self.window.getAbbrvDstr(c1)
-        freqs = self.getFreqs(c0,0)
-
-        datas = [[self.ui.cohGrid, self.coh, 'Coherence', ''],[self.ui.phaGrid, self.pha, 'Phase', ' (&deg;)']]
-        plts = []
-
-        for d in datas:
-            d[0].clear()
-            pi = MagPyPlotItem()
-            pi.plot(freqs, d[1], pen=QtGui.QPen(self.window.pens[0]))
-            pi.titleLabel.setAttr('size', '12pt') # Set up default font size
-            pi.setLabels(title=f'{d[2]}:  {abbrv0}   vs   {abbrv1}', left=f'{d[2]}{d[3]}')
-            d[0].addItem(pi)
-            plts.append(pi)
-
-            # y axis should be in angles for phase
-            if d[2] == 'Phase':
-                pi.getAxis('left').setTickSpacing(90, 15)
-
-        # Custom context menu handling for coh/pha
-        actText = 'Change Plot Appearance...'
-        self.plotApprActs = [QtWidgets.QAction(actText), QtWidgets.QAction(actText)]
-        for pi, act in zip(plts, self.plotApprActs):
-            act.triggered.connect(functools.partial(self.openPlotAppr, None, [pi]))
-            vb = pi.getViewBox()
-            vb.menu.addAction(act)
-
-        self.cohPhaPlots = plts
-
-    # scale each plot to use same y range
-    # the viewRange function was returning incorrect results so had to do manually
-    def setYRangeForRow(self, curRow):
-        minVal = np.inf
-        maxVal = -np.inf
-        for item in curRow:
-            dataItems = item.listDataItems()
-            datas = [dataItem.yData for dataItem in dataItems]
-            for dta in datas:
-                minVal = min(minVal, min(dta))
-                maxVal = max(maxVal, max(dta))
-                                    
-        minVal = np.log10(minVal) # since plots are in log mode have to give log version of range
-        maxVal = np.log10(maxVal)
-        for item in curRow:
-            item.setYRange(minVal,maxVal)
+            assert(np.allclose(x0, calc_freq))
+            assert(np.allclose(y0, calc_data))

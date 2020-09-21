@@ -138,6 +138,7 @@ class PlotAppearanceUI(BaseLayout):
         return scrollArea
 
 class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
+    colorsChanged = QtCore.pyqtSignal(object)
     def __init__(self, window, plotItems, parent=None, mainWindow=False,
         links=None):
         super(PlotAppearance, self).__init__(parent)
@@ -273,6 +274,8 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
         # Set the title colors to match, if implemented
         self.setChangesPersistent(lineInfo)
         self.adjustTitleColors(lineInfo)
+
+        self.colorsChanged.emit((lineInfo, pen))
 
     def setButtonColor(self, cs, color):
         styleSheet = f'''

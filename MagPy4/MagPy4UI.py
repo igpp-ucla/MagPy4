@@ -600,6 +600,12 @@ class TimeEdit():
     def setTimeRange(self, start_dt, end_dt):
         self.start.setDateTime(start_dt)
         self.end.setDateTime(end_dt)
+    
+    def getRange(self):
+        ''' Return start/end datetimes '''
+        start = self.start.dateTime().toPyDateTime()
+        end = self.end.dateTime().toPyDateTime()
+        return (start, end)
 
     def setLinkedRegion(self, region):
         ''' 

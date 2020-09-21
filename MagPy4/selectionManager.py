@@ -57,6 +57,7 @@ class GeneralSelect(object):
         # after a region is fully selected
         self.stepFunc = None
         self.fullStepFunc = None
+        self.post_func = None
 
         # Link time edit to lines
         self.linkLinesToTimeEdit()
@@ -261,6 +262,9 @@ class GeneralSelect(object):
         self.callOpenFunc()
         self.callUpdateFunc()
 
+        if self.post_func:
+            self.post_func()
+
     def callOpenFunc(self):
         if self.func:
             self.openFunc()
@@ -377,6 +381,9 @@ class GeneralSelect(object):
         if region:
             self.regionActivated(region)
             self.updateTimeEdit(region)
+
+    def setPostFunc(self, post_func):
+        self.post_func = post_func
 
 class BatchSelectRegions(GeneralSelect):
     '''

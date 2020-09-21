@@ -2830,6 +2830,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             assert len(Y) == len(times), 'filter time correction failed...'
             resolutions = np.diff(times)
         return times,resolutions,avgRes
+    
+    def getTimeIndex(self, dstr, en):
+        return self.TIMEINDEX[dstr]
 
     def getConnectionList(self, resolutions, avgRes):
         mask = resolutions > (avgRes * 2)

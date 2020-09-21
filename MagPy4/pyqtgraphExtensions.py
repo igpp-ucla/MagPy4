@@ -402,6 +402,7 @@ class RowGridLayout(pg.GraphicsLayout):
         return [self.rows[rowNum][col] for col in cols]
 
     def getRowItems(self):
+        ''' Returns list of items in each row as a list '''
         # Get list of row numbers in sorted order
         rowIndices = list(self.rows.keys())
         rowIndices.sort()
@@ -412,6 +413,26 @@ class RowGridLayout(pg.GraphicsLayout):
             rowItems.append(self.getRow(row))
 
         return rowItems
+
+class SpectraGrid(RowGridLayout):
+    def addItem(self, *args, **kwargs):
+        super().addItem(*args, **kwargs)
+        self.updateRowWidths()
+    
+    def updateRowWidths(self):
+        rowItems = self.getRowItems()
+        for row in rowItems:
+            rowPlots = []
+            minWidth = 10
+            for item in row:
+                if isinstance(item, pg.PlotItem):
+                    rowPlots.append(item)
+                    width = item.minimumWidth()
+                    minWidth = max(width, minWidth)
+
+            for plot in rowPlots:
+                plot.setMinimumWidth(minWidth)
+
 # Same as export() from pyqtgraph's ImageExporter class
 # But fixed bug where width/height params are not set as integers
 def cstmImageExport(self, fileName=None, toBytes=False, copy=False):

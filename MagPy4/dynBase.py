@@ -570,6 +570,9 @@ class SpectraBase(object):
 
     def getfft(self, dstr, en, i0, i1, detrend=False):
         data = self.window.getData(dstr, en)[i0:i1]
+        return self.data_fft(data, detrend)
+    
+    def data_fft(self, data, detrend=False):
         if detrend:
             data = signal.detrend(data)
         fft = fftpack.rfft(data.tolist())

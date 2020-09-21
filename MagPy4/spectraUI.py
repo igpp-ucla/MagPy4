@@ -3,7 +3,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 import pyqtgraph as pg
-from .pyqtgraphExtensions import GridGraphicsLayout, RowGridLayout, BLabelItem
+from .pyqtgraphExtensions import GridGraphicsLayout, SpectraGrid, BLabelItem
 from .MagPy4UI import TimeEdit
 
 class SpectraUI(object):
@@ -13,7 +13,7 @@ class SpectraUI(object):
         gmain = GridGraphicsLayout() # made this based off pg.GraphicsLayout
         gmain.setContentsMargins(11,0,11,0) # left top right bottom
         view.setCentralItem(gmain)
-        grid = RowGridLayout()
+        grid = SpectraGrid(4)
         grid.setContentsMargins(0,0,0,0)
         labelLayout = GridGraphicsLayout()
         labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
@@ -29,7 +29,7 @@ class SpectraUI(object):
         #apparently default is 11, tried getting the margins and they all were zero seems bugged according to pyqtgraph
         gmain.setContentsMargins(11,0,11,11) # left top right bottom
         view.setCentralItem(gmain)
-        grid = GridGraphicsLayout()
+        grid = SpectraGrid(2)
         grid.setContentsMargins(0,0,0,0)
         gmain.addItem(grid)
         return view, grid
@@ -63,6 +63,7 @@ class SpectraUI(object):
         bandWidthLabel = QtGui.QLabel("Average Bandwidth:  ")
         self.bandWidthSpinBox = QtGui.QSpinBox()
         self.bandWidthSpinBox.setSingleStep(2)
+        self.bandWidthSpinBox.setMinimum(1)
         self.bandWidthSpinBox.setProperty("value", 3)
         self.bandWidthSpinBox.setFixedWidth(50)
 
@@ -72,7 +73,7 @@ class SpectraUI(object):
         ###separateTraces = QtGui.QLabel("Separate Traces")
       
         self.aspectLockedCheckBox = QtGui.QCheckBox('Lock Aspect Ratio')
-        self.aspectLockedCheckBox.setChecked(True)
+        self.aspectLockedCheckBox.setChecked(False)
         ###aspectLockedLabel = QtGui.QLabel("Lock Aspect Ratio")
 
         self.logModeCheckBox = QtGui.QCheckBox('Logarithmic scaling')
