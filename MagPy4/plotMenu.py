@@ -372,8 +372,6 @@ class ListLayout(QtWidgets.QGridLayout):
     def __init__(self, window, frame):
         self.window = window
         self.mainFrame = frame
-        self.pltFrms = []
-        self.pltTbls = []
         self.editNumbers = []
 
         QtWidgets.QGridLayout.__init__(self)
@@ -389,8 +387,6 @@ class ListLayout(QtWidgets.QGridLayout):
         layout.addWidget(self.dstrTableFrame, 0, 0, 1, 1)
 
         self.plotWrappers = []
-        self.pltFrms, self.pltTbls, self.elems = [], [], []
-        # self.pltLtFrm = DragFrameArea()
         self.pltLtFrm = QtWidgets.QFrame()
         self.pltLt = DragLayout(self.pltLtFrm)
         self.pltLt.setContentsMargins(0, 0, 0, 0)
@@ -591,6 +587,24 @@ class ListLayout(QtWidgets.QGridLayout):
             factors.append(item.heightBox.value())
         return factors
 
+    def getSelectedItems(self):
+        return self.dstrTable.selectedItems()
+    
+    def getPlotWidgets(self):
+        ''' Returns listwidgets for each plot '''
+        count = self.pltLt.count()
+        items = [self.pltLt.itemAtPosition(i, 0) for i in range(count)]
+        widgets = [item.widget() for item in items]
+        return widgets
+
+    def splitAdd(self):
+        ''' Distributes selected plot variables across first
+            n plots, where n = len(plot variables)
+        '''
+        items = self.dstrTable.selectedItems()
+        for item, plot in zip(items, self.getPlotWidgets()):
+            plot.addItems([item])
+
 class PlotMenuUI(object):
     def setupUI(self, Frame):
         Frame.setWindowTitle('Plot Menu')
@@ -669,10 +683,32 @@ class PlotMenuUI(object):
         # layouts that may be dynamically set by the user
         self.pltLtFrame = QtWidgets.QFrame()
         self.pltLtContainer = QtWidgets.QGridLayout(self.pltLtFrame)
+        self.pltLtContainer.setContentsMargins(0, 10, 0, 0)
         self.plottingLayout = ListLayout(Frame.window, Frame)
         self.pltLtContainer.addLayout(self.plottingLayout, 0, 0, 1, 1)
         self.layout.addWidget(self.pltLtFrame)
+        
+        # Set up split button
+        img_path = getRelPath('images')
+        img_path = os.path.join(img_path, 'split_arrow.png')
+        pixmap = QtGui.QPixmap(img_path)
+        icon = QtGui.QIcon(pixmap)
 
+        self.splitAddBtn = QtWidgets.QPushButton('')
+        self.splitAddBtn.setIcon(icon)
+        self.splitAddBtn.setIconSize(QtCore.QSize(25, 25))
+        tt = 'Click to distribute selected N variables across first N plots'
+        self.splitAddBtn.setToolTip(tt)
+
+        splitBtnLt = QtWidgets.QHBoxLayout()
+        splitBtnLt.addStretch(1)
+        splitBtnLt.addWidget(self.splitAddBtn)
+        splitBtnLt.addStretch(1)
+        splitBtnLt.setContentsMargins(0, 0, 0, 0)
+
+        self.layout.addLayout(splitBtnLt)
+
+        # Set up link button layout
         self.fgridFrame = QtWidgets.QGroupBox('Link Groups')
         self.fgridFrame.setToolTip('Link the Y axes of each plot in each group to have the same scale with each other')
         self.fgrid = QtWidgets.QGridLayout(self.fgridFrame)
@@ -697,6 +733,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.ui.removePlotButton.clicked.connect(self.removePlot)
         self.ui.plotButton.clicked.connect(self.plotData)
         self.ui.defaultsButton.clicked.connect(self.reloadDefaults)
+        self.ui.splitAddBtn.clicked.connect(self.splitAdd)
         self.fcheckBoxes = []
 
         # add the edit name options to dropdown
@@ -933,6 +970,13 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.plotCount += 1
         self.ui.plottingLayout.addPlot()
         self.rebuildPlotLinks()
+    
+    def splitAdd(self):
+        items = self.ui.plottingLayout.getSelectedItems()
+        for i in range(self.plotCount, len(items)):
+            self.addPlot()
+        
+        self.ui.plottingLayout.splitAdd()
 
     def checksToBools(self, cbMatrix, skipEmpty=False):
         boolMatrix = []
