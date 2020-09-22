@@ -386,6 +386,32 @@ class PressurePlotApp(PlotAppearance):
                 penIndex += 1
             plotIndex += 1
 
+class SectionLineEdit(QtWidgets.QLineEdit):
+    initialSelect = QtCore.pyqtSignal()
+    def __init__(self, select_func=None, *args, **kwargs):
+        self.select_func = select_func
+        super().__init__(*args, **kwargs)
+        self.cursorPositionChanged.connect(self.select_section)
+        self.editingFinished.connect(self.end_select)
+
+    def start_editing(self, pos):
+        if not self.hasSelectedText() and pos != len(self.text()):
+            self.initialSelect.emit()
+    
+    def select_section(self, old_pos, new_pos):
+        if self.hasSelectedText():
+            return
+
+        rng = self.select_func(old_pos, new_pos)
+        if rng:
+            start, end = rng
+            self.blockSignals(True)
+            self.setSelection(start, end)
+            self.blockSignals(False)
+    
+    def end_select(self):
+        self.deselect()
+
 class TimeIntBox(QtWidgets.QAbstractSpinBox):
     ''' Input box for specifying time intervals '''
     def __init__(self):
@@ -409,9 +435,35 @@ class TimeIntBox(QtWidgets.QAbstractSpinBox):
         self.factors = [24*60*60, 60*60, 60, 1]
         self.editingFinished.connect(self.validateAfterReturn)
 
-        # Set default text and minimum width
+        # Set default text and minimum widths
         self.clear()
         self.setMinimumWidth(275)
+
+        # Set line editor and connect clicks to section selector
+        self.setLineEdit(SectionLineEdit(self.get_section))
+        self.validateAfterReturn()
+    
+    def get_section(self, old_pos, pos):
+        text = self.lineEdit().text()
+        expr = '[A-z]+=[0-9]+'
+        grps = list(re.finditer(expr, text))
+
+        i = max(np.sign(pos - old_pos), 1)
+
+        rng = None
+        for grp in grps[::i]:
+            start = grp.start()
+            end = grp.end()
+            if pos >= start and pos < end:
+                subtext = text[start:end]
+                select_start = start
+                lft, rght = subtext.split('=')
+                select_start += len(lft) + 1
+                select_len = len(rght)
+                rng = (select_start, select_len)
+                break
+
+        return rng
 
     def interpretText(self):
         ''' Maps text to a timedelta value '''

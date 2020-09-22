@@ -20,6 +20,9 @@ from .simpleCalculations import simpleCalc
 from .mth import Mth
 from .MagPy4UI import PyQtUtils
 
+from datetime import datetime
+from .geopack.geopack import geopack
+
 class Edit(QtWidgets.QFrame, EditUI):
 
     def __init__(self, window, parent=None):
@@ -84,6 +87,21 @@ class Edit(QtWidgets.QFrame, EditUI):
         if window.insightMode:
             self.ui.smoothBtn.clicked.connect(window.startSmoothing)
 
+        self.gsm_gse_tool = None
+        self.ui.gseGsmBtn.clicked.connect(self.startGSMGSE)
+
+    def startGSMGSE(self):
+        ''' Open GSM/GSE conversion tool '''
+        self.closeGSMGSE()
+        self.gsm_gse_tool = GSM_GSE_Tool(self.window, self)
+        self.gsm_gse_tool.show()
+    
+    def closeGSMGSE(self):
+        ''' Close GSM/GSE conversion tool '''
+        if self.gsm_gse_tool:
+            self.gsm_gse_tool.close()
+            self.gsm_gse_tool = None
+
     def closeEvent(self, event):
         # Save edit history
         self.window.editHistory = self.getEditHistory()
@@ -92,6 +110,7 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.closeMinVar()
         self.closeSimpleCalc()
         self.closeDataFlagTool()
+        self.closeGSMGSE()
 
     def getEditHistory(self):
         hist = []
@@ -571,3 +590,163 @@ class DataFlagTool(QtWidgets.QFrame):
         # End general select and close
         self.window.endGeneralSelect()
         self.close()
+
+class GSM_GSE_Coord():
+    TO_GSM = -1
+    TO_GSE = 1
+    def get_universal_time(epoch, ticks):
+        ''' Convert seconds since epoch time to
+            universal time
+        '''
+        # Create lambdas to convert ticks to datetimes and
+        # then to the univeral time
+        udt = datetime(1970, 1, 1)
+        fmt = '%Y %j %b %d %H:%M:%S.%f'
+        to_ts = lambda x : FFTIME(x, Epoch=epoch).UTC
+        to_dt = lambda ts : datetime.strptime(ts, fmt)
+        to_diff = lambda t : (to_dt(to_ts(t)) - udt).total_seconds()
+
+        # Compute map
+        uttimes = list(map(to_diff, ticks))
+
+        return uttimes
+
+    def map_coords(x, y, z, t, epoch, direction):
+        ''' Map x, y, z coordinates with t seconds since epoch
+            from gsm to gse or gse to gsm depending on direction
+        '''
+        # Map time ticks to universal time
+        ut = GSM_GSE_Coord.get_universal_time(epoch, t)
+
+        # Convert coordinates and yield in tuple format
+        vals = []
+        for xt, yt, zt, tt in zip(x, y, z, ut):
+            geopack.recalc(tt)
+            res = geopack.gsmgse(xt, yt, zt, direction)
+            vals.append(res)
+        
+        return vals
+
+    def map_to_recs(coords):
+        ''' Map list of tuples to a structured numpy records array '''
+        dtype = [('x', 'f8'), ('y', 'f8'), ('z', 'f8')]
+        return np.array(coords, dtype=dtype)
+
+    def gsm_to_gse(x, y, z, t, epoch):
+        ''' Map x, y, z coordinates with t seconds since epoch
+            from GSM to GSE
+        '''
+        d = GSM_GSE_Coord.TO_GSE
+        coords = list(GSM_GSE_Coord.map_coords(x, y, z, t, epoch, d))
+        records = GSM_GSE_Coord.map_to_recs(coords)
+        return records
+
+    def gse_to_gsm(x, y, z, t, epoch):
+        ''' Map x, y, z coordinates with t seconds since epoch
+            from GSE to GSM
+        '''
+        d = GSM_GSE_Coord.TO_GSM
+        coords = list(GSM_GSE_Coord.map_coords(x, y, z, t, epoch, d))
+        records = GSM_GSE_Coord.map_to_recs(coords)
+        return records
+
+class GSM_GSE_Tool(QtWidgets.QFrame):
+    def __init__(self, window, editWindow):
+        self.window = window
+        self.editWindow = editWindow
+
+        super().__init__()
+        self.setupLayout()
+        self.modes = {
+            'GSM to GSE' : GSM_GSE_Coord.TO_GSE,
+            'GSE to GSM' : GSM_GSE_Coord.TO_GSM,
+        }
+        self.applyBtn.clicked.connect(self.apply)
+
+    def setupLayout(self):
+        self.setWindowTitle('GSM/GSE Conversion')
+        layout = QtWidgets.QVBoxLayout(self)
+
+        # Vector layout
+        self.vecBoxes = [QtWidgets.QComboBox() for i in range(3)]
+
+        ## Get vector groups from main window and add to boxes
+        for grp in self.window.VECGRPS:
+            vec = self.window.VECGRPS[grp]
+            vec = vec[:3]
+            if len(vec) < 3:
+                continue
+
+            for dstr, box in zip(vec, self.vecBoxes):
+                box.addItem(dstr)
+
+        vecLt = QtWidgets.QHBoxLayout()
+        for vecBox in self.vecBoxes:
+            vecLt.addWidget(vecBox)
+
+        # Direction option
+        items = ['GSM to GSE', 'GSE to GSM']
+        self.optsBox = QtWidgets.QComboBox()
+        self.optsBox.addItems(items)
+
+        optsLt = QtWidgets.QHBoxLayout()
+        label = QtWidgets.QLabel('Mode: ')
+        label.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
+        optsLt.addWidget(label)
+        optsLt.addWidget(self.optsBox)
+
+        # Apply button
+        self.applyBtn = QtWidgets.QPushButton('Apply')
+        applyLt = QtWidgets.QHBoxLayout()
+        applyLt.addStretch()
+        applyLt.addWidget(self.applyBtn)
+        
+        layout.addLayout(vecLt)
+        layout.addLayout(optsLt)
+        layout.addLayout(applyLt)
+
+    def gsm_gse_conv(self, vecs, to_gse=True):
+        ''' Converts vectors to GSM or GSE based on to_gsm flag 
+            and adds an entry to the edit list
+        '''
+        # Get conversion function
+        func = GSM_GSE_Coord.gse_to_gsm
+        if to_gse:
+            func = GSM_GSE_Coord.gsm_to_gse
+
+        # Iterate over vectors
+        for vec in vecs:
+            # Get data
+            en = self.window.currentEdit
+            data = [self.window.getData(dstr, en) for dstr in vec]
+            x, y, z = data
+
+            # Get times
+            times = self.window.getTimes(vec[0], en)[0]
+            epoch = self.window.epoch
+
+            # Convert coordinates
+            new_data = func(x, y, z, times, epoch)
+            keys = new_data.dtype.names
+
+            # Add to history
+            for dstr, key in zip(vec, keys):
+                self.window.DATADICT[dstr].append(new_data[key])
+
+        # Add edit entry
+        label = '2gse' if to_gse else '2gsm'
+        notes = 'GSM to GSE' if to_gse else 'GSE to GSM'
+        self.editWindow.addHistory(np.eye(3), notes, label)
+
+    def apply(self):
+        ''' Apply changes based on UI settings '''
+        # Get vector to apply change to
+        vec = [box.currentText() for box in self.vecBoxes]
+
+        # Get conversion direction
+        mode = self.optsBox.currentText()
+        mode = self.modes[mode]
+        to_gse = (mode == GSM_GSE_Coord.TO_GSE)
+
+        # Convert data
+        self.gsm_gse_conv([vec], to_gse)

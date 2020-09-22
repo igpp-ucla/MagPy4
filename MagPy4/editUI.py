@@ -53,12 +53,16 @@ class VectorLayout(QtWidgets.QGridLayout):
                 ddRow.append(box)
             self.dropdowns.append(ddRow)
 
-    def getDropdownVecs(self):
+    def getDropdownVecs(self, ignore_empty=False):
         vecs = []
         for ddRow in self.dropdowns:
             rowLst = []
             for dd in ddRow:
                 rowLst.append(dd.currentText())
+
+            if ignore_empty and set(rowLst) == set(['']):
+                continue
+
             vecs.append(rowLst)
         return vecs
 
@@ -113,27 +117,31 @@ class EditUI(object):
         # Filter button setup
         self.filterButton = QtGui.QPushButton('Filter...')
         self.filterButton.setToolTip('Apply various filters to smooth data')
-        miscLayout.addWidget(self.filterButton)
 
         # Simple calculations setup
         self.calcBtn = QtGui.QPushButton('Calculate...')
         self.calcBtn.setToolTip('Perform simple calculations on data')
-        miscLayout.addWidget(self.calcBtn)
 
         # Smoothing tool setup
         self.smoothBtn = QtGui.QPushButton('Deglitch...')
         self.smoothBtn.setToolTip('Smooth and shift glitches in Insight data')
-        if window.insightMode:
-            miscLayout.addWidget(self.smoothBtn)
+
+        btns = [self.filterButton, self.calcBtn]
 
         # Data removal tool setup
         self.dataFlagBtn = QtGui.QPushButton('Remove Data...')
         self.dataFlagBtn.setToolTip('Remove bad data or replace with flag values')
         if len(window.FIDs) == 1:
-            miscLayout.addWidget(self.dataFlagBtn)
+            btns += [self.dataFlagBtn]
 
-        for btn in [self.filterButton, self.calcBtn, self.smoothBtn, self.dataFlagBtn]:
-            btn.setFixedWidth(150)
+        # GSM/GSE rotations
+        self.gseGsmBtn = QtGui.QPushButton('GSE/GSM Coordinates...')
+        btns += [self.gseGsmBtn]
+        
+        # Add buttons to layout
+        for btn in btns:
+            miscLayout.addWidget(btn)
+            btn.setFixedWidth(175)
 
         leftLayout.addWidget(builderFrame)
         leftLayout.addWidget(miscFrame)
