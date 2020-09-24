@@ -9,6 +9,40 @@ from . import getRelPath
 import os
 import numpy as np
 
+class BoxLayout():
+    ''' Superclass for HBoxLayout and VBoxLayout that adds
+        some additional useful operations for accessing 
+        widgets and removing items
+    '''
+    def getItems(self):
+        ''' Returns all widgets in layout '''
+        n = self.count()
+        items = [self.itemAt(i) for i in range(n)]
+        widgets = [item.widget() for item in items]
+        return widgets
+
+    def clear(self):
+        ''' Removes and deletes all elements from layout '''
+        items = self.getItems()
+        for item in items:
+            self.removeWidget(item)
+            item.deleteLater()
+
+    def pop(self):
+        ''' Remove and delete last element from layout '''
+        n = self.count() - 1
+        item = self.itemAt(n).widget()
+        self.removeWidget(item)
+        item.deleteLater()
+
+class HBoxLayout(QtWidgets.QHBoxLayout, BoxLayout):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+class VBoxLayout(QtWidgets.QVBoxLayout, BoxLayout):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
 class TraceInfo():
     ''' Object containing information about a plot variable '''
     def __init__(self, name, edit, window):
@@ -362,9 +396,10 @@ class AdjustingScrollArea(QtWidgets.QScrollArea):
         self.updateFrameBorder()
 
     def updateFrameBorder(self):
-        if self.verticalScrollBar().isVisible():
+        vertVis = self.verticalScrollBar().isVisible()
+        horzVis = self.horizontalScrollBar().isVisible()
+        if vertVis or horzVis:
             self.setFrameShape(QtWidgets.QFrame.StyledPanel)
-            self.setStyleSheet('QScrollArea { background-color : #ffffff; }')
         else:
             self.setFrameShape(QtWidgets.QFrame.NoFrame)
 
@@ -503,7 +538,6 @@ class ListLayout(QtWidgets.QGridLayout):
         self.pltLt.removeItem(item)
         item.widget().deleteLater()
 
-
     def removeSpecificPlot(self, item):
         # Remove plot layout from layout and delete the plot elements
         index = None
@@ -589,7 +623,7 @@ class ListLayout(QtWidgets.QGridLayout):
 
     def getSelectedItems(self):
         return self.dstrTable.selectedItems()
-    
+
     def getPlotWidgets(self):
         ''' Returns listwidgets for each plot '''
         count = self.pltLt.count()
@@ -604,6 +638,305 @@ class ListLayout(QtWidgets.QGridLayout):
         items = self.dstrTable.selectedItems()
         for item, plot in zip(items, self.getPlotWidgets()):
             plot.addItems([item])
+
+class ButtonGroup(QtWidgets.QButtonGroup):
+    ''' Button group that behaves similar to exclusive
+        button group but allows all buttons to be unchecked
+    '''
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setExclusive(False)
+        self.buttonToggled.connect(self.adjustChecks)
+
+    def adjustChecks(self, button, check):
+        ''' If button is checked, clears checks
+            from all other buttons
+        '''
+        if check:
+            buttons = self.buttons()
+            for other in buttons:
+                if other != button:
+                    other.setChecked(False)
+
+class LinkBoxGroup(QtWidgets.QWidget):
+    ''' A single row of checkboxes representing
+        a link group
+    '''
+    def __init__(self, count=0, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.layout = HBoxLayout(self)
+        self.layout.setSpacing(16)
+        self.layout.setContentsMargins(4, 2, 4, 4)
+        self.setCount(count)
+
+    def setCount(self, n):
+        ''' Clears layout and adds n boxes '''
+        self.layout.clear()
+        for i in range(0, n):
+            self.addColumn()
+
+    def setChecked(self, indices):
+        ''' Checks the buttons corresponding to given indices '''
+        btns = self.getButtons()
+        for i in indices:
+            btns[i].setChecked(True)
+
+    def getButtons(self):
+        ''' Returns the buttons in the layout '''
+        return self.layout.getItems()
+
+    def getChecked(self):
+        ''' Returns the indices of the selected boxes '''
+        checked = []
+        buttons = self.getButtons()
+        for i in range(0, len(buttons)):
+            if buttons[i].isChecked():
+                checked.append(i)
+        return checked
+
+    def addColumn(self):
+        ''' Add another box at the end '''
+        box = QtWidgets.QCheckBox()
+        self.layout.addWidget(box)
+        return box
+
+    def removeColumn(self):
+        ''' Removes last box from layout '''
+        self.layout.pop()
+
+    def linkButtons(self, grps):
+        ''' Adds buttons to respective button groups '''
+        buttons = self.getButtons()
+        for btn, grp in zip(buttons, grps):
+            grp.addButton(btn)
+
+class LinkPlotLabel(QtWidgets.QLabel):
+    ''' Plot label item that also initializes a button
+        group so that a plot may not be in more than one
+        link group
+    '''
+    def __init__(self, index, *args, **kwargs):
+        label = f'{index}'
+        super().__init__(label, *args, **kwargs)
+        self.group = ButtonGroup()
+
+    def getButtonGroup(self):
+        return self.group
+
+class LinkWidget(QtWidgets.QGroupBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__('Link Groups', *args, **kwargs)
+        self.setupLayout()
+        tt = 'Plots in the same group will have the same scale '''
+        self.setToolTip(tt)
+
+        self.addBtn.clicked.connect(self.addRow)
+        self.minusBtn.clicked.connect(self.removeRow)
+
+    def setupLayout(self):
+        gridFrame = QtWidgets.QFrame()
+        layout = QtWidgets.QGridLayout(gridFrame)
+        layout.setVerticalSpacing(0)
+
+        # Initialize sublayouts
+        top_wrap = QtWidgets.QFrame()
+        top_layout = HBoxLayout(top_wrap)
+
+        left_wrap = QtWidgets.QFrame()
+        left_layout = VBoxLayout(left_wrap)
+        left_layout.setSpacing(0)
+
+        grid_layout = VBoxLayout()
+        grid_layout.setSpacing(0)
+
+        # Set margins and size policies
+        for lt in [top_layout, left_layout]:
+            lt.setContentsMargins(0, 0, 0, 4)
+        maxsp = QSizePolicy.Maximum
+        prefsp = QSizePolicy.Preferred
+        left_wrap.setSizePolicy(maxsp, prefsp)
+
+        # Spacer item at end
+        expsp = QSizePolicy.Expanding
+        spacer1 = QtWidgets.QSpacerItem(0, 0, expsp, maxsp)
+        spacer2 = QtWidgets.QSpacerItem(0, 0, prefsp, expsp)
+
+        # Plot label label
+        pltLbl = QtWidgets.QLabel('Plot #:')
+        pltLbl.setAlignment(QtCore.Qt.AlignRight)
+        layout.setAlignment(pltLbl, QtCore.Qt.AlignBaseline)
+
+        # Add to main layout
+        layout.addWidget(pltLbl, 0, 0, 1, 1)
+        layout.addWidget(top_wrap, 0, 1, 1, 1)
+        layout.addWidget(left_wrap, 1, 0, 1, 1)
+        layout.addLayout(grid_layout, 1, 1, 1, 1)
+        layout.addItem(spacer1, 0, 2, 2, 1)
+        layout.addItem(spacer2, 2, 0, 1, 2)
+
+        # Create wrapper layout and add buttons and
+        # main inner layout
+        self.addBtn = QtWidgets.QPushButton('+')
+        self.minusBtn = QtWidgets.QPushButton('-')
+        btnLt = QtWidgets.QVBoxLayout()
+        btnLt.setSpacing(2)
+        for btn in [self.addBtn, self.minusBtn]:
+            btnLt.addWidget(btn)
+            btn.setMaximumWidth(50)
+
+        # Store sublayouts
+        self.grp_lbl_lt = left_layout
+        self.grid = grid_layout
+        self.plt_lbl_lt = top_layout
+
+        # Create scroll area and add grid frame to it
+        self.scrollArea = AdjustingScrollArea()
+        self.scrollArea.setWidget(gridFrame)
+        self.scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+
+        # Add scroll area and btn layout to wrapper layout
+        wrapLt = QtWidgets.QGridLayout(self)
+        wrapLt.setContentsMargins(0, 0, 5, 0)
+        wrapLt.addWidget(self.scrollArea, 0, 0, 1, 1)
+        wrapLt.addLayout(btnLt, 0, 1, 1, 1)
+
+    def setLinks(self, links, numPlots):
+        ''' Creates and sets link group checkboxes
+            based on given links and number of plots
+        '''
+        # Clear and initialize grid
+        self.setShape(len(links), numPlots)
+
+        # Iterate over link groups and set checkboxes
+        # for each one
+        widgets = self.getLinkWidgets()
+        for i in range(0, len(links)):
+            row_links = links[i]
+            widget = widgets[i]
+            widget.setChecked(row_links)
+
+    def clear(self):
+        ''' Clears all sublayouts'''
+        self.grp_lbl_lt.clear()
+        self.grid.clear()
+        self.plt_lbl_lt.clear()
+
+    def numCols(self):
+        return self.plt_lbl_lt.count()
+
+    def numRows(self):
+        return self.grp_lbl_lt.count()
+
+    def getLinkWidgets(self):
+        ''' Returns the LinkBoxGroup widgets in the grid '''
+        widgets = self.grid.getItems()
+        return widgets
+
+    def setShape(self, r, c):
+        ''' Clears grid and sets up a grid of checkboxes
+            with r rows and c columns '''
+        self.clear()
+        for i in range(0, c):
+            self.addColumn()
+
+        for j in range(0, r):
+            self.addRow()
+
+    def addRow(self):
+        ''' Adds another row of checkboxes and a group label
+            to the grid
+        '''
+        # Add another group label on left grid
+        rows = self.numRows()
+        label = f'Group {rows+1}:'
+        label = QtWidgets.QLabel(label)
+        label.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+        self.grp_lbl_lt.addWidget(label)
+
+        # Add another link widget
+        cols = self.numCols()
+        widget = LinkBoxGroup(cols)
+        self.grid.addWidget(widget)
+
+        # Add new row of buttons to button groups
+        btn_grps = self._getButtonGroups()
+        widget.linkButtons(btn_grps)
+
+        # Update size if necessary
+        self._updateSize()
+
+    def addColumn(self):
+        ''' Adds another plot column to the grid '''
+        # Add another plot label on top grid
+        cols = self.numCols()
+        label = LinkPlotLabel(cols+1)
+        self.plt_lbl_lt.addWidget(label)
+
+        # Align label in center
+        align = QtCore.Qt.AlignHCenter
+        self.plt_lbl_lt.setAlignment(label, align)
+
+        # Add a button to each link group and add it to
+        # the button group for the current plot
+        btn_grp = label.getButtonGroup()
+        widgets = self.getLinkWidgets()
+        for widget in widgets:
+            box = widget.addColumn()
+            btn_grp.addButton(box)
+
+        # Hide if there is only one plot
+        if cols == 1:
+            self.setVisible(True)
+
+    def removeColumn(self):
+        ''' Removes last plot column from grid '''
+        # Remove last column from each link group
+        widgets = self.getLinkWidgets()
+        for widget in widgets:
+            widget.removeColumn()
+
+        # Remove last plot label
+        self.plt_lbl_lt.pop()
+
+        # Show if previously hidden
+        if self.numCols() == 1:
+            self.setVisible(False)
+
+    def removeRow(self):
+        ''' Removes last row of checkboxes / link group from grid '''
+        # Remove last row from group labels and button grid
+        if self.grid.count() > 1:
+            self.grp_lbl_lt.pop()
+            self.grid.pop()
+
+        # Update size if necessary
+        self._updateSize()
+
+    def getLinks(self):
+        ''' Returns the groups of plots to link together
+            (skipping any empty groups)
+        '''
+        widgets = self.getLinkWidgets()
+        links = []
+        for widget in widgets:
+            group = widget.getChecked()
+            if len(group) > 0:
+                links.append(group)
+
+        return links
+
+    def _getButtonGroups(self):
+        ''' Returns the button groups associated with each plot '''
+        labels = self.plt_lbl_lt.getItems()
+        groups = [label.getButtonGroup() for label in labels]
+        return groups
+
+    def _updateSize(self):
+        ''' Updates minimum scroll area height '''
+        n = min(self.numRows(), 3)
+        sizes = {0: 75, 1:75, 2:110, 3:140}
+        size = sizes[n]
+        self.scrollArea.setMinimumHeight(size)
 
 class PlotMenuUI(object):
     def setupUI(self, Frame):
@@ -687,7 +1020,7 @@ class PlotMenuUI(object):
         self.plottingLayout = ListLayout(Frame.window, Frame)
         self.pltLtContainer.addLayout(self.plottingLayout, 0, 0, 1, 1)
         self.layout.addWidget(self.pltLtFrame)
-        
+
         # Set up split button
         img_path = getRelPath('images')
         img_path = os.path.join(img_path, 'split_arrow.png')
@@ -711,9 +1044,9 @@ class PlotMenuUI(object):
         # Set up link button layout
         self.fgridFrame = QtWidgets.QGroupBox('Link Groups')
         self.fgridFrame.setToolTip('Link the Y axes of each plot in each group to have the same scale with each other')
-        self.fgrid = QtWidgets.QGridLayout(self.fgridFrame)
-        self.layout.addWidget(self.fgridFrame)
-        self.fgridFrame.setStyleSheet(checkBoxStyle)
+        self.fgrid = LinkWidget()
+        self.layout.addWidget(self.fgrid)
+        self.fgrid.setStyleSheet(checkBoxStyle)
 
 class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
     def __init__(self, window, parent=None):
@@ -802,18 +1135,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.plotCount = len(dstrs)
 
         if self.window.lastPlotLinks is not None:
-            newLinks = []
-            for l in links:
-                if not isinstance(l, tuple):
-                    newLinks.append(l)
-            self.rebuildPlotLinks(len(newLinks))
-            for i, axis in enumerate(newLinks):
-                if i >= len(self.fcheckBoxes):
-                    continue
-                for j in axis:
-                    if j >= len(self.fcheckBoxes[i]):
-                        continue
-                    self.fcheckBoxes[i][j].setChecked(True)
+            self.ui.fgrid.setLinks(self.window.lastPlotLinks, len(dstrs))
 
         # Fill in any height factors that aren't defined for plots w/ 
         # the default value of 1
@@ -837,87 +1159,25 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         dstrs = self.ui.plottingLayout.getPltDstrs(1)
         return dstrs
 
-    def getLinkLists(self):
-        links = []
-        if len(self.fcheckBoxes) == 0:
-            return [(0,)]
-        notFound = set([i for i in range(len(self.fcheckBoxes[0]))])
-        for fAxis in self.fcheckBoxes:
-            row = []
-            for i,cb in enumerate(fAxis):
-                if cb.isChecked():
-                    row.append(i)
-                    if i in notFound:
-                        notFound.remove(i)
-            if len(row) > 0:
-                links.append(row)
-        for i in notFound: # for anybody not part of set add them
+    def getLinks(self):
+        ''' Returns the plot link groups '''
+        # Get plot links from grid
+        links = self.ui.fgrid.getLinks()
+
+        # Find out which plots have been placed in a link group
+        seenPlots = set()
+        for link in links:
+            seenPlots = seenPlots | set(link)
+
+        # Get a list of all plot indices without a link group
+        fullset = set([i for i in range(self.plotCount)])
+        unseen = fullset - seenPlots
+
+        # Add unseen plot indices to their own link groups
+        for i in unseen:
             links.append([i])
+
         return links
-
-    # callback for each checkbox on changed
-    # which box, row and col are provided
-    def checkPlotLinks(self, checkBox, r, c):
-        if checkBox.isChecked(): # make sure ur only one checked in your column
-            i = 0 # need to do it like this because setChecked callbacks can cause links to be rebuild mid iteration
-            while i < len(self.fcheckBoxes):
-                if i != r: # skip self
-                    self.fcheckBoxes[i][c].setChecked(False)
-                i += 1
-
-        if self.targRows != self.getProperLinkRowCount():
-            self.rebuildPlotLinks()
-
-    def getProperLinkRowCount(self):
-        targ = int(self.plotCount / 2) # max number of rows possibly required
-        used = 1   # what this part does is make sure theres at least 1 row with < 2
-        for row in self.fcheckBoxes:
-            count = 0
-            for cb in row:
-                count += 1 if cb.isChecked() else 0
-            if count >= 2:
-                used += 1
-        return used if used < targ else targ
-
-    # rebuild whole link table (tried adding and removing widgets and got pretty close but this was way easier in hindsight)
-    # i think callbacks cause this to get called way more than it should but its pretty fast so meh
-    def rebuildPlotLinks(self, targRows=None):
-        fgrid = self.ui.fgrid
-
-        self.targRows = self.getProperLinkRowCount()
-        if targRows: # have at least targRows many
-            self.targRows = max(self.targRows, targRows)
-
-        cbools = self.checksToBools(self.fcheckBoxes, True)
-        self.fcheckBoxes = [] # clear list after
-
-        PyQtUtils.clearLayout(fgrid)
-
-        # add top plot labels
-        for i in range(self.plotCount):
-            pLabel = QtWidgets.QLabel()
-            pLabel.setText(f'Plot {i+1}')
-            pLabel.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
-            fgrid.addWidget(pLabel,0,i + 1,1,1)
-        # add spacer
-        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        fgrid.addItem(spacer,0,self.plotCount + 1,1,1)
-
-        # add checkBoxes
-        for r in range(self.targRows):
-            linkGroupLabel = QtWidgets.QLabel()
-            linkGroupLabel.setText(f'Group {r+1}:')
-            fgrid.addWidget(linkGroupLabel,r + 1,0,1,1)
-            row = []
-            for i in range(self.plotCount):
-                checkBox = QtWidgets.QCheckBox()
-                if r < len(cbools) and len(cbools) > 0 and i < len(cbools[0]):
-                    checkBox.setChecked(cbools[r][i])
-                # add callback with predefined arguments here
-                checkBox.stateChanged.connect(functools.partial(self.checkPlotLinks, checkBox, r, i))
-                row.append(checkBox)
-                fgrid.addWidget(checkBox,r + 1,i + 1,1,1)      
-            self.fcheckBoxes.append(row)
 
     def plotData(self):
         ''' Plots selected variables '''
@@ -935,7 +1195,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         # Get new plot data
         dstrs = self.getPlotInfo()
-        links = self.getLinkLists()
+        links = self.getLinks()
         heightFactors = self.getHeightFactors()
 
         # Check that no more than one color plot is selected in
@@ -969,13 +1229,13 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
     def addPlot(self):
         self.plotCount += 1
         self.ui.plottingLayout.addPlot()
-        self.rebuildPlotLinks()
-    
+        self.ui.fgrid.addColumn()
+
     def splitAdd(self):
         items = self.ui.plottingLayout.getSelectedItems()
         for i in range(self.plotCount, len(items)):
             self.addPlot()
-        
+
         self.ui.plottingLayout.splitAdd()
 
     def checksToBools(self, cbMatrix, skipEmpty=False):
@@ -1003,7 +1263,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
 
         self.plotCount -= 1
         self.ui.plottingLayout.removePlot()
-        self.rebuildPlotLinks()
+        self.ui.fgrid.removeColumn()
 
     def getCurrentEdit(self):
         editNumber = max(0, self.ui.editCombo.currentIndex())
