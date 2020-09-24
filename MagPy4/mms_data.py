@@ -863,8 +863,8 @@ class MMSDataDownloader(QtWidgets.QFrame):
             response = requests.get(download_link, stream=True)
 
             # Create a temporary file
-            temp_file = tempfile.mkstemp()[1]
-            fd = open(temp_file, 'wb')
+            temp_fd, temp_name = tempfile.mkstemp()
+            fd = open(temp_fd, 'wb')
 
             # Stream response and write to the temporary file
             for chunk in response.iter_content(chunk_size=None):
@@ -880,8 +880,9 @@ class MMSDataDownloader(QtWidgets.QFrame):
             # Try to extract zip file to load_dir
             singleFile = False
             try:
-                zf = zipfile.ZipFile(temp_file)
+                zf = zipfile.ZipFile(temp_name)
                 zf.extractall(self.load_dir)
+                zf.close()
             except:
                 # If loading a single file, need to determine load_dir subpath
                 if len(file_subset) == 1:
@@ -910,12 +911,12 @@ class MMSDataDownloader(QtWidgets.QFrame):
 
                     # TODO: Single file not correctly loaded for fpi des, dis = 2020 Jan 01 00:00:00, 2020 Jan 01 01:00:00
                     # Move file to directory
-                    shutil.move(temp_file, os.path.join(date_dirs, filename))
+                    shutil.move(temp_name, os.path.join(date_dirs, filename))
                     singleFile = True
 
             # Remove zip file if extracted successfully
             if not singleFile:
-                os.remove(temp_file)
+                os.remove(temp_name)
 
     def downloadFinished(self, msg=None):
         ''' After download is finished, show progress bar and
