@@ -3583,7 +3583,7 @@ def myexepthook(type, value, tb):
     traceback.print_tb(tb,limit=5)
     os.system('pause')
 
-def startMagPy(ffLst=None, display=True):
+def startMagPy(files=None, display=True):
     '''
     Main function for creating MagPy4Window object and starting program
     '''
@@ -3605,8 +3605,15 @@ def startMagPy(ffLst=None, display=True):
         main.showMaximized()
 
     # Initialize any files passed
-    if ffLst is not None:
-        main.openFileList(ffLst, True, True)
+    if files is not None and len(files) > 0:
+        split_name = files[0].split('.')
+        extension = split_name[-1]
+        if extension == 'cdf': # CDF
+            main.addCDF(files, clearPrev=True)
+        elif extension.startswith('ff') or len(split_name) == 1: # Flat files
+            main.openFileList(files, True, True)
+        else: # ASCII files
+            main.openFileList(files, False, True)
 
     if display:
         args = sys.argv
@@ -3712,9 +3719,9 @@ def runMarsPy():
 def runMagPy():
     # Read in arguments, opening MagPy if the update flag was not passed,
     # and passing along any the names of any files to open at startup
-    res, ffLst = readArgs()
+    res, files = readArgs()
     if res:
-        startMagPy(ffLst=ffLst)
+        startMagPy(files=files)
 
 def updateMagPy():
     '''
