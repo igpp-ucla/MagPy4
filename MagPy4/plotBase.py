@@ -3,7 +3,6 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 import numpy as np
 from .timeManager import TimeManager
 from datetime import datetime, timedelta
-from FF_Time import FFTIME
 from bisect import bisect_left, bisect_right
 from dateutil import rrule
 from dateutil.rrule import rrule

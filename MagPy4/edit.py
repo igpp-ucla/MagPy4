@@ -4,9 +4,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from .MagPy4UI import StackedLabel, TimeEdit, ScientificSpinBox
 
-#import pyqtgraph as pg
 import numpy as np
-from FF_Time import FFTIME
 from math import sin, cos, acos, fabs, pi
 from scipy import signal
 
@@ -22,6 +20,7 @@ from .MagPy4UI import PyQtUtils
 
 from datetime import datetime
 from .geopack.geopack import geopack
+from fflib import ff_time
 
 class Edit(QtWidgets.QFrame, EditUI):
 
@@ -601,10 +600,8 @@ class GSM_GSE_Coord():
         # Create lambdas to convert ticks to datetimes and
         # then to the univeral time
         udt = datetime(1970, 1, 1)
-        fmt = '%Y %j %b %d %H:%M:%S.%f'
-        to_ts = lambda x : FFTIME(x, Epoch=epoch).UTC
-        to_dt = lambda ts : datetime.strptime(ts, fmt)
-        to_diff = lambda t : (to_dt(to_ts(t)) - udt).total_seconds()
+        to_dt = lambda x : ff_time.tick_to_date(x, epoch)
+        to_diff = lambda t : (to_dt(t) - udt).total_seconds()
 
         # Compute map
         uttimes = list(map(to_diff, ticks))

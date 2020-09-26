@@ -4,7 +4,6 @@ from .MagPy4UI import TimeEdit
 import pyqtgraph as pg
 from .dataDisplay import UTCQDate
 from .pyqtgraphExtensions import LinkedRegion
-from FF_File import FFTIME
 import functools
 import re
 import time
@@ -12,6 +11,7 @@ import time as tm
 import numpy as np
 from datetime import datetime
 from .layoutTools import BaseLayout, TableWidget, SplitterWidget
+from fflib import ff_time
 
 class GeneralSelect(object):
     '''
@@ -1123,8 +1123,8 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
     def ticks_to_timestamps(self, ticks):
         ''' Map ticks time range to strings '''
         start, stop = ticks
-        start = FFTIME(start, Epoch=self.window.epoch).UTC
-        stop = FFTIME(stop, Epoch=self.window.epoch).UTC
+        start = ff_time.tick_to_ts(start, self.window.epoch)
+        stop = ff_time.tick_to_ts(stop, self.window.epoch)
 
         # Remove day of year
         start = start[:4] + start[8:]

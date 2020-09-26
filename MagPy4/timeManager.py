@@ -1,7 +1,7 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-import FF_File
-from FF_Time import FFTIME, leapFile
+from fflib import ff_time
+from dateutil import parser
 from .dataDisplay import UTCQDate
 import bisect
 from datetime import datetime
@@ -58,15 +58,17 @@ class TimeManager(object):
             return 'MM:SS.SSS'
 
     def getTimeTicksFromTimeEdit(self, timeEdit):
-        t0 = FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick
-        t1 = FFTIME(UTCQDate.QDateTime2UTC(timeEdit.end.dateTime()), Epoch=self.epoch)._tick
+        start = timeEdit.start.dateTime().toPyDateTime()
+        end = timeEdit.end.dateTime().toPyDateTime()
+        t0 = ff_time.date_to_tick(start, self.epoch)
+        t1 = ff_time.date_to_tick(end, self.epoch)
         return (t0, t1) if t0 < t1 else (t0, t1)
 
     def getTimestampFromTick(self, tick):
-        return FFTIME(tick, Epoch=self.epoch).UTC
+        return ff_time.tick_to_ts(tick, self.epoch)
 
     def getDateTimeFromTick(self, tick):
-        return UTCQDate.UTC2QDateTime(self.getTimestampFromTick(tick))
+        return ff_time.tick_to_date(tick, self.epoch)
     
     def datetime_from_tick(self, tick):
         ts = self.getTimestampFromTick(tick)
@@ -75,19 +77,15 @@ class TimeManager(object):
         return date
 
     def getTickFromDateTime(self, dt):
-        fmt = '%Y %j %b %d %H:%M:%S.%f'
-        ts = datetime.strftime(dt, fmt)[:-3]
-        return self.getTickFromTimestamp(ts)
+        return ff_time.date_to_tick(dt, self.epoch)
 
     def getDateTimeObjFromTick(self, tick):
-        dt = UTCQDate.UTC2QDateTime(self.getTimestampFromTick(tick))
-        date = dt.date()
-        timeObj = dt.time()
-        dt = datetime(date.year(), date.month(), date.day(), timeObj.hour(), timeObj.minute(), timeObj.second(), timeObj.msec()*1000)
-        return dt
+        return ff_time.tick_to_date(tick, self.epoch)
     
     def getTickFromTimestamp(self, ts):
-        return FFTIME(ts, Epoch=self.epoch)._tick
+        date = parser.isoparse(ts)
+        tick = ff_time.date_to_tick(date, self.epoch)
+        return tick
     
     def setTimeEditByTicks(self, t0, t1, timeEdit):
         dt0 = self.getDateTimeFromTick(t0)

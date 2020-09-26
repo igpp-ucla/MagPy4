@@ -3,9 +3,9 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from .dataDisplay import UTCQDate
 import pyqtgraph as pg
 import pyqtgraph.exporters
-from FF_Time import FFTIME
 from datetime import datetime, timedelta
 from .timeManager import TimeManager
+from fflib import ff_time
 from math import ceil
 import functools
 from bisect import bisect_left, bisect_right
@@ -213,8 +213,8 @@ class LinkedRegion(pg.LinearRegionItem):
             return
 
         x0, x1 = self.getRegion()
-        t0 = UTCQDate.UTC2QDateTime(FFTIME(x0, Epoch=self.window.epoch).UTC)
-        t1 = UTCQDate.UTC2QDateTime(FFTIME(x1, Epoch=self.window.epoch).UTC)
+        t0 = ff_time.tick_to_date(x0, self.window.epoch)
+        t1 = ff_time.tick_to_date(x1, self.window.epoch)
 
         timeEdit.setStartNoCallback(min(t0,t1))
         timeEdit.setEndNoCallback(max(t0,t1))

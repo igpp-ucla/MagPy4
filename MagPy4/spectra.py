@@ -6,7 +6,6 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
-from FF_Time import FFTIME
 from .plotAppearance import PlotAppearance, SpectraPlotApp
 from .pyqtgraphExtensions import GridGraphicsLayout, BLabelItem, SpectraPlotItem
 from .plotBase import MagPyPlotItem

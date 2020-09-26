@@ -35,15 +35,15 @@ jobs:
     - name: Create pip_wheels directory
       run: mkdir pip_wheels
 
-    - name: Clone ffPy
+    - name: Clone fflib
       uses: actions/checkout@v2
       with:
-        repository: igpp-ucla/ffPy
+        repository: igpp-ucla/fflib
         token : ${{ secrets.FFPY_TOKEN }} # `GitHub_PAT` is a secret that contains your PAT
-        path: ffPy
+        path: fflib
 
-    - name: Create ffPy wheel
-      run: pip3 wheel ffPy/ -w pip_wheels
+    - name: Create fflib wheel
+      run: pip3 wheel fflib/ -w pip_wheels
 
     - name: Create cdflib wheel
       run: pip3 wheel cdflib -w pip_wheels

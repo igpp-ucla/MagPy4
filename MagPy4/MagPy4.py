@@ -10,11 +10,7 @@ import pickle
 import argparse
 import json
 import re
-
-# so python looks in paths for these folders too
-# maybe make this into actual modules in future
-sys.path.insert(0, 'ffPy')
-sys.path.insert(0, 'cdfPy')
+from fflib import ff_reader, ff_time, ff_writer
 
 # Version number and copyright notice displayed in the About box
 from . import getRelPath, MAGPY_VERSION
@@ -28,9 +24,6 @@ from PyQt5.QtWidgets import QSizePolicy
 
 import numpy as np
 import pyqtgraph as pg
-
-import FF_File
-from FF_Time import FFTIME, leapFile
 
 from .MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, StackedAxisLabel, FileLabel
 from .pyqtgraphExtensions import TrackerRegion
@@ -56,7 +49,6 @@ from .waveAnalysis import DynamicWave
 from .structureUtil import CircularList
 from .trajectory import TrajectoryAnalysis
 from .smoothingTool import SmoothingTool
-from .ffCreator import createFF
 from .mth import Mth
 import bisect
 from .timeManager import TimeManager
@@ -133,7 +125,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.ui.actionExportDataFile.triggered.connect(self.exportFile)
 
-        self.ui.actionExportFF.triggered.connect(self.exportFlatFile)
         self.ui.actionExit.triggered.connect(self.close)
         self.ui.actionOpenWs.triggered.connect(self.openWsOpenDialog)
         self.ui.actionSaveWs.triggered.connect(self.openWsSaveDialog)
@@ -1222,44 +1213,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def runTests(self):
         Tests.runTests()
 
-    def exportFlatFile(self):
-        # Get file name from user input
-        filename = self.saveFileDialog('.ffd', 'Flat File', False)
-        if filename is None:
-            return
-
-        # Get one of the loaded flat file IDs (TODO: Support for multiple files?)
-        FID = self.FIDs[0]
-        FID.open()
-
-        # Extract the original flat file's column headers, units, and source info
-        labels = FID.getColumnDescriptor('NAME')[1:]
-        units = FID.getColumnDescriptor('UNITS')[1:]
-        sources = FID.getColumnDescriptor('SOURCE')[1:]
-
-        # Get the epoch used for this flat file
-        epoch = FID.getEpoch()
-
-        # Extract all data for current edit (ignoring added variables for now)
-        dta = []
-        for dstr in self.DATASTRINGS:
-            if dstr in list(self.ORIGDATADICT.keys()):
-                dta.append(self.getData(dstr, self.currentEdit))
-
-        # Verify that the data all have same length
-        dtaLens = list(map(len, dta))
-        if min(dtaLens) != max(dtaLens):
-            print ('Error: Data columns have different lengths')
-            return
-
-        # Transpose data, get times, and create the flat file
-        dta = np.array(dta).T
-        times = self.getTimes(dstr, self.currentEdit)[0]
-        if len(times) != len(dta):
-            print ('Error: Data length != times length')
-            return
-        createFF(filename, times, dta, labels, units, sources, epoch)
-
     def saveFileDialog(self, defSfx='.txt', defFilter='TXT file', appendSfx=True):
         defaultSfx = defSfx
         defFilter = defFilter + '(*'+defSfx+')'
@@ -1500,57 +1453,34 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.resolution = 1000000.0 # this is set to minumum resolution when files are loaded so just start off as something large
         self.colorPlotInfo = {}
 
-    def openFF(self, PATH):  # slot when Open pull down is selected
-        FID = FF_File.FF_ID(PATH, status=FF_File.FF_STATUS.READ | FF_File.FF_STATUS.EXIST)
-        if not FID:
-            print('BAD FLATFILE')
-            self.enableToolsAndOptionsMenus(False)
-            return False
-        err = FID.open()
-        if err < 0:
-            print('UNABLE TO OPEN')
-            self.enableToolsAndOptionsMenus(False)
-            return False
+    def openFF(self, ff_path):  # slot when Open pull down is selected
+        # Get flat file reader object
+        expr = '.+.ff[hd]*'
+        if re.fullmatch(expr, ff_path):
+            ff_path = '.'.join(ff_path.split('.')[:-1])
+        ff = ff_reader(ff_path)
 
-        print(f'\nOPEN {FID.name}')
+        # Read in data
+        times = ff.get_times()
+        data = ff.get_data()
+        data = [data[:,i] for i in range(len(data[0]))]
+        
+        # Read in column names and units
+        labels = ff.get_labels()[1:]
+        units = ff.get_units()[1:]
 
-        self.epoch = FID.getEpoch()
-        print(f'epoch: {self.epoch}')
-        #info = FID.FFInfo
-        # errorFlag is usually 1e34 but sometimes less. still huge though
-        self.errorFlag = FID.FFInfo['ERROR_FLAG'].value
-        self.errorFlag = 1e16 # overriding for now since the above line is sometimes wrong depending on the file (i think bx saves as 1e31 but doesnt update header)
-        print(f'error flag: {self.errorFlag:.0e}') # not being used currently
-        #self.errorFlag *= 0.9 # based off FFSpectra.py line 829
+        # Set program attributes
+        flag = ff.get_error_flag()
+        res = np.mean(np.diff(times))
+        self.errorFlag = min(1e16, flag)
+        self.resolution = min(res, self.resolution)
+        self.epoch = ff.get_epoch()
 
-        # load flatfile
-        nRows = FID.getRows()
-        records = FID.DID.sliceArray(row=1, nRow=nRows)
-        ffTime = records["time"]
-        dataByRec = records["data"]
-        dataByCol = FF_File.arrayToColumns(records["data"])
+        # Load data into program
+        self.loadData(times, labels, data, units)
 
-        numRecords = len(dataByRec)
-        numColumns = len(dataByCol)
-        print(f'number records: {numRecords}')
-        print(f'number columns: {numColumns}')
-
-        datas = [np.array(col) for col in dataByCol]
-
-        # ignoring first column because that is time, hence [1:]
-        newDataStrings = FID.getColumnDescriptor("NAME")[1:]
-        units = FID.getColumnDescriptor("UNITS")[1:]
-
-        self.resolution = min(self.resolution,FID.getResolution())  # flatfile define resolution isnt always correct but whatever
-        FID.getResolution() # u have to still call this otherwise ffsearch wont work and stuff
-
-        # need to ensure loaded times are on same epoch, or do a conversion when plotting
-        # loading files with same datastring names should either concatenate or just append a subnumber onto end
-
-        self.loadData(ffTime, newDataStrings, datas, units)
-
-        self.FIDs.append(FF_FD(PATH, FID))
-
+        # Update program state
+        self.FIDs.append(FF_FD(ff_path, ff))
         self.updateAfterOpening()
         return True
 
@@ -2048,9 +1978,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
 
     def getMinAndMaxDateTime(self):
-        minDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.minTime, Epoch=self.epoch).UTC)
-        maxDateTime = UTCQDate.UTC2QDateTime(FFTIME(self.maxTime, Epoch=self.epoch).UTC)
-        return minDateTime,maxDateTime
+        minDt = ff_time.tick_to_date(self.minTime, self.epoch)
+        maxDt = ff_time.tick_to_date(self.maxTime, self.epoch)
+        return minDt, maxDt
 
     def getCurrentDateTime(self):
         return self.ui.timeEdit.start.dateTime(), self.ui.timeEdit.end.dateTime()
@@ -2065,7 +1995,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             line.show()
             line.setValue(tt-self.tickOffset)
 
-        dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
+        dt = ff_time.tick_to_date(tt, self.epoch)
         self.ui.timeEdit.setStartNoCallback(dt)
 
     def onEndSliderChanged(self, val):
@@ -2078,7 +2008,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             line.show()
             line.setValue(tt - self.tickOffset + 1) #offset by linewidth so its not visible once released
 
-        dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
+        dt = ff_time.tick_to_date(tt, self.epoch)
         self.ui.timeEdit.setEndNoCallback(dt)
 
     def setSliderNoCallback(self, slider, i):
@@ -2106,13 +2036,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Save start slider tick and update start time edit
         self.iO = start
         tt = self.getTimeFromTick(self.iO)
-        dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
+        dt = ff_time.tick_to_date(tt, self.epoch)
         self.ui.timeEdit.setStartNoCallback(dt)
 
         # Save stp[] slider tick and update start time edit
         self.iE = stop
         tt = self.getTimeFromTick(self.iE)
-        dt = UTCQDate.UTC2QDateTime(FFTIME(tt, Epoch=self.epoch).UTC)
+        dt = ff_time.tick_to_date(tt, self.epoch)
         self.ui.timeEdit.setEndNoCallback(dt)
 
         # Update view range by calling setTimes
@@ -2120,7 +2050,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def onStartEditChanged(self, val):
         """this gets called when the start date time edit is changed directly"""
-        tick = FFTIME(UTCQDate.QDateTime2UTC(val), Epoch=self.epoch)._tick
+        val = val.toPyDateTime()
+        tick = ff_time.date_to_tick(val, self.epoch)
         self.iO = self.calcTickIndexByTime(tick)
         self.setSliderNoCallback('start', self.iO)
         for line in self.trackerLines:
@@ -2129,7 +2060,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def onEndEditChanged(self, val):
         """this gets called when the end date time edit is changed directly"""
-        tick = FFTIME(UTCQDate.QDateTime2UTC(val), Epoch=self.epoch)._tick
+        val = val.toPyDateTime()
+        tick = ff_time.date_to_tick(val, self.epoch)
         self.iE = self.calcTickIndexByTime(tick)
         self.setSliderNoCallback('stop', self.iE)
         for line in self.trackerLines:
@@ -3140,13 +3072,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Build records
         records, labels = self.getLatestRecords()
 
-        # Get units, sources, and epoch information from original flat file
-        units = [self.UNITDICT[label] for label in labels]
-        sources = ['']*len(labels)
-        epoch = self.epoch
-
-        # Generate flat file
-        createFF(name, records[:,0], records[:,1:], labels, units, sources, epoch)
+        # Write data to flat file
+        ff = ff_writer(name, copy_header=self.FIDs[0].name)
+        ff.set_data(records[:,0], records[:,1:])
+        ff.write()
 
     def getLatestRecords(self):
         ''' 
@@ -3312,8 +3241,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     # get slider ticks from time edit
     def getTicksFromTimeEdit(self, timeEdit):
-        i0 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.start.dateTime()), Epoch=self.epoch)._tick)
-        i1 = self.calcTickIndexByTime(FFTIME(UTCQDate.QDateTime2UTC(timeEdit.end.dateTime()), Epoch=self.epoch)._tick)
+        # Get datetimes and convert to ticks
+        start = timeEdit.start.dateTime().toPyDateTime()
+        end = timeEdit.end.dateTime().toPyDateTime()
+
+        t0 = ff_time.date_to_tick(start, self.epoch)
+        t1 = ff_time.date_to_tick(end, self.epoch)
+
+        i0 = self.calcTickIndexByTime(t0)
+        i1 = self.calcTickIndexByTime(t1)
         return (i0,i1) if i0 < i1 else (i1,i0) #need parenthesis here, otherwise it will eval like 3 piece tuple with if in the middle lol yikes
 
     # tick index refers to slider indices
@@ -3470,7 +3406,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.hoverTracker.setRegion((x-self.tickOffset, x-self.tickOffset))
 
         # Update timestamp in statusbar
-        ts = FFTIME(x, Epoch=self.epoch).UTC
+        ts = ff_time.tick_to_ts(x, self.epoch)
         self.ui.timeStatus.setText(ts+' ')
 
     def hoverEnd(self):
@@ -3532,51 +3468,26 @@ class FF_FD():
         return self.name
 
     def getEpoch(self):
-        return self.FID.getEpoch()
+        return self.FID.get_epoch()
 
     def getUnits(self):
-        return self.FID.getColumnDescriptor('UNITS')
+        return self.FID.get_units()
 
     def getLabels(self):
-        return self.FID.getColumnDescriptor('NAME')
+        return self.FID.get_labels()
 
     def getRows(self):
-        return self.FID.getRows()
-
-    def ffSearch(self, tick, startRow, endRow):
-        return self.FID.ffsearch(tick, startRow, endRow)
+        return self.FID.shape()[1]
 
     def getRecords(self, epoch_var=None):
-        # Get time and data records from file
-        nRows = self.getRows()
-        records = self.FID.DID.sliceArray(row=1, nRow=nRows)
-        times, datas = records['time'], records['data']
-
-        # Add units to column labels
-        labels = self.getLabels()
-        units = self.getUnits()
-        new_labels = []
-        for label, unit in zip(labels, units):
-            if unit:
-                label = f'{label} ({unit})'
-            new_labels.append(label)
-
-        # Create dtype for table
-        dtype = [(label, 'f4') for label in new_labels]
-        dtype = np.dtype(dtype)
-
-        # Restructure records into a numpy records table
-        nRows = self.getRows()
-        table = np.hstack([np.reshape(times, (nRows, 1)), datas])
-        datas = rfn.unstructured_to_structured(table, dtype=dtype)
-
-        return datas
+        table = self.FID.get_data_table()
+        return table
 
     def open(self):
-        self.FID.open()
+        self.FID = ff_reader(self.name)
 
     def close(self):
-        self.FID.close()
+        pass
 
 def myexepthook(type, value, tb):
     print(f'{type} {value}')
@@ -3661,9 +3572,6 @@ class CDF_ID():
         if self.cdf:
             self.cdf = None
 
-    def ffSearch(self, a, b, c):
-        return 0
-    
     def setGroups(self, grps):
         self.epoch_grps = grps
     

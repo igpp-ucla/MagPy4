@@ -1,7 +1,7 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .MagPy4UI import TimeEdit, GridGraphicsLayout, PlotGrid, StackedLabel
-from FF_Time import FFTIME
+from fflib import ff_time
 from .dataDisplay import UTCQDate
 from .layoutTools import BaseLayout
 from .timeManager import TimeManager
@@ -486,8 +486,8 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
     def getMinAndMaxDateTime(self):
         tO, tE = self.getSelectionStartEndTimes()
-        minDateTime = UTCQDate.UTC2QDateTime(FFTIME(tO, Epoch=self.epoch).UTC)
-        maxDateTime = UTCQDate.UTC2QDateTime(FFTIME(tE, Epoch=self.epoch).UTC)
+        minDate = ff_time.tick_to_date(tO, self.epoch)
+        maxDate = ff_time.tick_to_date(tE, self.epoch)
         return minDateTime, maxDateTime
 
     def getData(self, dstr, en=None):

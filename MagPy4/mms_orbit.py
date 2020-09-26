@@ -2,7 +2,6 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .plotBase import MagPyPlotItem
 from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, checkForOrbitLibs
-from FF_Time import FFTIME, leapFile
 from .layoutTools import BaseLayout
 from .trajectory import OriginGraphic, OrbitPlotter, MagnetosphereTool
 from . import getRelPath

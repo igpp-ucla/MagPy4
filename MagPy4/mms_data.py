@@ -20,7 +20,6 @@ from copy import copy
 from bisect import bisect_left, bisect_right
 from datetime import datetime, timedelta, time
 
-from ffPy.FF_Time import FFTIME
 import cdflib
 
 class PromptDialog(QtWidgets.QDialog):
@@ -115,12 +114,9 @@ class MMSLibrary():
         '''
         # Map start/end times to flat file ticks
         start_dt, end_dt = params['Time Range']
-        fmt = '%Y %j %b %d %H:%M:%S.%f'
-        start_ts = datetime.strftime(start_dt, fmt)[:-3]
-        end_ts = datetime.strftime(end_dt, fmt)[:-3]
 
-        start_base_tick = FFTIME(start_ts, Epoch='J2000')._tick
-        end_base_tick = FFTIME(end_ts, Epoch='J2000')._tick
+        start_base_tick = ff_time.date_to_tick(start_dt, 'J2000')
+        end_base_tick = ff_time.date_to_tick(end_dt, 'J2000')
 
         # Extract other parameters
         prods = params['Data Types']

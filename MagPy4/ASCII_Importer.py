@@ -1,6 +1,5 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from FF_Time import FFTIME, leapFile
 from datetime import datetime
 from .layoutTools import BaseLayout
 import numpy as np
@@ -8,11 +7,9 @@ from bisect import bisect
 import time
 import re
 import numpy.lib.recfunctions as rfn
-
 import dateutil
 import numpy as np
-import numpy.lib.recfunctions as rfn
-from .timeManager import TimeManager
+from fflib import ff_time, isoparser
 
 def check_if_timestamp(s):
     ''' Checks if in timestamp format by attempting
@@ -103,12 +100,11 @@ class TextReader():
 
     def map_to_dates(self, times):
         ''' Map timestamps to datetimes '''
-        return list(map(dateutil.parser.isoparse, times))
+        return list(map(isoparser.iso_to_date, times))
     
     def map_to_ticks(self, dates, epoch):
         ''' Map datetimes to seconds since epoch '''
-        tm = TimeManager(0, 0, epoch)
-        ticks = list(map(tm.getTickFromDateTime, dates))
+        ticks = ff_time.dates_to_ticks(dates, epoch, fold_mode=True)
         return ticks
 
     def get_reader(self):
@@ -194,6 +190,7 @@ class TabReader(TextReader):
         
         # Get column names
         cols = [header[slice(*s)].strip(' ').strip('\n') for s in slices]
+        cols = [hdr for hdr in cols if hdr != '']
 
         # Set up dtype
         dtype = self._get_dtype(cols, time_dtype)

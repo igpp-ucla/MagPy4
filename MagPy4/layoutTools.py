@@ -6,7 +6,6 @@ import pyqtgraph as pg
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
-from FF_Time import FFTIME
 from .MagPy4UI import TimeEdit, NumLabel
 
 class BaseLayout(object):

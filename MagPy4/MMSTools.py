@@ -2,7 +2,6 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, PlotGrid, StackedAxisLabel, ScientificSpinBox
 
-from FF_Time import FFTIME, leapFile
 from .dataDisplay import DataDisplay, UTCQDate
 
 from .dynBase import SpectrogramPlotItem, SpectraLine, SpectraLegend, SimpleColorPlot

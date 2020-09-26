@@ -1,8 +1,8 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-import FF_File
-from FF_Time import FFTIME, FF_EPOCH
+
+from fflib import ff_time
 import numpy as np
 import datetime, time
 import bisect, functools
@@ -141,7 +141,8 @@ class FFTableModel(QtCore.QAbstractTableModel):
         QtCore.QAbstractTableModel.__init__(self, parent, *args)
         self.arraydata = datain
         self.headers = list(datain.dtype.names)
-        self.epoch = FF_EPOCH.Y2000
+        self.headers = [hdr.strip(' ').strip('\n') for hdr in self.headers]
+        self.epoch = 'Y2000'
         self.UTCMode = True
         if epoch:
             self.epoch = epoch
@@ -165,12 +166,7 @@ class FFTableModel(QtCore.QAbstractTableModel):
         if index.column() == 0:
             t = self.arraydata[index.row()][index.column()]
             if self.UTCMode:
-                if isinstance(t, FFTIME):
-                    utc = t.UTC
-                else:
-                    utc = FFTIME(t, Epoch=self.epoch).UTC
-                utc = UTCQDate.removeDOY(utc)
-                value = utc
+                value = ff_time.tick_to_ts(t, self.epoch)
             else:
                 value = "%16.4f" % t
         else:
@@ -412,18 +408,18 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 
     def updtTimeEditAndStats(self, nRows, nCols, epoch):
         # Update time edit parameters with UTC strings
-        start = FFTIME(self.time[0], Epoch=epoch)
-        stop_ = FFTIME(self.time[-1], Epoch=epoch)
-        self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))
-        self.ui.dateTimeEdit.setMinimumDateTime(UTCQDate.UTC2QDateTime(start.UTC))
-        self.ui.dateTimeEdit.setMaximumDateTime(UTCQDate.UTC2QDateTime(stop_.UTC)) 
+        start = ff_time.tick_to_date(self.time[0], epoch)
+        stop_ = ff_time.tick_to_date(self.time[-1], epoch)
+        self.ui.dateTimeEdit.setDateTime(start)
+        self.ui.dateTimeEdit.setMinimumDateTime(start)
+        self.ui.dateTimeEdit.setMaximumDateTime(stop_) 
         
         # Update statistics in corner of window
         nrows = 'Rows: ' + str(nRows)
         ncols = 'Columns: ' + str(nCols)
         epoch = 'Epoch: ' + str(epoch)
-        startTime = start.UTC
-        endTime = stop_.UTC
+        startTime = start
+        endTime = stop_
         stats = f'{nrows}, {ncols}, {epoch}          \n{startTime}\n{endTime}'
         self.ui.timesLabel.setText(stats)    
 
@@ -489,8 +485,8 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             epoch = self.curFID.getEpoch()
             if epoch is None:
                 epoch = self.window.epoch
-            start = FFTIME(self.time[0], Epoch=epoch)
-            self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))        
+            start = ff_time.tick_to_ts(self.time[0], epoch)
+            self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start))        
 
     # saves flatfile data to a plain text file
     def saveData(self, sig, indices=None):
@@ -535,17 +531,11 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
     def getRowFrmDTime(self, dt):
         formMM = 'yyyy MM dd hh mm ss zzz'
         formMMM = 'yyyy MMM dd hh:mm:ss.zzz'
-        DT = dt.dateTime()
-        DTSTR = DT.toString(formMM)
-        DTSTRM = DT.toString(formMMM)
-        dtList = DTSTR.split()
-        dtInt = [int(item) for item in dtList]
-        doy = datetime.datetime(*dtInt).timetuple().tm_yday
-        UTC = dtList[0] + " " + str(doy) + DTSTRM[4:]
+        DT = dt.dateTime().toPyDateTime()
         epoch = self.curFID.getEpoch()
         if epoch is None:
             epoch = self.window.epoch
-        t = FFTIME(UTC, Epoch=epoch).tick
+        t = ff_time.date_to_tick(DT, epoch)
         iRow = 0
         iRow = bisect.bisect(self.time, t)
         return iRow
@@ -584,14 +574,14 @@ class RangeSelectionUI(object):
         rowLayout.addStretch()
 
         # Set up min/max and default values for range selectors
-        start = FFTIME(window.time[0], Epoch=window.window.epoch) # Main window's epoch
-        stop_ = FFTIME(window.time[-1], Epoch=window.window.epoch)
-        self.startTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start.UTC))
-        self.endTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(stop_.UTC))
+        start = ff_time.tick_to_date(window.time[0], window.window.epoch)
+        stop_ = ff_time.tick_to_date(window.time[-1], window.window.epoch)
+        self.startTimeEdit.setDateTime(start)
+        self.endTimeEdit.setDateTime(stop_)
         for te in [self.startTimeEdit, self.endTimeEdit]:
             te.setDisplayFormat('yyyy MMM dd hh:mm:ss')
-            te.setMinimumDateTime(UTCQDate.UTC2QDateTime(start.UTC))
-            te.setMaximumDateTime(UTCQDate.UTC2QDateTime(stop_.UTC))
+            te.setMinimumDateTime(start)
+            te.setMaximumDateTime(stop_)
 
         maxRows = window.ui.Row.maximum()
         for rowObj in [self.startRwBox, self.endRwBox]:
@@ -637,9 +627,9 @@ class RangeSelection(QtWidgets.QFrame, RangeSelectionUI):
         # Get tick from data times corresponding to row number
         newTime = self.window.time[row]
         # Get UTC version of time and update timeEdit
-        tick = FFTIME(newTime, Epoch=self.window.window.epoch)
+        date = ff_time.tick_to_date(newTime, self.window.window.epoch)
         te.blockSignals(True)
-        te.setDateTime(UTCQDate.UTC2QDateTime(tick.UTC))
+        te.setDateTime(date)
         te.blockSignals(False)
 
     def saveRangeData(self):
