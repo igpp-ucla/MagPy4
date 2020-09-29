@@ -16,6 +16,7 @@ from .geopack.geopack import geopack
 from datetime import datetime, timedelta
 import multiprocessing
 from multiprocessing import Pool
+from fflib import ff_time
 
 class TrajectoryUI(BaseLayout):
     def setupUI(self, Frame, window):
@@ -1395,8 +1396,9 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
         labels = []
         for x, y, t in zip(xInterp, yInterp, tickVals):
             # Format timestamp
-            timestamp = window.getTimestampFromTick(t)
-            timestamp = timeAxis.fmtTimeStmp(timestamp)
+            fmt = timeAxis.get_fmt_str()
+            date = ff_time.tick_to_date(t, timeAxis.epoch)
+            timestamp = date.strftime(fmt)
 
             lbl = TimeTickLabel(timestamp, color='#000000', anchor=anchor, angle=angle)
             labels.append(lbl)
@@ -1443,7 +1445,7 @@ class OrbitPlotter(QtWidgets.QFrame, OrbitUI):
             tickValues, timeAxis, self.outerFrame, anchInfo=anchInfo)
 
         # Add an additional label to indicate the timestamp format
-        axisLabel = timeAxis.getDefaultLabel() if timeAxis.labelFormat is None else timeAxis.labelFormat
+        axisLabel = timeAxis.get_label()
         spacing = tickValues[1] - tickValues[0]
         fracSpacing = abs(spacing / 4)
         diff = abs(tickValues[0] - times[0])

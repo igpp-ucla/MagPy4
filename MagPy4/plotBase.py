@@ -831,9 +831,11 @@ class DateAxis(pg.AxisItem):
                 seen.extend(ticks)
 
         return vals
-
-    def tickStrings(self, values, scale, spacing):
-        # Get formatting string
+    
+    def get_fmt_str(self):
+        ''' Returns formatting string used to convert datetime
+            to a timestamp
+        '''
         fmt_str = ''
         if self.lbl_fmt is None:
             # Use default label format
@@ -842,6 +844,12 @@ class DateAxis(pg.AxisItem):
         else:
             # Map set label format to formatting string
             fmt_str = self.fmt_strs[self.lbl_fmt]
+
+        return fmt_str
+
+    def tickStrings(self, values, scale, spacing):
+        # Get formatting string
+        fmt_str = self.get_fmt_str()
 
         # Map each tick value to a datetime object
         # and use strftime to format into a string
