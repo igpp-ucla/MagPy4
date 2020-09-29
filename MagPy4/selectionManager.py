@@ -1123,8 +1123,8 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
     def ticks_to_timestamps(self, ticks):
         ''' Map ticks time range to strings '''
         start, stop = ticks
-        start = ff_time.tick_to_ts(start, self.window.epoch)
-        stop = ff_time.tick_to_ts(stop, self.window.epoch)
+        start = ff_time.tick_to_ts(start, self.window.epoch)[:-3]
+        stop = ff_time.tick_to_ts(stop, self.window.epoch)[:-3]
 
         # Remove day of year
         start = start[:4] + start[8:]
@@ -1210,8 +1210,8 @@ class BatchSelect(QtWidgets.QFrame, BatchSelectUI):
                 return
 
         # Map regions to time ticks
-        tO = self.window.getTickFromTimestamp(startTime)
-        tE = self.window.getTickFromTimestamp(endTime)
+        tO = ff_time.date_to_tick(start_dt, self.window.epoch)
+        tE = ff_time.date_to_tick(end_dt, self.window.epoch)
         tO, tE = min(tO, tE), max(tO, tE)
         ticks = (tO, tE)
 
