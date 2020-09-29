@@ -481,6 +481,46 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.setNewWindowTicks(start, end)
 
+    def zoomCentered(self, ev, axis):
+        ''' Distributes wheel events across plots in grid
+            and updates other UI states accordingly
+        '''
+
+        # Pass scroll event to all plot items
+        for plot in self.plotItems:
+            vb = plot.getViewBox()
+            vb.setMouseEnabled(x=True, y=False)
+            pg.ViewBox.wheelEvent(vb, ev, axis)
+            vb.setMouseEnabled(x=False)
+        
+        # Get view range, map to datetimes, and set
+        # local attributes
+        (xmin, xmax), yrng = vb.viewRange()
+        xmin += self.tickOffset
+        xmax += self.tickOffset
+
+        start = ff_time.tick_to_date(xmin, self.epoch)
+        stop = ff_time.tick_to_date(xmax, self.epoch)
+
+        self.tO = xmin
+        self.tE = xmax
+
+        # Update time edits with new range w/o signals
+        edits = [self.ui.timeEdit.start, self.ui.timeEdit.end]
+        vals = [start, stop]
+        for edit, val in zip(edits, vals):
+            edit.blockSignals(True)
+            edit.setDateTime(val)
+            edit.blockSignals(False)
+            edit.update()
+
+        # Update sliders based on time edit values
+        self.onStartEditChanged(start, False)
+        self.onEndEditChanged(stop, False)
+
+        # Update y range
+        self.updateYRange()
+
     def viewAllData(self):
         self.setNewWindowTicks(0, self.iiE)
 
@@ -2048,25 +2088,31 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Update view range by calling setTimes
         self.setTimes()
 
-    def onStartEditChanged(self, val):
+    def onStartEditChanged(self, val, set_times=True):
         """this gets called when the start date time edit is changed directly"""
-        val = val.toPyDateTime()
+        if not isinstance(val, datetime):
+            val = val.toPyDateTime()
         tick = ff_time.date_to_tick(val, self.epoch)
         self.iO = self.calcTickIndexByTime(tick)
         self.setSliderNoCallback('start', self.iO)
         for line in self.trackerLines:
             line.hide()
-        self.setTimes()
+        
+        if set_times:
+            self.setTimes()
 
-    def onEndEditChanged(self, val):
+    def onEndEditChanged(self, val, set_times=True):
         """this gets called when the end date time edit is changed directly"""
-        val = val.toPyDateTime()
+        if not isinstance(val, datetime):
+            val = val.toPyDateTime()
         tick = ff_time.date_to_tick(val, self.epoch)
         self.iE = self.calcTickIndexByTime(tick)
         self.setSliderNoCallback('stop', self.iE)
         for line in self.trackerLines:
             line.hide()
-        self.setTimes()
+
+        if set_times:
+            self.setTimes()
 
     def setTimes(self):
         """function that updates both the x and y range of the plots based on current time variables"""
@@ -2188,6 +2234,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.ui.statusBar.showMessage(msg, 10000)
         else: # Otherwise, disable downsampling
             self.ui.downsampleAction.setChecked(False)
+
+        # Set initial y range if scaling disabled
+        if not self.ui.scaleYToCurrentTimeAction.isChecked():
+            self.updateYRange(force=True)
 
     def getData(self, dstr, editNumber=None):
         edits = self.DATADICT[dstr]
@@ -2827,7 +2877,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         new_b = max(b-25, 0)
         return pg.mkPen(new_r, new_g, new_b)
 
-    def updateYRange(self):
+    def getViewRange(self):
+        return self.tO, self.tE
+
+    def updateYRange(self, force=False):
         """
         this function scales Y axis to have equally scaled ranges but not the same actual range
         pyqtgraph has built in y axis linking but doesn't work exactly how we want
@@ -2835,69 +2888,58 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         """
         if self.lastPlotStrings is None or len(self.lastPlotStrings) == 0:
             return
-        values = [] # (min,max)
-        skipRangeSet = set() # set of plots where the min and max values are infinite so they should be ignored
-        # for each plot, find min and max values for current time selection (consider every trace)
-        # otherwise just use the whole visible range * -> self.iiE
-        outOfRangeCount = 0
-        for plotIndex, dstrs in enumerate(self.lastPlotStrings):
-            minVal = np.inf
-            maxVal = -np.inf
+        
+        if (not force) and (not self.ui.scaleYToCurrentTimeAction.isChecked()):
+            return
 
-            logPlot = self.plotItems[plotIndex].ctrl.logYCheck.isChecked()
+        # Get plots in each link group
+        plots = self.plotItems[:]
+        plot_grps = []
+        for plot_links in self.lastPlotLinks:
+            group = [plots[i] for i in plot_links]
+            plot_grps.append(group)
 
-            # find min and max values out of all traces on this plot
-            for (dstr,editNum) in dstrs:
-                if editNum < 0:
-                    skipRangeSet.add(plotIndex)
-                    continue
-                Y = self.getData(dstr,editNum)
+        # Get the view range
+        start, stop = self.getViewRange()
+        start = start - self.tickOffset
+        stop = stop - self.tickOffset
 
-                if logPlot: # Use *valid* log values to get range
-                    Y = np.log10(Y[Y>0])
+        # Find the range for each link group
+        scales = []
+        group_centers = []
+        for group in plot_grps:
+            group_scale = None
+            # Get data bounds for each plot and compare to group
+            # lower / upper bounds
+            plot_centers = []
+            for plot in group:
+                lower, upper = plot.dataBounds(ax=1, orthoRange=[start, stop])
 
-                if self.ui.scaleYToCurrentTimeAction.isChecked():
-                    X = self.getTimes(dstr,editNum)[0] # first in list is time series
-                    a = self.calcDataIndexByTime(X, self.tO)
-                    b = self.calcDataIndexByTime(X, self.tE)
-                    if a == b: # both are out of range on same side so data shouldnt be plotted
-                        #print(f'"{dstr}" out of range, not plotting') # can get rid of this warning later but want to see it in action first
-                        outOfRangeCount += 1
-                        continue
+                # Check if lower and upper are valid and compare against
+                # current group scale
+                if lower is not None and upper is not None:
+                    diff = abs(upper - lower)
+                    if group_scale is None:
+                        group_scale = diff
+                    else:
+                        group_scale = max(diff, group_scale)
 
-                    if a > b: # so sliders work either way
-                        a,b = b,a
+                    # Store center value of plot data to use later
+                    center = (lower+upper)/2
+                    plot_centers.append(center)
 
-                    Y = Y[a:b] # get correct slice
+            # Store group information
+            scales.append(group_scale)
+            group_centers.append(plot_centers)
 
-                Y = Y[Y<self.errorFlag]
-
-                minVal = min(minVal, np.min(Y))
-                maxVal = max(maxVal, np.max(Y))
-            # if range is bad then dont change this plot
-            if np.isnan(minVal) or np.isinf(minVal) or np.isnan(maxVal) or np.isinf(maxVal):
-                skipRangeSet.add(plotIndex)
-            values.append((minVal,maxVal))
-
-        if outOfRangeCount > 0:
-            print(f'{outOfRangeCount} data columns out of range, not plotting')
-
-        for row in self.lastPlotLinks:
-            # find largest range in group
-            largest = 0
-            for i in row:
-                if i in skipRangeSet or i >= len(values):
-                    continue
-                diff = values[i][1] - values[i][0]
-                largest = max(largest,diff)
-
-            # then scale each plot in this row to the range
-            for i in row:
-                if i in skipRangeSet or i >= len(values):
-                    continue
-                diff = values[i][1] - values[i][0]
-                l2 = (largest - diff) / 2.0
-                self.plotItems[i].setYRange(values[i][0] - l2, values[i][1] + l2, padding = 0.05)
+        # Set the ranges for each group       
+        for group, scale, centers in zip(plot_grps, scales, group_centers):
+            if scale is not None:
+                half = scale / 2
+                for plot, center in zip(group, centers):
+                    ymin = center - half
+                    ymax = center + half
+                    plot.setYRange(ymin, ymax, 0.05)
 
     def updateLogScaling(self, plotIndex, val):
         # Look through all link sets the plot at the given index is in
@@ -3161,39 +3203,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if self.tools['DynWave']:
             self.tools['DynWave'].updateParameters()
 
-    def mouseDragPlots(self, ev):
-        # Allow mouse dragging only in stats mode
-        if self.currSelect is not None and self.currSelect.name != 'Stats':
-            return
-
-        # Check movement direction so plot widths do not shrink when
-        # dragging past edges
-        lastPos = ev.lastPos()
-        currPos = ev.pos()
-        leftMove = True if lastPos.x() - currPos.x() < 0 else False
-        rightMove = True if lastPos.x() - currPos.x() > 0 else False
-        if self.tE >= self.maxTime and rightMove:
-            return
-        elif self.tO <= self.minTime and leftMove:
-            return
-
-        # Signal mouse drag event to all plots' viewboxes
-        for plt in self.plotItems:
-            vb = plt.getViewBox()
-            vb.setMouseEnabled(x=True,y=False)
-            vb.blockSignals(True)
-            pg.ViewBox.mouseDragEvent(vb, ev)
-            vb.blockSignals(False)
-
-        # Get new x value range and update time edits / sliders (indirectly)
-        xMin, xMax = vb.state['targetRange'][0]
-        self.tO = xMin + self.tickOffset
-        self.tE = xMax + self.tickOffset
-        minDate = self.getDateTimeFromTick(self.tO)
-        maxDate = self.getDateTimeFromTick(self.tE)
-        self.ui.timeEdit.start.setDateTime(minDate)
-        self.ui.timeEdit.end.setDateTime(maxDate)
-
     # color is hex string ie: '#ff0000' for red
     def initGeneralSelect(self, name, color, timeEdit, mode, startFunc=None, updtFunc=None, 
         closeFunc=None, canHide=False, maxSteps=1):
@@ -3429,6 +3438,7 @@ class MagPyViewBox(SelectableViewBox): # custom viewbox event handling
         self.window = window
         self.plotIndex = plotIndex
         self.menuSetup()
+        self.setCursor(QtCore.Qt.CrossCursor)
 
     def menuSetup(self):
         # Remove menu options that won't be used
@@ -3454,6 +3464,9 @@ class MagPyViewBox(SelectableViewBox): # custom viewbox event handling
             pos = self.mapToView(ev.pos())
             self.window.hoverStart(pos)
             self.window.gridHover(pos)
+
+    def wheelEvent(self, ev, axis=None):
+        self.window.zoomCentered(ev, axis)
 
 # Wrapper class for Flat File FID functions
 class FF_FD():

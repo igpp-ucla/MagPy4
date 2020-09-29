@@ -116,6 +116,29 @@ class MagPyPlotItem(pg.PlotItem):
         from .plotAppearance import PlotAppearance
         self.plotAppr = PlotAppearance(self, [self])
         self.plotAppr.show()
+    
+    def dataBounds(self, ax, frac=1.0, orthoRange=None):
+        ''' Calls dataBounds() on each plot data item
+            in plot and returns the min/max upper bounds
+            for the plot if valid
+        '''
+        pdis = self.listDataItems()
+        plot_min = None
+        plot_max = None
+        for pdi in pdis:
+            lower, upper = pdi.dataBounds(ax, frac, orthoRange)
+            if lower is not None and not np.isnan(lower):
+                if plot_min is None:
+                    plot_min = lower
+                else:
+                    plot_min = min(lower, plot_min)
+
+                if plot_max is None:
+                    plot_max = upper
+                else:
+                    plot_max = max(upper, plot_max)
+
+        return (plot_min, plot_max)
 
 class MagPyColorPlot(MagPyPlotItem):
     def __init__(self, *args, **kwargs):

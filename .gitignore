@@ -19,6 +19,7 @@ MagPy4/.idea
 
 # Development environment
 env/
+test_files/
 tests/
 test.py
 terminal.py
