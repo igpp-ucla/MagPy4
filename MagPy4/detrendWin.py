@@ -488,7 +488,7 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         tO, tE = self.getSelectionStartEndTimes()
         minDate = ff_time.tick_to_date(tO, self.epoch)
         maxDate = ff_time.tick_to_date(tE, self.epoch)
-        return minDateTime, maxDateTime
+        return minDate, maxDate
 
     def getData(self, dstr, en=None):
         # Get full dataset and fill the selected range with the detrended data
