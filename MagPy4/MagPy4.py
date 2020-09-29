@@ -273,6 +273,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
             # Connect action to start trigger
             act.triggered.connect(toolFunc)
+        
+        # Initialize wave analysis functions
+        key = 'DynWave'
+        for act in self.ui.dynWaveActions:
+            text = act.text()[:-3]
+            set_func = functools.partial(self.setWaveAnalysis, text)
+            toolFunc = functools.partial(self.startTool, key, None, set_func)
+            act.triggered.connect(toolFunc)
 
         # these are saves for options for program lifetime
         self.plotMenuTableMode = True
@@ -1039,7 +1047,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.tools['MMSData'].close()
             self.tools['MMSData'] = None
 
-    def startTool(self, name):
+    def startTool(self, name, trigger=None, initFunc=None):
         # End current selection to start new one
         self.endGeneralSelect()
 
@@ -1074,10 +1082,22 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         showFunc = functools.partial(self.showTool, name)
         closeFunc = functools.partial(self.closeTool, name)
 
+        # Apply any other functions before starting select
+        if initFunc is not None:
+            initFunc(tool)
+
         # Start general selection
         self.initGeneralSelect(label, color, tool.ui.timeEdit, 
             select_type, startFunc=showFunc, updtFunc=updt_func, 
             closeFunc=closeFunc)
+        
+        return tool
+    
+    def setWaveAnalysis(self, plot_type, tool):
+        ''' Start wave analysis with plot_type as
+            the default plot type if given
+        '''
+        tool.setPlotType(plot_type)
 
     def showTool(self, name):
         ''' Displays tool if present '''

@@ -95,6 +95,18 @@ class MagPy4UI(object):
         self.actionDynWave.setText('Dynamic Wave Analysis...')
         self.actionDynWave.setStatusTip('Dynamic analysis of various wave analysis results')
 
+        # Set up dynamic wave analysis actions
+        keys = ['Azimuth Angle', 'Ellipticity (Means)', 'Ellipticity (SVD)',
+            'Ellipticity (Born-Wolf)', 'Propagation Angle (Means)',
+            'Propagation Angle (SVD)', 'Propagation Angle (Min Var)',
+            'Power Spectra Trace', 'Compressional Power']
+        keys = sorted(keys)
+        self.dynWaveActions = []
+        for key in keys:
+            action = QtWidgets.QAction(window)
+            action.setText(key + '...')
+            self.dynWaveActions.append(action)
+
         self.actionTraj = QtWidgets.QAction(window)
         self.actionTraj.setText('Trajectory Analysis...')
         self.actionTraj.setStatusTip('Opens trajectory analysis window')
@@ -228,7 +240,11 @@ class MagPy4UI(object):
         self.toolsMenu.addSeparator()
         self.toolsMenu.addAction(self.actionDynamicSpectra)
         self.toolsMenu.addAction(self.actionDynamicCohPha)
-        self.toolsMenu.addAction(self.actionDynWave)
+
+        self.waveMenu = QtWidgets.QMenu('Dynamic Wave Analysis')
+        for act in self.dynWaveActions:
+            self.waveMenu.addAction(act)
+        self.toolsMenu.addMenu(self.waveMenu)
 
         self.MMSMenu = self.menuBar.addMenu('&MMS Tools')
         self.MMSMenu.addAction(self.actionLoadMMS)
