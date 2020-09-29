@@ -117,6 +117,8 @@ class AddTickLabels(QtGui.QFrame, AddTickLabelsUI):
         else:
             self.pltGrd.removeLabelSet(dstr)
 
+from scipy.interpolate import CubicSpline
+
 class invisAxis(DateAxis):
     # Axis item that hides all lines and only paints text items at ticks
     def __init__(self, window, dstr, orientation):
@@ -129,16 +131,29 @@ class invisAxis(DateAxis):
         self.setStyle(tickLength=0)
 
     def tickStrings(self, values, scale, spacing):
-        indices = self.getDataIndices(self.dstr, values)
-        strings = []
+        # Interpolate values along values that are within a valid range
         data = self.window.getData(self.dstr, self.window.currentEdit)
-        for index in indices:
-            if index is None:
+        times = self.window.getTimes(self.dstr, self.window.currentEdit)[0]
+        
+        values = np.array([val + self.window.tickOffset for val in values])
+        mask1 = (values >= times[0])
+        mask2 = (values <= times[-1])
+        mask = np.logical_and(mask1, mask2)
+        interp_data = np.interp(values[mask], times, data)
+
+        ## Replace out of range values with None
+        string_arr = np.empty(values.shape)
+        string_arr[~mask] = None
+        string_arr[mask] = interp_data
+
+        # Convert values to strings
+        strings = []
+        for val in string_arr:
+            if val is None:
                 strings.append('')
-                continue
-            val = data[index]
-            txt = str(np.round(val, decimals=4))
-            strings.append(txt)
+            else:
+                txt = str(np.round(val, decimals=4))
+                strings.append(txt)
 
         return strings
 
@@ -156,18 +171,6 @@ class invisAxis(DateAxis):
         p.setPen(self.pen())
         for rect, flags, text in textSpecs:
             p.drawText(rect, flags, text)
-
-    def getDataIndices(self, dstr, tickValues):
-        # Uses bisect search to get all the data indices corresp. to each tick
-        dataIndices = []
-        times = self.window.getTimes(dstr, 0)[0]
-        for tv in tickValues:
-            curIndex = bisect.bisect(times, tv + self.window.tickOffset)
-            if curIndex >= len(times):
-                dataIndices.append(None)
-            else:
-                dataIndices.append(curIndex)
-        return dataIndices
 
     def matchTicks(self, ticks):
         levels = []
