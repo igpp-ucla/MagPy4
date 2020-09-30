@@ -3,6 +3,8 @@ import copy
 from PyQt5.QtWidgets import QSizePolicy
 
 from .plotAppearance import DynamicPlotApp
+from scipy.interpolate import CubicSpline
+from bisect import bisect_left, bisect_right
 import pyqtgraph as pg
 from scipy import fftpack, signal
 import numpy as np
@@ -699,6 +701,90 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         self.ui.maskBtn.clicked.connect(self.openMaskTool)
         self.ui.addBtn.clicked.connect(self.addToMain)
 
+    def getRange(self):
+        ''' Return time range selected '''
+        return self.ui.timeEdit.getRange()
+
+    def getIndices(self, dstr, en):
+        ''' Returns start/end indices for variable '''
+        # Get start/end datetimes
+        start, end = self.getRange()
+
+        # Convert to ticks
+        start = self.window.getTickFromDateTime(start)
+        end = self.window.getTickFromDateTime(end)
+
+        # Find indices in time array
+        times = self.window.getTimes(dstr, en)[0]
+        sI = bisect_left(times, start)
+        eI = bisect_left(times, end)
+
+        return (sI, eI)
+
+    def interpData(self, dstrs):
+        ''' Finds the largest time array for the given plot
+            variables and interpolates all variable along
+            that time array and stores it in dictionary
+        '''
+        # Get largest time range
+        max_tlen = 0
+        max_times = []
+        interp_indices = None
+        for dstr, en in dstrs:
+            # Get and clip time range for each variable within
+            # the selected interval
+            times = self.window.getTimes(dstr, en)[0]
+            sI, eI = self.getIndices(dstr, en)
+            times = times[sI:eI]
+
+            # Check if this is the longest time array
+            if len(times) > max_tlen:
+                max_tlen = len(times)
+                max_times = times
+                interp_indices = (sI, eI)
+        
+        # Interpolate data along max times and save in cache
+        interpTimes = max_times
+        data_dict = {}
+        for dstr, en in dstrs:
+            times = self.window.getTimes(dstr, en)[0]
+            data = self.window.getData(dstr, en)
+            cs = CubicSpline(times, data, extrapolate=False)
+            interpData = cs(interpTimes)
+
+            data_dict[(dstr, en)] = interpData
+
+        return data_dict, interpTimes, interp_indices
+
+    def checkData(self, dstrs):
+        ''' Check if both variables have the same time array '''
+        # Check time lengths of dstrs
+        time_indices = set()
+        for dstr, en in dstrs:
+            index = self.window.getTimeIndex(dstr, en)
+            time_indices.add(index)
+
+        # Check if times do not match
+        if len(time_indices) > 1:
+            return False
+        else:
+            return True
+    
+    def getData(self, dstrs):
+        ''' Return data in a dictionary format, clipped to selected
+            overall time range
+        '''
+        if self.checkData(dstrs):
+            # Get regular clipped data
+            dstr, en = dstrs[-1]
+            sI, eI = self.getIndices(dstr, en)
+            data = {key : self.window.getData(*key)[sI:eI] for key in dstrs}
+            times = self.window.getTimes(dstr, en)[0][sI:eI]
+        else:
+            # Interpolate data if time indices are not the same
+            data, times, (sI, eI) = self.interpData(dstrs)
+        return data, times, (sI, eI)
+
     def closeEvent(self, ev):
         self.closeLineTool()
         self.closeMaskTool()
@@ -827,21 +913,39 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
 
         cohLst, phaLst = [], []
         timeSeries = []
-        times = self.window.getTimes(varA, self.window.currentEdit)[0]
 
-        en = self.window.currentEdit
-        minIndex, maxIndex = indexRng
+        # Get data to be used in calculations
+        dstrs = [(dstr, self.window.currentEdit) for dstr in varPair]
+        data, times, (dsI, deI) = self.getData(dstrs)
+
+        # Prepend filler data so data indices are mapped
+        # correctly
+        pre = np.zeros(dsI)
+        data = {key : np.insert(data[key], 0, pre) for key in data}
+        times = np.insert(times, 0, pre)
+
+        # Compute grid
+        minIndex, maxIndex = dsI, deI
         startIndex, endIndex = minIndex, minIndex + interval
-        while endIndex < maxIndex:
+        while endIndex <= maxIndex:
             # Save start time
             timeSeries.append(times[startIndex])
+
             # Calculate ffts and coh/pha
             N = endIndex - startIndex
-            fft1 = self.getfft(varA, en, startIndex, endIndex, detrend=detrend)
-            fft2 = self.getfft(varB, en, startIndex, endIndex, detrend=detrend)
+
+            # Clip to data selection
+            data1 = data[dstrs[0]][startIndex:endIndex]
+            data2 = data[dstrs[1]][startIndex:endIndex]
+
+            # Calculate fft
+            fft1 = self.data_fft(data1, detrend=detrend)
+            fft2 = self.data_fft(data2, detrend=detrend)
+
             coh, pha = self.calculateCoherenceAndPhase(bw, fft1, fft2, N)
             cohLst.append(coh)
             phaLst.append(pha)
+
             # Move to next interval
             startIndex += shiftAmt
             endIndex = startIndex + interval

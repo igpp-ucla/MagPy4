@@ -5,6 +5,7 @@ import pyqtgraph as pg
 from . import getRelPath
 from .qtThread import TaskRunner
 from .selectionManager import TimeFormatWidget
+from fflib import ff_time
 
 import requests
 import json
