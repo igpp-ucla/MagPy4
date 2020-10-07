@@ -1,4 +1,5 @@
 from os import path
+from appdirs import user_data_dir
 
 # Function used to get absolute path to data/image files and directories
 def getRelPath(relPath='', directory=False):
@@ -15,3 +16,7 @@ def get_version(file_path):
 version_path = getRelPath('version.txt')
 MAGPY_VERSION = get_version(version_path)
 
+# Initialize user data directory
+appname='MagPy'
+appauthor='IGPP_UCLA'
+USERDATALOC=user_data_dir(appname, appauthor)

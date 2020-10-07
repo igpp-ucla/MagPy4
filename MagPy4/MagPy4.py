@@ -13,7 +13,7 @@ import re
 from fflib import ff_reader, ff_time, ff_writer
 
 # Version number and copyright notice displayed in the About box
-from . import getRelPath, MAGPY_VERSION
+from . import getRelPath, MAGPY_VERSION, USERDATALOC
 
 NAME = f'MagPy4'
 VERSION = f'Version {MAGPY_VERSION}'
@@ -338,7 +338,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def updateStateFile(self, key, val):
         ''' Updates state file with key value pair '''
         # Get state file and read in contents
-        state_file_path = getRelPath('state.json')
+        state_file_path = os.path.join(USERDATALOC, 'state.json')
         state_dict = self.readStateFile()
 
         # Update state dictionary
@@ -351,7 +351,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def readStateFile(self):
         ''' Read in state dictionary from file '''
-        state_file_path = getRelPath('state.json')
+        state_file_path = os.path.join(USERDATALOC, 'state.json')
         state_dict = {}
         if os.path.exists(state_file_path):
             fd = open(state_file_path, 'r')

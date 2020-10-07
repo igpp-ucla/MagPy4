@@ -2,7 +2,7 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
-from . import getRelPath
+from . import USERDATALOC
 from .qtThread import TaskRunner
 from .selectionManager import TimeFormatWidget
 from fflib import ff_time
@@ -449,7 +449,7 @@ class MMSDataDownloader(QtWidgets.QFrame):
         QtWidgets.QFrame.__init__(self)
         self.threadpool = QtCore.QThreadPool()
         self.task_obj = None
-        self.load_dir = getRelPath('mms_data')
+        self.load_dir = os.path.join(USERDATALOC, 'mms_data')
 
         # Get load directory from state
         state = window.readStateFile()
