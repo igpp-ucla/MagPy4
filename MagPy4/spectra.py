@@ -113,11 +113,12 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         self.currRange = currRange
         return clear
     
-    def checkSelection(self, selectInfo):
+    def checkSelection(self, selectInfo, clear):
         ''' Checks if selection has changed when replotting '''
-        res = not (self.selectInfo == selectInfo)
-        if not res:
+        res = (self.selectInfo == selectInfo)
+        if not res or clear:
             self.dataState = self.getDataState(selectInfo)
+        self.selectInfo = selectInfo
         return res
 
     def getDataState(self, selectInfo):
@@ -180,7 +181,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
         # Re-initialize plots if selected plot variables have changed
         info = self.window.getSelectedPlotInfo()
-        if clear or not self.checkSelection(info):
+        if not self.checkSelection(info, clear) or clear:
             split_trace = self.ui.separateTracesCheckBox.isChecked()
             self.initPlots(split_trace)
 
