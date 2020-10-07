@@ -187,7 +187,7 @@ def find_vec_grps(labels):
     btot_var = None
     for label in unused:
         if re.fullmatch(btot_expr, label):
-            btot_var = btot_expr
+            btot_var = label
             break
     
     # If btotal variable found, add to each group in b_grps
