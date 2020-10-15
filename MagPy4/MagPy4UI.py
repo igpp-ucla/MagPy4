@@ -1230,13 +1230,20 @@ class PlotGrid(pg.GraphicsLayout):
 
     def addSpectrogram(self, specData):
         from .dynBase import SpectrogramPlotItem
+        from .MagPy4 import MagPyViewBox
         # Create plot and fill with specData
-        plt = SpectrogramPlotItem(self.window.epoch)
+        vb = MagPyViewBox(self.window, len(self.plotItems))
+        plt = SpectrogramPlotItem(self.window.epoch, vb=vb)
         plt.loadPlot(specData)
 
-        # Disable plotappr menu and change cursor
+        # Disable plotappr menu
         plt.setPlotMenuEnabled(False)
-        plt.getViewBox().setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+
+        # Set limits
+        low, hi = self.window.minTime, self.window.maxTime
+        low = low - self.window.tickOffset
+        hi = hi - self.window.tickOffset
+        plt.setLimits(xMin=low, xMax=hi)
 
         # Get color bar and axis labels
         color_bar = plt.getGradLegend(specData.log_color_scale())

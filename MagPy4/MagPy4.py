@@ -2551,6 +2551,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 plt = self.pltGrd.addSpectrogram(specData)
                 self.plotItems.append(plt)
                 self.plotTracePens.append([None])
+                plt.setLimits(xMin=self.minTime-self.tickOffset, xMax=self.maxTime-self.tickOffset)
                 continue
 
             vb = MagPyViewBox(self, plotIndex)
