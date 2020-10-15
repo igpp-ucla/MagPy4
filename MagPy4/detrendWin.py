@@ -477,6 +477,10 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         dstr = self.stripName(dstr)
         return self.window.getTimes(dstr, en)
 
+    def getTimeIndex(self, dstr, en):
+        dstr = self.stripName(dstr)
+        return self.window.getTimeIndex(dstr, en)
+
     def getSelectionStartEndTimes(self, regNum=0):
         # Returns detrend window's selected regions
         if self.currSelect is None or self.currSelect.regions == []:
