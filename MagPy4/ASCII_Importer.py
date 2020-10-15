@@ -196,7 +196,7 @@ class TabReader(TextReader):
         dtype = self._get_dtype(cols, time_dtype)
 
         # Load data
-        data = np.loadtxt(self.name, dtype=dtype, skiprows=1)
+        data = np.genfromtxt(self.name, dtype=dtype, skip_header=1)
 
         return data
     
