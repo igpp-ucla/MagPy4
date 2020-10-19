@@ -2,9 +2,11 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .dynBase import *
-from .layoutTools import BaseLayout
+from .specAlg import SpectraCalc, WaveCalc
+from .layoutTools import BaseLayout, VBoxLayout, HBoxLayout
 from scipy import fftpack, signal
 import pyqtgraph as pg
+from .specAlg import SpecWave
 
 import multiprocessing
 from multiprocessing import Process, Queue
@@ -16,167 +18,380 @@ from .MagPy4UI import MatrixWidget, NumLabel, StackedAxisLabel
 import functools
 import os
 
+class VectorWidget(QtWidgets.QWidget):
+    def __init__(self, vec_grps={}, init_vec=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setupUI()
+        self.set_groups(vec_grps)
+        if init_vec is not None:
+            self.set_vector(init_vec)
+    
+    def setupUI(self):
+        layout = HBoxLayout()
+        for i in range(0, 3):
+            box = QtWidgets.QComboBox()
+            layout.addWidget(box)
+
+        self.setLayout(layout)
+    
+    def _get_boxes(self):
+        return self.layout().getItems()
+
+    def get_vector(self):
+        boxes = self._get_boxes()
+        vec = [box.currentText() for box in boxes]
+        return vec
+
+    def set_vector(self, vec):
+        boxes = self._get_boxes()
+        for elem, box in zip(vec, boxes):
+            box.setCurrentText(elem)
+
+    def set_groups(self, vec_grps):
+        boxes = self._get_boxes()
+        for key in vec_grps:
+            vec = vec_grps[key]
+            for elem, box in zip(vec, boxes):
+                box.addItem(elem)
+
+class FrequencyWidget(QtWidgets.QWidget):
+    def __init__(self, index_rng, freq_rng=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setupUI()
+        self.set_index_range(index_rng)
+
+    def setupUI(self):
+        layout = HBoxLayout()
+        self.setLayout(layout)
+
+        self.minBox = QtWidgets.QSpinBox()
+        self.maxBox = QtWidgets.QSpinBox()
+
+        for box in [self.minBox, self.maxBox]:
+            layout.addWidget(box)
+
+        layout.addStretch()
+
+    def set_index_range(self, rng):
+        low, high = rng
+        for box in [self.minBox, self.maxBox]:
+            box.setMinimum(low)
+            box.setMaximum(high)
+    
+        self.set_index_value(rng)
+
+    def set_index_value(self, vals):
+        low, high = vals
+        self.minBox.setValue(low)
+        self.maxBox.setValue(high)
+    
+    def get_index_range(self):
+        low = self.minBox.value()
+        high = self.maxBox.value()
+        return (low, high)
+
+class NumberText(QtWidgets.QLabel):
+    def get_text(val, prec, complex_num=False):
+        if val is None:
+            return ''
+
+        kwargs = {
+            'precision' : prec,
+            'unique' : False,
+            'trim' : '0'
+        }
+        if not complex_num:
+            txt = np.format_float_positional(val, **kwargs)
+        else:
+            real, imag = val.real, val.imag
+            real_txt = np.format_float_positional(real, **kwargs)
+            imag_txt = np.format_float_positional(imag, **kwargs)
+            txt = f'{real_txt} + {imag_txt}j'
+        
+        return txt
+
+class NumberLabel(QtWidgets.QLabel):
+    def __init__(self, value=0, prec=5, imag=False, **kwargs):
+        self.value = value
+        self.prec = prec
+        self.imag = imag
+
+        super().__init__('', **kwargs)
+        flags = QtCore.Qt.TextSelectableByKeyboard | QtCore.Qt.TextSelectableByMouse
+        self.setTextInteractionFlags(flags)
+        font = QtGui.QFont('monospace')
+        self.setFont(font)
+
+        self.set_value(value)
+
+    def set_value(self, value):
+        self.value = value
+        txt = NumberText.get_text(value, self.prec, self.imag)
+        self.setText(txt)
+    
+    def set_complex(self, val=True):
+        self.imag = val
+
+    def set_prec(self, prec):
+        self.prec = prec
+        self.set_value(self.value)
+
+class VectorLabel(QtWidgets.QLabel):
+    def __init__(self, vector=[0, 0, 0], prec=5, imag=False, **kwargs):
+        self.prec = prec
+        self.imag = imag
+
+        super().__init__('', **kwargs)
+        flags = QtCore.Qt.TextSelectableByKeyboard | QtCore.Qt.TextSelectableByMouse
+        self.setTextInteractionFlags(flags)
+        font = QtGui.QFont('monospace')
+        self.setFont(font)
+
+        self.set_vector(vector)
+
+    def set_vector(self, v):
+        self.vector = v
+
+        txt_lbls = []
+        for value in v:
+            txt = NumberText.get_text(value, self.prec, self.imag)
+            txt_lbls.append(txt)
+        
+        txt = '\n\n'.join(txt_lbls)
+        self.setText(txt)
+    
+    def set_complex(self, val=True):
+        self.imag = val
+
+    def set_prec(self, prec):
+        self.prec = prec
+        self.set_value(self.vector)
+
+class MatrixLabel(QtWidgets.QLabel):
+    def __init__(self, mat=None, prec=5, imag=False, **kwargs):
+        self.prec = prec
+        self.imag = imag
+
+        super().__init__('', **kwargs)
+        flags = QtCore.Qt.TextSelectableByKeyboard | QtCore.Qt.TextSelectableByMouse
+        self.setTextInteractionFlags(flags)
+        font = QtGui.QFont('monospace')
+        self.setFont(font)
+
+        if mat is None:
+            mat = np.eye(3)
+        self.set_mat(mat)
+    
+    def set_mat(self, mat):
+        self.mat = mat
+        label_rows = []
+        max_len = 0
+        for row in mat:
+            row_txt = []
+            for elem in row:
+                txt = NumberText.get_text(elem, self.prec, self.imag)
+                row_txt.append(txt)
+                max_len = max(max_len, len(txt))
+            label_rows.append(row_txt)
+        
+        lines = []
+        for row in label_rows:
+            elems = [elem.ljust(max_len+2) for elem in row[:-1]]
+            elems.append(row[-1])
+            line = ''.join(elems)
+            lines.append(line)
+        
+        txt = '\n\n'.join(lines)
+        self.setText(txt)
+        return txt
+
+    def set_prec(self, prec):
+        self.prec = prec
+        self.set_value(self.mat)
+
+    def set_complex(self, val=True):
+        self.imag = val
+
 class WaveAnalysisUI(object):
     def setupUI(self, Frame, window):
+        Frame.setObjectName('waveFrame')
+        style = '#waveFrame { background-color: white; }'
+        Frame.setStyleSheet(style)
         Frame.setWindowTitle('Wave Analysis')
         Frame.resize(700,500)  
 
-        self.layout = QtWidgets.QGridLayout(Frame)
-        prncpFrame = QtWidgets.QGroupBox('Principal Axis Analysis')
-        self.prncplLayout = QtWidgets.QVBoxLayout(prncpFrame)
+        # Set up vector options box
+        ## Determine vector groupings
+        grps = window.VECGRPS
+        if len(grps) == 0:
+            grps = {}
+            dstrs = window.DATASTRINGS
+            for i in range(0, len(dstrs)):
+                dstr = dstrs[i]
+                grps[i] = [dstr] * 3
+            init_vec = dstrs[:3]
+        else:
+            init_vec = None
 
-        self.axLayout = QtWidgets.QGridLayout()
-        self.window = window
-        defaultPlots = self.window.getDefaultPlotInfo()[0]
-        axes = ['X','Y','Z']
-        self.axesDropdowns = []
-        for i,ax in enumerate(axes):
-            dd = QtGui.QComboBox()
-            dlbl = QtWidgets.QLabel(ax)
-            self.axLayout.addWidget(dlbl,0,i,1,1)
-            # Add elements into comboboxes
-            addedItems = []
-            for s in self.window.DATASTRINGS:
-                if ax.lower() in s.lower():
-                    dd.addItem(s)
-                    addedItems.append(s)
-            if addedItems == []: # If no valid combination, add all and set
-                dd.addItems(self.window.DATASTRINGS)
-                dd.setCurrentText(self.window.DATASTRINGS[i])
-            dd.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-            dlbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        ## Create copy to clipboard button
+        self.clipboardBtn = QtWidgets.QPushButton('Copy to Clipboard')
 
-            self.axesDropdowns.append(dd)
-            self.axLayout.addWidget(dd,1,i,1,1)
+        ## Set up widgets
+        vec_layout = HBoxLayout()
+        label = QtWidgets.QLabel('X, Y, Z:')
+        self.vecWidget = VectorWidget(grps, init_vec=init_vec)
+        vec_layout.addWidget(label)
+        vec_layout.addWidget(self.vecWidget)
+        vec_layout.addStretch()
+        vec_layout.addWidget(self.clipboardBtn)
 
-        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.axLayout.addItem(spacer, 0, 150, 1, 1)
+        # Set up frequency widget and update layout
+        freq_layout = HBoxLayout()
+        label = QtWidgets.QLabel('Frequency Range:')
+        self.freqWidget = FrequencyWidget((0, 20))
 
-        self.layout.addLayout(self.axLayout, 0, 0, 1, 1)
-            
-        self.matLayout = QtWidgets.QGridLayout()
+        self.updateBtn = QtWidgets.QPushButton('Update')
 
-        self.rpMat, rpFrame = self.addMatrixBox('Real Power')
-        self.ipMat, ipFrame = self.addMatrixBox('Imaginary Power')
-        self.trpMat, trpFrame = self.addMatrixBox('Transformed Real Power')
-        self.tipMat, tipFrame = self.addMatrixBox('Transformed Imaginary Power')
-        self.trMat, trFrame = self.addMatrixBox('Transformed Real Matrix')
-        self.tiMat, tiFrame = self.addMatrixBox('Transformed Imaginary Matrix')
+        self.statusBar = QtWidgets.QStatusBar()
+        self.statusBar.setSizeGripEnabled(False)
+        self.statusBar.setMinimumWidth(175)
 
-        self.matLayout.addWidget(rpFrame, 0, 0, 1, 1)
-        self.matLayout.addWidget(ipFrame, 0, 1, 1, 1)
-        self.matLayout.addWidget(trpFrame, 1, 0, 1, 1)
-        self.matLayout.addWidget(tipFrame, 1, 1, 1, 1)
-        self.matLayout.addWidget(trFrame, 2, 0, 1, 1)
-        self.matLayout.addWidget(tiFrame, 2, 1, 1, 1)
+        for item in [label, self.freqWidget, self.updateBtn]:
+            freq_layout.addWidget(item)
+        freq_layout.addStretch(1)
+        freq_layout.addWidget(self.statusBar)
 
-        spacer = QtWidgets.QSpacerItem(0,0,QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.matLayout.addItem(spacer, 0, 100, 1, 1)
+        # Set up matrix info boxes
+        layout = QtWidgets.QGridLayout()
+        prec = 5
+        self.matlabels = {}
+        keys = [' Power', 'Transformed Power', 'Transformed Matrix']
+        row = 0
+        for key in keys:
+            # Create matrix label objects
+            real = MatrixLabel(prec=prec)
+            imag = MatrixLabel(prec=prec)
+            labels = [real, imag]
 
-        self.layout.addLayout(self.matLayout, 1, 0, 1, 1)
+            # Wrap labels in a groupbox frame
+            box_kws = ['Real', 'Imaginary']
+            for i in range(0, 2):
+                # Set up frame label
+                mat_type = box_kws[i]
 
-        freqGroupLayout = QtWidgets.QHBoxLayout()
+                box_label = key.split(' ')
+                box_label.insert(1, mat_type)
+                box_label = ' '.join(box_label).strip(' ')
 
-        freqFrame = QtWidgets.QGroupBox('Frequency Selection')
-        freqLayout = QtWidgets.QGridLayout(freqFrame)
+                # Add frame to outer layout
+                frame = QtWidgets.QGroupBox(box_label)
+                frm_lt = QtWidgets.QVBoxLayout(frame)
+                frm_lt.addWidget(labels[i])
+                layout.addWidget(frame, row, i, 1, 1)
 
-        self.minFreqLabel = QtWidgets.QLabel()
-        self.maxFreqLabel = QtWidgets.QLabel()
-        self.minFreqIndex = QtWidgets.QSpinBox()
-        self.maxFreqIndex = QtWidgets.QSpinBox()
-        self.maxFreqIndex.setFixedWidth(100)
-        self.minFreqIndex.setFixedWidth(100)
-        self.updateButton = QtWidgets.QPushButton('Update')
+            # Store boxes and update row
+            key = key.strip(' ')
+            self.matlabels[key] = labels
+            row += 1
 
-        freqLayout.addWidget(self.minFreqIndex, 0, 0, 1, 1)
-        freqLayout.addWidget(self.minFreqLabel, 1, 0, 1, 1)
-        freqLayout.addWidget(self.maxFreqIndex, 0, 1, 1, 1)
-        freqLayout.addWidget(self.maxFreqLabel, 1, 1, 1, 1)
-        freqLayout.addWidget(self.updateButton, 0, 3, 1, 1)
-        freqFrame.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
+        # Set up eigenvector and eigenvalue boxes
+        self.eigenvecbox = MatrixLabel(prec=prec)
+        self.eigenvalbox = VectorLabel(prec=prec)
 
-        freqGroupLayout.addWidget(freqFrame)
+        row = 0
+        labels = ['Eigenvectors [v1 | v2 | v3]', 'Eigenvalues [λ1, λ2, λ3]']
+        for i, vec in enumerate([self.eigenvecbox, self.eigenvalbox]):
+            # Create wrapper frame
+            label = labels[i]
+            frame, frm_lt = self.wrap_widget(vec, label, center=True)
 
-        # Setup Born-Wolf Analysis grid
-        bornWolfFrame = QtWidgets.QGroupBox('Born-Wolf Analysis')
-        bornWolfGrid = QtWidgets.QGridLayout(bornWolfFrame)
+            # Add to outer layout
+            layout.addWidget(frame, row, 2+i, 1, 1)
+        
+        # Set up propagation and linear variance vectors and angles
+        prop_layout = QtWidgets.QGridLayout()
 
-        self.ppLabel = QtWidgets.QLabel()
-        self.ppmLabel = QtWidgets.QLabel()
-        self.elipLabel = QtWidgets.QLabel()
-        self.elipmLabel = QtWidgets.QLabel()
-        self.azimLabel = QtWidgets.QLabel()
+        self.propvecbox = VectorLabel(prec=prec)
+        self.linvarvecbox = VectorLabel(prec=prec)
 
-        bornWolfGrid.addWidget(QtWidgets.QLabel('Born-Wolf'), 0, 1, 1, 1)
-        bornWolfGrid.addWidget(QtWidgets.QLabel('Joe Means'), 0, 2, 1, 1)
-        bornWolfGrid.addWidget(QtWidgets.QLabel('% Polarization:'), 1, 0, 1, 1)
-        bornWolfGrid.addWidget(self.ppLabel, 1, 1, 1, 1)
-        bornWolfGrid.addWidget(self.ppmLabel, 1, 2, 1, 1)
-        bornWolfGrid.addWidget(QtWidgets.QLabel('Ellipticity:'), 2, 0, 1, 1)
-        bornWolfGrid.addWidget(self.elipLabel, 2, 1, 1, 1)
-        bornWolfGrid.addWidget(self.elipmLabel, 2, 2, 1, 1)
-        bornWolfGrid.addWidget(QtWidgets.QLabel('Azimuth Angle:'), 3, 0, 1, 1)
-        bornWolfGrid.addWidget(self.azimLabel, 3, 1, 1, 1)
+        self.propanglelbl = NumberLabel(prec=prec)
+        self.linvaranglelbl = NumberLabel(prec=prec)
 
-        # Setup Joe Means Analysis table
-        joeMeansFrame = QtWidgets.QGroupBox('Joe Means Analysis')
-        joeMeansGrid = QtWidgets.QGridLayout(joeMeansFrame)
+        ## Vector wrapper frames
+        row = 0
+        labels = ['Propagation Vec', 'Linear Var Vec']
+        for i, vec in enumerate([self.propvecbox, self.linvarvecbox]):
+            label = labels[i]
+            frame, frm_lt = self.wrap_widget(vec, label, center=True)
+            prop_layout.addWidget(frame, row, i, 2, 1)
+        
+        ## Angle wrapper frames
+        col = 2
+        labels = ['Propagation Angle', 'Linear Var Angle']
+        for i, angle in enumerate([self.propanglelbl, self.linvaranglelbl]):
+            label = labels[i]
+            frame, frm_lt = self.wrap_widget(angle, label, center=True)
+            prop_layout.addWidget(frame, row+i, col)
 
-        self.prop = QtWidgets.QLabel()
-        self.jmAngle = QtWidgets.QLabel()
-        self.linVar = QtWidgets.QLabel()
-        self.lvAngle = QtWidgets.QLabel()
+        ## Add prop layout to main layout
+        layout.addLayout(prop_layout, 1, 2, 1, 2)
 
-        joeMeansGrid.addWidget(QtWidgets.QLabel('Propagation: '), 0, 0, 1, 1)
-        joeMeansGrid.addWidget(self.prop, 0, 1, 1, 1)
-        joeMeansGrid.addWidget(QtWidgets.QLabel('Angle: '), 0, 2, 1, 1)
-        joeMeansGrid.addWidget(self.jmAngle, 0, 3, 1, 1)
-        joeMeansGrid.addWidget(QtWidgets.QLabel('Linear Var: '), 1, 0, 1, 1)
-        joeMeansGrid.addWidget(self.linVar, 1, 1, 1, 1)
-        joeMeansGrid.addWidget(QtWidgets.QLabel('Angle: '), 1, 2, 1, 1)
-        joeMeansGrid.addWidget(self.lvAngle, 1, 3, 1, 1)
+        # Set up ellipticity, percent polarization, and azimuth angle frame
+        ellip_layout = QtWidgets.QGridLayout()
 
-        # Set up eigenvectors/values table
-        eigenLayout = QtWidgets.QHBoxLayout()
-        self.eigenVecs, eigenVecFrame = self.addMatrixBox('Eigenvectors')
-        eigenValsFrame = QtWidgets.QGroupBox('Eigenvalues')
-        eigenValsGrid = QtWidgets.QVBoxLayout(eigenValsFrame)
+        ## Method labels
+        left_label = '\n'.join(['', '  Born-Wolf:', '', '  Joe-Means:'])
+        left_label = QtWidgets.QLabel(left_label)
+        left_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
 
-        eigenValsGrid.setAlignment(QtCore.Qt.AlignCenter)
-        self.ev1, self.ev2, self.ev3 = QtWidgets.QLabel(), QtWidgets.QLabel(), QtWidgets.QLabel()
-        for ev in [self.ev1, self.ev2, self.ev3]:
-            eigenValsGrid.addWidget(ev)
-            ev.setAlignment(QtCore.Qt.AlignCenter)
+        ## Ellipticity
+        self.ellip_box = VectorLabel([0, 0], prec=prec)
+        lbl = 'Ellipticity'
+        ellip_frm, lt = self.wrap_widget(self.ellip_box, lbl, True)
 
-        eigenLayout.addStretch()
-        eigenLayout.addWidget(eigenVecFrame)
-        eigenLayout.addStretch()
-        eigenLayout.addWidget(eigenValsFrame)
-        eigenLayout.addStretch()
+        ## Percent polarization
+        self.perc_pol_box = VectorLabel([0,0], prec=prec)
+        lbl = '% Polarization'
+        perc_pol_frm, lt = self.wrap_widget(self.perc_pol_box, lbl, True)
 
-        # Setup principal axis analysis grid
-        self.prncplLayout.addLayout(eigenLayout)
-        self.prncplLayout.addWidget(joeMeansFrame)
-        self.prncplLayout.addWidget(bornWolfFrame)
-        self.layout.addWidget(prncpFrame, 1, 1, 1, 1)
-        self.layout.addLayout(freqGroupLayout, 2, 0, 1, 2)
+        ## Azimuthal angle
+        self.azimuth_label = VectorLabel([0, None], prec=prec)
+        lbl = 'Azimuth Angle'
+        azimuth_frm, lt = self.wrap_widget(self.azimuth_label, lbl, True)
 
-        # Setup export button in layout
-        freqGroupLayout.addStretch()
-        self.logButton = QtWidgets.QPushButton('Export Log')
-        self.logButton.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.layout.addWidget(self.logButton, 3, 0, 1, 1)
+        ellip_layout.addWidget(left_label, 0, 0, 1, 1)
+        ellip_layout.addWidget(ellip_frm, 0, 1, 1, 1)
+        ellip_layout.addWidget(perc_pol_frm, 0, 2, 1, 1)
+        ellip_layout.addWidget(azimuth_frm, 0, 3, 1, 1)
+        layout.addLayout(ellip_layout, 2, 2, 1, 2)
 
-        # Center titles above each principal axis analysis results group
-        for grp in [prncpFrame, joeMeansFrame, bornWolfFrame, eigenVecFrame, eigenValsFrame]:
-            grp.setAlignment(QtCore.Qt.AlignCenter)
+        wrap_layout = VBoxLayout(Frame)
+        wrap_layout.addLayout(vec_layout)
+        wrap_layout.addLayout(layout)
+        wrap_layout.addLayout(freq_layout)
 
-    def addMatrixBox(self, name):
-        frame = QtWidgets.QGroupBox(name)
+    def wrap_widget(self, widget, label, center=False):
+        frame = QtWidgets.QGroupBox(label)
         layout = QtWidgets.QVBoxLayout(frame)
-        mat = MatrixWidget()
-        layout.addWidget(mat)
-        return mat, frame
+        layout.addWidget(widget)
+    
+        if center:
+            frame.setAlignment(QtCore.Qt.AlignHCenter)
+            layout.setAlignment(QtCore.Qt.AlignHCenter)
+
+        return frame, layout
+
+    def getItems(self):
+        items = []
+        for key in self.matlabels:
+            matitems = self.matlabels[key]
+            items.extend(matitems)
+        
+        other_items = [self.eigenvecbox, self.eigenvalbox, self.propvecbox, 
+            self.linvarvecbox,  self.propanglelbl, self.linvaranglelbl, 
+            self.ellip_box, self.perc_pol_box, self.azimuth_label]
+        
+        return items + other_items
 
 class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
     def __init__(self, spectra, window, parent=None):
@@ -187,312 +402,115 @@ class WaveAnalysis(QtWidgets.QFrame, WaveAnalysisUI):
         self.ui = WaveAnalysisUI()
         self.ui.setupUI(self, window)
 
-        self.ui.updateButton.clicked.connect(self.updateCalculations)
-        self.ui.minFreqIndex.valueChanged.connect(functools.partial(self.updateLabel, self.ui.minFreqLabel))
-        self.ui.maxFreqIndex.valueChanged.connect(functools.partial(self.updateLabel, self.ui.maxFreqLabel))
-        self.ui.logButton.clicked.connect(self.exportLog)
+        self.ui.updateBtn.clicked.connect(self.updateCalculations)
+        self.ui.clipboardBtn.clicked.connect(self.copyToClipboard)
 
         freqs = self.getDefaultFreqs()
         m = len(freqs)
-        self.ui.minFreqIndex.setMinimum(0)
-        self.ui.maxFreqIndex.setMinimum(0)
-        self.ui.minFreqIndex.setMaximum(m-1)
-        self.ui.maxFreqIndex.setMaximum(m-1)
-        self.ui.minFreqIndex.setValue(0)
-        self.ui.maxFreqIndex.setValue(m-1)
-
-        self.ui.minFreqIndex.valueChanged.emit(0)#otherwise wont refresh first time
+        self.ui.freqWidget.set_index_range((0, m-1))
 
         self.updateCalculations() # should add update button later
 
-    def getState(self):
-        state = {}
-        state['minFreqIndex'] = self.ui.minFreqIndex.value()
-        state['maxFreqIndex'] = self.ui.maxFreqIndex.value()
-        state['Vector'] = self.getVector()
-        return state
+    def copyToClipboard(self):
+        ''' Copys window text to clipboard '''
 
-    def loadState(self, state):
-        self.ui.minFreqIndex.setValue(state['minFreqIndex'])
-        self.ui.maxFreqIndex.setValue(state['maxFreqIndex'])
-        vecDstrs = state['Vector']
-        for dstr, box in zip(vecDstrs, self.ui.axesDropdowns):
-            box.setCurrentText(dstr)
+        # Get UI items and assemble text from their values
+        items = self.ui.getItems()
+        text = ''
+        for item in items:
+            # Get item label
+            box = item.parent()
+            label = box.title()
 
-    def getTableData(self):
-        # Create a dictionary of matrix titles and their arrays
-        matrixBoxes = [self.ui.rpMat, self.ui.ipMat, self.ui.trpMat, self.ui.tipMat, 
-            self.ui.trMat, self.ui.tiMat]
-        matrixNames = ['Real Power', 'Imaginary Power', 'Transformed Real Power',
-            'Transformed Imaginary Power', 'Transformed Real Matrix',
-            'Transformed Imaginary Matrix']
-        matrices = {}
-        for i in range(0, len(matrixBoxes)):
-            matrices[matrixNames[i]] = matrixBoxes[i].getMatrix()
+            # Get item value and trim double newlines
+            value = item.text().replace('\n\n', '\n')
 
-        # Set up eigenvector/eigenvalue matrix objects
-        eigenVecs = self.ui.eigenVecs.getMatrix()
-        eigenVals = [[ev.text()] for ev in [self.ui.ev1, self.ui.ev2, self.ui.ev3]]
+            # Add to text
+            text = f'{text}\n\n{label}\n{value}'
 
-        # Recreate Joe Means results matrix in an array
-        jmResults = [['Propagation: ', self.ui.prop.text(), 'Angle: ',
-            self.ui.jmAngle.text()], ['Linear Var: ', self.ui.linVar.text(),
-            'Angle: ', self.ui.lvAngle.text()]]
+        # Create clipboard and add text to it
+        clipboard = QtGui.QGuiApplication.clipboard()
+        clipboard.setText(text)
 
-        # Recreate Born-Wolf and Joe Means results table in an array
-        bwResults = [['', 'Born-Wolf', 'Joe Means'],
-            ['% Polarization:', self.ui.ppLabel.text(), self.ui.ppmLabel.text()],
-            ['Ellipticity:', self.ui.elipLabel.text(), self.ui.elipmLabel.text()], 
-            ['Azimuth Angle:', self.ui.azimLabel.text(), '']]
-
-        # Create tuple pairs of results matrices and titles in principal axis analysis
-        resultsTable = [('Eigenvectors', eigenVecs), ('Eigenvalues', eigenVals),
-            ('Joe Means analysis', jmResults), ('Born-Wolf analysis', bwResults)]
-
-        # Get and format info about file, time range, and wave analysis parameters
-        fileName = 'unknown'
-        if len(self.window.FIDs) > 0:
-            names = [os.path.split(FID.name)[1] for FID in self.window.FIDs]
-            fileName = ', \n'.join(names)
-        elif self.window.cdfName:
-            fileName = self.window.cdfName
-
-        timeFmtStr = 'yyyy MMM dd HH:mm:ss.zzz'
-        startTime = self.spectra.ui.timeEdit.start.dateTime().toString(timeFmtStr)
-        endTime = self.spectra.ui.timeEdit.end.dateTime().toString(timeFmtStr)
-        timeRangeStr = 'Time Range: ' + startTime + ' to ' + endTime + '\n'
-
-        startFreq = self.ui.minFreqLabel.text()
-        endFreq = self.ui.maxFreqLabel.text()
-        freqRangeStr = 'Min freq: ' + startFreq + '\nMax freq: ' + endFreq
-
-        axesStr = 'Axes: '
-        for a in self.ui.axesDropdowns:
-            axesStr += a.currentText() + ', '
-        axesStr = axesStr[:-2] # Remove extra comma at end
-
-        logInfo = ['File(s): '+fileName, timeRangeStr, axesStr, freqRangeStr]
-
-        return logInfo, matrices, resultsTable
-
-    def writeMatrix(self, f, M):
-        # Write matrix to file with only one row per line and padded entries
-        for row in M:
-            for entry in row:
-                f.write(str(entry).ljust(15))
-                f.write(' ')
-            f.write('\n')
-        f.write('\n')
-
-    def exportLog(self):
-        logInfo, matrices, results = self.getTableData()
-
-        filename = self.window.saveFileDialog()
-
-        # Write logInfo, each matrix, and results to file
-        f = open(filename, 'w')
-        for entry in logInfo:
-            f.write(entry)
-            f.write('\n')
-        f.write('\n')
-        for k in list(matrices.keys()):
-            f.write(k + '\n')
-            self.writeMatrix(f, matrices[k])
-
-        for lbl, mat in results:
-            f.write(lbl + '\n')
-            self.writeMatrix(f, mat)
-        f.close()
-
-    def vectorLabel(self, vec):
-        txt = ''
-        prec = 3
-        for i in vec:
-            txt += str(round(i, 3)) + '\t'
-        return txt
-
-    def updateLabel(self, label, val):
-        freqs = self.getDefaultFreqs()
-        label.setText(Mth.formatNumber(freqs[val]))
+        # Reflect in status bar
+        self.ui.statusBar.showMessage('Successfully copied...', 2000)
 
     def getDefaultFreqs(self):
-        return self.spectra.getFreqs(self.ui.axesDropdowns[0].currentText(), 0)
-
-    def getVector(self):
-        dstrs = [dd.currentText() for dd in self.ui.axesDropdowns]
-        return dstrs
+        dstrs = self.ui.vecWidget.get_vector()
+        en = self.window.currentEdit
+        sI, eI = self.spectra.getIndices(dstrs[0], en)
+        times, diff, res = self.spectra.window.getTimes(dstrs[0], en)
+        n = abs(eI -sI)
+        return SpectraCalc.calc_freq(1, n, res)
 
     def updateCalculations(self):
         """ Update all wave analysis values and corresponding UI elements """
-
         en = self.window.currentEdit
-        dstrs = self.getVector()
+        dstrs = self.ui.vecWidget.get_vector()
         ffts = [self.spectra.getfft(dstr,en) for dstr in dstrs]
 
-        fO = self.ui.minFreqIndex.value()
-        fE = self.ui.maxFreqIndex.value()
+        fO, fE = self.ui.freqWidget.get_index_range()
 
         # ensure first frequency index is less than last and not the same value
         if fE < fO:
             fO,fE = fE,fO
         if abs(fO-fE) < 2:
             fE = fO + 2
-        self.ui.minFreqIndex.setValue(fO)
-        self.ui.maxFreqIndex.setValue(fE)
-
-        # Each fft value corresponds to a cos,sin pair (real, imag), so
-        # start at fO*2
-        ffts = [fft[fO*2:fE*2+1] for fft in ffts]
-        deltaf = 2.0 / (self.spectra.maxN * self.spectra.maxN)
-
-        # Complex version of spectral matrix calculations
-        cffts = [self.spectra.fftToComplex(fft) for fft in ffts]
-        numIndices = len(cffts[0]) - 1
-
-        # Compute H * H_star (freq * freq_conjugate)
-        mats = self.spectra.computeSpectralMats(cffts)
-
-        # Sum over each matrix
-        sumMat = sum(mats) * deltaf
-
-        # Cospectrum matrix is the real part of the matrix
-        # Quadrature matrix is the imaginary part of the matrix
-        realPower = sumMat.real
-        imagPower = sumMat.imag
-        # Extract relavent values from spectral matrix
-        numPairs = [(0, 1), (0, 2), (1, 2)]
-        qs = [imagPower[i][j] for i,j in numPairs]
-        cs = [realPower[i][j] for i,j in numPairs]
-
-        prec = 6
-        self.ui.rpMat.setMatrix(np.round(realPower, prec))
-        self.ui.ipMat.setMatrix(np.round(imagPower, prec))
+        self.ui.freqWidget.set_index_value((fO, fE))
 
         # Compute the average field for each dstr within the given time range
-        avg = []
+        data = []
+        times, diffs, res = self.window.getTimes(dstrs[0], en)
         for dstr in dstrs[0:3]:
             sI, eI = self.spectra.getIndices(dstr, en)
-            avg.append(np.mean(self.window.getData(dstr)[sI:eI]))
+            data.append(self.window.getData(dstr, en)[sI:eI])
+        avg = np.mean(np.vstack(data), axis=1)
+        
+        params = {'num_points' : eI-sI, 'resolution':res,
+            'freq_range' : (fO, fE)}
+        sw = SpecWave()
+        params = sw.get_params(ffts, params, avg)
 
-        # Wave propogation direction
-        qqq = np.linalg.norm(qs)
-        qkem = np.array([qs[2] / qqq, -qs[1] / qqq, qs[0] / qqq])
+        # Update matrix information
+        label_kws = ['Power', 'Transformed Power', 'Transformed Matrix']
+        spec_kws = ['sum_mat', 'bw_transf_pow', 'means_transf_mat']
+        for label_kw, spec_kw in zip(label_kws, spec_kws):
+            real_label, imag_label = self.ui.matlabels[label_kw]
+            mat = params[spec_kw]
+            real_label.set_mat(mat.real)
+            imag_label.set_mat(mat.imag)
 
-        qqqp = np.linalg.norm(avg)
-        qqqn = np.dot(qkem, avg)
-        if qqqn < 0:
-            qkem = qkem * -1
-            qqqn = np.dot(qkem, avg)
-        qqq = qqqn / qqqp
-        qtem = Mth.R2D * math.acos(qqq) # field angle
-        qqq = np.linalg.norm(cs)
-        qdlm = np.array(cs[::-1] / qqq)
-        qqqn = np.dot(qdlm, avg)
-        qqq = qqqn / qqqp
-        qalm = Mth.R2D * math.acos(qqq)
+        # Update eigenvectors and eigenvalues
+        evals = params['bw_eigenvalues']
+        evectors = params['bw_eigenvectors']
+        self.ui.eigenvecbox.set_mat(evectors)
+        self.ui.eigenvalbox.set_vector(evals)
 
-        # Means transformation matrix
-        yx = qkem[1] * avg[2] - qkem[2] * avg[1]
-        yy = qkem[2] * avg[0] - qkem[0] * avg[2]
-        yz = qkem[0] * avg[1] - qkem[1] * avg[0]
-        qyxyz = np.linalg.norm([yx, yy, yz])
-        yx = yx / qyxyz
-        yy = yy / qyxyz
-        yz = yz / qyxyz
-        xx = yy * qkem[2] - yz * qkem[1]
-        xy = yz * qkem[0] - yx * qkem[2]
-        xz = yx * qkem[1] - yy * qkem[0]
+        # Update propagation vector and angle
+        propvec = params['means_k']
+        propangle = params['means_prop_angle']
+        self.ui.propvecbox.set_vector(propvec)
+        self.ui.propanglelbl.set_value(propangle)
 
-        bmat = [[xx, yx, qkem[0]], [xy, yy, qkem[1]], [xz, yz, qkem[2]]]
-        duhh, amat = np.linalg.eigh(realPower, UPLO="U")
-        bmat = np.transpose(bmat)
-        amat = np.transpose(amat)
+        # Update linear variance vector and angle
+        linvarvec = params['lin_var_vec']
+        linvarangle = params['lin_var_angle']
+        self.ui.linvarvecbox.set_vector(linvarvec)
+        self.ui.linvaranglelbl.set_value(linvarangle)
 
-        # Transformed Values Spectral Matrices 
-        trp = Mth.arpat(amat, realPower) # transformed real power
-        trp = Mth.flip(trp)
-        tip = Mth.arpat(amat, imagPower) # transformed imaginary power
-        tip = Mth.flip(tip)
-        trm = Mth.arpat(bmat, realPower) # transformed real matrix
-        tim = Mth.arpat(bmat, imagPower) # transformed imaginary matrix
+        # Update ellipticity values
+        bw_ellip = params['bw_ellip']
+        means_ellip = params['means_ellip']
+        self.ui.ellip_box.set_vector([bw_ellip, means_ellip])
 
-        self.ui.trpMat.setMatrix(np.round(trp, prec))
-        self.ui.tipMat.setMatrix(np.round(tip, prec))
-        self.ui.trMat.setMatrix(np.round(trm, prec))
-        self.ui.tiMat.setMatrix(np.round(tim, prec))
+        # Update percent polarization values
+        bw_perc_pol = params['bw_perc_polar']
+        means_perc_pol = params['means_perc_polar']
+        self.ui.perc_pol_box.set_vector([bw_perc_pol, means_perc_pol])
 
-        pp, ppm, elip, elipm, azim = self.bornWolf(trp,tip,trm,tim)
-
-        formatNum = lambda x : np.format_float_positional(x, precision=3, trim='0')
-
-        self.ui.ppLabel.setText(formatNum(pp))
-        self.ui.ppmLabel.setText(formatNum(ppm))
-        self.ui.elipLabel.setText(formatNum(elip))
-        self.ui.elipmLabel.setText(formatNum(elipm))
-        self.ui.azimLabel.setText(formatNum(azim))
-
-        self.ui.prop.setText(self.vectorLabel(qkem))
-        self.ui.jmAngle.setText(str(round(qtem, 3)))
-        self.ui.linVar.setText(self.vectorLabel(qdlm))
-        self.ui.lvAngle.setText(str(round(qalm, 3)))
-
-        # Set eigenvector, eigenvalue, and eigenvalue labels in correct order/arrngment
-        amat = np.round(np.transpose(amat), prec)
-        self.ui.eigenVecs.setMatrix(np.array([amat[:,2], amat[:,1], amat[:,0]]))
-        for ev, lbl in zip(duhh[::-1], [self.ui.ev1, self.ui.ev2, self.ui.ev3]):
-            lbl.setText(str(round(ev, 5)))
-
-    def bornWolf(self, trp, tip, trm, tim):
-        """
-		Given transformed versions of real and imaginary powers and matrices
-		calculate polarization and ellipticity (both with joe means versions), and azimuth angle
-		"""
-        # Calculate polarization/ellipticity parameters by Born-Wolf
-        trj = trp[0][0] + trp[1][1]
-        detj = trp[0][0] * trp[1][1] - trp[1][0] * trp[1][0] - tip[1][0] * tip[1][0]
-        fnum = 1 - (4 * detj) / (trj * trj)
-        if fnum <= 0:
-            fnum = 0.0
-            pp = 0.0
-        else:
-            pp = 100 * math.sqrt(fnum)
-        vetm = trj * trj - 4.0 * detj
-        eden = 1 if vetm <= 0 else math.sqrt(vetm)
-        fnum = 2 * tip[0][1] / eden
-        if (trp[0][1] < 0):
-            elip = -1.0*math.tan(0.5*math.asin(fnum))
-        else:
-            elip = math.tan(0.5*math.asin(fnum))
-
-        # Calculate polarization/ellipticity parameters by Joe Means method
-        trj = trm[0][0] + trm[1][1]
-        detj=trm[0][0]*trm[1][1]-trm[0][1]*trm[1][0]-tim[1][0]*tim[1][0]
-        fnum = 1 - (4 * detj) / (trj * trj)
-        if fnum <= 0:
-            fnum = 0
-            ppm = 0
-        else:
-            ppm = 100 * math.sqrt(fnum)
-        vetm = trj * trj - 4.0 * detj
-        eden = 1 if vetm <= 0 else math.sqrt(vetm)
-        fnum = 2.0 * tim[0][1] / eden
-        elipm = math.tan(0.5 * math.asin(fnum))
-
-        # Calculate azimuth angle
-        fnum = 2.0 * trm[0][1]
-        difm = trm[0][0] - trm[1][1]
-        angle = fnum / difm
-        azim = 0.5 * math.atan(angle) * Mth.R2D
-        return pp, ppm, elip, elipm, azim
-
-    # old magpy table display, slightly updated it but not using currently
-    def updateBornAnalysis(self, pp, ppm, elip, elipm, azim):
-        head = "<HTML><Table width='100%'><tr><th><td>Born-Wolf</td><td>Joe Means</td></th></tr>"
-        polar = f"<tr><td>% Polarization: </td><td>{pp:+5.3f} </td><td> {ppm:5.3f}</td></tr>"
-        ellip = f"<tr><td>Ellipticity(+RH,-LH): </td><td>{elip:+5.3f} </td><td> {elipm:5.3f}</td></tr>"
-        angle = f"<tr><td>Azimuth Angle: </td><td>{azim:+5.3f} </td><td>  </td></tr>"
-        html =  f"{head}{polar}{ellip}{angle}</table></HTML>"
-        self.ui.wolfText.setText(html)
+        # Update azimuth angle
+        azimuth = params['means_azim_angle']
+        self.ui.azimuth_label.set_vector([azimuth, None])
 
 class DynamicWaveUI(BaseLayout):
     def setupUI(self, Frame, window, params):
@@ -785,13 +803,10 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.ui.maskBtn.clicked.connect(self.openMaskTool)
         self.ui.addBtn.clicked.connect(self.addToMain)
 
-        self.preWindow = None # Window used to pre-select information
-
     def closeEvent(self, ev):
         self.close()
         self.closeLineTool()
         self.closeMaskTool()
-        self.closePreSelectWin()
         self.window.endGeneralSelect()
         if self.plotItem:
             self.plotItem.closePlotAppearance()
@@ -968,118 +983,72 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         
         return colorRng
 
-    def computeMag(self, dtaRng, vecDstrs):
-        # Computes the magnitude of the vector for every index in dtaRng
-        sI, eI = dtaRng
-        numVals = eI - sI
-
-        dtas = [self.window.getData(dstr, self.window.currentEdit) for dstr in vecDstrs]
-
-        magDta = [np.sqrt(dtas[0][i] ** 2 + dtas[1][i]**2 + dtas[2][i]**2) for i in range(sI, eI)]
-        fullDta = np.empty(len(dtas[0]))
-        fullDta[dtaRng[0]:dtaRng[1]] = magDta
-        return list(fullDta)
-
-    def processGrp(self, vecDstrs, grp, plotType, bw, numFreqs, magDta, 
-        prcNum, resQueue, detrendMode):
-        # Calculates each column in a section of the plot grid and
-        # places it in the result queue
-        valGrid = []
-        for startIndex, stopIndex in grp:
-            dta = self.calcWaveAveraged(vecDstrs, plotType, (startIndex, stopIndex), bw,
-                numFreqs, magDta=magDta, detrendMode=detrendMode)
-            valGrid.append(dta)
-        resQueue.put((prcNum, valGrid))
-
     def calcGrid(self, plotType, dtaRng, fftParam, vecDstrs, detrend=False):
+        # Unpack parameters
         fftInt, fftShift, bw = fftParam
-        # Get selected indices and times
         minIndex, maxIndex = dtaRng
-        times = self.window.getTimes(vecDstrs[0], self.window.currentEdit)[0]
 
-        # Get full list of frequencies to be used when averaging by bandwidth
-        freqs = self.calculateFreqList(1, fftInt)
-        numFreqs = len(freqs)
+        # Get data and times for selected time region
+        data = [self.window.getData(dstr, self.window.currentEdit) for dstr in vecDstrs]
+        data = np.vstack(data)[:,minIndex:maxIndex]
+        times, diff, res = self.window.getTimes(vecDstrs[0], self.window.currentEdit)
+        times = times[minIndex:maxIndex]
 
-        # Special vector magnitude pre-calculation for compress power
-        magDta = None
-        if plotType == 'Compressional Power':
-            magDta = self.computeMag(dtaRng, vecDstrs)
+        # Map plot type to compute function and any arguments needed
+        func_map = {
+            'Azimuth Angle' : (WaveCalc.calc_azimuth_angle, None),
+            'Ellipticity (Means)' : (WaveCalc.calc_ellip, 'means'),
+            'Ellipticity (SVD)' : (WaveCalc.calc_ellip, 'svd'),
+            'Ellipticity (Born-Wolf)' : (WaveCalc.calc_ellip, 'bw'),
+            'Propagation Angle (Means)' : (WaveCalc.calc_prop_angle, 'means'),
+            'Propagation Angle (SVD)' : (WaveCalc.calc_prop_angle, 'svd'),
+            'Propagation Angle (Min Var)' : (WaveCalc.calc_prop_angle, 'minvar'),
+            'Power Spectra Trace' : (WaveCalc.calc_power_trace, None),
+            'Compressional Power' : (WaveCalc.calc_compress_power, None),
+        }
 
-        # Calculate values in grid
-        timeStops = []
-        valGrid = []
+        func, arg = func_map[plotType]
+        func_args = {}
+        if arg is not None:
+            func_args = {'method':arg}
 
-        # Assemble the pairs of indices for which fft will be generated
-        # (corresponding to each 'column' in the plot)
-        startIndex, stopIndex = minIndex, minIndex + fftInt
-        indexPairs = []
-        while stopIndex < maxIndex:
-            timeStops.append(times[startIndex])
-            indexPairs.append((startIndex, stopIndex))
-            startIndex += fftShift
-            stopIndex = startIndex + fftInt
+        # Create fft_params dictionary to pass to compute function
+        fft_params = {
+            'bandwidth' : bw,
+            'resolution' : res,
+            'num_points' : fftInt,
+        }
 
-        # Add in last bounding time tick
-        timeStops.append(times[startIndex])
+        # Split data into segments and get time stops for each section
+        timeStops, dataSegs = self.splitDataSegments(times, data, fftInt, 
+            fftShift)
+        
+        # Detrend data if necessary
+        if detrend:
+            new_segs = []
+            for seg in dataSegs:
+                seg = np.vstack([signal.detrend(row) for row in seg])
+                new_segs.append(seg)
+            dataSegs = new_segs
+
+        # If large amount of data and number of threads is > 1, parallelize
+        # computations
+        if maxIndex - minIndex > 5000 and self.numThreads > 1:
+            groups = ParallelGrid.create_groups(dataSegs, self.numThreads)
+            valGrid = ParallelGrid.parallelize(groups, func, [fft_params], func_args)
+        else:
+            # Otherwise, compute each segment in order
+            valGrid = []
+            for sub_data in dataSegs:
+                result = func(sub_data, fft_params, **func_args)
+                valGrid.append(result)
+
+        # Transpose to turn rows into columns
+        valGrid = np.vstack(valGrid).T
         timeStops = np.array(timeStops)
 
-        # Use multiprocessing to calculate grid values if appropriate
-        nPoints = maxIndex - minIndex
-        nPairs = len(indexPairs)
-        if nPoints >= self.mpPointBound and self.numThreads > 1 and nPairs > self.numThreads:
-            # Split the column indices into chunks for each process
-            grpSize = int(nPairs/self.numThreads) # Num cols per process
-            grps = []
-            for t in range(0, self.numThreads):
-                startPairIndex = t * grpSize
-                if t == self.numThreads - 1: # Last grp should be up to last column
-                    grps.append(indexPairs[startPairIndex:])
-                else:
-                    endPairIndex = (t+1) * grpSize
-                    grps.append(indexPairs[startPairIndex:endPairIndex])
-
-            # Create each process and have it calculate a section of the plot
-            prcLst = []
-            mpQueue = Queue()
-            for prcNum in range(0, self.numThreads):
-                grp = grps[prcNum]
-                args = (vecDstrs, grp, plotType, bw, numFreqs, magDta, prcNum, mpQueue, detrend)
-                p = Process(target=self.processGrp, args=args)
-                prcLst.append(p)
-                p.start()
-
-            # Get the calculated values from each process
-            procResults = [mpQueue.get() for p in prcLst]
-
-            # Join and destroy each process
-            for p in prcLst:
-                p.join()
-                p.terminate()
-
-            # Extract the process numbers and corresponding arrays from each result
-            processNums = []
-            subGrids = []
-            for prcNum, valGrid in procResults:
-                processNums.append(prcNum)
-                subGrids.append(valGrid)
-
-            # Re-arrange the arrays so they are in order and concatenate them
-            # into a single 2D array
-            gridOrder = np.argsort(processNums)
-            valGrid = [subGrids[i] for i in gridOrder]
-            valGrid = np.concatenate(valGrid)
-        else: # Otherwise entire grid sequentially
-            for startIndex, stopIndex in indexPairs:
-                dta = self.calcWaveAveraged(vecDstrs, plotType, (startIndex, stopIndex), bw,
-                    numFreqs, magDta=magDta, detrendMode=detrend)
-                valGrid.append(dta)
-            valGrid = np.array(valGrid)
-
-        # Transpose to turn time result rows into columns
-        valGrid = valGrid.T
-        # Calculate frequencies for plotting and extra frequency for lower bound
-        freqs = self.calculateFreqList(bw, fftInt)
+        # Compute frequencies
+        freqs = SpectraCalc.calc_freq(bw, fftInt, res)
 
         return valGrid, freqs, timeStops
 
@@ -1099,287 +1068,6 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             lowerFreqBnd = freqs[0] - diff/2
         freqs = np.concatenate([[lowerFreqBnd], freqs])
         return freqs
-
-    def getAvg(self, dstr, en, iO, iE, detrendMode=False):
-        # Calculate average or get from dictionary
-        dta = self.window.getData(dstr, en)[iO:iE]
-        if detrendMode:
-            dta = signal.detrend(dta)
-        avg = np.mean(dta)
-        return avg
-
-    def getNorm(self, v):
-        # Faster than np.linalg.norm
-        return np.sqrt(np.dot(v,v))
-
-    def calcWaveAveraged(self, dstrs, plotType, dtaRng, bw, numFreqs, magDta=None, detrendMode=False):
-        halfBw = int((bw-1)/2) # Num of frequencies on either side of freqNum
-
-        # Calculate the bw-averaged wave parameter over the data range
-        sumMats, magfft = self.getAvgMats(dstrs, dtaRng, numFreqs, bw, magDta, detrendMode=detrendMode)
-        averagedDta = self.calcWave(plotType, (halfBw, numFreqs-halfBw), dtaRng, 
-            bw, sumMats, magfft, detrend=detrendMode)
-
-        return averagedDta
-
-    def getAvgMats(self, dstrs, dtaRng, numFreqs, bw, magDta=None, detrendMode=False):
-        # Computes all the bw-averaged spectral mats for every valid freq index
-        minIndex, maxIndex = dtaRng
-        halfBw = int((bw-1)/2)
-
-        en = self.window.currentEdit
-        ffts = [self.getfft(dstr, en, minIndex, maxIndex, detrend=detrendMode) for dstr in dstrs]
-
-        # Also pre-computes the magnitude fft used to calculate compressional
-        # power if needed
-        magfft = None
-        if magDta is not None:
-            subsetDta = magDta[minIndex:maxIndex]
-            if detrendMode:
-                subsetDta = signal.detrend(subsetDta)
-            magfft = fftpack.rfft(subsetDta)
-
-        # Complex version of calculations
-        cffts = [self.fftToComplex(fft) for fft in ffts]
-        individualMats = self.computeSpectralMats(cffts)
-
-        # Compute first sum up to halfBw
-        currSum = np.zeros((3, 3), dtype=np.complex)
-        for i in range(0, halfBw+halfBw+1):
-            currSum += individualMats[i]
-
-        # Compute a running sum (equiv. to sum(individualMats[i-halfBw:i+halfBw+1]))
-        mats = np.empty((numFreqs, 3, 3), dtype=np.complex)
-        mats[halfBw] = currSum
-        for i in range(halfBw+1, numFreqs-halfBw):
-            currSum = currSum - individualMats[i-halfBw-1] + individualMats[i+halfBw]
-            mats[i] = currSum
-        return mats, magfft
-
-    def computeMinVarAngle(self, amat, avg):
-        # Compute theta BK
-        evn = np.array(amat[:,0])
-        evi = np.array(amat[:,1])
-        evx = np.array(amat[:,2])
-
-        q = np.dot(avg, evn)
-
-        if q < 0:
-            evn = -1*evn
-            evi = -1*evi
-            amat[:,1] = -1*amat[:,1]
-            amat[:,2] = -1*amat[:,2]
-
-        if evx[2] < 0:
-            evx = -1*evx
-            evi = -1*evi
-            amat[:,0] = -1*amat[:,0]
-            amat[:,1] = -1*amat[:,1]
-
-        evc = np.cross(evx, evi)
-        q = np.dot(evc, evn)
-
-        if q < 0:
-            evi = -1*evi
-            amat[:,1] = -1*amat[:,1]
-
-        q = np.dot(evn, avg)
-        vetm = np.dot(avg, avg)
-        if vetm < 0:
-            thbk = 0
-        else:
-            norm = np.sqrt(vetm)
-            thbk = Mth.R2D * math.acos(q/norm)
-        return thbk
-    
-    def computeCompressionalPower(self, indexRange, bw, magfft, deltaf):
-        # Computes the compressional power all at once
-        halfBw = int((bw-1)/2)
-        fftReal, fftImag = self.splitfft(magfft)
-        fftDouble = ((fftReal[:len(fftImag)] ** 2) + (fftImag ** 2)) * deltaf
-        powerSum = []
-        for i in range(indexRange[0], indexRange[1]):
-            avgSum = 0
-            for subIndex in range(i-halfBw, i+halfBw+1):
-                avgSum += fftDouble[subIndex] # fftReal^2 + fftImag^2
-            powerSum.append(np.abs(avgSum))
-        return powerSum
-
-    def calcWave(self, plotType, indexRange, dtaRng, bw, sumMats, magfft=None, detrend=False):
-        minIndex, maxIndex = dtaRng
-        numPoints = maxIndex - minIndex
-        valLst = []
-
-        numPairs = [(0, 1), (0, 2), (1, 2)] # Matrix indices used in calculations
-        deltaf = (2.0 * self.window.resolution) / (numPoints * bw)
-
-        if plotType in ['Ellipticity (Means)', 'Ellipticity (SVD)', 'Azimuth Angle',
-            'Propagation Angle (Means)', 'Propagation Angle (Min Var)',
-            'Propagation Angle (SVD)']:
-            # Compute the average field for each dstr within the given time range
-            avg = []
-            for dstr in [box.currentText() for box in self.ui.vectorBoxes]:
-                sI, eI = dtaRng
-                dstrAvg = self.getAvg(dstr, self.window.currentEdit, sI, eI, detrend)
-                avg.append(dstrAvg)
-
-        if plotType == 'Compressional Power':
-            return self.computeCompressionalPower(indexRange, bw, magfft, deltaf)
-
-        for index in range(indexRange[0], indexRange[1]):
-            # Get the pre-computed averaged cospectral matrix
-            sumMat = sumMats[index] * deltaf
-
-            # Cospectrum matrix is the real part of the matrix
-            # Quadrature matrix is the imaginary part of the matrix
-            realPower = sumMat.real
-            imagPower = sumMat.imag
-
-            # Extract info needed for wave propagation direction & angle calculations
-            qs = [imagPower[i][j] for i,j in numPairs]
-            cs = [realPower[i][j] for i,j in numPairs]
-
-            prec = 7
-
-            if plotType in self.plotGroups['Power']:
-                pwspectra = np.abs(np.trace(realPower))
-                res = pwspectra
-            elif plotType == 'Ellipticity (SVD)':
-                res = self.calcSVDEllip(realPower, imagPower, avg)
-            elif plotType == 'Propagation Angle (SVD)':
-                res = self.calcSVDPropAngle(realPower, imagPower, avg)
-            elif plotType in ['Ellipticity (Means)', 'Azimuth Angle',
-                'Propagation Angle (Means)']:
-                res = self.joeMeansMethod(plotType, qs, cs, avg, sumMat)
-            else:
-                duhh, amat = np.linalg.eigh(realPower, UPLO="U")
-                amat = np.transpose(amat)
-                if plotType == 'Propagation Angle (Min Var)':
-                    res = self.computeMinVarAngle(amat, avg)
-                else:
-                    res = self.calcBornWolfElip(amat, sumMat)
-            valLst.append(res)
-        return valLst
-
-    def calcSVDEllip(self, realPower, imagPower, avg):
-        # Get singular values for the matrix formed by stacking the real
-        # and imaginary parts of spectral matrix
-        aMat = np.vstack([realPower, imagPower*(-1)])
-        wVec = np.linalg.svd(aMat, compute_uv=False)
-        wVec.sort()
-
-        # Calculate ellipticity from the ratio of two of the sorted singular values
-        res = (wVec[1] / wVec[2])
-
-        # Adjust sign based on imagPower_xy
-        res *= np.sign(imagPower[0][1])
-
-        return res
-
-    def calcSVDPropAngle(self, realPower, imagPower, avg):
-        # Get singular value decomposition for the matrix formed by stacking the real
-        # and imaginary parts of spectral matrix
-        aMat = np.vstack([realPower, imagPower*(-1)])
-        uMat, wVec, vMat = np.linalg.svd(aMat)
-
-        # Wave vector corresponds to vMat's row that 
-        # corresponds to the minimum singular value
-        kVec = vMat[2] 
-
-        # Calculate the dot product between the background field vector
-        # and solve for the arccos to get the angle
-        avg = avg / np.sqrt(np.dot(avg, avg)) # Normalized
-        cosTheta = np.dot(kVec, avg)
-        theta = np.rad2deg(np.arccos(cosTheta))
-
-        # Wrap value
-        if theta > 90:
-            theta = 180 - theta
-
-        return theta
-
-    def calcBornWolfElip(self, amat, sumMat):
-        tmat = Mth.arpat(amat, sumMat)
-        tmat = Mth.flip(tmat)
-        trp = tmat.real
-        tip = tmat.imag
-
-        # Calculate polarization/ellipticity parameters by Born-Wolf
-        trj = trp[0][0] + trp[1][1]
-        detj = trp[0][0] * trp[1][1] - trp[1][0] * trp[1][0] - tip[1][0] * tip[1][0]
-
-        vetm = trj * trj - 4.0 * detj
-        eden = 1 if vetm <= 0 else math.sqrt(vetm)
-        fnum = 2 * tip[0][1] / eden
-        if (trp[0][1] < 0):
-            elip = -1.0*math.tan(0.5*math.asin(fnum))
-        else:
-            elip = math.tan(0.5*math.asin(fnum))
-        return abs(elip)
-
-    def joeMeansMethod(self, plotType, qs, cs, avg, sumMat):
-        # Wave propogation direction
-        qqq = self.getNorm(qs)
-        qkem = np.array([qs[2] / qqq, -qs[1] / qqq, qs[0] / qqq])
-
-        qqqp = self.getNorm(avg)
-        qqqn = np.dot(qkem, avg)
-        if qqqn < 0:
-            qkem = qkem * -1
-            qqqn = -1 * qqqn
-        qqq = qqqn / qqqp
-        qtem = Mth.R2D * math.acos(qqq) # field angle
-        qqq = self.getNorm(cs)
-        qdlm = np.array(cs[::-1] / qqq)
-        qqqn = np.dot(qdlm, avg)
-        qqq = qqqn / qqqp
-        qalm = Mth.R2D * math.acos(qqq)
-
-        if plotType == 'Propagation Angle (Means)':
-            return qtem
-
-        # Means transformation matrix
-        yx = qkem[1] * avg[2] - qkem[2] * avg[1]
-        yy = qkem[2] * avg[0] - qkem[0] * avg[2]
-        yz = qkem[0] * avg[1] - qkem[1] * avg[0]
-        qyxyz = self.getNorm([yx, yy, yz])
-        yx = yx / qyxyz
-        yy = yy / qyxyz
-        yz = yz / qyxyz
-        xx = yy * qkem[2] - yz * qkem[1]
-        xy = yz * qkem[0] - yx * qkem[2]
-        xz = yx * qkem[1] - yy * qkem[0]
-
-        bmat = np.array([[xx, xy, xz], [yx, yy, yz], qkem])
-        tmat = Mth.arpat(bmat, sumMat)
-        trm = tmat.real # transformed real matrix
-        tim = tmat.imag # transformed imaginary matrix
-        elip, azim = self.joeMeansElip(trm, tim)
-        if plotType == 'Ellipticity (Means)':
-            return elip
-        else:
-            return azim
-
-    def joeMeansElip(self, trm, tim):
-        """
-		Given transformed versions of real and imaginary powers and matrices
-		calculate polarization and ellipticity (both with joe means versions), and azimuth angle
-		"""
-        # Calculate polarization/ellipticity parameters by Joe Means method
-        trj = trm[0][0] + trm[1][1]
-        detj=trm[0][0]*trm[1][1]-trm[0][1]*trm[1][0]-tim[1][0]*tim[1][0]
-
-        vetm = trj * trj - 4.0 * detj
-        eden = 1 if vetm <= 0 else math.sqrt(vetm)
-        fnum = 2.0 * tim[0][1] / eden
-        elipm = math.tan(0.5 * math.asin(fnum))
-
-        # Calculate azimuth angle
-        fnum = 2.0 * trm[0][1]
-        difm = trm[0][0] - trm[1][1]
-        angle = fnum / difm
-        azim = 0.5 * math.atan(angle) * Mth.R2D
-        return elipm, azim
 
     def getAxesStrs(self, dstrs):
         # Try to find variables matching the 'X Y Z' variable naming convention
@@ -1411,94 +1099,3 @@ class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             if line in self.plotItem.listDataItems():
                 self.plotItem.removeItem(line)
                 self.lineHistory.remove(line)
-
-    def showPreSelectWin(self):
-        self.preWindow = PreDynWave(self)
-        self.preWindow.show()
-    
-    def closePreSelectWin(self):
-        if self.preWindow:
-            self.preWindow.close()
-            self.preWindow = None
-
-class PreDynWaveUI(BaseLayout):
-    def setupUI(self, winFrame, dynWindow):
-        maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
-        winFrame.setWindowTitle('Wave Analysis Parameters')
-        winFrame.resize(100, 100)
-        winFrame.move(0, 0)
-        layout = QtWidgets.QGridLayout(winFrame)
-
-        # Set up help text
-        helpTxt = 'Pre-select the following parameters and then select a time region:'
-        helpLbl = QtWidgets.QLabel(helpTxt)
-        layout.addWidget(helpLbl, 0, 0, 1, 4)
-
-        self.waveParam = QtWidgets.QComboBox()
-        self.waveParam.addItems(dynWindow.defParams.keys())
-        self.waveParam.setCurrentIndex(2)
-
-        # Set up vector combo boxes
-        self.vectorBoxes = []
-        vecLt = QtWidgets.QHBoxLayout()
-        for i in range(0, 3):
-            box = QtWidgets.QComboBox()
-            vecLt.addWidget(box)
-            self.vectorBoxes.append(box)
-
-        # Initialize default vector selection
-        allDstrs = dynWindow.window.DATASTRINGS[:]
-        axesStrs = dynWindow.getAxesStrs(allDstrs)
-        if Mth.flattenLst(axesStrs, 1) == []:
-            axesStrs = [allDstrs, allDstrs, allDstrs]
-
-        for axLst, box in zip(axesStrs, self.vectorBoxes):
-            box.addItems(axLst)
-            if axLst == allDstrs:
-                box.setCurrentIndex(self.vectorBoxes.index(box))
-
-        # Set up frequency scaling and bandwidth boxes
-        self.scaleModeBox = QtWidgets.QComboBox()
-        self.scaleModeBox.addItems(['Linear', 'Logarithmic'])
-
-        self.bwBox = QtWidgets.QSpinBox()
-        self.bwBox.setMinimum(1)
-        self.bwBox.setSingleStep(2)
-        self.bwBox.setValue(3)
-
-        self.addPair(layout, 'Plot Type: ', self.waveParam, 1, 0, 1, 1)
-        self.addPair(layout, 'Frequency Scale: ', self.scaleModeBox, 1, 3, 1, 1)
-
-        for row in range(0, 2):
-            spcr = self.getSpacer(5)
-            layout.addItem(spcr, row, 2)
-
-        vecLbl = QtWidgets.QLabel('Vector: ')
-        layout.addWidget(vecLbl, 2, 0, 1, 1)
-        layout.addLayout(vecLt, 2, 1, 1, 1)
-        self.addPair(layout, 'Bandwidth: ', self.bwBox, 2, 3, 1, 1)
-
-        # Keeps window on top of main window while user updates lines
-        winFrame.setParent(dynWindow.window)
-        dialogFlag = QtCore.Qt.Dialog
-        if dynWindow.window.OS == 'posix':
-            dialogFlag = QtCore.Qt.Tool
-        flags = winFrame.windowFlags()
-        flags = flags | dialogFlag
-        winFrame.setWindowFlags(flags)
-
-        return winFrame
-
-class PreDynWave(QtWidgets.QFrame, PreDynWaveUI):
-    def __init__(self, mainWindow, parent=None):
-        super(PreDynWave, self).__init__(parent)
-        self.ui = PreDynWaveUI()
-        self.ui.setupUI(self, mainWindow)
-
-    def getParams(self):
-        # Extract parameters from user interface
-        plotType = self.ui.waveParam.currentText()
-        vectorDstrs = [box.currentText() for box in self.ui.vectorBoxes]
-        scaling = self.ui.scaleModeBox.currentText()
-        bw = self.ui.bwBox.value()
-        return (plotType, vectorDstrs, scaling, bw)

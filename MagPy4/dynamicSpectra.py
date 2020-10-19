@@ -15,8 +15,9 @@ import bisect
 import functools
 from .mth import Mth
 from .layoutTools import BaseLayout
-from .dynBase import DynamicAnalysisTool, SpectraLineEditor, SpectrogramPlotItem, SpectraLegend, SpectraBase, PhaseGradient
+from .dynBase import DynamicAnalysisTool, SpectraLineEditor, SpectrogramPlotItem, SpectraLegend, PhaseGradient
 import os
+from .specAlg import SpectraCalc
 
 class DynamicSpectraUI(BaseLayout):
     def setupUI(self, Frame, window):
@@ -190,7 +191,6 @@ class DynamicSpectraUI(BaseLayout):
 class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
     def __init__(self, window, parent=None):
         super(DynamicSpectra, self).__init__(parent)
-        SpectraBase.__init__(self)
         DynamicAnalysisTool.__init__(self)
         self.plotItem = None
 
@@ -374,85 +374,70 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
             index = 0
         return self.vecGrps[index]
 
-    def calcSumOfPowers(self, vecDstrs, bw, startIndex, endIndex, detrend=False):
-        # Calculates the spectra for each variable separately and returns the sum
-        powers = []
-        for dstr in vecDstrs:
-            freqs, power = self.calcSpectra(dstr, bw, startIndex, endIndex, detrend=detrend)
-            powers.append(np.array(power))
-
-        sumOfPowers = powers[0] + powers[1] + powers[2]
-        return freqs, sumOfPowers
-
-    def calcMag(self, vecDstrs, startIndex, endIndex, detrend=False):
-        a, b = startIndex, endIndex
-        # Computes the magnitude of the vector over the selected interval
-        en = self.window.currentEdit
-        datas = [self.window.getData(dstr, en)[a:b] ** 2 for dstr in vecDstrs]
-        mag = np.sqrt(datas[0] + datas[1] + datas[2])
-        if detrend:
-            mag = signal.detrend(mag)
-        return mag
-
-    def calcMagPower(self, vecDstrs, bw, start, end, detrend=False):
-        # Similar to calcSpectra but using pre-computed magnitude data
-        en = self.window.currentEdit
-        N = abs(end-start)
-        data = self.calcMag(vecDstrs, start, end, detrend=detrend)
-        fft = fftpack.rfft(data.tolist())
-        power = self.calculatePower(bw, fft, N)
-        freqs = self.calculateFreqList(bw, N)
-        return freqs, power
-
     def calcGrid(self, dataRng, fftParam, dstr, detrend=False):
         interval, shift, bw = fftParam
         shiftAmnt = shift
         minIndex, maxIndex = dataRng
         startIndex, endIndex = minIndex, minIndex + interval
 
+        # Compute single-signal spectrogram by default
+        comp_func = SpectraCalc.calc_power
+
         # Check if this is a special sum-of-powers plot
         spPlot = self.spStateKws[dstr] if dstr in self.spStateKws else None
 
-        # Get vector var names and computer magnitude of vector if necessary
+        # Get appropriate data for data time and computation function
         if spPlot is not None:
+            # Get vector variables
             vecDstrs = self.getVecDstrs(dstr)
             dstr = vecDstrs[0] # Adjusted for future call to getTimes()
 
+            # Map plot type to function
+            func_map = {
+                'AbsSumPowers' : SpectraCalc.calc_tranv_power,
+                'SumPowers' : SpectraCalc.calc_sum_powers,
+                'MagPower' : SpectraCalc.calc_compress_power
+            }
+            comp_func = func_map[spPlot]
+
+            # Extract data section
+            data = [self.window.getData(dstr, self.window.currentEdit) for dstr in vecDstrs]
+            data = np.vstack(data)[:,minIndex:maxIndex]
+            onedim = False
+        else:
+            # Get 1D data for regular spectra calculations
+            data = self.window.getData(dstr, self.window.currentEdit)[minIndex:maxIndex]
+            onedim = True
+        
         # Generate the list of powers and times associated w/ each FFT interval
-        powerLst = []
-        timeSeries = []
-        times = self.window.getTimes(dstr, 0)[0]
-        while endIndex < maxIndex:
-            # Save start time
-            timeSeries.append(times[startIndex])
-            # Calculate freqs and powers
-            if spPlot is not None:
-                if spPlot == 'SumPowers':
-                    freqs, powers = self.calcSumOfPowers(vecDstrs, bw, startIndex, 
-                        endIndex, detrend=detrend)
-                elif spPlot == 'MagPower':
-                    freqs, powers = self.calcMagPower(vecDstrs, bw, startIndex,
-                        endIndex, detrend=detrend)
+        times, diffs, res = self.window.getTimes(dstr, 0)
+        times = times[minIndex:maxIndex]
+        timeStops, dataSegs = self.splitDataSegments(times, data, interval, shift, onedim)
+
+        # Detrend data if necessary
+        if detrend:
+            new_segs = []
+            for seg in dataSegs:
+                if onedim:
+                    data_seg = signal.detrend(seg)
                 else:
-                    freqs, sumPowers = self.calcSumOfPowers(vecDstrs, bw, startIndex, 
-                        endIndex, detrend=detrend)
-                    freqs, magPower = self.calcMagPower(vecDstrs, bw, startIndex, 
-                        endIndex, detrend=detrend)
-                    powers = np.abs(sumPowers - magPower)
-            else:
-                freqs, powers = self.calcSpectra(dstr, bw, startIndex, endIndex, detrend)
-            powerLst.append(np.array(powers))
-            # Move to next interval
-            startIndex += shiftAmnt
-            endIndex = startIndex + interval
-        timeSeries.append(times[startIndex])
-        timeSeries = np.array(timeSeries)
+                    data_seg = np.vstack([signal.detrend(row) for row in seg])
+                new_segs.append(data_seg)
+            dataSegs = new_segs
+
+        # Iterate over data segments to compute grid columns
+        powers_grid = []
+        freqs = SpectraCalc.calc_freq(bw, interval, res)
+        for data_seg in dataSegs:
+            # Compute power
+            powers = comp_func(data_seg, bw, res)
+            powers_grid.append(powers)
 
         # Transpose here to turn fft result rows into per-time columns
-        pixelGrid = np.array(powerLst)
-        pixelGrid = pixelGrid.T
+        pixelGrid = np.array(powers_grid).T
+        timeStops = np.array(timeStops)
 
-        return pixelGrid, freqs, timeSeries
+        return pixelGrid, freqs, timeStops
 
     def generatePlot(self, grid, freqs, times, colorRng, logScaling):
         freqs = self.extendFreqs(freqs, logScaling) # Get lower bounding frequency
@@ -486,20 +471,6 @@ class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.ui.glw.addItem(legendLbl, 0, 2, 1, 1)
         self.ui.glw.addItem(timeInfo, 1, 0, 1, 3)
 
-    def calcSpectra(self, dstr, bw, start, end, detrend=False):
-        """
-        Calculate the spectra for the given sub interval
-        """
-        # Convert time range to indices
-        i0, i1 = start, end
-        en = self.window.currentEdit
-        N = abs(i1-i0)
-
-        fft = self.getfft(dstr, en, i0, i1, detrend=detrend)
-        power = self.calculatePower(bw, fft, N)
-        freqs = self.calculateFreqList(bw, N)
-        return freqs, power
-    
     def extendFreqs(self, freqs, logScale):
         # Calculate frequency that serves as lower bound for plot grid
         diff = abs(freqs[1] - freqs[0])
@@ -673,7 +644,6 @@ class DynamicCohPhaUI(BaseLayout):
 class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
     def __init__(self, window, parent=None):
         super(DynamicCohPha, self).__init__(parent)
-        SpectraBase.__init__(self)
         DynamicAnalysisTool.__init__(self)
         self.ui = DynamicCohPhaUI()
         self.window = window
@@ -779,11 +749,13 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
             dstr, en = dstrs[-1]
             sI, eI = self.getIndices(dstr, en)
             data = {key : self.window.getData(*key)[sI:eI] for key in dstrs}
+            res = self.window.getTimes(dstr, en)[-1]
             times = self.window.getTimes(dstr, en)[0][sI:eI]
         else:
             # Interpolate data if time indices are not the same
             data, times, (sI, eI) = self.interpData(dstrs)
-        return data, times, (sI, eI)
+            res = np.mean(np.diff(times))
+        return data, times, (sI, eI), res
 
     def closeEvent(self, ev):
         self.closeLineTool()
@@ -916,7 +888,7 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
 
         # Get data to be used in calculations
         dstrs = [(dstr, self.window.currentEdit) for dstr in varPair]
-        data, times, (dsI, deI) = self.getData(dstrs)
+        data, times, (dsI, deI), res = self.getData(dstrs)
 
         # Prepend filler data so data indices are mapped
         # correctly
@@ -938,11 +910,13 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
             data1 = data[dstrs[0]][startIndex:endIndex]
             data2 = data[dstrs[1]][startIndex:endIndex]
 
-            # Calculate fft
-            fft1 = self.data_fft(data1, detrend=detrend)
-            fft2 = self.data_fft(data2, detrend=detrend)
+            # Detrend if necessary
+            if detrend:
+                data1 = signal.detrend(data1)
+                data2 = signal.detrend(data2)
 
-            coh, pha = self.calculateCoherenceAndPhase(bw, fft1, fft2, N)
+            # Calculate fft
+            coh, pha = SpectraCalc.calc_coh_pha(np.vstack([data1, data2]), bw, res)
             cohLst.append(coh)
             phaLst.append(pha)
 
@@ -955,7 +929,7 @@ class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         # Transpose here to turn fft result rows into per-time columns
         cohGrid = np.array(cohLst).T
         phaGrid = np.array(phaLst).T
-        freqs = self.calculateFreqList(bw, N)
+        freqs = SpectraCalc.calc_freq(bw, N, res)
 
         return (cohGrid, phaGrid), freqs, timeSeries
 

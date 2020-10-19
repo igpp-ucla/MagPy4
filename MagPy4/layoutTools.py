@@ -8,6 +8,40 @@ from scipy import fftpack
 import numpy as np
 from .MagPy4UI import TimeEdit, NumLabel
 
+class BoxLayout():
+    ''' Superclass for HBoxLayout and VBoxLayout that adds
+        some additional useful operations for accessing 
+        widgets and removing items
+    '''
+    def getItems(self):
+        ''' Returns all widgets in layout '''
+        n = self.count()
+        items = [self.itemAt(i) for i in range(n)]
+        widgets = [item.widget() for item in items]
+        return widgets
+
+    def clear(self):
+        ''' Removes and deletes all elements from layout '''
+        items = self.getItems()
+        for item in items:
+            self.removeWidget(item)
+            item.deleteLater()
+
+    def pop(self):
+        ''' Remove and delete last element from layout '''
+        n = self.count() - 1
+        item = self.itemAt(n).widget()
+        self.removeWidget(item)
+        item.deleteLater()
+
+class HBoxLayout(QtWidgets.QHBoxLayout, BoxLayout):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+class VBoxLayout(QtWidgets.QVBoxLayout, BoxLayout):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
 class BaseLayout(object):
     def __init__(self):
         self.app = QtCore.QCoreApplication.instance()

@@ -4,7 +4,8 @@ from copy import copy
 
 from .plotAppearance import DynamicPlotApp
 import pyqtgraph as pg
-from scipy import fftpack, signal
+from scipy import signal
+from scipy import fft as fftpack 
 import numpy as np
 from .MagPy4UI import TimeEdit, NumLabel, StackedAxisLabel
 from .pyqtgraphExtensions import GridGraphicsLayout
@@ -16,6 +17,75 @@ from .layoutTools import BaseLayout
 from .simpleCalculations import simpleCalc
 import os
 from .dataUtil import find_gaps
+from multiprocessing import Pool
+
+class ParallelGrid():
+    ''' Helper functions for parallelizing dynamic
+        spectra and wave analysis computations
+    '''
+    def group_info(n, threads):
+        ''' Returns the number of groups and each group
+            size based on the number of items in the
+            group and the number of threads
+        '''
+        n = float(n)
+        num_groups = max(int(np.ceil(n/threads)), 1)
+        group_size = int(np.ceil(n/num_groups))
+
+        return (num_groups, group_size)
+    
+    def create_groups(data_segs, threads):
+        ''' Splits data segments into groups based on number
+            of threads, skipping any empty lists
+            and returns groups of segments and their
+            orders
+        '''
+        n = len(data_segs)
+        n_grps, grp_size = ParallelGrid.group_info(n, threads)
+        
+        indices = np.arange(0, n+grp_size, grp_size)
+        groups = [data_segs[i:i+grp_size] for i in indices[:-1]]
+        groups = [grp for grp in groups if len(grp) > 0]
+        
+        return groups
+
+    def sort_groups(groups):
+        indices = [group[1] for group in groups]
+        sortorder = np.argsort(indices)
+        sorted_grps = [groups[i][0] for i in sortorder]
+        return sorted_grps
+
+    def map_wrapper(func_info, group, index):
+        (func, func_args, func_kwargs) = func_info
+        results = []
+        for seg in group:
+            result = func(seg, *func_args, **func_kwargs)
+            results.append(result)
+        return (results, index)
+
+    def parallelize(groups, func, func_args=[], func_kwargs={}):
+        ''' Process groups with given function, function  args,
+            and func_kwargs using a multiprocessed pool
+            and return the results in sorted order
+        '''
+        # Create list of indices to keep track of groups ordering
+        n = len(groups)
+        order = list(range(n))
+
+        # Set up arguments to pass to wrapper function
+        func_infos = [(func, func_args, func_kwargs) for i in range(n)]
+        map_args = list(map(list, zip(func_infos, groups, order)))
+
+        # Create a pool and map using the map_wrapper function
+        pool = Pool(len(groups))
+        wrap_func = ParallelGrid.map_wrapper
+        result = pool.starmap(wrap_func, map_args)
+
+        # Sort results and close pool
+        pool.close()
+        result = ParallelGrid.sort_groups(result)
+
+        return result
 
 class GradEditor(QtWidgets.QFrame):
     def __init__(self, grad):
@@ -548,126 +618,7 @@ class GradLegend(pg.GraphicsLayout):
                 self.editor.raise_()
             self.editor.show()
 
-class SpectraBase(object):
-    def getCommonVars(self, bw, N):
-        if bw % 2 == 0: # make sure its odd
-            bw += 1
-        kmo = int((bw + 1) * 0.5)
-        nband = (N - 1) / 2
-        half = int(bw / 2)
-        nfreq = int(nband - bw + 1)
-        return bw,kmo,nband,half,nfreq
-
-    def calculateFreqList(self, bw, N):
-        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
-        nfreq = int(nband - half + 1) #try to match power length
-        C = N * self.window.resolution
-        freq = np.arange(kmo, nfreq) / C
-        if len(freq) < 2:
-            print('Proposed spectra plot invalid!\nFrequency list has less than 2 values')
-            return None
-        return freq
-
-    def getfft(self, dstr, en, i0, i1, detrend=False):
-        data = self.window.getData(dstr, en)[i0:i1]
-        return self.data_fft(data, detrend)
-    
-    def data_fft(self, data, detrend=False):
-        if detrend:
-            data = signal.detrend(data)
-        fft = fftpack.rfft(data.tolist())
-        return fft
-
-    def calculateFreqList(self, bw, N):
-        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
-        nfreq = int(nband - half + 1) #try to match power length
-        C = N * self.window.resolution
-        freq = np.arange(kmo, nfreq) / C
-        if len(freq) < 2:
-            print('Proposed spectra plot invalid!\nFrequency list has less than 2 values')
-            return None
-        return freq
-
-    def splitfft(self, fft):
-        '''
-            Splits FFT results into its real and imaginary parts as separate
-            lists
-        '''
-        fftReal = fft[1::2]
-        fftImag = fft[2::2]
-        return fftReal, fftImag
-
-    def fftToComplex(self, fft):
-        '''
-            Converts fft (cos, sin) pairs into complex numbers
-        '''
-        rfft, ifft = self.splitfft(fft)
-        cfft = np.array(rfft, dtype=np.complex)
-        cfft = cfft[:len(ifft)]
-        cfft.imag = ifft
-        return cfft
-
-    # Spectra calculations
-    def calculatePower(self, bw, fft, N):
-        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
-        C = 2 * self.window.resolution / N
-        fsqr = [ft * ft for ft in fft]
-        power = [0] * nfreq
-        for i in range(nfreq):
-            km = kmo + i
-            kO = int(km - half)
-            kE = int(km + half) + 1
-
-            power[i] = sum(fsqr[kO * 2 - 1:kE * 2 - 1]) / bw * C
-
-        return power
-
-    # Coherence and phase calculations
-    def calculateCoherenceAndPhase(self, bw, fft0, fft1, N):
-        bw,kmo,nband,half,nfreq = self.getCommonVars(bw, N)
-        kStart = kmo - half
-        kSpan = half * 4 + 1
-
-        csA = fft0[:-1] * fft1[:-1] + fft0[1:] * fft1[1:]
-        qsA = fft0[:-1] * fft1[1:] - fft1[:-1] * fft0[1:]
-        pAA = fft0[:-1] * fft0[:-1] + fft0[1:] * fft0[1:]
-        pBA = fft1[:-1] * fft1[:-1] + fft1[1:] * fft1[1:]
-
-        csSum = np.zeros(nfreq)
-        qsSum = np.zeros(nfreq)
-        pASum = np.zeros(nfreq)
-        pBSum = np.zeros(nfreq)
-
-        for n in range(nfreq):
-            KO = (kStart + n) * 2 - 1
-            KE = KO + kSpan
-
-            csSum[n] = sum(csA[KO:KE:2])
-            qsSum[n] = sum(qsA[KO:KE:2])
-            pASum[n] = sum(pAA[KO:KE:2])
-            pBSum[n] = sum(pBA[KO:KE:2])
-
-        coh = (csSum * csSum + qsSum * qsSum) / (pASum * pBSum)
-        pha = np.arctan2(qsSum, csSum) * Mth.R2D
-
-        return coh,pha
-
-    # Wave analysis calculations
-    def computeSpectralMats(self, cffts):
-        # Computes the complex versions of the spectral matrices
-        mats = np.zeros((len(cffts[0]), 3, 3), dtype=np.complex)
-        for r in range(0, 3):
-            for c in range(0, r+1):
-                f0, f1 = cffts[r], cffts[c]
-                res = f0 * np.conj(f1)
-                conjRes = np.conj(res)
-                mats[:,r][:,c] = res
-                if r != c:
-                    mats[:,c][:,r] = conjRes
-
-        return mats
-
-class DynamicAnalysisTool(SpectraBase):
+class DynamicAnalysisTool():
     def __init__(self):
         self.lineTool = None
         self.maskTool = None
@@ -695,6 +646,36 @@ class DynamicAnalysisTool(SpectraBase):
         self.setGradRange(state['gradRange'])
         self.setVarParams(state['varInfo'])
         self.savedLineInfo = state['lineInfo']
+
+    def splitDataSegments(self, times, data, interval, shift, onedim=False):
+        ''' Splits data into segments based on the fft_interval and fft_shift
+
+            Returns time_stops and data_segments as a tuple
+        '''
+        # Get length of data
+        n = len(data) if onedim else len(data[0])
+
+        # Iterate over indices with shift as the step size
+        time_stops = []
+        data_segs = []
+        for i in range(0, n - interval + 1, shift):
+            # Get the start/end indices and extract data segment
+            # and save start time to time stops
+            start = i
+            stop = i + interval
+            time_stops.append(times[start])
+
+            if onedim:
+                seg = data[start:stop]
+            else:
+                seg = data[:,start:stop]
+            data_segs.append(seg.copy())
+
+        # Add final time stop to the end
+        stop = min(start+shift, len(times)-1)
+        time_stops.append(times[stop])
+
+        return (time_stops, data_segs)
 
     def setParams(self, fftParams, scale, detrend):
         # Set FFT parameters

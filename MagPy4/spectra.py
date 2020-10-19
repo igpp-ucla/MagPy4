@@ -14,13 +14,13 @@ from .MagPy4UI import TimeEdit
 from .spectraUI import SpectraUI, SpectraViewBox
 from .layoutTools import BaseLayout
 from .waveAnalysis import WaveAnalysis
-from .dynBase import SpectraBase
 import functools
 import time
 from .mth import Mth
 import os
 from bisect import bisect_left
 from scipy.interpolate import CubicSpline
+from .specAlg import SpectraCalc
 
 class ColorPlotTitle(pg.LabelItem):
     ''' LabelItem with horizontally stacked labels in given colors '''
@@ -60,6 +60,11 @@ class ColorPlotTitle(pg.LabelItem):
         return f'<span style="color:{color}">{txt}</span>'
 
 class SpectraPlot(MagPyPlotItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for ax in ['left', 'bottom']:
+            self.getAxis(ax).enableAutoSIPrefix(False)
+
     def setTitleObject(self, titleObj):
         ''' Replaces title label object '''
         self.layout.removeItem(self.titleLabel)
@@ -70,7 +75,7 @@ class SpectraPlot(MagPyPlotItem):
         ''' Returns title label object '''
         return self.titleLabel
 
-class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
+class Spectra(QtWidgets.QFrame, SpectraUI):
     def __init__(self, window, parent=None):
         super(Spectra, self).__init__(parent)
         self.window = window
@@ -408,16 +413,19 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
             # Clear plot
             plot.clear()
             for (dstr, en), pen in zip(dstrs, pens):
+                # Get variable data
+                data = self.getData(dstr, en)
+                res = self.window.getTimes(dstr, en)[-1]
+
                 # Get frequencies and n
                 if freq is None:
-                    n = len(self.getData(dstr, en))
+                    n = len(data)
                     bw = params.get('bandwidth')
-                    freq = self.calculateFreqList(bw, n)
+                    freq = SpectraCalc.calc_freq(bw, n, res)
                     self.maxN = max(self.maxN, n)
 
                 # Calculate power
-                fft = self.getfft(dstr, en)
-                power = self.calculatePower(bw, fft, n)
+                power = SpectraCalc.calc_power(data, bw, res)
                 datas.append(power)
 
                 # Plot trace
@@ -440,9 +448,10 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
 
         # Calculate coherence and phase and frequency
         bw = params.get('bandwidth')
+        res = self.window.getTimes(vara, self.window.currentEdit)[-1]
         n = len(self.getData(varb, 0))
-        freq = self.calculateFreqList(bw, n)
-        coh, pha = self.calculateCoherenceAndPhase(bw, fft0, fft1, n)
+        freq = SpectraCalc.calc_freq(bw, n, res)
+        coh, pha = SpectraCalc.calc_coh_pha_fft(fft0, fft1, bw, res, n)
 
         # Get pen and plot
         pen = self.window.pens[0]
@@ -486,33 +495,37 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         return freq, [sum_powers, pt, sum_minus]
     
     def calculateSumOfPowers(self, params):
-        ''' Calculates the sum of powers spectra plot variables '''
         # Extract parameters
         bw = params.get('bandwidth')
         vec = params.get('sum_vec')
+        en = self.window.currentEdit
+        sI, eI = self.getIndices(vec[0], en)
+        n = abs(eI - sI)
+        res = self.window.getTimes(vec[0], en)[-1]
 
-        # Calculate powers Px, Py, Pz
-        powers = []
-        freq, n = None, None
-        for dstr in vec:
-            if freq is None:
-                n = len(self.getData(dstr, 0))
-                freq = self.calculateFreqList(bw, n)
-            fft = self.getfft(dstr, 0)
-            power = np.array(self.calculatePower(bw, fft, n))
-            powers.append(power)
+        # Compute Btotal and its fft if not previously computed
+        key = '_'.join(vec + ['mag'])
+        if key not in self.ffts:
+            data = np.vstack([self.window.getData(dstr, en)[sI:eI] for dstr in vec])
+            mag = np.sqrt(np.sum(data ** 2, axis=0))
+            fft = SpectraCalc.calc_fft(mag)
+            self.ffts[key] = fft
+
+        mag_fft = self.ffts[key]
+
+        # Calculate powers and sums
+        bffts = [self.getfft(dstr, en) for dstr in vec]
+
+        px, py, pz = [SpectraCalc.calc_power_fft(fft, bw, res, n) for fft in bffts]
+        pt = SpectraCalc.calc_power_fft(mag_fft, bw, res, n)
+
+        sum_powers = px + py + pz
+        sum_minus = abs(sum_powers - pt)
+
+        # Compute frequencies
+        freqs = SpectraCalc.calc_freq(bw, n, res)
         
-        # Calculate Pt
-        datas = [self.getData(dstr, 0)**2 for dstr in vec]
-        bt = np.sqrt(np.sum(datas, axis=0))
-        b_fft = self.data_fft(bt)
-        pt = np.array(self.calculatePower(bw, b_fft, n))
-
-        # Calculate all plot variables
-        sum_powers = powers[0] + powers[1] + powers[2]
-        sum_minus = np.abs(sum_powers - pt)
-
-        return sum_powers, pt, sum_minus, freq
+        return sum_powers, pt, sum_minus, freqs
 
     def updateRanges(self):
         ''' Updates y-ranges for all plots '''
@@ -536,13 +549,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
             # Set y ranges for all groups to extreme values and add padding
             for plot in self.plots[grp]:
                 plot.setYRange(lower, upper, 0.01)
-
-    def getFreqs(self, dstr, en):
-        ''' Get the frequency list of the given data variable '''
-        bw = self.ui.bandWidthSpinBox.value()
-        n = len(self.getData(dstr, en))
-        freq = self.calculateFreqList(bw, n)
-        return freq
 
     def getData(self, dstr, en):
         ''' Returns the data for the given variable,
@@ -574,7 +580,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         eI = bisect_left(times, end)
 
         return (sI, eI)
-
+    
     def getfft(self, dstr, en):
         ''' Return FFT for data, calculate if not
             cached
@@ -582,7 +588,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI, SpectraBase):
         # Calculate fft if not in cache
         if (dstr, en) not in self.ffts:
             data = self.getData(dstr, en)
-            fft = self.data_fft(data)
+            fft = SpectraCalc.calc_fft(data)
             self.ffts[(dstr, en)] = fft
 
         return self.ffts[(dstr, en)]
