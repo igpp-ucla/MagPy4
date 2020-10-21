@@ -529,6 +529,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Update y range
         self.updateYRange()
 
+        # Update time label
+        self.pltGrd.setTimeLabel()
+
     def viewAllData(self):
         self.setNewWindowTicks(0, self.iiE)
 
