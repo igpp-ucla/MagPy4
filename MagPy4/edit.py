@@ -523,7 +523,7 @@ class DataFlagTool(QtWidgets.QFrame):
 
         # Set up time edit
         timeLt = QtWidgets.QHBoxLayout()
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
         timeLt.addWidget(self.timeEdit.start)
         timeLt.addWidget(self.timeEdit.end)
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())

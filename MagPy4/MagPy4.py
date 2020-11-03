@@ -3552,6 +3552,20 @@ def startMagPy(files=None, display=True):
     if display:
         main.showMaximized()
 
+    # Add in fonts to database
+    font_dir = getRelPath('fonts')
+    fonts = os.listdir(font_dir)
+    fonts = [os.path.join(font_dir, f) for f in fonts]
+
+    db = QtGui.QFontDatabase()
+    for font in fonts:
+        db.addApplicationFont(font)
+
+    # Set default any default application fonts
+    if os.name == 'nt':
+        font = QtGui.QFont('Roboto')
+        app.setFont(font)
+
     # Initialize any files passed
     if files is not None and len(files) > 0:
         split_name = files[0].split('.')

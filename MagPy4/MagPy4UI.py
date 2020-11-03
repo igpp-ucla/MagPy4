@@ -13,6 +13,7 @@ from .pyqtgraphExtensions import GridGraphicsLayout,BLabelItem
 from . import getRelPath
 from .mth import Mth
 import re
+from . import config
 
 class MagPy4UI(object):
 
@@ -292,7 +293,7 @@ class MagPy4UI(object):
 
         # SLIDER setup
         sliderLayout = QtWidgets.QGridLayout() # r, c, w, h
-        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 11))
+        self.timeEdit = TimeEdit()
 
         # Create buttons for moving plot windows L or R by a fixed amt
         self.mvLftBtn = QtWidgets.QPushButton('<', window)
@@ -581,7 +582,11 @@ class MagPy4UI(object):
         self.enableUIElems(True)
 
 class TimeEdit():
-    def __init__(self, font):
+    def __init__(self, font=None):
+        if font is None:
+            font_name, font_size = config.fonts['monospace']
+            font = QtGui.QFont(font_name, font_size)
+
         self.start = QtWidgets.QDateTimeEdit()
         self.end = QtWidgets.QDateTimeEdit()
 

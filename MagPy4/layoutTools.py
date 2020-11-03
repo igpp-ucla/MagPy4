@@ -76,7 +76,7 @@ class BaseLayout(object):
 
     def getTimeStatusBar(self, optWidgets=[]):
         layout = QtWidgets.QHBoxLayout()
-        timeEdit = TimeEdit(QtGui.QFont())
+        timeEdit = TimeEdit()
         layout.addWidget(timeEdit.start)
         layout.addWidget(timeEdit.end)
 

@@ -8,6 +8,7 @@ import datetime, time
 import bisect, functools
 import os
 import numpy.lib.recfunctions as rfn
+from . import config
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -58,7 +59,7 @@ class DataDisplayUI(object):
         self.dataTableView = QtGui.QTableView(dataFrame)
         self.dataTableView.setEnabled(True)
         font = QtGui.QFont()
-        font.setFamily(_fromUtf8("Monospace"))
+        font.setFamily(config.fonts['monospace'][0])
         self.dataTableView.setFont(font)
         self.dataTableView.setFocusPolicy(QtCore.Qt.NoFocus)
         self.dataTableView.setTabKeyNavigation(False)

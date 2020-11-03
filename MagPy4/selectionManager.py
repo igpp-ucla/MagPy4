@@ -511,7 +511,7 @@ class FixedSelectionUI():
         # UI elements
         instr = 'Selected Time Range:'
         lbl = QtWidgets.QLabel(instr)
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
 
         # Layout setup
         layout = QtWidgets.QGridLayout(Frame)
@@ -571,7 +571,7 @@ class TimeRegionSelector(QtWidgets.QFrame):
         self.resize(300, 50)
         self.setWindowTitle('Time Select')
         layout = QtWidgets.QGridLayout(self)
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
         self.timeEdit.setupMinMax(self.window.getMinAndMaxDateTime())
         self.updateBtn = QtWidgets.QPushButton('Apply')
         layout.addWidget(self.timeEdit.start, 0, 0, 1, 1)
@@ -739,7 +739,7 @@ class BatchSelectUI(BaseLayout):
     def getMouseInputFrame(self):
         # Set up a horizontal layout with a pair of time edits indicating the
         # start/end times for a region
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
         self.timeEdit.setupMinMax(self.frame.window.getMinAndMaxDateTime())
 
         frame = QtWidgets.QFrame()

@@ -2,6 +2,7 @@ include MagPy4/geopack/*.md
 recursive-include MagPy4/geopack/geopack *.md *.txt
 include MagPy4/help.*
 recursive-include MagPy4/images *
+recursive-include MagPy4/fonts *
 recursive-include MagPy4/ *.png
 recursive-include MagPy4/testData/ *
 include MagPy4/orbittable.txt

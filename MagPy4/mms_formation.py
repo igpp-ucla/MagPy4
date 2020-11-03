@@ -156,7 +156,7 @@ class MMS_FormationUI(BaseLayout):
 
         # Set up start/end time layout
         timeLt = QtWidgets.QGridLayout()
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
         l1 = self.addPair(timeLt, 'Start Time: ', self.timeEdit.start, 0, 0, 1, 1)
         l2 = self.addPair(timeLt, 'End Time: ', self.timeEdit.end, 1, 0, 1, 1)
         l1.setSizePolicy(self.getSizePolicy('Max', 'Max'))

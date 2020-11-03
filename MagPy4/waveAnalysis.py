@@ -17,6 +17,7 @@ import math
 from .MagPy4UI import MatrixWidget, NumLabel, StackedAxisLabel
 import functools
 import os
+from . import config
 
 class VectorWidget(QtWidgets.QWidget):
     def __init__(self, vec_grps={}, init_vec=None, *args, **kwargs):
@@ -119,7 +120,7 @@ class NumberLabel(QtWidgets.QLabel):
         super().__init__('', **kwargs)
         flags = QtCore.Qt.TextSelectableByKeyboard | QtCore.Qt.TextSelectableByMouse
         self.setTextInteractionFlags(flags)
-        font = QtGui.QFont('monospace')
+        font = QtGui.QFont(config.fonts['monospace'][0])
         self.setFont(font)
 
         self.set_value(value)
@@ -144,7 +145,7 @@ class VectorLabel(QtWidgets.QLabel):
         super().__init__('', **kwargs)
         flags = QtCore.Qt.TextSelectableByKeyboard | QtCore.Qt.TextSelectableByMouse
         self.setTextInteractionFlags(flags)
-        font = QtGui.QFont('monospace')
+        font = QtGui.QFont(config.fonts['monospace'][0])
         self.setFont(font)
 
         self.set_vector(vector)
@@ -175,7 +176,7 @@ class MatrixLabel(QtWidgets.QLabel):
         super().__init__('', **kwargs)
         flags = QtCore.Qt.TextSelectableByKeyboard | QtCore.Qt.TextSelectableByMouse
         self.setTextInteractionFlags(flags)
-        font = QtGui.QFont('monospace')
+        font = QtGui.QFont(config.fonts['monospace'][0])
         self.setFont(font)
 
         if mat is None:

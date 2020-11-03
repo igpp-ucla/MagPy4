@@ -282,7 +282,7 @@ class MinVarUI(object):
         self.layout.addLayout(vectorLayout)
 
         # setup datetime edits
-        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 12))
+        self.timeEdit = TimeEdit()
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
 
         # default it to the current time selection

@@ -70,7 +70,7 @@ class MMS_OrbitUI(BaseLayout):
             probeLt.addWidget(item)
 
         # Set up time edit
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
         self.start = self.timeEdit.start
         self.end = self.timeEdit.end
         for te in [self.start, self.end]:

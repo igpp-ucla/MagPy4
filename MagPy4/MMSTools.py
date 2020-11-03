@@ -816,7 +816,7 @@ class CurlometerUI(BaseLayout):
 
         # Set up TimeEdit and checkbox to keep window on top of main win
         btmLt = QtWidgets.QHBoxLayout()
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
         minDt, maxDt = window.getMinAndMaxDateTime()
         self.timeEdit.setupMinMax((minDt, maxDt))
         self.onTopCheckBox = QtWidgets.QCheckBox('Stay On Top')
@@ -1206,7 +1206,7 @@ class CurvatureUI(BaseLayout):
         timeFrm.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
         timeLt = QtWidgets.QHBoxLayout(timeFrm)
         timeLt.setContentsMargins(0, 0, 0, 0)
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
         timeLt.addWidget(self.timeEdit.start)
         timeLt.addWidget(self.timeEdit.end)
         timeLt.addStretch()
@@ -1638,7 +1638,7 @@ class ElectronPitchAngleUI(BaseLayout):
         self.glw.layout.setContentsMargins(15, 10, 25, 10)
 
         # Set up time edits and status bar
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
         self.statusBar = QtWidgets.QStatusBar()
         timeLt = QtWidgets.QHBoxLayout()
@@ -2390,7 +2390,7 @@ class FEEPS_EPAD_UI(BaseLayout):
 
         # Set up time edits
         timeLt = QtWidgets.QHBoxLayout()
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
         timeLt.addWidget(self.timeEdit.start)
         timeLt.addWidget(self.timeEdit.end)
         timeLt.addStretch()
@@ -2673,7 +2673,7 @@ class PressureToolUI(BaseLayout):
         layout = QtWidgets.QHBoxLayout(frame)
 
         # Set up time edits
-        self.timeEdit = TimeEdit(QtGui.QFont())
+        self.timeEdit = TimeEdit()
         layout.addWidget(self.timeEdit.start)
         layout.addWidget(self.timeEdit.end)
 

@@ -95,7 +95,7 @@ class SpectraUI(object):
         timeLayout.addLayout(bwLayout)
 
         # Set up datetime edits
-        self.timeEdit = TimeEdit(QtGui.QFont("monospace", 10 if window.OS == 'windows' else 11))
+        self.timeEdit = TimeEdit()
         self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
         timeLayout.addWidget(self.timeEdit.start)
         timeLayout.addWidget(self.timeEdit.end)

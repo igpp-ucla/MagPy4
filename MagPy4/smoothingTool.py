@@ -200,7 +200,7 @@ class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
 
     def restartSelect(self):
         # Reset the general selection process and clear regions
-        te = TimeEdit(QtGui.QFont())
+        te = TimeEdit()
         self.window.closeTraceStats()
         self.window.initGeneralSelect('Smooth', '#4286f4', te, 'Single',
             None, maxSteps=-1)

@@ -1713,7 +1713,7 @@ class MagnetosphereToolUI(BaseLayout):
         # Time edit used for reference time
         settingsFrm = QtWidgets.QGroupBox('Other Settings')
         layout = QtWidgets.QGridLayout(settingsFrm)
-        te = TimeEdit(QtGui.QFont())
+        te = TimeEdit()
         self.refTimeBox = te.start
         te.setupMinMax(outerFrame.getMinMaxDt())
 
