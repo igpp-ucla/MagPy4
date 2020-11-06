@@ -353,7 +353,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         rng = (tO, tE)
         tool = simpleCalc(None, self.window)
         result = tool.evaluate(exprStr, rng)
-        if result is None:
+        if result is None or result[0] is None:
             return None
 
         # Extract values from data
@@ -833,13 +833,12 @@ class DynamicAnalysisTool():
         for lineInfo in self.savedLineInfo:
             # Get state info
             a, b = self.getDataRange()
-            arbDstr = self.window.DATASTRINGS[0]
-            times = self.window.getTimes(arbDstr, 0)[0][a:b]
 
             # Extract line info + generate the new line and add it to the plot
             expr, color, width, style = lineInfo
             lineEditor = SpectraLineEditor(self, self.window, (a,b))
-            dta = lineEditor.evalExpr(expr, a, b)
+            tO, tE = self.getTimeRange()
+            (times, dta) = lineEditor.evalExpr(expr, tO, tE)
             lineItem = lineEditor.createLine(dta, times, color, style, width)
             self.addLineToPlot(lineItem)
 
