@@ -22,9 +22,15 @@ jobs:
 
     - name: Install wheel
       run: pip3 install wheel
+    
+    - name: Install requests
+      run: pip3 install requests
 
     - name: Extract build scripts
       run: move build/* .
+      
+    - name: Print python packages
+      run: pip3 list
     
     - name: Copy over files needed for tkinter
       run: |
@@ -58,4 +64,4 @@ jobs:
       run: compress-archive .\build\nsis\* mp.zip
 
     - name: Create release
-      run: py release.py ${{ secrets.GITHUB_TOKEN }} --zip=mp.zip
+      run: python release.py ${{ secrets.GITHUB_TOKEN }} --zip=mp.zip

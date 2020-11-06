@@ -1,5 +1,3 @@
-import requests
-
 # Libraries that aren't properly found on PyPI
 special_libs = ['scipy', 'matplotlib', 'numpy', 'pillow', 'cdflib', 'PyQt5-sip']
 
