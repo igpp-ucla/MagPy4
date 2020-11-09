@@ -174,7 +174,10 @@ class Vector():
         return str(self.values)
 
     def func_map(f, v):
-        return Vector(f(v.values), v.times)
+        if isinstance(v, Vector):
+            return Vector(f(v.values), v.times)
+        else:
+            return f(v)
 
 class simpleCalcUI(object):
     def setupUI(self, Frame, window):
