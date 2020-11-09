@@ -7,14 +7,37 @@
 # WARNING! All changes made in this file will be lost!
 
 from PyQt5 import QtCore, QtGui, QtWidgets
+from .MagPy4UI import TimeEdit
+
+class CheckBoxList(QtWidgets.QListWidget):
+    ''' ListWidget with checkable items '''
+    def addItem(self, *arg ,**kwargs):
+        super().addItem(*arg, **kwargs)
+        item = self.getItems()[-1]
+        item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
+        item.setCheckState(QtCore.Qt.Unchecked)
+
+    def getItems(self):
+        ''' Get listwidgetitems '''
+        count = self.count()
+        items = [self.item(row) for row in range(count)]
+        return items
+
+    def getCheckedItems(self):
+        ''' Get checked values '''
+        checked = QtCore.Qt.Checked
+        return [item.text() for item in self.getItems() if item.checkState() == checked]
+
+    def setItemChecked(self, index):
+        self.getItems()[index].setCheckState(QtCore.Qt.Checked)
 
 class Ui_FilterDialog(object):
     def setupUi(self, FilterDialog):
         FilterDialog.setObjectName("FilterDialog")
-        FilterDialog.resize(470, 442)
-        FilterDialog.setModal(True)
+        FilterDialog.resize(690, 442)
+        FilterDialog.setModal(False)
         self.buttonBox = QtWidgets.QDialogButtonBox(FilterDialog)
-        self.buttonBox.setGeometry(QtCore.QRect(120, 400, 341, 32))
+        self.buttonBox.setGeometry(QtCore.QRect(330, 400, 341, 32))
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel|QtWidgets.QDialogButtonBox.Ok)
         self.buttonBox.setObjectName("buttonBox")
@@ -125,6 +148,26 @@ class Ui_FilterDialog(object):
         self.timespanUnit = QtWidgets.QLabel(self.filterWidthGroupBox)
         self.timespanUnit.setGeometry(QtCore.QRect(420, 50, 20, 20))
         self.timespanUnit.setObjectName("timespanUnit")
+
+        # Set up variable selection
+        self.varFrame = QtWidgets.QFrame(FilterDialog)
+        self.varFrame.setGeometry(QtCore.QRect(460, 0, 220, 400))
+        self.varList = CheckBoxList()
+
+        varLt = QtWidgets.QVBoxLayout(self.varFrame)
+        varLt.addWidget(QtWidgets.QLabel('Variables'))
+        varLt.addWidget(self.varList)
+
+        # Set up time edits
+        timeEditFrame = QtWidgets.QFrame(FilterDialog)
+        timeLt = QtWidgets.QHBoxLayout(timeEditFrame)
+        timeLt.setContentsMargins(0, 0, 0, 0)
+        self.timeEdit = TimeEdit()
+        self.timeEdit.setFont(QtGui.QFont())
+        timeLt.addWidget(self.timeEdit.start)
+        timeLt.addWidget(self.timeEdit.end)
+
+        timeEditFrame.setGeometry(QtCore.QRect(0, 365, 455, 100))
 
         self.retranslateUi(FilterDialog)
         self.buttonBox.accepted.connect(FilterDialog.accept)

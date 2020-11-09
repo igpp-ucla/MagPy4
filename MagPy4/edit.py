@@ -174,6 +174,9 @@ class Edit(QtWidgets.QFrame, EditUI):
     def openFilter(self):
         self.closeSubWindows()
         self.filter = FilterDialog(self, self.window)
+        self.window.initGeneralSelect('Filter', '#32a852', self.filter.ui.timeEdit,
+            'Single', closeFunc=self.closeFilter)
+        self.filter.finished.connect(self.window.endGeneralSelect)
         self.filter.show()
 
     def closeFilter(self):

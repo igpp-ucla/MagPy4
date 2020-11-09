@@ -600,6 +600,10 @@ class TimeEdit():
 
         self.linkedRegion = None
 
+    def setFont(self, font):
+        for edit in [self.start, self.end]:
+            edit.setFont(font)
+
     def setupMinMax(self, minmax):
         min, max = minmax
         self.minDateTime = min

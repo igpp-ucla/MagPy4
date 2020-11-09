@@ -45,6 +45,7 @@ from .mth import Mth
 from PyQt5 import QtCore
 from PyQt5 import QtGui
 from PyQt5 import QtWidgets
+import bisect
 
 class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
 
@@ -54,14 +55,16 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         self.ui = Ui_FilterDialog()
         self.ui.setupUi(self)
 
+
         # Parent is the program's main window. The variable 'window' is used for the
         # main window elsewhere in this program, but here I think it would be too
         # easily confused with the filter window. (fair point - jfc3)
         self.parent = parent
         self.edit = edit
+        self.ui.timeEdit.setupMinMax(self.parent.getMinAndMaxDateTime())
 
         # Remove the question mark (context help button) from the dialog box's title bar.
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(QtCore.Qt.Window | QtCore.Qt.WindowStaysOnTopHint)
 
         # Wire up the combo boxes.
         self.ui.filterTypeComboBox.currentTextChanged.connect(self.onFilterTypeComboBoxChanged)
@@ -119,6 +122,18 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         self.onFilterTypeComboBoxChanged(self.filterType)
         self.onFilterWidthComboBoxChanged(self.filterWidth)
         self.onWindowTypeComboBoxChanged(self.windowType)
+
+        # Add items to variable list
+        for var in self.parent.DATASTRINGS:
+            self.ui.varList.addItem(var)
+        
+        # Set plot variables checked by default
+        for plotStrs in self.parent.lastPlotStrings:
+            for dstr, en in plotStrs:
+                if en < 0:
+                    continue
+                index = self.parent.DATASTRINGS.index(dstr)
+                self.ui.varList.setItemChecked(index)
 
     # Dialog data exchange
     # values -> widgets
@@ -262,8 +277,6 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         self.parent.showStatusMsg('Applying filter...')
         self.calculate()
         notes = f'Filter with {self.filterType} and {self.windowType} options'
-        #name = f'{self.filterType}/{self.windowType} Filter'
-        # try to generate a more abbreviated version of name
         filts = self.filterType.split(' ')
         name = f'{filts[0][0]}{filts[1][0]}{self.windowType[0]}F'
         self.edit.addHistory(self.edit.curSelection[0], notes, name)
@@ -437,13 +450,45 @@ class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
         if self.numPoints != self.oldNumPoints:
             pass
 
-        # just filter anything that is plotted for now
-        # later could make a separate dstr selection window (using the axis ones doesn't make sense as filters operate on data independently)
-        for plotStrs in self.parent.lastPlotStrings:
-            for dstr,en in plotStrs:
-                if en < 0:
-                    continue
-                data = self.filterRawData(self.parent.getData(dstr, en))
+        # Get filter time range
+        if self.parent.currSelect.numRegions == 0:
+            region = None
+        else:
+            region = self.parent.currSelect.getRegion(0)
+
+        # Filter selected variables
+        en = self.parent.currentEdit
+        for dstr in self.ui.varList.getCheckedItems():
+            # Get data for variable
+            times = self.parent.getTimes(dstr, en)[0]
+            original_data = self.parent.getData(dstr, en)
+            raw_data = original_data
+
+            # Clip data if necessary
+            if region is not None:
+                sT, eT = region
+                sI = bisect.bisect_left(times, sT)
+                eI = bisect.bisect_right(times, eT)
+                raw_data = raw_data[sI:eI]
+
+            # Filter data
+            data = self.filterRawData(raw_data)
+
+            # Add filtered data back into original data if a time
+            # region was selected
+            n = len(raw_data) - len(data)
+            half = int(n) // 2
+            if region is not None:
+                start = sI+half
+                original_data = np.array(original_data)
+                original_data[start:start+len(data)] = data
+                self.parent.DATADICT[dstr].append(original_data)
+            else:
+            # Otherwise, use the fully filtered data and add in error flags
+            # to adjust times
+                prepend = [data[0]] * half
+                append = [data[-1]] * (n-half)
+                data = np.concatenate([prepend, data, append])
                 self.parent.DATADICT[dstr].append(data)
 
     def filterRawData(self, data):
