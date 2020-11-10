@@ -37,6 +37,7 @@ jobs:
         mkdir lib
         mkdir pynsist_pkgs
         py pynsist_helper.py
+        ls pynsist_pkgs
 
     - name: Create pip_wheels directory
       run: mkdir pip_wheels
