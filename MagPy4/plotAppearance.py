@@ -124,8 +124,8 @@ class PlotAppearanceUI(BaseLayout):
         scrollArea = QtWidgets.QScrollArea()
         scrollArea.setWidget(widgetFrame)
         scrollArea.setWidgetResizable(True)
-        scrollArea.setMinimumHeight(min(widgetFrame.sizeHint().height(), 500))
-        scrollArea.setMinimumWidth(widgetFrame.sizeHint().width()+150)
+        scrollArea.setMinimumHeight(min(max(widgetFrame.sizeHint().height(), 300), 500))
+        scrollArea.setMinimumWidth(350)
         scrollArea.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
 
         # Set style properties to match tab widget's background

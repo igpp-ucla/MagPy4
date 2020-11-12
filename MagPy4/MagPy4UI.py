@@ -1496,7 +1496,7 @@ class MainPlotGrid(PlotGrid):
             bar.axisClicked.connect(plotFunc)
 
             # Set cursor
-            bar.setCursor(QtCore.Qt.OpenHandCursor)
+            bar.setCursor(QtCore.Qt.PointingHandCursor)
 
     def menuEnabled(self):
         return True

@@ -543,7 +543,8 @@ class MagPyAxisItem(pg.AxisItem):
 
     def mouseClickEvent(self, ev):
         super().mouseClickEvent(ev)
-        self.axisClicked.emit()
+        if (ev.button() == QtCore.Qt.LeftButton):
+            self.axisClicked.emit()
 
 class DateAxis(pg.AxisItem):
     ticksChanged = QtCore.pyqtSignal(object)
@@ -1155,7 +1156,8 @@ class DateAxis(pg.AxisItem):
 
     def mouseClickEvent(self, ev):
         super().mouseClickEvent(ev)
-        self.axisClicked.emit()
+        if (ev.button() == QtCore.Qt.LeftButton):
+            self.axisClicked.emit()
 
 class MagPyPlotDataItem(pg.PlotDataItem):
     def __init__(self, *args, **kwargs):
