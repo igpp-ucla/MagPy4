@@ -1780,12 +1780,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         for epoch_lbl in time_dict:
             # Skip non-TT2000 formatted epochs
             mode = cdf.varinq(epoch_lbl)['Data_Type_Description']
-            if mode != 'CDF_TIME_TT2000':
+            if mode not in ['CDF_TIME_TT2000', 'CDF_EPOCH']:
                 continue
 
             # Get times and map from nanoseconds to SCET
             times = cdf.varget(epoch_lbl)
-            times = times * 1e-9 - 32.184 # Nanoseconds to seconds, then remove leap ofst
+
+            if mode == 'CDF_TIME_TT2000':
+                epoch = 'J2000'
+                times = times * 1e-9 - 32.184 # Nanoseconds to seconds, then remove leap ofst
+            elif mode == 'CDF_EPOCH':
+                epoch = 'Y1966'
+                ofst = cdflib.cdfepoch.parse([datetime(1966, 1, 1).isoformat()+'.000'])[0]
+                times = (times - ofst) * 1e-3
 
             # Get indices for clipping if time range specified
             if clip_range:
@@ -1818,7 +1825,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 vec_grps = {k:list(map(label_func, v)) for k, v in vec_grps.items()}
 
             # Set epoch and resolution before loading data
-            self.epoch = 'J2000'
+            self.epoch = epoch
             self.resolution = min(times[1] - times[0], self.resolution)
             self.errorFlag = 1e32
             self.VECGRPS.update(vec_grps)
@@ -3603,7 +3610,18 @@ class CDF_ID():
             self.cdf = cdflib.CDF(self.name)
 
     def getEpoch(self):
-        return 'J2000'
+        self.open()
+
+        # Get default time mode and corresponding epoch
+        epoch_lbl = self.getEpochVars()[0]
+        mode = self.cdf.varinq(epoch_lbl)['Data_Type_Description']
+        epoch = None
+        if mode == 'CDF_TIME_TT2000':
+            epoch = 'J2000'
+        elif mode == 'CDF_EPOCH':
+            epoch = 'Y1966'
+
+        return epoch
 
     def getUnits(self):
         labels = self.getLabels()
@@ -3664,12 +3682,21 @@ class CDF_ID():
         return datas
 
     def getTimes(self, epoch_var=None):
+        # Get default epoch variable
         if epoch_var is None:
             epoch_var = self.getEpochVars()[0]
-        
         self.open()
+
+        # Get epoch mode and convert time
+        mode = self.cdf.varinq(epoch_var)['Data_Type_Description']
         times = self.cdf.varget(epoch_var)
-        times = times / 1e9 - 32.184
+
+        if mode == 'CDF_TIME_TT2000':
+            times = times * 1e-9 - 32.184 # Nanoseconds to seconds, then remove leap ofst
+        elif mode == 'CDF_EPOCH':
+            ofst = cdflib.cdfepoch.parse([datetime(1966, 1, 1).isoformat()+'.000'])[0]
+            times = (times - ofst) * 1e-3
+        
         return times
 
 def runMarsPy():
