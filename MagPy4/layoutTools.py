@@ -27,9 +27,14 @@ class BoxLayout():
             self.removeWidget(item)
             item.deleteLater()
 
-    def pop(self):
-        ''' Remove and delete last element from layout '''
-        n = self.count() - 1
+    def pop(self, index=None):
+        ''' Remove and delete last (or specified) element from layout '''
+        if index is None:
+            n = self.count() - 1
+        else:
+            n = index
+        
+        # Remove item and delete
         item = self.itemAt(n).widget()
         self.removeWidget(item)
         item.deleteLater()

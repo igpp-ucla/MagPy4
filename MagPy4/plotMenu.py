@@ -371,6 +371,7 @@ class AdjustingScrollArea(QtWidgets.QScrollArea):
             self.setFrameShape(QtWidgets.QFrame.NoFrame)
 
 class ListLayout(QtWidgets.QGridLayout):
+    plotRemoved = QtCore.pyqtSignal(object)
     def __init__(self, window, frame):
         self.window = window
         self.mainFrame = frame
@@ -529,6 +530,9 @@ class ListLayout(QtWidgets.QGridLayout):
             self.pltLt.addWidget(item.widget(), row-1, 0, 1, 1)
             item.widget().label.setText(f'Plot {row}:')
 
+        # Notify other objects that plot was removed
+        self.plotRemoved.emit(index)
+
     def mapItems(self, lst):
         items = []
         for dstr, en in lst:
@@ -667,9 +671,9 @@ class LinkBoxGroup(QtWidgets.QWidget):
         self.layout.addWidget(box)
         return box
 
-    def removeColumn(self):
+    def removeColumn(self, index=None):
         ''' Removes last box from layout '''
-        self.layout.pop()
+        self.layout.pop(index=index)
 
     def linkButtons(self, grps):
         ''' Adds buttons to respective button groups '''
@@ -855,12 +859,12 @@ class LinkWidget(QtWidgets.QGroupBox):
         if cols == 1:
             self.setVisible(True)
 
-    def removeColumn(self):
-        ''' Removes last plot column from grid '''
+    def removeColumn(self, col=None):
+        ''' Removes last (or given col #) plot column from grid '''
         # Remove last column from each link group
         widgets = self.getLinkWidgets()
         for widget in widgets:
-            widget.removeColumn()
+            widget.removeColumn(col)
 
         # Remove last plot label
         self.plt_lbl_lt.pop()
@@ -1014,6 +1018,10 @@ class PlotMenuUI(object):
         self.fgrid = LinkWidget()
         self.layout.addWidget(self.fgrid)
         self.fgrid.setStyleSheet(checkBoxStyle)
+
+        # Connect plot removed menu actions to link buttons
+        self.plottingLayout.plotRemoved.connect(self.fgrid.removeColumn)
+        self.plottingLayout.plotRemoved.connect(Frame.decrementPlotCount)
 
 class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
     def __init__(self, window, parent=None):
@@ -1197,6 +1205,9 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.plotCount += 1
         self.ui.plottingLayout.addPlot()
         self.ui.fgrid.addColumn()
+
+    def decrementPlotCount(self):
+        self.plotCount -= 1
 
     def splitAdd(self):
         items = self.ui.plottingLayout.getSelectedItems()
