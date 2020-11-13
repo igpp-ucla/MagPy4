@@ -36,7 +36,7 @@ jobs:
       run: |
         mkdir lib
         mkdir pynsist_pkgs
-        py pynsist_helper.py
+        python pynsist_helper.py
         ls pynsist_pkgs
 
     - name: Create pip_wheels directory
@@ -56,7 +56,7 @@ jobs:
       run: pip3 wheel cdflib -w pip_wheels
 
     - name: Create installer.cfg
-      run: py create_config.py
+      run: python create_config.py
 
     - name: Build executable
       run: pynsist installer.cfg
