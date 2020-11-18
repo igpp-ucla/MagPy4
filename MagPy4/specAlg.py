@@ -23,13 +23,14 @@ class SpectraCalc():
             - n: Number of data samples (int)
             - res: Data resolution in seconds (float)
         '''
-
+        # Calculate the number of bands to skip at each end
         bw = SpectraCalc._round_bw(bw)
-        c, half, nband, nfreq = SpectraCalc._get_power_vars(bw, n, res)
-        nfreq = int(nband - half + 1)
-        C = n * res
-        kmo = int((bw + 1) * 0.5)
-        freq = np.arange(kmo, nfreq) / C
+        half = int(bw/2)
+
+        # Calculate the frequency for each band
+        freq = np.fft.rfftfreq(n, d=res)
+        high = len(freq) - half
+        freq = freq[half+1:high]
 
         if len(freq) < 2:
             print ('Proposed plot invalid!\nFrequency list has < 2 values')
@@ -62,8 +63,7 @@ class SpectraCalc():
         bw = SpectraCalc._round_bw(bw)
         c, half, nband, nfreq = SpectraCalc._get_power_vars(bw, n, res)
 
-        # Compute the sum of the squares of the imaginary and 
-        # real components of the fft
+        # Calculate fft and skip first index
         fft = fft[1:]
 
         # Calculate power
@@ -74,7 +74,6 @@ class SpectraCalc():
         power = signal.oaconvolve(power, np.ones(bw), mode='valid')
         c = 2 * res / n
         power = power / bw * c
-        power = power[:nfreq]
 
         return power
 

@@ -54,7 +54,7 @@ import bisect
 from .timeManager import TimeManager
 from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect, SelectableViewBox
 from .layoutTools import BaseLayout
-from .dataUtil import merge_datas, find_vec_grps
+from .dataUtil import merge_datas, find_vec_grps, get_resolution_diffs
 import numpy.lib.recfunctions as rfn
 from .ASCII_Importer import TextReader
 
@@ -1401,7 +1401,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Extract time information and set up resolution info
         time_lbl = labels[0]
         times = data[time_lbl]
-        res = np.median(np.diff(times))
+        res, diffs = get_resolution_diffs(times)
         self.resolution = min(self.resolution, res)
 
         # Assemble data into list format
@@ -1534,7 +1534,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Set program attributes
         flag = ff.get_error_flag()
-        res = np.mean(np.diff(times))
+        res, diffs = get_resolution_diffs(times)
         self.errorFlag = min(1e16, flag)
         self.resolution = min(res, self.resolution)
         self.epoch = ff.get_epoch()
@@ -1569,9 +1569,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 self.DATADICT[dstr] = [Mth.interpolateErrors(self.ORIGDATADICT[dstr],self.errorFlag)]
 
                 if (i == 0) and (not np.array_equal(merged_times, old_times)):
-                    diffs = np.diff(merged_times)
-                    diffs = np.concatenate([diffs, [diffs[-1]]])
-                    res = np.mean(diffs)
+                    res, diffs = get_resolution_diffs(merged_times)
+                    diffs = np.concatenate([diffs[1:], [diffs[-1]]])
                     self.TIMES[self.TIMEINDEX[dstr]] = (merged_times, diffs, res)
 
             # Merge specDatas passed
@@ -1607,12 +1606,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         else: # this is just standard new flatfile, cant be concatenated with current because it doesn't have matching column names
             self.DATASTRINGS.extend(newDataStrings)
-            resolutions = np.diff(ffTime)
-            resolutions = np.append(resolutions, resolutions[-1]) # append last value to make same length as time series
-            uniqueRes = np.unique(resolutions)
-            print(f'detected {len(uniqueRes)} resolutions')
-            avgRes = np.mean(resolutions)
-
+            avgRes, resolutions = get_resolution_diffs(ffTime)
+            resolutions = np.append(resolutions[1:], resolutions[-1]) # append last value to make same length as time series
             self.resolution = min(self.resolution, avgRes)
             self.TIMES.append([ffTime, resolutions, avgRes])
 
@@ -3043,8 +3038,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # Get new time ticks and add to EditedTimes dict if deleted
             if flag is not None:
                 continue
-            resolutions = np.diff(times)
-            avgRes = np.median(resolutions)
+            avgRes, resolutions = get_resolution_diffs(times)
             timeInfo = (times, resolutions, avgRes)
             if dstr not in self.EDITEDTIMES:
                 self.EDITEDTIMES[dstr] = {en+1:timeInfo}
