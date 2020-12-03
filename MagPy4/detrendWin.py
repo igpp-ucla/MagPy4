@@ -6,7 +6,7 @@ from .dataDisplay import UTCQDate
 from .layoutTools import BaseLayout
 from .timeManager import TimeManager
 from .selectionManager import SelectableViewBox, GeneralSelect
-from .plotBase import MagPyPlotItem, DateAxis
+from .plotBase import MagPyPlotItem, DateAxis, GraphicsLayout, GraphicsView
 from .traceStats import TraceStats
 
 from .dynamicSpectra import DynamicSpectra, DynamicCohPha
@@ -24,9 +24,9 @@ class DetrendWindowUI(BaseLayout):
         layout = QtWidgets.QGridLayout(Frame)
 
         # Set up grid graphics layout
-        self.gview = pg.GraphicsView()
+        self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        self.glw = GridGraphicsLayout(window)
+        self.glw = GraphicsLayout()
         self.gview.setCentralItem(self.glw)
         self.glw.layout.setHorizontalSpacing(10)
         self.glw.layout.setContentsMargins(15, 10, 25, 10)
@@ -310,7 +310,6 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
     def closeTraceStats(self):
         if self.tools['Stats']:
-            self.endGeneralSelect()
             self.tools['Stats'].close()
             self.tools['Stats'] = None
 
@@ -342,6 +341,8 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
         # Set up grid elements
         self.ui.glw.clear()
         self.pltGrd = PlotGrid(self)
+        xFunc = lambda t : ff_time.tick_to_ts(t, self.epoch)
+        self.pltGrd.enableTracking(True, textFuncs={'x':xFunc}, viewWidget=self.ui.gview)
         self.ui.glw.addItem(self.pltGrd)
         self.pltGrd.addItem(pg.LabelItem('Detrended Data'), 0, 1, 1, 1)
 
@@ -417,7 +418,13 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
             self.lastPlotStrings.append(pltStrs)
             plotNum += 1
+
+        # Save list of plot variables
         self.DATASTRINGS = list(self.dtDatas.keys())
+
+        # Enable tracking and update grid
+        map_func = lambda s : ff_time.tick_to_ts(s+self.tickOffset, self.epoch)
+        self.ui.glw.enableTracking(True, textFuncs={'x':map_func}, viewWidget=self.ui.gview)
         self.ui.glw.update()
 
         # Set time label

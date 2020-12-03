@@ -435,7 +435,7 @@ class BatchSelectRegions(GeneralSelect):
 class SelectableViewBox(pg.ViewBox):
     # Viewbox that calls its window's GeneralSelect object in response to clicks
     def __init__(self, window, plotIndex, *args, **kwds):
-        pg.ViewBox.__init__(self, *args, **kwds)
+        super().__init__(*args, **kwds)
         self.window = window
         self.plotIndex = plotIndex
         self.add_menu_act = None

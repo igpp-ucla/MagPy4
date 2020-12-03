@@ -5,7 +5,7 @@ from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphi
 from .dataDisplay import DataDisplay, UTCQDate
 
 from .dynBase import SpectrogramPlotItem, SpectraLine, SpectraLegend, SimpleColorPlot
-from .plotBase import MagPyPlotItem, MagPyColorPlot, DateAxis
+from .plotBase import MagPyPlotItem, MagPyColorPlot, DateAxis, GraphicsView
 from .selectionManager import SelectableViewBox
 from .layoutTools import BaseLayout
 from .plotAppearance import PressurePlotApp
@@ -1630,7 +1630,7 @@ class ElectronPitchAngleUI(BaseLayout):
         layout = QtWidgets.QGridLayout(Frame)
 
         # Set up plot grid
-        self.gview = pg.GraphicsView()
+        self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = GridGraphicsLayout(window)
         self.gview.setCentralItem(self.glw)

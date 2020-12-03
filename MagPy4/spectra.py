@@ -7,7 +7,7 @@ import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
 from .plotAppearance import PlotAppearance, SpectraPlotApp
-from .pyqtgraphExtensions import GridGraphicsLayout, BLabelItem, SpectraPlotItem
+from .pyqtgraphExtensions import GridGraphicsLayout, BLabelItem
 from .plotBase import MagPyPlotItem
 from .dataDisplay import UTCQDate
 from .MagPy4UI import TimeEdit
@@ -18,7 +18,7 @@ import functools
 import time
 from .mth import Mth
 import os
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from scipy.interpolate import CubicSpline
 from .specAlg import SpectraCalc
 
@@ -269,6 +269,11 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
         # Update y scaling
         self.toggleLogScale(self.ui.logModeCheckBox.isChecked())
+
+        # Enable grid tracking
+        views = [self.ui.gview, self.ui.cohView, self.ui.phaView, self.ui.combView]
+        for grid, view in zip(grids, views):
+            grid.enableTracking(True, viewWidget=view)
     
     def splitTraceInfo(self, plotInfo, split_trace):
         ''' Split plot variable and pen info, individually
@@ -476,6 +481,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 self.ui.sumGrid.addItem(plot)
                 plot.setLogMode(x=self.ui.logModeCheckBox.isChecked())
 
+            self.ui.sumGrid.enableTracking(True, viewWidget=self.ui.combView)
             self.ui.tabs.setTabEnabled(3, True)
 
         # Calculate variables
@@ -637,6 +643,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.plots['spectra'] = self.setupSpectraPlots(info, val)
         for plot in self.plots['spectra']:
             self.ui.grid.addItem(plot)
+        self.ui.grid.enableTracking(True, viewWidget=self.ui.gview)
         
         self.toggleLogScale(self.ui.logModeCheckBox.isChecked())
         self.update()

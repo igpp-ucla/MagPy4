@@ -2648,6 +2648,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             stckLbl = self.buildStackedLabel(dstrs, colorsList)
             self.pltGrd.addPlt(pi, stckLbl)
 
+        map_func = lambda s : ff_time.tick_to_ts(s+self.tickOffset, self.epoch)
+        self.pltGrd.enableTracking(True, textFuncs={'x':map_func}, viewWidget=self.ui.gview)
+
         ## end of main for loop
 
         # Downsample data if checked

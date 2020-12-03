@@ -10,7 +10,7 @@ from scipy import fftpack, signal
 import numpy as np
 from .MagPy4UI import TimeEdit, NumLabel, StackedAxisLabel
 from .pyqtgraphExtensions import GridGraphicsLayout
-from .plotBase import DateAxis
+from .plotBase import DateAxis, GraphicsView
 import bisect
 import functools
 from .mth import Mth
@@ -27,7 +27,7 @@ class DynamicSpectraUI(BaseLayout):
         Frame.resize(1050, 850)
         layout = QtWidgets.QGridLayout(Frame)
 
-        self.gview = pg.GraphicsView()
+        self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = GridGraphicsLayout(window)
         self.gview.setCentralItem(self.glw)
@@ -550,7 +550,7 @@ class DynamicCohPhaUI(BaseLayout):
             subLt = QtWidgets.QGridLayout(subFrame)
 
             # Build grid graphics layout
-            gview = pg.GraphicsView()
+            gview = GraphicsView()
             gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
             glw = GridGraphicsLayout(window)
             gview.setCentralItem(glw)

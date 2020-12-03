@@ -3,7 +3,6 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .pyqtgraphExtensions import GridGraphicsLayout
 import pyqtgraph as pg
-import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
 from .MagPy4UI import TimeEdit, NumLabel
@@ -131,7 +130,8 @@ class BaseLayout(object):
         return spacer
 
     def getGraphicsGrid(self, window=None):
-        self.gview = pg.GraphicsView()
+        from .plotBase import GraphicsView
+        self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = GridGraphicsLayout(window)
         self.gview.setCentralItem(self.glw)

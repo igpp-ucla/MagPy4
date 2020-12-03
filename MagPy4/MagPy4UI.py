@@ -9,7 +9,8 @@ import pyqtgraph as pg
 import functools
 import os
 
-from .pyqtgraphExtensions import GridGraphicsLayout,BLabelItem
+from .pyqtgraphExtensions import GridGraphicsLayout, BLabelItem
+from .plotBase import GraphicsLayout, GraphicsView
 from . import getRelPath
 from .mth import Mth
 import re
@@ -323,7 +324,6 @@ class MagPy4UI(object):
         self.toggleTrackerAction.setText('Enable Tracker Line')
         self.toggleTrackerAction.setStatusTip('Shows line that follows mouse in plot window & updates timestamp in status bar')
         self.toggleTrackerAction.setCheckable(True)
-        self.toggleTrackerAction.setShortcut('t')
         self.optionsMenu.addAction(self.toggleTrackerAction)
 
         # Shift percentage box setup
@@ -559,7 +559,7 @@ class MagPy4UI(object):
 
     def setupView(self):
         # Remove start up layout and setup main plot grid
-        self.gview = pg.GraphicsView()
+        self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = GridGraphicsLayout(self.window)
         self.glw.layout.setVerticalSpacing(0)
@@ -878,7 +878,7 @@ class FileLabel(pg.LabelItem):
         # Default resize event
         pg.LabelItem.resizeEvent(self, ev)
 
-class PlotGrid(pg.GraphicsLayout):
+class PlotGrid(GraphicsLayout):
     def __init__(self, window=None, *args, **kwargs):
         self.window = window
         self.numPlots = 0
@@ -899,7 +899,7 @@ class PlotGrid(pg.GraphicsLayout):
         self.startRow = 1
         self.factors = []
 
-        pg.GraphicsLayout.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.layout.setHorizontalSpacing(2)
         self.layout.setVerticalSpacing(2)
         self.layout.setContentsMargins(10,0,0,0)
@@ -1028,7 +1028,7 @@ class PlotGrid(pg.GraphicsLayout):
 
     def resizeEvent(self, event):
         if self.numPlots == 0:
-            pg.GraphicsLayout.resizeEvent(self, event)
+            super().resizeEvent(event)
             return
 
         try:

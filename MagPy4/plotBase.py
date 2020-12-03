@@ -8,6 +8,158 @@ from dateutil import rrule
 from dateutil.rrule import rrule
 from dateutil.rrule import rrule, SECONDLY, MINUTELY, HOURLY, DAILY, MONTHLY, YEARLY
 
+class GraphicsView(pg.GraphicsView):
+    def __init__(self, *args, **kwargs):
+        self.shortcut_dict = {}
+        super().__init__(*args, **kwargs)
+
+    def add_shortcut(self, key, func):
+        ''' Adds a shortcut to the GraphicsView that when triggered
+            calls func()
+        '''
+        # Check if shortcut in dict
+        item = self.shortcut_dict.get(key)
+
+        # Create a new shortcut and action linked to func if
+        # the shortcut hasn't been created yet
+        if item is None:
+            item = QtWidgets.QShortcut(key, self)
+            self.shortcut_dict[key] = item
+        # Otherwise, unlink the action's last signal connections
+        # and connect it to func
+        else:
+            item.activated.disconnect()
+        item.activated.connect(func)
+
+class FadeAnimation(QtCore.QPropertyAnimation):
+    ''' Animation for QGraphicsOffacityEffect 'effect' that changes opacity
+        from start/end values in rng
+    '''
+    def __init__(self, effect, rng=(0.0, 1.0), length=150, *args, **kwargs):
+        super().__init__(effect, QtCore.QByteArray(b'opacity'))
+        a, b = rng
+        self.setDuration(length)
+        self.setStartValue(a)
+        self.setEndValue(b)
+
+class TimedFadeAnimation(QtCore.QSequentialAnimationGroup):
+    ''' Animation that fades object in and out with a pause of length pause_len
+        in between animations
+    '''
+    def __init__(self, target, pause_len=3000, fade_len=150, *args, **kwargs):
+        self.target = target
+        self.effect = QtWidgets.QGraphicsOpacityEffect()
+        self.target.setGraphicsEffect(self.effect)
+
+        # Fade in / out animations
+        self.start_anim = FadeAnimation(self.effect, (0.0, 1.0), fade_len)
+        self.end_anim = FadeAnimation(self.effect, (1.0, 0.0), fade_len)
+
+        super().__init__(target, *args, **kwargs)
+
+        self.addAnimation(self.start_anim)
+        self.addPause(pause_len)
+        self.addAnimation(self.end_anim)
+
+class TimedMessage(pg.TextItem):
+    ''' Message that fades in / out in center of parent and
+        is displayed for ms ms
+    '''
+    def __init__(self, msg='', ms=1000, *args, **kwargs):
+        self.msg = msg
+        self.length = ms
+        super().__init__(msg, *args, **kwargs)
+        self.setAnchor((0.5, 0.5))
+        self.setVisible(False)
+        self.animation = None
+
+    def updatePosition(self):
+        ''' Centers timed message in parent's bounding rect '''
+        pos = self.parentItem().boundingRect().center()
+        self.setPos(pos)
+
+    def showMessage(self, txt=None):
+        ''' Shows the message txt in the center of the screen
+            with a fade in/out animation
+        '''
+        # Set visible on first showing (animation does not work if hidden)
+        if self.animation is None:
+            self.setVisible(True)
+
+        # Centers message on screen and updates text
+        self.updatePosition()
+        self.setText(self.msg if txt is None else txt)
+
+        # Create/start fade in/out animation
+        if self.animation is None:
+            self.animation = TimedFadeAnimation(self, self.length)
+            self.animation.effect.setOpacity(1.0)
+            QtCore.QTimer.singleShot(self.length, self.animation.end_anim.start)
+        else:
+            self.fade()
+
+    def fade(self):
+        ''' (Re)starts fade animation '''
+        self.animation.stop()
+        self.animation.start()
+
+class GraphicsLayout(pg.GraphicsLayout):
+    def __init__(self, *args, **kwargs):
+        # Indicates whether user is able to to toggle tracking
+        self.trackingEnabled = None
+        self.textFuncs = {}
+
+        # Default init
+        super().__init__(*args, **kwargs)
+
+        # Create timed status message object and set attributes
+        self.message = TimedMessage(color=(255, 255, 255), fill=(0, 0, 0, 175))
+        self.message.setParentItem(self)
+
+        font = QtGui.QFont()
+        font.setPointSize(14)
+        self.message.setFont(font)
+        self.message.setZValue(2000)
+
+    def getItems(self):
+        return [item for item in self.items]
+
+    def getPlots(self):
+        return [item for item in self.getItems() if isinstance(item, MagPyPlotItem)]
+
+    def enableTracking(self, val, textFuncs={}, viewWidget=None):
+        ''' Enables/disables tracking based on val and passes textFuncs
+            to each plot's enableTracking function,
+            viewWidget specifies the widget that can be used to set the shortcut
+        '''
+        # Enable/disable tracking for each plot
+        self.trackingEnabled = val
+        self.textFuncs = textFuncs
+        plots = self.getPlots()
+        for plt in plots:
+            plt.enableTracking(val, textFuncs)
+
+        # Create tracking shortcut
+        if val and viewWidget:
+            viewWidget.add_shortcut('T', self.toggleTracking)
+    
+    def toggleTracking(self):
+        # Skip if tracking not available
+        if not self.trackingEnabled:
+            self.message.showMessage('Tracking not enabled for this view')
+            return
+
+        # Toggle tracking for each plot and get its current tracking mode
+        msg = ''
+        plots = self.getPlots()
+        for plt in plots:
+            plt.toggleTracking()
+            msg = plt.getTrackingMode()
+
+        # Show timed message indicating tracking status
+        if msg is not None:
+            self.message.showMessage(msg)
+    
 class MagPyPlotItem(pg.PlotItem):
     def __init__(self, epoch=None, name=None, selectable=False, *args, **kwargs):
         # Initialize axis items
@@ -31,7 +183,10 @@ class MagPyPlotItem(pg.PlotItem):
         self.plotApprAction = None
         self.plotAppr = None
 
-        pg.PlotItem.__init__(self, axisItems=axisItems, *args, **kwargs)
+        # Hover tracking disabled by default
+        self.hoverTracker = None
+
+        super().__init__(axisItems=axisItems, *args, **kwargs)
         self.hideButtons()
 
     def isSpecialPlot(self):
@@ -139,6 +294,44 @@ class MagPyPlotItem(pg.PlotItem):
                     plot_max = max(upper, plot_max)
 
         return (plot_min, plot_max)
+    
+    def enableTracking(self, val=True, format_funcs={}):
+        if self.hoverTracker:
+            self.removeItem(self.hoverTracker)
+            self.hoverTracker.deleteLater()
+            self.hoverTracker = None
+
+        if val:
+            self.hoverTracker = GridTracker(self, format_funcs)
+            self.addItem(self.hoverTracker, ignoreBounds=True)
+    
+    def getTrackingMode(self):
+        if self.hoverTracker:
+            return self.hoverTracker.get_mode()
+        else:
+            return self.hoverTracker.modes[0]
+        
+    def toggleTracking(self):
+        if self.hoverTracker:
+            self.hoverTracker.toggle()
+    
+    def hoverEvent(self, ev):
+        if self.hoverTracker:
+            if ev.isEnter():
+                self.hoverTracker.setVisible(True)
+            elif ev.isExit():
+                self.hoverTracker.setVisible(False)
+                return
+
+            pos = ev.pos()
+            tr = self.viewTransform()
+            pos = tr.map(pos)
+            self.hoverTracker.update_position(pos)
+
+    def clear(self, *args ,**kwargs):
+        super().clear(*args, **kwargs)
+        if self.hoverTracker:
+            self.enableTracking(True)
 
 class MagPyColorPlot(MagPyPlotItem):
     def __init__(self, *args, **kwargs):
@@ -1314,3 +1507,387 @@ class MagPyPlotDataItem(pg.PlotDataItem):
             self.scatter.show()
         else:
             self.scatter.hide()
+
+class TraceLegend(pg.LegendItem):
+    ''' Legend that displays the x,y values for each trace passed to it '''
+    def __init__(self, vb, *args, **kwargs):
+        self.vb = vb
+        super().__init__(*args, **kwargs)
+        self.setParentItem(vb)
+        self.anchor((1,0), (1,0))
+
+    def paint(self, p, *args, **kwargs):
+        # Skip painting if items list is empty
+        if len(self.items) == 0:
+            return
+
+        # Get rect and remove 5 pixels from each edge
+        margin = 5
+        rect = self.boundingRect()
+        rect = rect.adjusted(margin, margin, -margin, -margin)
+        rect = rect.toRect()
+
+        # Draw a slightly rounded rect with grey bg and slight transparency
+        pen = pg.mkPen((150, 150, 150, 150))
+        brush = pg.mkBrush((240, 240, 240, 200))
+
+        p.setPen(pen)
+        p.setBrush(brush)
+        p.drawRoundedRect(rect, 2, 2)
+
+    def updateItems(self, items):
+        ''' Update items in the legend '''
+        # Clear previous items and add each item and its label to legend
+        self.clear()
+        for pt in items:
+            self.addItem(pt, pt.get_labels()[0])
+
+class AnchoredPlotText(pg.TextItem):
+    def __init__(self, plot, anchor=None, *args, **kwargs):
+        self.plot = plot
+        super().__init__(*args, **kwargs)
+
+        # Anchor to plot's bottom right corner
+        self.setParentItem(plot)
+        vb = self.plot.getViewBox()
+        vb.sigResized.connect(self.update_position)
+        self.setAnchor((1, 1))
+
+    def update_position(self):
+        ''' Adjust text to bottom right corner of plot '''
+        vb = self.plot.getViewBox()
+        rect = vb.geometry()
+        self.setPos(rect.bottomRight())
+
+class LabeledScatter(pg.ScatterPlotItem):
+    def __init__(self, format_funcs={}, *args, **kwargs):
+        self.format_funcs = format_funcs
+        self.labels = []
+        super().__init__(*args, **kwargs)
+
+    def get_labels(self):
+        ''' Get label text for each point '''
+        # Get the string label for each point
+        labels = []
+        pts = self.points()
+        for pt in pts:
+            # Map position to values based on format_funcs
+            pos = pt.pos()
+            x, y = pos.x(), pos.y()
+            x = str(np.round(x, decimals=5)) if 'x' not in self.format_funcs else self.format_funcs['x'](x)
+            y = str(np.round(y, decimals=5)) if 'y' not in self.format_funcs else self.format_funcs['y'](x)
+
+            # Save string pair
+            label = f'({x}, {y})'
+            labels.append(label)
+        
+        return labels
+
+class GridTracker(pg.GraphicsObject):
+    modes = {
+        0 : 'Tracking Off',
+        1 : 'Tracking Enabled - Points',
+        2 : 'Tracking Enabled - Grid'
+    }
+    def __init__(self, plot, format_funcs={}, pen=None, *args, **kwargs):
+        self.plot = plot
+        self.mode = 1 # 1 = points mode, 2 = tracker mode, 0 = off
+
+        # Store formatting functions
+        self.format_funcs = format_funcs
+
+        # Set up potential scatter plots to show
+        self.hover_pts = []
+        self.legend = None
+        super().__init__(*args, **kwargs)
+
+        # Set up both lines and label item
+        self.vert_line = pg.InfiniteLine()
+        self.horz_line = pg.InfiniteLine(angle=0)
+        self.label = AnchoredPlotText(plot, fill=(250, 250, 250, 150))
+
+        # Set pens and colors for items
+        if pen is None:
+            pen = pg.mkPen((0, 0, 0, 255))
+            pen.setStyle(QtCore.Qt.DotLine)
+
+        # Set pen and label colors
+        self.vert_line.setPen(pen)
+        self.horz_line.setPen(pen)
+        self.label.setColor(pg.mkColor(0, 0, 0))
+
+        # Set a high-zalue and parent item for each object
+        for obj in [self.vert_line, self.horz_line]:
+            obj.setParentItem(self)
+
+        # Hide lines and set z-value        
+        self.setZValue(1000)
+        self.showLines(False)
+    
+    def toggle(self):
+        ''' Toggles between tracker modes where
+            0 = off
+            1 = points
+            2 = tracker lines
+        '''
+        self.mode = (self.mode + 1) % 3
+        self.setVisible(self.mode != 0)
+
+        # Clear points and hide lines if necessary
+        self.clearPoints()
+        if self.mode != 2:
+            self.showLines(False)
+
+    def setVisible(self, val):
+        super().setVisible(val)
+        self.label.setVisible(val)
+        self.label.setText('')
+        if self.legend:
+            self.legend.setVisible(val)
+            self.legend.clear()
+
+    def boundingRect(self):
+        # Get vertical line height
+        vert = self.vert_line.boundingRect()
+        top = vert.right()
+        height = vert.width()
+
+        # Get horizontal line width
+        horz = self.horz_line.boundingRect()
+        left = horz.left()
+        width = horz.width()
+        
+        rect = QtCore.QRectF(horz.center().x(), vert.center().x(), 1, 1)
+        return rect
+
+    def _check_in_vb(self, pos):
+        ''' Checks if given position is in viewbox range '''
+        x, y = pos.x(), pos.y()
+        (xmin, xmax), (ymin, ymax) = self.get_vb().viewRange()
+        if x < xmin or x > xmax:
+            return False
+        elif y < ymin or y > ymax:
+            return False
+        else:
+            return True
+
+    def get_vb(self):
+        ''' Returns the viewbox this tracker is in '''
+        vb = self.getViewBox()
+        if vb is None:
+            return self.parentItem()
+        return vb
+    
+    def clearPoints(self):
+        ''' Delete and clear old hover items '''
+        for item in self.hover_pts:
+            item.setParentItem(None)
+            item.deleteLater()
+
+        self.hover_pts = []
+        if self.legend:
+            self.legend.clear()
+
+    def showLines(self, val):
+        ''' Shows/hides tracker lines '''
+        self.vert_line.setVisible(val)
+        self.horz_line.setVisible(val)
+        self.label.setVisible(val)
+
+    def update_points(self, pos):
+        ''' Update labeled trace points '''
+        # Extract scene mouse position and map to view coordinates
+        view = self.get_vb()
+        x, y = pos.x(), pos.y()
+
+        # Delete old hover items
+        self.clearPoints()
+
+        # Get list of child items hovering over
+        self.hover_pts = self.get_hover_points(pos)
+
+        # Create new legend item if missing
+        if self.legend is None:
+            self.legend = TraceLegend(self.getViewBox())
+
+        # Update legend items
+        self.legend.updateItems(self.hover_pts)
+    
+    def update_tracker(self, pos):
+        ''' Update tracker lines and indicator '''
+        # Extract scene mouse position and map to view coordinates
+        x, y = pos.x(), pos.y()
+
+        # Hide or show tracker lines if needed
+        vis = self.vert_line.isVisible()
+        in_rng = self._check_in_vb(pos)
+        if vis and not in_rng:
+            self.showLines(False)
+        elif not vis and in_rng:
+            self.showLines(True)
+
+        # Update line positions
+        self.horz_line.setPos(y)
+        self.vert_line.setPos(x)
+
+        # Update label text
+        txt = self.format_text(x, y)
+        self.label.setText(txt)
+
+    def update_position(self, pos):
+        # Do not update if tracking is off
+        if self.mode == 0:
+            return
+        
+        # Otherwise update points or grid tracker
+        if self.mode == 1:
+            if not self._check_in_vb(pos):
+                return
+            self.update_points(pos)
+        else:
+            self.update_tracker(pos)
+
+    def paint(self, p, *args):
+        return
+
+    def get_mode(self):
+        ''' Get tracking mode (in string format) '''
+        txt = GridTracker.modes.get(self.mode)
+        return txt
+
+    def format_text(self, x, y):
+        ''' Formats x,y values to display in label '''
+        # Format x value
+        if 'x' in self.format_funcs:
+            x = self.format_funcs['x'](x)
+        else:
+            x = np.format_float_positional(x, precision=5)
+        
+        # Format y value
+        if 'y' in self.format_funcs:
+            y = self.format_funcs['y'](y)
+        else:
+            y = np.format_float_positional(y, precision=5)
+        
+        # Assemble label text
+        txt = f'({x}, {y})'
+
+        return txt
+
+    def get_radius_rect(self, pos):
+        ''' Get the rect centered at the cursor position with
+            a radius of self.radius
+        '''
+        # Extract center position info
+        x = pos.x()
+        y = pos.y()
+
+        # Get the factors to scale viewbox coordinates
+        # to pixels by
+        xpix, ypix = self.get_vb().viewPixelSize()
+
+        # Create the radius rect (scaled by the pixel length)
+        click_radius = 20
+        xrad = xpix*click_radius
+        yrad = ypix*click_radius
+        radius_rect = QtCore.QRectF(x-xrad, y-yrad, xrad*2, yrad*2)
+        return radius_rect
+    
+    def get_plot_traces(self):
+        ''' Returns the list of PlotCurveItems in the plot '''
+        pdis = self.plot.listDataItems()
+        traces = [t.curve for t in pdis if isinstance(t, pg.PlotDataItem)]
+        return traces
+    
+    def get_hover_points(self, pos):
+        ''' 
+            Creates a list of hover items for each trace that is close
+            to the cursor
+        '''
+        # Get the traces in the plot
+        traces = self.get_plot_traces()
+
+        # Get the radius rect centered around pos
+        radius_rect = self.get_radius_rect(pos)
+
+        # Find all the traces that intersect with the rect
+        matches = []
+        for t in traces:
+            path = t.mouseShape()
+            if path.intersects(radius_rect):
+                matches.append(t)
+        
+        # Create scatter plot items to display at hover point
+        if len(matches) > 0:
+            hover_items = self.create_hover_points(matches, radius_rect)
+        else:
+            hover_items = []
+
+        return hover_items
+
+    def create_hover_points(self, pdis, radius_rect):
+        '''
+            Creates scatter plot items for each plotDataItem using the
+            point closest to the center of the radius rect
+        '''
+
+        # Get the center and ranges of the radius rect
+        xmin, xmax = radius_rect.left(), radius_rect.right()
+        ymin, ymax = radius_rect.top(), radius_rect.bottom()
+        xcenter, ycenter = radius_rect.center().x(), radius_rect.center().y()
+
+        # Find the closest point to the center of the radius rect for
+        # each point and create a scatter plot item for it
+        hover_pts = []
+        for pdi in pdis:
+            # Get data and line info
+            x, y = pdi.getData()
+            pen = pdi.opts['pen']
+
+            # Clip data to relevant x region (assumes x is monotonically increasing)
+            start = bisect_left(x, xmin)
+            end = bisect_right(x, xmax)
+            x = x[start:end+1]
+            y = y[start:end+1]
+
+            # Skip if points list is empty
+            if len(x) <= 0:
+                continue
+
+            # Clip points out of max y range
+            mask = np.logical_and(y>=ymin, y<=ymax)
+            x = x[mask]
+            y = y[mask]
+            
+            # Skip if points list is empty here
+            if len(x) <= 0:
+                continue
+
+            # Calculate the euclidean distance between the cursor position
+            # and all the points that have been left after clipping
+            dx, dy = self.getViewBox().viewPixelSize() # Need to scale to pixels
+            dist = ((x-xcenter)/dx)**2 + ((y-ycenter)/dy)**2
+            dist = np.sqrt(dist)
+
+            # Find the point with the smallest euclidean distance
+            if len(dist) <= 1:
+                min_index = 0
+            else:
+                min_index = np.argmin(dist)
+
+            # Create array of single point
+            x_masked = [x[min_index]]
+            y_masked = [y[min_index]]
+
+            # Create scatter plot item with a color that's slightly darker
+            color = pen.color().darker(115)
+            outline = color.darker(110)
+            pen = pg.mkPen(outline)
+            brush = pg.mkBrush(color)
+
+            scatter = LabeledScatter(self.format_funcs, x_masked, y_masked, size=10, pen=pen, brush=brush)
+
+            scatter.setParentItem(self)
+            hover_pts.append(scatter)
+        
+        return hover_pts

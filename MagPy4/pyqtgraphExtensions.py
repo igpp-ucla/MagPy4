@@ -9,6 +9,7 @@ from fflib import ff_time
 from math import ceil
 import functools
 from bisect import bisect_left, bisect_right
+from .plotBase import GraphicsLayout
 
 # Label item placed at top
 class RegionLabel(pg.InfLineLabel):
@@ -291,9 +292,9 @@ class LinkedSubRegion(pg.LinearRegionItem):
 # subclass based off example here:
 # https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
 
-class GridGraphicsLayout(pg.GraphicsLayout):
+class GridGraphicsLayout(GraphicsLayout):
     def __init__(self, window=None, *args, **kwargs):
-        pg.GraphicsLayout.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.window = window
         self.lastWidth = 0
         self.lastHeight = 0
@@ -333,40 +334,6 @@ class GridGraphicsLayout(pg.GraphicsLayout):
         
         self.nextColumn()
 
-from .plotBase import MagPyPlotItem
-
-class SpectraPlotItem(MagPyPlotItem):
-    # plotItem subclass so we can set Spectra plots to be square
-    def __init__(self, window=None, *args, **kargs):
-        self.squarePlot = False
-        MagPyPlotItem.__init__(self, *args, **kargs)
-
-    def commonResize(self, w, h):
-        if not self.squarePlot:
-            pg.PlotItem.resize(self, w, h)
-            return
-        # Set plot heights and widths to be the same (accounting for difference in
-        # height due to title), so left/bottom axes are same length
-        titleht = 15
-        if h > w:
-            pg.PlotItem.resize(self, w, w + titleht)
-        elif h < w:
-            pg.PlotItem.resize(self, h + titleht, h)
-
-    def resize(self, w, h):
-        self.commonResize(w, h)
-
-    def resize(self, sze):
-        h, w = sze.height(), sze.width()
-        self.commonResize(w, h)
-
-    def resizeEvent(self, event):
-        if self.squarePlot:
-            sze = self.boundingRect().size()
-            self.resize(sze)
-        else:
-            pg.PlotItem.resizeEvent(self, event)
-
 class BLabelItem(pg.LabelItem):
     def setHtml(self, html):
         self.item.setHtml(html)
@@ -374,13 +341,13 @@ class BLabelItem(pg.LabelItem):
         self.resizeEvent(None)
         self.updateGeometry()
 
-class RowGridLayout(pg.GraphicsLayout):
+class RowGridLayout(GraphicsLayout):
     def __init__(self, maxCols=None, parent=None, border=None):
         self.maxCols = maxCols
-        pg.GraphicsLayout.__init__(self)
+        super().__init__()
 
     def clear(self):
-        pg.GraphicsLayout.clear(self)
+        super().clear()
         self.currentRow = 0
         self.currentCol = 0
 
@@ -388,7 +355,7 @@ class RowGridLayout(pg.GraphicsLayout):
         self.maxCols = n
 
     def addItem(self, item, row=None, col=None, rowspan=1, colspan=1):
-        pg.GraphicsLayout.addItem(self, item, row, col, rowspan, colspan)
+        super().addItem(item, row, col, rowspan, colspan)
 
         # If current column (after item is placed) is >= maxCols,
         # move to the next row
