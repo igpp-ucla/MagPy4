@@ -1543,6 +1543,7 @@ class TraceLegend(pg.LegendItem):
             self.addItem(pt, pt.get_labels()[0])
 
 class AnchoredPlotText(pg.TextItem):
+    ''' Text anchored to bottom right corner of plot '''
     def __init__(self, plot, anchor=None, *args, **kwargs):
         self.plot = plot
         super().__init__(*args, **kwargs)
@@ -1560,6 +1561,9 @@ class AnchoredPlotText(pg.TextItem):
         self.setPos(rect.bottomRight())
 
 class LabeledScatter(pg.ScatterPlotItem):
+    ''' Scatter plot item that is able to generate
+        labels for each point
+    '''
     def __init__(self, format_funcs={}, *args, **kwargs):
         self.format_funcs = format_funcs
         self.labels = []
@@ -1582,8 +1586,23 @@ class LabeledScatter(pg.ScatterPlotItem):
             labels.append(label)
         
         return labels
+    
+    def mouseClickEvent(self, ev):
+        # Ignore mouse clicks since this is a cosmetic object only
+        ev.ignore()
+
+class CosmeticInfLine(pg.InfiniteLine):
+    ''' Infinite line that is not movable by the user and does not accept
+        click events
+    '''
+    def mouseClickEvent(self, ev):
+        ev.ignore()
 
 class GridTracker(pg.GraphicsObject):
+    ''' Displays information about points that are being hovered over
+        or alternatively, displays a set of intersecting lines at
+        the mouse position and info about the current position
+    '''
     modes = {
         0 : 'Tracking Off',
         1 : 'Tracking Enabled - Points',
@@ -1602,8 +1621,8 @@ class GridTracker(pg.GraphicsObject):
         super().__init__(*args, **kwargs)
 
         # Set up both lines and label item
-        self.vert_line = pg.InfiniteLine()
-        self.horz_line = pg.InfiniteLine(angle=0)
+        self.vert_line = CosmeticInfLine()
+        self.horz_line = CosmeticInfLine(angle=0)
         self.label = AnchoredPlotText(plot, fill=(250, 250, 250, 150))
 
         # Set pens and colors for items
