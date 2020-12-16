@@ -2,7 +2,6 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtGui import QSizePolicy
 from .MagPy4UI import TimeEdit
 import pyqtgraph as pg
-from .dataDisplay import UTCQDate
 from .pyqtgraphExtensions import LinkedRegion
 import functools
 import re

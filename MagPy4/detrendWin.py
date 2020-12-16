@@ -2,7 +2,6 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .MagPy4UI import TimeEdit, GridGraphicsLayout, PlotGrid, StackedLabel
 from fflib import ff_time
-from .dataDisplay import UTCQDate
 from .layoutTools import BaseLayout
 from .timeManager import TimeManager
 from .selectionManager import SelectableViewBox, GeneralSelect

@@ -57,6 +57,7 @@ class DataDisplayUI(object):
 
         self.verticalLayout.addWidget(self.widget)
         self.dataTableView = QtGui.QTableView(dataFrame)
+        self.dataTableView.setAlternatingRowColors(True)
         self.dataTableView.setEnabled(True)
         font = QtGui.QFont()
         font.setFamily(config.fonts['monospace'][0])
@@ -105,41 +106,10 @@ class DataDisplayUI(object):
 
         QtCore.QMetaObject.connectSlotsByName(dataFrame)
 
-class UTCQDate():
-    FORMAT = "yyyy MMM  d hh:mm:ss.zzz"
-    FORMAT2 = "yyyy MMM dd hh:mm:ss.zzz"
-    FORMAT3 = "yyyy MMM dd  hh:mm:ss.zzz"
-
-    def removeDOY(UTC): # should just add this as option to ffPy?
-        cut = UTC[4:8]
-        return UTC.replace(cut, '').strip()
-
-    # convert UTC string to QDateTime
-    def UTC2QDateTime(UTC):
-        # Remove any trailing zeros that aren't necessary
-        splitStr = UTC.split('.')
-        if len(splitStr) > 1 and len(splitStr[1]) > 3 and splitStr[1][-1] == '0':
-            UTC = UTC[:-1]
-
-        UTC = UTCQDate.removeDOY(UTC)
-        qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT)
-        test = qdateTime.toString()
-        if not test:
-            qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT2)
-        test = qdateTime.toString()
-        if not test:
-            qdateTime = QtCore.QDateTime.fromString(UTC, UTCQDate.FORMAT3)
-        return qdateTime
-
-    def QDateTime2UTC(qdt):
-        doy = QtCore.QDateTime.fromString(f'{qdt.date().year()} 01 01', 'yyyy MM dd').daysTo(qdt) + 1
-        DOY = "%03d" % doy
-        dateTime = qdt.toString(UTCQDate.FORMAT)
-        return dateTime[:5] + DOY + dateTime[4:]
-
 class FFTableModel(QtCore.QAbstractTableModel):
-    def __init__(self, datain, parent=None, epoch=None, *args):
+    def __init__(self, datain, parent=None, epoch=None, time_col=0, *args):
         QtCore.QAbstractTableModel.__init__(self, parent, *args)
+        self.time_col = time_col
         self.arraydata = datain
         self.headers = list(datain.dtype.names)
         self.headers = [hdr.strip(' ').strip('\n') for hdr in self.headers]
@@ -164,7 +134,7 @@ class FFTableModel(QtCore.QAbstractTableModel):
             return None
         elif role != QtCore.Qt.DisplayRole:
             return None
-        if index.column() == 0:
+        if index.column() == self.time_col:
             t = self.arraydata[index.row()][index.column()]
             if self.UTCMode:
                 value = ff_time.tick_to_ts(t, self.epoch)
@@ -293,9 +263,9 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         if self.curFID.getFileType() == 'ASCII':
             timeVar = self.window.epoch
 
-        self.dataByRec = self.curFID.getRecords(timeVar)
-        time_key = self.dataByRec.dtype.names[0]
-        self.time = np.array(self.dataByRec[time_key])
+        records = self.curFID.getRecords(timeVar)
+        self.dataByRec = records.get_data_table()
+        self.time = records.get_times()
 
     def edtdDtaMode(self):
         if self.ui.viewEdtdDta.isChecked():
@@ -424,9 +394,9 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
         stats = f'{nrows}, {ncols}, {epoch}          \n{startTime}\n{endTime}'
         self.ui.timesLabel.setText(stats)    
 
-    def createTable(self, header, epoch):
-        if self.dataByRec is not None:        
-            tm = FFTableModel(self.dataByRec, parent=None, epoch=epoch)
+    def createTable(self, header, epoch, time_col=0):
+        if self.dataByRec is not None:
+            tm = FFTableModel(self.dataByRec, parent=None, epoch=epoch, time_col=time_col)
             tm.setUTC(not self.ui.checkBox.isChecked())
             self.ui.dataTableView.setModel(tm)
             self.ui.dataTableView.resizeColumnToContents(0) # make time column resize to fit        
@@ -486,8 +456,10 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
             epoch = self.curFID.getEpoch()
             if epoch is None:
                 epoch = self.window.epoch
-            start = ff_time.tick_to_ts(self.time[0], epoch)
-            self.ui.dateTimeEdit.setDateTime(UTCQDate.UTC2QDateTime(start))        
+            start = ff_time.tick_to_date(self.time[0], epoch)
+            self.ui.dateTimeEdit.setDateTime(start)     
+
+        self.ui.dataTableView.resizeColumnsToContents()   
 
     # saves flatfile data to a plain text file
     def saveData(self, sig, indices=None):

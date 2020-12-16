@@ -2,7 +2,6 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from fflib import ff_time
 from dateutil import parser
-from .dataDisplay import UTCQDate
 import bisect
 from datetime import datetime
 

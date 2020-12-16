@@ -1,233 +1,207 @@
-from PyQt5 import QtGui, QtCore, QtWidgets
-from PyQt5.QtWidgets import QSizePolicy
 from datetime import datetime
-from .layoutTools import BaseLayout
 import numpy as np
 from bisect import bisect
-import time
 import re
 import numpy.lib.recfunctions as rfn
 import dateutil
 import numpy as np
 from fflib import ff_time, isoparser
+from .dataUtil import FileData
+from enum import Enum
 
-def check_if_timestamp(s):
-    ''' Checks if in timestamp format by attempting
-        to convert string to a float 
+def load_text_file(filename, epoch=None):
+    ''' Helper function that creates a TextFileInfo object
+        and returns it along with the FileData object
     '''
+    if epoch is None:
+        epoch = 'J2000'
+    reader = TextFileInfo(filename)
+    data = reader.read_data(epoch)
+    return (data, reader)
+
+class FORMATS(Enum):
+    ''' ASCII file formats '''
+    TAB = 0 # Fixed-width columns
+    CSV = 1 # Comma-separated values
+
+def is_float(s):
+    ''' Checks if a string s can be converted to a float value '''
     try:
         float(s)
     except:
-        return True
-    return False
+        return False
+    return True
 
-def map_dtype_to_fmt(dtype):
-    ''' Maps a numpy dtype to a formatting string '''
-    if dtype[1] == 'U':
-        return '%s'
-    elif dtype[1] == 'f':
-        prec = dtype[2]
-        return f'%.{prec}f'
-    return '%s'
-
-class TextReader():
-    def __init__(self, name):
-        self.name = name
-
-    def _read_first_lines(self, n=5):
-        ''' Read first n lines from file '''
-        with open(self.name, 'r') as fd:
-            lines = []
-            for i in range(n):
-                lines.append(fd.readline())
-        return lines
-
-    def _get_dtype(self, cols, time_dtype):
-        ''' Creates a numpy dtype based on column names and
-            number of columns and the given time_dtype
-        '''
-        dtype = [(cols[0], time_dtype)] 
-        dtype += [(col_name, 'f8') for col_name in cols[1:]]
-        dtype = np.dtype(dtype)
-        return dtype
-
-    def get_header(self):
-        ''' Returns first line in file '''
-        return self._read_first_lines(n=1)[0]
+def is_int(s):
+    ''' Checks if a string can be converted to an integer value '''
+    try:
+        int(s)
+    except:
+        return False
     
-    def guess_type(self):
-        ''' Tries to determine if file is a CSV file or
-            fixed-width tab file
-        '''
-        if self.name.endswith('csv'):
-            file_type = 'CSV'
-        else:
-            file_type = 'Fixed-Width'
-        return file_type
+    return True
 
-    def get_data(self, epoch=None):
-        ''' Read data into a structured numpy array '''
-        if epoch is None:
-            epoch = 'J2000'
+def find_cols(l):
+    ''' Finds indices of all points where there is
+        a non-whitespace character followed by whitespace
+    '''
+    matches = list(re.finditer('[^ ] ', l))
+    cols = [m.start()+1 for m in matches]
+    return cols
 
-        # Guess file type and set up reader
-        file_type = self.guess_type()
-        if file_type == 'CSV':
-            reader = CSVReader(self.name)
-        else:
-            reader = TabReader(self.name)
-
-        # Read in data table
-        data = reader.read()
-
-        # Format times 
-        time_lbl = data.dtype.names[0]
-        times = data[time_lbl]
-        dates = self.map_to_dates(times)
-        ticks = self.map_to_ticks(dates, epoch)
-
-        # Create a new data table
-        old_type = data.dtype.descr
-        old_type[0] = (time_lbl, 'f8')
-        dtype = np.dtype(old_type)
-
-        data = rfn.drop_fields(data, [time_lbl])
-        data = rfn.structured_to_unstructured(data)
-
-        table_data = np.hstack([np.vstack(ticks), data])
-        table_data = rfn.unstructured_to_structured(table_data, dtype=dtype)
-        return table_data
-
-    def map_to_dates(self, times):
-        ''' Map timestamps to datetimes '''
-        return list(map(isoparser.iso_to_date, times))
+def guess_cols(hdr, first_line):
+    ''' Calls find_cols() on header line or first data record line
+        based on spacing
+    '''
+    if hdr.startswith(' '):
+        cols = find_cols(hdr)
+    else:
+        cols = find_cols(first_line)
     
-    def map_to_ticks(self, dates, epoch):
-        ''' Map datetimes to seconds since epoch '''
-        ticks = ff_time.dates_to_ticks(dates, epoch, fold_mode=True)
-        return ticks
+    return cols
 
-    def get_reader(self):
-        ''' Returns the reader for the specific ASCII file subtype '''
-        file_type = self.guess_type()
-        if file_type == 'CSV':
-            reader = CSVReader(self.name)
-        else:
-            reader = TabReader(self.name)
-        return reader
+def guess_file_info(hdr, first_line):
+    ''' Determine file type and related info such as columns and
+        the column number of the timestamps based on the header
+        line and the first record
+    '''
+    # Determine format and delimeter, then split first record into items
+    if ',' in hdr:
+        t = FORMATS.CSV
+        delimeter = ','
+        record = first_line.split(delimeter) # Split by commas
+    else:
+        t = FORMATS.TAB
+        cols = guess_cols(hdr, first_line)
+        if len(cols) == 1:
+            raise Exception('Could not determine columns')
+        cols = [0] + cols
+        delimeter = np.diff(cols)
+        record = [first_line[slice(*t)] for t in zip(cols, cols[1:])]
 
-    def getRecords(self, epoch):
-        ''' Returns the data table with time in seconds
-            since the given epoch
-        '''
-        return self.get_data(epoch)
+    # Identify first column that can be converted into a set of timestamps
+    time_col = None
+    parser = isoparser.ISOParser('T')
+    for entry, num in zip(record, np.arange(len(record), dtype=int)):
+        # Skip if time component is missing
+        if ':' not in entry:
+            continue
+
+        # Try to convert element into datetime
+        try:
+            parser.isoparse(entry)
+            time_col = num
+        except:
+            continue
+
+    # Save file info into a dictionary
+    file_info = {
+        'type' : t,
+        'delimiter' : delimeter,
+        'time_col' : time_col
+    }
+
+    return file_info
+
+def map_to_dates(times):
+    ''' Map timestamps to datetimes '''
+    parser = isoparser.ISOParser('T')
+    return list(map(parser.isoparse, times))
+
+def read_text_file(filename, epoch='J2000'):
+    ''' Reads in text file data (with time ticks relative to given epoch)
+        and returns the structured data and a dictionary of file info
+    '''
+    # Open file and read in header line and first record
+    with open(filename, 'r') as fd:
+        skip_header = 0 # Comment lines to skip
+        hdr = fd.readline()
+        while skip_header < 100 and hdr.startswith('#'):
+            hdr = fd.readline()
+            skip_header += 1
+
+        line = fd.readline()
+
+    # Determine file type and delimeter
+    file_info = guess_file_info(hdr, line)
+    delimeter = file_info['delimiter']
+
+    # Read in data using numpy
+    data = np.genfromtxt(filename, names=True, comments='#',
+            filling_values=[np.nan, int(1e32), ''], delimiter=delimeter, 
+            dtype=None, encoding=None, skip_header=skip_header)
+    
+    # Adjust dtype so missing / non-numerical values are converted to strings
+    dtype = data.dtype.descr
+    new_dtype = []
+    for label, t in dtype:
+        if not (t.startswith('<U') or t.startswith('<i') or t.startswith('<f')):
+            t = 'U8'
+        new_dtype.append((label, t))
+
+    if new_dtype != dtype:
+        data = np.array(data, dtype=np.dtype(new_dtype))
+
+    # Get the time column data and convert to ticks
+    time_col = file_info['time_col']
+    time_lbl = data.dtype.names[time_col]
+
+    times = data[time_lbl]
+    dates = map_to_dates(times)
+    ticks = ff_time.dates_to_ticks(dates, 'J2000', fold_mode=True)
+
+    # Create a new data table with mapped ticks
+    old_type = data.dtype.descr
+    old_type[time_col] = (time_lbl, 'f8')
+    dtype = np.dtype(old_type)
+
+    data = rfn.drop_fields(data, [time_lbl])
+    data = rfn.structured_to_unstructured(data)
+
+    table_data = np.insert(data, time_col, ticks, axis=1)
+    table_data = rfn.unstructured_to_structured(table_data, dtype=dtype)
+
+    # Assemble file data object
+    file_data = FileData(table_data, table_data.dtype.names, epoch=epoch, time_col=time_col)
+
+    return file_data, file_info
+
+class TextFileInfo():
+    ''' Text File Descriptor '''
+    def __init__(self, filename):
+        self.name = filename
+        self.filename = filename
+        self.epoch = None
+        self.subtype = FORMATS.TAB
+        self.delimiter = None
+        self.data_obj = None
+    
+    def __repr__(self):
+        return f'TextFileInfo({self.name}) at {hex(id(self))}'
+
+    def read_data(self, epoch='J2000'):
+        ''' Reads in the file data '''
+        data, info = read_text_file(self.filename, epoch=epoch)
+        self.epoch = epoch
+        self.delimiter = info.get('delimiter')
+        return data
+
+    def get_data(self, epoch_var=None):
+        ''' Returns the file data object '''
+        if self.data_obj is None:
+            self.data_obj = self.read_data()
+        return self.data_obj
+
+    def getRecords(self, epoch_var):
+        ''' Returns the file data object '''
+        return self.get_data()
+    
+    def getEpoch(self):
+        ''' Returns the file epoch '''
+        return self.epoch
+
+    def close(self):
+        return
 
     def getFileType(self):
         return 'ASCII'
-
-    def getEpoch(self):
-        return None
-    
-    def close(self):
-        pass
-    
-class TabReader(TextReader):
-    def _find_slices(self, lines):
-        ''' Attempts to identify the indices indicating
-            the start and end of each column in the file
-            based on the first few lines
-        '''
-        # Get header and first record of data
-        header = lines[0]
-        row = lines[1]
-        n = min(len(header), len(row))
-
-        # Iterate over each character index in 
-        # the header and first record
-        slices = []
-        start = 0
-        spaces = False
-        for i in range(0, n):
-            h = header[i]
-            r = row[i]
-            # If not preceded by spaces and spaces are found,
-            # this marks a full column so add the slice to the list
-            if (not spaces) and h == ' ' and r == ' ':
-                slices.append((start, i))
-                start = i
-                spaces = True
-            # If no longer looking at spaces, reset this value
-            # so the next column end will be detected
-            elif spaces and h != ' ':
-                spaces = False
-    
-        # Add in last slice if not added
-        if slices[-1][1] != (n-1):
-            slices.append((start, max(len(header), len(row))))
-        
-        return slices
-
-    def get_slices(self):
-        ''' Returns a list of indices specifying the start and
-            end of each column
-        '''
-        lines = self._read_first_lines(n=2)
-        slices = self._find_slices(lines)
-        return slices
-
-    def read(self):
-        ''' Reads in data and returns it as a structured numpy array '''
-        lines = self._read_first_lines()
-        header = lines[0]
-        slices = self._find_slices(lines)
-
-        # Split first row and check if time is a tick or timestamp
-        time_dtype = 'f8'
-        row = lines[1]
-        row = [row[slice(*s)] for s in slices]
-        if check_if_timestamp(row[0]):
-            time_dtype = 'U72'
-        
-        # Get column names
-        cols = [header[slice(*s)].strip(' ').strip('\n') for s in slices]
-        cols = [hdr for hdr in cols if hdr != '']
-
-        # Set up dtype
-        dtype = self._get_dtype(cols, time_dtype)
-
-        # Load data
-        data = np.genfromtxt(self.name, dtype=dtype, skip_header=1)
-
-        return data
-    
-    def subtype(self):
-        return 'Fixed-width'
-
-class CSVReader(TextReader):
-    def read(self):
-        ''' Reads in data and returns it as a structured numpy array '''
-        # Get header and first record
-        lines = self._read_first_lines(n=2)
-        header = lines[0]
-        row = lines[1]
-        row = row.split(',')
-
-        # Get column names
-        cols = [col.strip(' ').strip('\n') for col in header.split(',')]
-
-        # Check if times are in timestamp format
-        time_dtype = 'f8'
-        if check_if_timestamp(row[0]):
-            time_dtype = 'U72'
-
-        # Set up dtype
-        dtype = self._get_dtype(cols, time_dtype)
-
-        # Read in data
-        data = np.genfromtxt(self.name, dtype=dtype, skip_header=1,
-            filling_values=np.nan, delimiter=',')
-
-        return data
-    
-    def subtype(self):
-        return 'CSV'

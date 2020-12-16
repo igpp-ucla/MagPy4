@@ -1,6 +1,5 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
-from .dataDisplay import UTCQDate
 import pyqtgraph as pg
 import pyqtgraph.exporters
 from datetime import datetime, timedelta

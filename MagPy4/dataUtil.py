@@ -1,6 +1,131 @@
 from bisect import bisect, bisect_left, bisect_right
 import numpy as np
 import re
+from fflib import ff_time
+
+class FileData():
+    ''' Time series data (and related info) from a given file '''
+    def __init__(self, data, headers, time_col=0, units=None, epoch='Y1966', res=None,
+        error_flag=1e32):
+        self.data = data
+        self.headers = headers
+        self.units = units if units is not None else ['']*len(headers)
+        self.epoch = epoch
+        self.time_col = time_col
+        self.error_flag = error_flag
+        self.resolution = res if res is not None else self._guess_resolution()
+        self._num_indices = None
+    
+    def _get_num_indices(self):
+        ''' Determine the column numbers that contain strictly
+            numerical data based on their dtype
+        '''
+        expr = r'[<>][if]'
+        if self._num_indices is None:
+            # Iterate over each column type and check if it matches
+            # the regular expression for float and integer data
+            desc = self.data.dtype.descr
+            indices = []
+            for i in range(0, len(desc)):
+                d = desc[i][1]
+
+                if re.match(expr, d):
+                    indices.append(i)
+
+            if self.time_col in indices:
+                indices.remove(self.time_col)
+
+            self._num_indices = indices
+        return self._num_indices
+
+    def _guess_resolution(self):
+        ''' Guess the resolution for the data by checking if the
+            start/middle/end resolutions are the same; Otherwise
+            use the median of the first differences
+        '''
+        times = self.get_times()
+        diff = np.diff(times)
+        start = diff[0]
+        end = diff[-1]
+        center = diff[int(len(times)/2)]
+
+        if start == end and end == center:
+            resolution = start
+        else:
+            resolution = np.median(diff)
+        
+        return resolution
+
+    def get_times(self):
+        ''' Returns the time array '''
+        col = self.data.dtype.names[self.time_col]
+        times = self.data[col]
+        return times
+    
+    def get_flag(self):
+        ''' Returns the error flag '''
+        return self.error_flag
+
+    def get_epoch(self):
+        ''' Returns the data file epoch '''
+        return self.epoch
+    
+    def get_labels(self):
+        ''' Returns the labels for each column '''
+        return self.headers
+
+    def get_units(self):
+        ''' Return units for each column '''
+        return self.units
+    
+    def get_num_units(self):
+        ''' Returns the units for each data slice
+            in the numerical data
+        '''
+        units = self.get_units()
+        indices = self._get_num_indices()
+        num_units = [units[i] for i in indices]
+        return num_units
+
+    def get_numerical_data(self):
+        ''' Returns the data slices for strictly numerical data '''
+        keys = self.get_numerical_keys()
+        data = [self.data[key] for key in keys]
+        return data
+
+    def get_numerical_keys(self):
+        ''' Returns the column keys for each data slice in the
+            numerical data
+        '''
+        keys = self.get_labels()
+        indices = self._get_num_indices()
+        num_keys = [keys[i] for i in indices]
+        return num_keys
+
+    def get_data_table(self):
+        ''' Returns the structured records array (with the time column) '''
+        return self.data
+
+    def get_dtype(self):
+        ''' Returns the array dtype '''
+        return self.data.dtype
+
+    def get_resolution(self):
+        ''' Returns the resolution for the data '''
+        return self.resolution
+
+    def get_time_col(self):
+        ''' Returns the column number corresponding to the time array '''
+        return self.time_col
+    
+    def find_record_by_time(self, dt):
+        ''' Finds the row where date should fall before/at
+            in the records
+        '''
+        tick = ff_time.date_to_tick(dt, self.get_epoch())
+        times = self.get_times()
+        index = bisect_left(times, tick)
+        return index
 
 def get_resolution_diffs(times):
     ''' Computes the time resolution in seconds and first differences '''

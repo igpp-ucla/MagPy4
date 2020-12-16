@@ -9,7 +9,6 @@ import numpy as np
 from .plotAppearance import PlotAppearance, SpectraPlotApp
 from .pyqtgraphExtensions import GridGraphicsLayout, BLabelItem
 from .plotBase import MagPyPlotItem
-from .dataDisplay import UTCQDate
 from .MagPy4UI import TimeEdit
 from .spectraUI import SpectraUI, SpectraViewBox
 from .layoutTools import BaseLayout

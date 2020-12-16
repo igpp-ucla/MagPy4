@@ -23,13 +23,14 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 import numpy as np
+import numpy.lib.recfunctions as rfn
 import pyqtgraph as pg
 
 from .MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, StackedAxisLabel, FileLabel
 from .pyqtgraphExtensions import TrackerRegion
 from .plotMenu import PlotMenu
 from .spectra import Spectra
-from .dataDisplay import DataDisplay, UTCQDate
+from .dataDisplay import DataDisplay
 from .plotAppearance import MagPyPlotApp
 from .addTickLabels import AddTickLabels
 from .edit import Edit
@@ -54,9 +55,9 @@ import bisect
 from .timeManager import TimeManager
 from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect, SelectableViewBox
 from .layoutTools import BaseLayout
-from .dataUtil import merge_datas, find_vec_grps, get_resolution_diffs
+from .dataUtil import merge_datas, find_vec_grps, get_resolution_diffs, FileData
 import numpy.lib.recfunctions as rfn
-from .ASCII_Importer import TextReader
+from .ASCII_Importer import TextFileInfo, load_text_file
 
 import cdflib
 import time
@@ -65,7 +66,6 @@ import multiprocessing as mp
 import traceback
 from copy import copy
 from datetime import datetime
-
 
 CANREADCDFS = False
 
@@ -1332,19 +1332,24 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.FIDs = []
             self.initDataStorageStructures()
 
-        res = True
-        for i in range(0, len(fileNames)):
-            fileName = fileNames[i]
-            if isFlatfile:        
-                fileName = fileName.rsplit(".", 1)[0] #remove extension
-                res = res and self.openFF(fileName)
+        # Get basenames for each file path and determine file type
+        bases = [os.path.basename(p) for p in fileNames]
+        files = {'ff' : [], 'ascii' : [] }
+        for name, path in zip(bases, fileNames):
+            if '.' not in name or name.endswith('.ffh') or name.endswith('.ffd'):
+                files['ff'].append(path)
             else:
-                res = res and self.openTextFile(fileName)
+                files['ascii'].append(path)
 
-        if res is False: # If a file was not successfully opened, return
-            self.ui.statusBar.showMessage('Error: Could not open file', 5000)
-            return res
+        # Open flat files
+        for path in files['ff']:
+            self.openFF(path)
+        
+        # Open ASCII files
+        for path in files['ascii']:
+            self.openTextFile(path)
 
+    def afterFileRead(self):
         # Get field and position groups and add to VECGRPS
         b_grps, pos_grps = find_vec_grps(self.DATASTRINGS)
         b_grps = {f'B{key}':val for key, val in b_grps.items()}
@@ -1355,7 +1360,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Update other state information and finish setup
         self.finishOpenFileSetup()
 
-        return res
+        return None
+        # return res
 
     def finishOpenFileSetup(self):
         # Set up view if first set of files has been opened
@@ -1377,44 +1383,49 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.initVariables()
         self.plotDataDefault()
         self.workspace = None
+    
+    def loadFileData(self, read_result):
+        if read_result is None:
+            return
 
-    def openTextFile(self, filename):
-        ''' Open an ASCII file '''
-        # Get default error flag and epoch values
+        file_data, file_id = read_result
+
+        # Set error flag
+        flag = file_data.get_flag()
         if self.errorFlag is not None:
-            self.errorFlag = min(1e32, self.errorFlag)
+            self.errorFlag = min(flag, self.errorFlag)
         else:
-            self.errorFlag = 1e32
-
+            self.errorFlag = flag
+        
+        # Set epoch
+        epoch = file_data.get_epoch()
         if self.epoch is None:
-            self.epoch = 'J2000'
+            self.epoch = epoch
 
-        # Read in data using TextReader
-        reader = TextReader(filename)
-        data = reader.get_data(epoch=self.epoch)
-        self.FIDs.append(reader)
+        # Get labels, units, resolution
+        res = file_data.get_resolution()
+        units = file_data.get_num_units()
+        times = file_data.get_times()
+        labels = file_data.get_numerical_keys()
 
-        # Get labels and set up default units
-        labels = data.dtype.names
-        units = [''] * (len(labels) - 1)
-
-        # Extract time information and set up resolution info
-        time_lbl = labels[0]
-        times = data[time_lbl]
-        res, diffs = get_resolution_diffs(times)
+        # Set resolution
         self.resolution = min(self.resolution, res)
 
         # Assemble data into list format
-        datas = [data[lbl] for lbl in labels[1:]]
+        datas = file_data.get_numerical_data()
+        self.loadData(times, labels, datas, units)
 
-        # Attempt to load data into program
-        res = self.loadData(times, labels[1:], datas, units)
-        if res is None:
-            return False
+        # Add ID to list of open files
+        self.FIDs.append(file_id)
 
-        # Additional program updates after file is loaded
+        # Finish file opening
         self.updateAfterOpening()
-        return res
+        self.afterFileRead()
+
+    def openTextFile(self, filename):
+        ''' Open an ASCII file '''
+        data = load_text_file(filename, self.epoch)
+        self.loadFileData(data)
 
     def updateAfterOpening(self):
         self.calculateAbbreviatedDstrs()
@@ -1523,28 +1534,15 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             ff_path = '.'.join(ff_path.split('.')[:-1])
         ff = ff_reader(ff_path)
 
-        # Read in data
-        times = ff.get_times()
-        data = ff.get_data()
-        data = [data[:,i] for i in range(len(data[0]))]
-        
-        # Read in column names and units
-        labels = ff.get_labels()[1:]
-        units = ff.get_units()[1:]
-
-        # Set program attributes
-        flag = ff.get_error_flag()
-        res, diffs = get_resolution_diffs(times)
-        self.errorFlag = min(1e16, flag)
-        self.resolution = min(res, self.resolution)
-        self.epoch = ff.get_epoch()
-
-        # Load data into program
-        self.loadData(times, labels, data, units)
-
-        # Update program state
-        self.FIDs.append(FF_FD(ff_path, ff))
-        self.updateAfterOpening()
+        data = ff.get_data_table()
+        headers = ff.get_labels()
+        epoch = ff.get_epoch()
+        err_flag = ff.get_error_flag()
+        units = ff.get_units()
+        file_data = FileData(data, headers, epoch=epoch, error_flag=err_flag,
+            units=units)
+        reader = FF_FD(ff_path, file_data)
+        self.loadFileData((file_data, reader))
         return True
 
     def loadData(self, ffTime, newDataStrings, datas, units, specDatas={}):
@@ -1772,6 +1770,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 time_dict[time_var].append(label)
 
         # Read in CDF variable info for variables corresponding to each epoch
+        tables = {}
         for epoch_lbl in time_dict:
             # Skip non-TT2000 formatted epochs
             mode = cdf.varinq(epoch_lbl)['Data_Type_Description']
@@ -1825,14 +1824,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.errorFlag = 1e32
             self.VECGRPS.update(vec_grps)
 
+            # Create file data object
+            dtype = np.dtype([(name, 'f8') for name in [epoch_lbl] + data_labels])
+            table = np.hstack([np.reshape(times, (len(times), 1)), datas])
+            table = rfn.unstructured_to_structured(table, dtype=dtype)
+            cols = [epoch_lbl] + data_labels
+            table_data = FileData(table, cols, 
+                units=['Sec'] + data_units, epoch=epoch)
+            tables[epoch_lbl] = table_data
+
             # Load data
             self.loadData(times, data_labels, datas.T, data_units, specs)
 
+
         # Update list of files
-        cdf_id = CDF_ID(path)
-        cdf_id.window = self
-        cdf_id.setGroups(time_dict)
-        cdf_id.setExclude(exclude_expr)
+        cdf_id = CDF_ID(path, tables)
         self.FIDs.append(cdf_id)
         self.updateAfterOpening()
 
@@ -3498,8 +3504,8 @@ class MagPyViewBox(SelectableViewBox): # custom viewbox event handling
 
 # Wrapper class for Flat File FID functions
 class FF_FD():
-    def __init__(self, filename, FID):
-        self.FID = FID
+    def __init__(self, filename, table):
+        self.table = table
         self.name = filename
 
     def getFileType(self):
@@ -3509,23 +3515,19 @@ class FF_FD():
         return self.name
 
     def getEpoch(self):
-        return self.FID.get_epoch()
+        return self.table.get_epoch()
 
     def getUnits(self):
-        return self.FID.get_units()
+        return self.table.get_units()
 
     def getLabels(self):
-        return self.FID.get_labels()
-
-    def getRows(self):
-        return self.FID.shape()[1]
+        return self.table.get_labels()
 
     def getRecords(self, epoch_var=None):
-        table = self.FID.get_data_table()
-        return table
+        return self.table
 
     def open(self):
-        self.FID = ff_reader(self.name)
+        pass
 
     def close(self):
         pass
@@ -3589,12 +3591,10 @@ def startMagPy(files=None, display=True):
         return main
 
 class CDF_ID():
-    def __init__(self, cdf):
+    def __init__(self, cdf, data_dict):
         self.name = cdf
-        self.cdf = None
-        self.epoch_grps = {}
-        self.exclude_vars = {}
-        self.window = None
+        self.epoch_vars = list(data_dict.keys())
+        self.datas = data_dict
 
     def getFileType(self):
         return 'CDF'
@@ -3603,98 +3603,35 @@ class CDF_ID():
         return self.name
 
     def open(self):
-        if self.cdf is None:
-            self.cdf = cdflib.CDF(self.name)
+        return
 
     def getEpoch(self):
-        self.open()
-
-        # Get default time mode and corresponding epoch
-        epoch_lbl = self.getEpochVars()[0]
-        mode = self.cdf.varinq(epoch_lbl)['Data_Type_Description']
-        epoch = None
-        if mode == 'CDF_TIME_TT2000':
-            epoch = 'J2000'
-        elif mode == 'CDF_EPOCH':
-            epoch = 'Y1966'
-
-        return epoch
-
-    def getUnits(self):
-        labels = self.getLabels()
-        units = ['']*len(labels)
-        return labels
+        return self.datas[self.epoch_vars[0]].get_epoch()
 
     def getLabels(self, epoch_var=None):
-        self.open()
-        labels = self.cdf.cdf_info()['zVariables']
-        return labels
-
-    def getRows(self, epoch_lbl=None):
-        self.open()
-        return len(self.cdf.varinq(epoch_lbl))
+        if epoch_var is None:
+            epoch_var = self.epoch_vars[0]
+        table = self.datas[epoch_var]
+        return table.get_labels()
 
     def close(self):
-        if self.cdf:
-            self.cdf = None
+        return
 
-    def setGroups(self, grps):
-        self.epoch_grps = grps
-    
     def getEpochVars(self):
-        return list(self.epoch_grps.keys())
+        return self.epoch_vars
     
-    def setExclude(self, exclude_expr):
-        self.exclude_vars = exclude_expr
-    
-    def getRecords(self, epoch_var=None, window=None):
-        # Use first epoch_var as default
+    def getRecords(self, epoch_var=None):
         if epoch_var is None:
-            epoch_var = self.getEpochVars()[0]
-
-        # Open file and read times and data from CDF
-        self.open()
-        times = self.getTimes(epoch_var)
-        labels = self.epoch_grps[epoch_var]
-        info = self.window.get_cdf_datas(self.cdf, labels, len(times), 
-            self.exclude_vars)
-        datas, data_labels, data_units, vec_grps = info
-
-        # Add units to labels
-        new_labels = []
-        for label, unit in zip(data_labels, data_units):
-            if unit:
-                label = f'{label} ({unit})'
-            new_labels.append(label)
-
-        # Create dtype for table
-        dtype = [(label, 'f4') for label in new_labels]
-        dtype = [('Time', 'f8')] + dtype
-        dtype = np.dtype(dtype)
-
-        # Restructure data into a numpy records table
-        table = np.hstack([np.reshape(times, (len(times), 1)), datas])
-        datas = rfn.unstructured_to_structured(table, dtype=dtype)
-
-        return datas
+            epoch_var = self.epoch_vars[0]
+        table = self.datas[epoch_var]
+        return table
 
     def getTimes(self, epoch_var=None):
-        # Get default epoch variable
         if epoch_var is None:
-            epoch_var = self.getEpochVars()[0]
-        self.open()
-
-        # Get epoch mode and convert time
-        mode = self.cdf.varinq(epoch_var)['Data_Type_Description']
-        times = self.cdf.varget(epoch_var)
-
-        if mode == 'CDF_TIME_TT2000':
-            times = times * 1e-9 - 32.184 # Nanoseconds to seconds, then remove leap ofst
-        elif mode == 'CDF_EPOCH':
-            ofst = cdflib.cdfepoch.parse([datetime(1966, 1, 1).isoformat()+'.000'])[0]
-            times = (times - ofst) * 1e-3
-        
-        return times
+            epoch_var = self.epoch_vars[0]
+        table = self.datas[epoch_var]
+        times = table.get_times()
+        return times   
 
 def runMarsPy():
     runMagPy()
