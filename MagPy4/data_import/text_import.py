@@ -6,7 +6,7 @@ import numpy.lib.recfunctions as rfn
 import dateutil
 import numpy as np
 from fflib import ff_time, isoparser
-from .dataUtil import FileData
+from .general_data_import import FileData
 from enum import Enum
 
 def load_text_file(filename, epoch=None):

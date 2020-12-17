@@ -16,7 +16,7 @@ from .mth import Mth
 from .layoutTools import BaseLayout
 from .simpleCalculations import simpleCalc
 import os
-from .dataUtil import find_gaps
+from .data_util import find_gaps
 from multiprocessing import Pool
 
 class ParallelGrid():

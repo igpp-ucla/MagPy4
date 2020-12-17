@@ -2,11 +2,12 @@ from bisect import bisect, bisect_left, bisect_right
 import numpy as np
 import re
 from fflib import ff_time
+from ..data_util import find_gaps, get_resolution_diffs
 
 class FileData():
     ''' Time series data (and related info) from a given file '''
-    def __init__(self, data, headers, time_col=0, units=None, epoch='Y1966', res=None,
-        error_flag=1e32):
+    def __init__(self, data, headers, time_col=0, units=None, epoch='Y1966', 
+        res=None, error_flag=1e32, specs={}):
         self.data = data
         self.headers = headers
         self.units = units if units is not None else ['']*len(headers)
@@ -15,7 +16,8 @@ class FileData():
         self.error_flag = error_flag
         self.resolution = res if res is not None else self._guess_resolution()
         self._num_indices = None
-    
+        self.specs = specs
+
     def _get_num_indices(self):
         ''' Determine the column numbers that contain strictly
             numerical data based on their dtype
@@ -127,41 +129,8 @@ class FileData():
         index = bisect_left(times, tick)
         return index
 
-def get_resolution_diffs(times):
-    ''' Computes the time resolution in seconds and first differences '''
-    # Compute diffs
-    last_val = times[0] - (times[1] - times[0])
-    diffs = np.diff(times, prepend=[last_val])
-
-    # Check if start, center, end diffs are same to use
-    # as resolution
-    n = len(diffs)
-    left = diffs[0]
-    right = diffs[-1]
-    center = diffs[int(n/2)]
-
-    if left == right and right == center:
-        resolution = center
-    else:
-        # Use the median value if the values are different
-        resolution = np.median(diffs)
-    
-    return resolution, diffs
-
-def find_gaps(times, comp_res=None):
-    if len(times) == 0:
-        return []
-
-    # Get the differences between times and resolution
-    resolution, diffs = get_resolution_diffs(times)
-    
-    # Get comparison resolution
-    comp_res = resolution*1.5 if comp_res is None else comp_res
-
-    # Get mask for time gaps based on resolution
-    gap_indices = np.indices([len(times)])[0][diffs >= comp_res]
-
-    return gap_indices
+    def get_spec_datas(self):
+        return self.specs
 
 def merge_datas(ta, tb, dta_a, dta_b, flag):
     # Fill flag values before merging
