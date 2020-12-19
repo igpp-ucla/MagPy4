@@ -54,10 +54,11 @@ from .mth import Mth
 import bisect
 from .timeManager import TimeManager
 from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect, SelectableViewBox
-from .layoutTools import BaseLayout
+from .layoutTools import BaseLayout, LabeledProgress
 from .data_import import merge_datas, find_vec_grps, get_resolution_diffs, FileData
 import numpy.lib.recfunctions as rfn
 from .data_import import TextFileInfo, load_text_file, load_flat_file, load_cdf
+from .qtThread import TaskRunner, ThreadPool, TaskThread
 
 import cdflib
 import time
@@ -334,6 +335,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.startUp = True
         self.workspace = None
+        self.pool = ThreadPool()
+        self.load_dialog = None
 
     def updateStateFile(self, key, val):
         ''' Updates state file with key value pair '''
@@ -1326,12 +1329,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         return True
 
     def openFileList(self, fileNames, isFlatfile, clearCurrent):
-        if clearCurrent: # Clear previously opened files
-            for fid in self.FIDs:
-                fid.close()
-            self.FIDs = []
-            self.initDataStorageStructures()
-
         # Get basenames for each file path and determine file type
         bases = [os.path.basename(p) for p in fileNames]
         files = {'ff' : [], 'ascii' : [] }
@@ -1341,13 +1338,97 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             else:
                 files['ascii'].append(path)
 
-        # Open flat files
-        for path in files['ff']:
-            self.openFF(path)
-        
-        # Open ASCII files
-        for path in files['ascii']:
-            self.openTextFile(path)
+        # Assemble list of files to load and their read functions
+        read_funcs = [load_text_file] * len(files['ascii'])
+        read_funcs += [load_flat_file] * len(files['ff'])
+        load_files = files['ascii'] + files['ff']
+
+        # Skip if nothing to load
+        if len(load_files) == 0:
+            return
+
+        # Load files asynchronously
+        self.loadFilesAsync(read_funcs, load_files, clearCurrent)
+    
+    def loadFilesAsync(self, read_funcs, files_to_read, clear, *args, **kwargs):
+        ''' Creates a task to read in the files and connects it to the load dialog '''
+        task = TaskThread(read_files, read_funcs, files_to_read, *args ,**kwargs,
+            update_progress=True, interrupt_enabled=True)
+        self._loadAsync(task, clear)
+    
+    def loadCDFsAsync(self, clear, *args, **kwargs):
+        ''' Creates a task to read in the files and connects it to the load dialog '''
+        task = TaskThread(read_cdf_files, *args, **kwargs, update_progress=True,
+            interrupt_enabled=True)
+        self._loadAsync(task, clear)
+    
+    def _loadAsync(self, task, clear):
+        ''' Start the task and connect results to load / update functions '''
+        load_func = functools.partial(self.loadFileDatas, clear=clear)
+        task.signals.result.connect(load_func)
+        task.signals.progress.connect(self.updateLoadDialog)
+        self.showLoadDialog()
+        self.pool.start(task)
+
+    def showLoadDialog(self):
+        ''' Shows a progress dialog for the files being read '''
+        self.closeLoadDialog()
+
+        # Create a progress dialog
+        self.load_dialog = QtWidgets.QProgressDialog()
+
+        # Use a labeled status bar
+        self.load_dialog._prog_bar = LabeledProgress()
+        self.load_dialog.setBar(self.load_dialog._prog_bar)
+
+        # Set attributes
+        self.load_dialog.resize(500, 100)
+        self.load_dialog.setWindowTitle('Loading Files')
+        self.load_dialog.setMinimum(0.0)
+        self.load_dialog.setMaximum(0.0)
+
+        # Connect cancel to canceling a file load
+        self.load_dialog.canceled.connect(self.cancelFileLoad)
+
+        # Show the dialog
+        self.load_dialog.show()
+
+    def updateLoadDialog(self, progress):
+        ''' Updates the progress dialog for a file being loaded '''
+        msg, (val, n) = progress
+        self.load_dialog.setLabelText(msg) # Set message
+        self.load_dialog._prog_bar.setText(f'{val} of {n}')
+
+    def loadFileDatas(self, datas, clear=False):
+        ''' Loads a list of (FileData, reader) tuples by calling loadFileData '''
+        # Skip if nothing to load
+        if len(datas) == 0:
+            return
+
+        # Clear previous files if necessary
+        if clear:
+            for f in self.FIDs:
+                del f
+            self.FIDs = []
+            self.initDataStorageStructures()
+
+        # Load each data object
+        for data in datas:
+            self.loadFileData(data)
+
+        # Finish loading and opening files
+        self.closeLoadDialog()
+        self.finishOpenFileSetup()
+    
+    def closeLoadDialog(self):
+        ''' Close the file loading dialog '''
+        if self.load_dialog:
+            self.load_dialog.close()
+            self.load_dialog = None
+    
+    def cancelFileLoad(self):
+        ''' Request to cancel the threads in the pool for loading files '''
+        self.pool.terminate()
 
     def afterFileRead(self):
         # Get field and position groups and add to VECGRPS
@@ -1356,12 +1437,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         pos_grps = {f'R{key}':val for key, val in pos_grps.items()}
         self.VECGRPS.update(b_grps)
         self.VECGRPS.update(pos_grps)
-
-        # Update other state information and finish setup
-        self.finishOpenFileSetup()
-
-        return None
-        # return res
 
     def finishOpenFileSetup(self):
         # Set up view if first set of files has been opened
@@ -1528,11 +1603,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.resolution = 1000000.0 # this is set to minumum resolution when files are loaded so just start off as something large
         self.colorPlotInfo = {}
 
-    def openFF(self, ff_path):  # slot when Open pull down is selected
-        data = load_flat_file(ff_path)
-        self.loadFileData(data)
-        return True
-
     def loadData(self, ffTime, newDataStrings, datas, units, specDatas={}):
         # if all data strings currently exist in main data then append everything instead
         allMatch = True
@@ -1640,16 +1710,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
 
-    def clearPrevious(self):
-        ''' Clears information about previously loaded files '''
-        # Close all other files
-        for fid in self.FIDs:
-            fid.close()
-        self.FIDs = []
-
-        # Clear data structures
-        self.initDataStorageStructures()
-
     def getCDFPaths(self):
         fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
         return fileNames
@@ -1668,27 +1728,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if len(files) == 0:
             return
 
-        # Clear any previous files if clearPrev is True
-        if clearPrev:
-            self.clearPrevious()
-
-        # Load data for each CDF individually
-        if label_funcs is not None: # Pass label_func if given
-            for file, label_func in zip(files, label_funcs):
-                self.loadCDF(file, exclude_keys, label_func=label_func,
-                    clip_range=clip_range)
-        else: # Otherwise just load file defaults
-            for file in files:
-                self.loadCDF(file, exclude_keys, clip_range=clip_range)
-
-        # Additional post-opening tasks
-        self.finishOpenFileSetup()
-    
-    def loadCDF(self, *args, **kwargs):
-        datas, reader = load_cdf(*args, **kwargs)
-        for key in datas:
-            table = datas[key]
-            self.loadFileData((table, reader))
+        # Load the files asynchronously
+        self.loadCDFsAsync(clearPrev, files, exclude_keys=exclude_keys, 
+            clip_range=clip_range, label_funcs=label_funcs)
 
     def calculateAbbreviatedDstrs(self):
         """
@@ -3139,6 +3181,57 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Clear timestamp in statusbar
         self.ui.timeStatus.setText('')
+
+def read_files(read_funcs, files, progress_func, cancel_func, *args, **kwargs):
+    ''' Function used to facilitate reading of files asynchronously '''
+    datas = []
+    n = len(files)
+    for i, (read_func, path) in enumerate(zip(read_funcs, files)):
+        # Get filename and read function
+        base = os.path.basename(path)
+
+        # Update progress and return if cancel function is pressed        
+        progress_func((f'Reading <b>{base}<b/>', (i+1, n)))
+        print ('HERE')
+        if cancel_func():
+            return []
+
+        # Read in data from files
+        data = read_func(path, *args, **kwargs)
+        datas.append(data)
+
+    # Do not return anything if thread is to be canceled
+    if cancel_func():
+        return []
+    return datas
+
+def read_cdf_files(files, progress_func, cancel_func, exclude_keys=None, 
+        clip_range=None, label_funcs=None):
+    ''' Function used to facilitate reading of CDF files asynchronously '''
+    file_datas = []
+    n = len(files)
+    for i in range(len(files)):
+        # Get filename and label function if given
+        file = files[i]
+        base = os.path.basename(file)
+        label_func = None if label_funcs is None else label_funcs[i]
+
+        # Update progress and return if cancel function is pressed        
+        progress_func((f'Reading <b>{base}<b/>', (i+1, n)))
+        if cancel_func():
+            return []
+
+        # Read in data from files and create a tuple for each set of data
+        # read from the CDF (since multiple epochs are allowed)
+        datas, reader = load_cdf(file, exclude_keys, label_func=label_func, clip_range=clip_range)
+        file_data = [(data, reader) for key, data in datas.items()]
+        file_datas.extend(file_data)
+    
+    # Do not return anything if thread is to be canceled
+    if cancel_func():
+        return []
+    
+    return file_datas
 
 # look at the source here to see what functions you might want to override or call
 #http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox

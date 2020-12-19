@@ -7,6 +7,24 @@ from scipy import fftpack
 import numpy as np
 from .MagPy4UI import TimeEdit, NumLabel
 
+class LabeledProgress(QtWidgets.QProgressBar):
+    ''' Displays a progress bar with text overlaying it '''
+    def __init__(self, txt=''):
+        self.txt = txt
+        super().__init__()
+
+    def paintEvent(self, ev):
+        # Create a painter and draw text in center of rect
+        QtWidgets.QProgressBar.paintEvent(self, ev)
+        p = QtGui.QPainter(self)
+        pen = pg.mkPen(255, 255, 255)
+        p.setPen(pen)
+        p.drawText(self.rect(), QtCore.Qt.AlignCenter, self.txt)
+        p.end()
+
+    def setText(self, txt):
+        self.txt = txt
+
 class BoxLayout():
     ''' Superclass for HBoxLayout and VBoxLayout that adds
         some additional useful operations for accessing 

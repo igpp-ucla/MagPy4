@@ -6,6 +6,7 @@ from . import USERDATALOC
 from .qtThread import TaskRunner
 from .selectionManager import TimeFormatWidget
 from fflib import ff_time
+from .layoutTools import LabeledProgress
 
 import requests
 import json
@@ -48,24 +49,6 @@ class PromptDialog(QtWidgets.QDialog):
         layout.addWidget(noBtn, 1, 1, 1, 1)
 
         self.setWindowTitle(title)
-
-class LabeledProgress(QtWidgets.QProgressBar):
-    ''' Displays a progress bar with text overlaying it '''
-    def __init__(self, txt=''):
-        self.txt = txt
-        QtWidgets.QProgressBar.__init__(self)
-
-    def paintEvent(self, ev):
-        # Create a painter and draw text in center of rect
-        QtWidgets.QProgressBar.paintEvent(self, ev)
-        p = QtGui.QPainter(self)
-        pen = pg.mkPen(255, 255, 255)
-        p.setPen(pen)
-        p.drawText(self.rect(), QtCore.Qt.AlignCenter, self.txt)
-        p.end()
-
-    def setText(self, txt):
-        self.txt = txt
 
 class StatusBox(QtWidgets.QTextEdit):
     ''' Modified text edit that appends messages to existing text '''
