@@ -154,29 +154,33 @@ class ProgStates(Enum):
     SUCCESS = 1
     FAILURE = -1
 
-class IconLabel(QtWidgets.QLabel):
+class IconBtn(QtWidgets.QPushButton):
     ''' QLabel that displays a small image / icon only '''
     def __init__(self, img_path=None):
         self.data = None
         self.img_size = (25, 25)
+        self.img_path = None
         super().__init__()
+        self.setFlat(True)
         if img_path is not None:
             self.setImage(img_path)
 
     def setImage(self, img_path):
         ''' Sets the pixmap to the image at the given path '''
+        self.img_path = img_path
         image = QtGui.QPixmap(img_path)
-        scaled = image.scaled(*self.img_size)
-        self.setPixmap(scaled)
+        icon = QtGui.QIcon(image)
+        self.setIcon(icon)
     
     def setImageSize(self, width, height):
         ''' Sets the image to the scaled size '''
         self.img_size = (width, height)
-        pixmap = self.pixmap()
-        if pixmap is not None:
-            pixmap = pixmap.scaled(width, height)
-            self.setPixmap(pixmap)
-        
+        self.setIconSize(QtCore.QSize(width, height))
+
+    def _setIcon(self, pixmap):
+        icon = QtGui.QIcon(pixmap)
+        self.setIcon(icon)
+
     def setData(self, data):
         ''' Sets any user data '''
         self.data = data
@@ -223,11 +227,11 @@ class ProgressChecklist(QtWidgets.QFrame):
 
         # Create status icon
         h, w = 22, 22
-        btn = IconLabel()
+        btn = IconBtn()
         btn.setMaximumWidth(50)
         btn.setImageSize(h, w)
     
-        # Add label and icon to last row of layout
+        # Add label andIconBtn icon to last row of layout
         self.layout.addWidget(label, r, 0, 1, 1)
         self.layout.addWidget(btn, r, 1, 1, 1)
     
@@ -1118,7 +1122,6 @@ class FileLabel(pg.LabelItem):
         pg.LabelItem.__init__(self, '', *args, **kwargs)
         self.setAttr('justify', 'right')
         self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
-        self.setMinimumWidth
 
     def resizeEvent(self, ev):
         if ev is None:

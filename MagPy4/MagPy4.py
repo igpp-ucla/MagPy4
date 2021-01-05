@@ -909,6 +909,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     self.tools[toolName].loadState(toolState)
 
     def closeAllSubWindows(self):
+        self.endLoadDialog()
         for tool in self.toolAbbrv:
             self.closeTool(tool)
         self.closeFixSelection()
@@ -1458,6 +1459,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # Close load dialog and clear
             self.load_dialog.close()
             self.load_dialog = None
+
+    def endLoadDialog(self):
+        ''' Close load dialog and signal it to cancel '''
+        if self.load_dialog:
+            self.load_dialog.cancel()
+        self.closeLoadDialog()
 
     def notifyOfFailures(self, failures):
         ''' Notify the user of any files that failed to load with
