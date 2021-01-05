@@ -54,9 +54,10 @@ import bisect
 from .timeManager import TimeManager
 from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect, SelectableViewBox
 from .layoutTools import BaseLayout, LabeledProgress
+from . import data_import 
 from .data_import import merge_datas, find_vec_grps, get_resolution_diffs, FileData
-import numpy.lib.recfunctions as rfn
 from .data_import import TextFileInfo, load_text_file, load_flat_file, load_cdf
+import numpy.lib.recfunctions as rfn
 from .qtThread import TaskRunner, ThreadPool, TaskThread
 
 import cdflib

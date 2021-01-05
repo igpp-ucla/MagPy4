@@ -22,7 +22,7 @@ setuptools.setup(
 		'PyQt5>=5.15.0', 'cdflib', 'PyQtWebEngine',
 		'requests', 'python-dateutil', 'matplotlib',
 		'appdirs'],
-	packages=['MagPy4', 'MagPy4/geopack/geopack'],
+	packages=['MagPy4', 'MagPy4/geopack/geopack', 'MagPy4/data_import'],
 	classifiers=[
 		"Programming Language :: Python :: 3",
 		"Operating System :: OS Independent"
