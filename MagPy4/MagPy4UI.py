@@ -16,6 +16,286 @@ from .mth import Mth
 import re
 from . import config
 
+from enum import Enum
+
+class ScrollArea(QtWidgets.QScrollArea):
+    ''' ScrollArea with a adjustToWidget function that
+        sets an appropriate minimum width / height for
+        the widget
+    '''
+    def __init__(self):
+        self.preferred_size = (300, 500)
+        super().__init__()
+    
+    def setPreferredSize(self, width, height):
+        ''' Sets the preferred widget size if the sizeHint is not valid '''
+        self.preferred_size = (width, height)
+    
+    def adjustToWidget(self):
+        ''' Adjusts ScrollArea size to sizeHint of widget if valid,
+            otherwise it is set to preferred_size
+        '''
+        # Get widget sizeHint
+        widget = self.widget()
+        min_width = widget.sizeHint().width()
+        min_height = widget.sizeHint().height()
+
+        # Check widget size validity
+        if min_width < 25 or min_width > 750:
+            min_width = self.preferred_size[0]
+        if min_height < 25 or min_height > 800:
+            min_height = self.preferred_size[1]
+
+        # Set minimum width and height for the ScrollArea
+        self.setMinimumWidth(min_width + 20)
+        self.setMinimumHeight(min_height + 20)
+
+    def scrollToRow(self, row):
+        ''' Scrolls to the widget's given row '''
+        pos = self.widget().getRowPosition(row)
+        self.verticalScrollBar().setValue(pos)
+
+class FileLoadDialog(QtWidgets.QDialog):
+    ''' Subclassed QDialog mimics QProgressDialog but allows
+        for an additional widget / layout to be displayed between
+        the label and the progress bar
+    '''
+    canceled = QtCore.pyqtSignal()
+    def __init__(self, *args, **kwargs):
+        self._cancelled = False # Whether task has been cancelled or not
+        super().__init__(*args, **kwargs)
+
+        # Create widgets
+        self.label = QtGui.QLabel()
+        self.widget = None
+        self.progbar = QtWidgets.QProgressBar()
+        self.cancel_btn = QtWidgets.QPushButton('Cancel')
+        self.cancel_btn.clicked.connect(self.cancel)
+
+        # Add items to layout
+        self._layout = QtWidgets.QGridLayout()
+        self.setLayout(self._layout)
+
+        cancel_layout = QtWidgets.QHBoxLayout()
+        cancel_layout.addStretch()
+        cancel_layout.addWidget(self.cancel_btn)
+
+        self._layout.addWidget(self.label, 0, 0, 1, 1)
+        self._layout.addWidget(self.progbar, 2, 0, 1, 1)
+        self._layout.addLayout(cancel_layout, 3, 0, 1, 1)
+
+        # Connect reject to cancel
+        self.rejected.connect(self._internal_cancel)
+
+    def setWidget(self, widget, show=True):
+        ''' Sets the widget between the label text and the progress bar '''
+        # Remove old widget
+        item = self._layout.itemAtPosition(1, 0)
+        if item is not None:
+            self._layout.removeItem(item)
+        
+        # Add widget to layout and save
+        self._layout.addWidget(widget, 1, 0, 1, 1)
+        self.widget = widget
+
+        self.widget.setVisible(show)
+    
+    def getWidget(self):
+        ''' Get the widget set between the label and progress bar '''
+        return self.widget
+    
+    def setBar(self, bar):
+        ''' Sets the progress bar used '''
+        # Remove old progress bar
+        item = self._layout.itemAtPosition(2, 0)
+        self._layout.removeItem(item)
+        item.widget().deleteLater()
+
+        # Add progress bar to layout and save
+        self._layout.addWidget(bar, 2, 0, 1, 1)
+        self.progbar = bar
+    
+    def getBar(self):
+        ''' Gets the progress bar widget '''
+        return self.progbar
+
+    def setLabelText(self, txt):
+        ''' Sets the label text for the dialog '''
+        self.label.setText(txt)
+    
+    def setMinimum(self, val):
+        ''' Sets the progress bar minimum '''
+        self.progbar.setMinimum(val)
+    
+    def setMaximum(self, val):
+        ''' Sets the progress bar maximum '''
+        self.progbar.setMaximum(val)
+    
+    def setValue(self, val):
+        ''' Set the progress bar value '''
+        self.progbar.setValue(val)
+    
+    def cancel(self):
+        ''' Signal to cancel the task '''
+        self.reject()
+        self._internal_cancel()
+        self._cancelled = True
+    
+    def wasCanceled(self):
+        ''' Checks if task has been cancelled '''
+        return self._cancelled
+
+    def _internal_cancel(self):
+        self.canceled.emit()
+
+class ProgStates(Enum):
+    ''' File load states '''
+    LOADING = 0
+    SUCCESS = 1
+    FAILURE = -1
+
+class IconLabel(QtWidgets.QLabel):
+    ''' QLabel that displays a small image / icon only '''
+    def __init__(self, img_path=None):
+        self.data = None
+        self.img_size = (25, 25)
+        super().__init__()
+        if img_path is not None:
+            self.setImage(img_path)
+
+    def setImage(self, img_path):
+        ''' Sets the pixmap to the image at the given path '''
+        image = QtGui.QPixmap(img_path)
+        scaled = image.scaled(*self.img_size)
+        self.setPixmap(scaled)
+    
+    def setImageSize(self, width, height):
+        ''' Sets the image to the scaled size '''
+        self.img_size = (width, height)
+        pixmap = self.pixmap()
+        if pixmap is not None:
+            pixmap = pixmap.scaled(width, height)
+            self.setPixmap(pixmap)
+        
+    def setData(self, data):
+        ''' Sets any user data '''
+        self.data = data
+    
+    def getData(self):
+        ''' Returns any user data '''
+        return self.data
+
+class ProgressChecklist(QtWidgets.QFrame):
+    ''' Widget that displays a list of items and a small icon next
+        to each of them that indicates whether it has been successfull,
+        failed, or is the current task
+    '''
+    img_path = getRelPath('images')
+    image_dict = {
+        ProgStates.LOADING : os.path.join(img_path, 'l_loading_icon.svg'),
+        ProgStates.SUCCESS : os.path.join(img_path, 'finished_icon.svg'),
+        ProgStates.FAILURE : os.path.join(img_path, 'failure_icon.svg'),
+    }
+    def __init__(self, items=[]):
+        # Set up widget
+        super().__init__()
+        self.layout = QtWidgets.QGridLayout()
+        self.layout.setContentsMargins(5, 0, 5, 0)
+        self.layout.setColumnStretch(1, 0)
+        self.setLayout(self.layout)
+
+        # Set up any items in checklist
+        if len(items) > 0:
+            self.setItems(items)
+    
+    def addItem(self, name):
+        # Adds item to end of list
+        r = self.layout.rowCount()
+        if self.layout.count() == 0:
+            r = 0
+
+        # Create label
+        font = QtGui.QFont()
+        font.setPointSize(12)
+
+        label = QtWidgets.QLabel(name)
+        label.setFont(font)
+
+        # Create status icon
+        h, w = 22, 22
+        btn = IconLabel()
+        btn.setMaximumWidth(50)
+        btn.setImageSize(h, w)
+    
+        # Add label and icon to last row of layout
+        self.layout.addWidget(label, r, 0, 1, 1)
+        self.layout.addWidget(btn, r, 1, 1, 1)
+    
+    def setItems(self, items):
+        ''' Initializes the list of items in the checklist '''
+        for item in items:
+            self.addItem(item)
+        
+    def getItems(self):
+        ''' Returns the list of items in the checklist '''
+        count = self.layout.rowCount()
+        items = [self._getLabel(r).text() for r in range(count)]
+        return items
+    
+    def getStatuses(self):
+        ''' Returns the status of each item in the checklist '''
+        count = self.layout.rowCount()
+        values = [self._getBtn(r).getData() for r in range(count)]
+        return values
+
+    def getFailures(self):
+        ''' Returns the items that have a 'FAILURE' status '''
+        items = self.getItems()
+        statuses = self.getStatuses()
+        failures = [item for item, s in zip(items, statuses) if s == ProgStates.FAILURE]
+        return failures
+    
+    def _getBtn(self, row):
+        item = self.layout.itemAtPosition(row, 1)
+        return item.widget()
+    
+    def _getLabel(self, row):
+        item = self.layout.itemAtPosition(row, 0)
+        return item.widget()
+
+    def setStatus(self, row, value):
+        ''' Sets the status for the item in the given row to value '''
+        # Skip if not a valid value
+        if value not in self.image_dict:
+            return
+
+        # Get button and set data and icon
+        btn = self._getBtn(row)
+        url = self.image_dict[value]
+        btn.setData(value)
+        btn.setImage(url)
+
+        # Highlight current task being updated
+        if value == ProgStates.LOADING:
+            self.highlightRow(row, True)
+        else:
+            self.highlightRow(row, False)
+    
+    def highlightRow(self, row, val=True):
+        ''' Bolds the text label for the item in the given row '''
+        label = self._getLabel(row)
+        font = label.font()
+        font.setBold(val)
+        label.setFont(font)
+    
+    def getRowPosition(self, row):
+        ''' Gets the relative position of the given row in widget
+            coordinates
+        '''
+        item = self._getLabel(max(0, row - 3))
+        pt = item.geometry().top()
+        return pt
+    
 class MagPy4UI(object):
 
     def setupUI(self, window):

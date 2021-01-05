@@ -25,8 +25,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import numpy as np
 import numpy.lib.recfunctions as rfn
 import pyqtgraph as pg
-
-from .MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, StackedAxisLabel, FileLabel
+from .MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, StackedAxisLabel, FileLabel, ProgStates, FileLoadDialog, ProgressChecklist, ScrollArea
 from .pyqtgraphExtensions import TrackerRegion
 from .plotMenu import PlotMenu
 from .spectra import Spectra
@@ -1354,32 +1353,47 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         ''' Creates a task to read in the files and connects it to the load dialog '''
         task = TaskThread(read_files, read_funcs, files_to_read, *args ,**kwargs,
             update_progress=True, interrupt_enabled=True)
-        self._loadAsync(task, clear)
+        self._loadAsync(files_to_read, task, clear)
     
     def loadCDFsAsync(self, clear, *args, **kwargs):
         ''' Creates a task to read in the files and connects it to the load dialog '''
         task = TaskThread(read_cdf_files, *args, **kwargs, update_progress=True,
             interrupt_enabled=True)
-        self._loadAsync(task, clear)
+        self._loadAsync(args[0], task, clear)
     
-    def _loadAsync(self, task, clear):
+    def _loadAsync(self, files_to_read, task, clear):
         ''' Start the task and connect results to load / update functions '''
         load_func = functools.partial(self.loadFileDatas, clear=clear)
         task.signals.result.connect(load_func)
         task.signals.progress.connect(self.updateLoadDialog)
-        self.showLoadDialog()
+        self.showLoadDialog(files_to_read)
         self.pool.start(task)
 
-    def showLoadDialog(self):
+    def showLoadDialog(self, file_list=[]):
         ''' Shows a progress dialog for the files being read '''
         self.closeLoadDialog()
 
         # Create a progress dialog
-        self.load_dialog = QtWidgets.QProgressDialog()
+        self.load_dialog = FileLoadDialog()
+
+        # Create the progress checklist and wrap it in a scroll area
+        items = [os.path.basename(n) for n in file_list]
+        checklist = ProgressChecklist(items)
+        wrapper = ScrollArea()
+        wrapper.setWidget(checklist)
+        wrapper.setWidgetResizable(True)
+        wrapper.adjustToWidget()
+
+        # Show progress checklist in layout if more than one file
+        show = len(file_list) > 1
+        self.load_dialog.setWidget(wrapper, show=show)
+
+        # Set label
+        self.load_dialog.setLabelText('Reading: ')
 
         # Use a labeled status bar
-        self.load_dialog._prog_bar = LabeledProgress()
-        self.load_dialog.setBar(self.load_dialog._prog_bar)
+        bar = LabeledProgress()
+        self.load_dialog.setBar(bar)
 
         # Set attributes
         self.load_dialog.resize(500, 100)
@@ -1395,14 +1409,24 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def updateLoadDialog(self, progress):
         ''' Updates the progress dialog for a file being loaded '''
-        msg, (val, n) = progress
-        self.load_dialog.setLabelText(msg) # Set message
-        self.load_dialog._prog_bar.setText(f'{val} of {n}')
+        # Unpack progress and update label or scroll to current file
+        filename, val, n, code = progress
+        if n < 2:
+            self.load_dialog.setLabelText(f'Reading {filename}') # Set message
+        else:
+            self.load_dialog.getWidget().scrollToRow(val)
+
+        # Update progress checklist states
+        self.load_dialog.getWidget().widget().setStatus(val, code)
+
+        # Update count ('1 of n') state
+        self.load_dialog.getBar().setText(f'{val+1} of {n}')
 
     def loadFileDatas(self, datas, clear=False):
         ''' Loads a list of (FileData, reader) tuples by calling loadFileData '''
         # Skip if nothing to load
         if len(datas) == 0:
+            self.closeLoadDialog()
             return
 
         # Clear previous files if necessary
@@ -1423,8 +1447,27 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def closeLoadDialog(self):
         ''' Close the file loading dialog '''
         if self.load_dialog:
+            # Check if any files failed to load and show dialog if so
+            # (must not have resulted from a cancel operation)
+            if not self.load_dialog.wasCanceled():
+                failures = self.load_dialog.getWidget().widget().getFailures()
+                if len(failures) > 0:
+                    self.notifyOfFailures(failures)
+
+            # Close load dialog and clear
             self.load_dialog.close()
             self.load_dialog = None
+
+    def notifyOfFailures(self, failures):
+        ''' Notify the user of any files that failed to load with
+            a QDialog box
+        '''
+        fail_dialog = QtWidgets.QMessageBox(self)
+        fail_dialog.setWindowTitle('Error')
+        msg = f'The following files could not be read: \n'
+        msg += '\n'.join(failures)
+        fail_dialog.setText(msg)
+        fail_dialog.show()
     
     def cancelFileLoad(self):
         ''' Request to cancel the threads in the pool for loading files '''
@@ -3191,14 +3234,17 @@ def read_files(read_funcs, files, progress_func, cancel_func, *args, **kwargs):
         base = os.path.basename(path)
 
         # Update progress and return if cancel function is pressed        
-        progress_func((f'Reading <b>{base}<b/>', (i+1, n)))
-        print ('HERE')
+        progress_func((base, i, n, ProgStates.LOADING))
         if cancel_func():
             return []
 
         # Read in data from files
-        data = read_func(path, *args, **kwargs)
-        datas.append(data)
+        try:
+            data = read_func(path, *args, **kwargs)
+            datas.append(data)
+            progress_func((base, i, n, ProgStates.SUCCESS))
+        except:
+            progress_func((base, i, n, ProgStates.FAILURE))
 
     # Do not return anything if thread is to be canceled
     if cancel_func():
@@ -3217,15 +3263,19 @@ def read_cdf_files(files, progress_func, cancel_func, exclude_keys=None,
         label_func = None if label_funcs is None else label_funcs[i]
 
         # Update progress and return if cancel function is pressed        
-        progress_func((f'Reading <b>{base}<b/>', (i+1, n)))
+        progress_func((base, i, n, ProgStates.LOADING))
         if cancel_func():
             return []
 
         # Read in data from files and create a tuple for each set of data
         # read from the CDF (since multiple epochs are allowed)
-        datas, reader = load_cdf(file, exclude_keys, label_func=label_func, clip_range=clip_range)
-        file_data = [(data, reader) for key, data in datas.items()]
-        file_datas.extend(file_data)
+        try:
+            datas, reader = load_cdf(file, exclude_keys, label_func=label_func, clip_range=clip_range)
+            file_data = [(data, reader) for key, data in datas.items()]
+            file_datas.extend(file_data)
+            progress_func((base, i, n, ProgStates.SUCCESS))
+        except:
+            progress_func((base, i, n, ProgStates.FAILURE))
     
     # Do not return anything if thread is to be canceled
     if cancel_func():
