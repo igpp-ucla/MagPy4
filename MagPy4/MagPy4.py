@@ -70,6 +70,13 @@ from datetime import datetime
 
 CANREADCDFS = False
 
+# Maps file types to extension filters in 'Open File' dialog
+file_types_dict = {
+    'ASCII' : 'Text File (*.txt *.tab *.csv *.dat *.tsv)',
+    'FLATFILE' : 'FlatFile (*.ffd)',
+    'CDF' : 'CDF (*.cdf)'
+}
+
 class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def __init__(self, app, parent=None):
         super(MagPy4Window, self).__init__(parent)
@@ -119,9 +126,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.toggleTrackerAction.triggered.connect(self.toggleTracker)
 
         # Main menu action connections
-        self.ui.actionOpenFF.triggered.connect(functools.partial(self.openFileDialog, True,True, None))
-        self.ui.actionAddFF.triggered.connect(functools.partial(self.openFileDialog, True, False, None))
-        self.ui.actionOpenASCII.triggered.connect(functools.partial(self.openFileDialog, False, True, None))
+        self.ui.actionOpenFile.triggered.connect(self.openFileDialog)
+        self.ui.actionAddFile.triggered.connect(self.addFileDialog)
+        self.ui.actionOpenFF.triggered.connect(self.openFlatFile)
+        self.ui.actionOpenASCII.triggered.connect(self.openASCII)
         self.ui.actionOpenCDF.triggered.connect(self.openCDF)
 
         self.ui.actionExportDataFile.triggered.connect(self.exportFile)
@@ -1302,22 +1310,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         return filename
 
-    def openFileDialog(self, isFlatfile, clearCurrent, ascState={}):
-        if isFlatfile:
-            caption = 'Open Flat File'
-            filt = 'Flat Files (*.ffd)'
-        else:
-            caption = 'Open ASCII File'
-            filt = 'Text Files (*.txt *.tab *.csv *.dat *.tsv)'
-
-        dg = QtWidgets.QFileDialog
-        opts = QtWidgets.QFileDialog.ReadOnly
-        files = dg.getOpenFileNames(caption=caption, options=opts, filter=filt)[0]
-        if len(files) < 0 or not self.validFilenames(files):
-            return
-
-        self.openFileList(files, isFlatfile, clearCurrent)
-
     def validFilenames(self, fileNames):
         for fileName in fileNames:
             if '.' not in fileName: # lazy extension check
@@ -1329,7 +1321,54 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         return True
 
-    def openFileList(self, fileNames, isFlatfile, clearCurrent):
+    def openFileDialog(self, filter_type=None, clear=True):
+        # Get flags and dialog class
+        flags = QtWidgets.QFileDialog.ReadOnly
+        dialog = QtWidgets.QFileDialog
+
+        # Determine label and filter string
+        caption_prefix = 'Open' if clear == True else 'Add'
+        if filter_type in file_types_dict:
+            caption = f'{caption_prefix} {filter_type}'
+            filt = file_types_dict[filter_type]
+        else:
+            caption = f'{caption_prefix} File'
+            filt = ';;'.join(sorted(list(file_types_dict.values())))
+            filt = 'All Files (*);;' + filt
+
+        # Get selected files
+        files = dialog.getOpenFileNames(caption=caption, options=flags,
+            filter=filt)[0]
+
+        # Skip if nothing selected
+        if len(files) < 0:
+            return
+
+        # Separate CDFs from ASCII / Flat Files
+        cdfs, others = [], []
+        for f in files:
+            if f.endswith('.cdf'):
+                cdfs.append(f)
+            else:
+                others.append(f)
+
+        # Try to open list of files
+        self.openFileList(others, clear=clear)
+        self.addCDF(cdfs, clearPrev=clear)
+
+    def addFileDialog(self, filter_type=None):
+        self.openFileDialog(filter_type=filter_type, clear=False)
+
+    def openFlatFile(self):
+        self.openFileDialog(filter_type='FLATFILE')
+
+    def openASCII(self):
+        self.openFileDialog(filter_type='ASCII')
+
+    def openCDF(self):
+        self.openFileDialog(filter_type='CDF')
+
+    def openFileList(self, fileNames, clear):
         # Get basenames for each file path and determine file type
         bases = [os.path.basename(p) for p in fileNames]
         files = {'ff' : [], 'ascii' : [] }
@@ -1349,7 +1388,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             return
 
         # Load files asynchronously
-        self.loadFilesAsync(read_funcs, load_files, clearCurrent)
+        self.loadFilesAsync(read_funcs, load_files, clear)
     
     def loadFilesAsync(self, read_funcs, files_to_read, clear, *args, **kwargs):
         ''' Creates a task to read in the files and connects it to the load dialog '''
@@ -1411,6 +1450,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def updateLoadDialog(self, progress):
         ''' Updates the progress dialog for a file being loaded '''
+        if self.load_dialog is None:
+            return
+
         # Unpack progress and update label or scroll to current file
         filename, val, n, code = progress
         if n < 2:
@@ -1573,28 +1615,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Remove data from dictionaries
         for d in [self.ORIGDATADICT, self.DATADICT, self.UNITDICT]:
             d.pop(dstr)
-
-    def setPlotAttrs(self, pi):
-        # add horizontal zero line
-        zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
-        zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
-        pi.addItem(zeroLine, ignoreBounds=True)
-
-        pi.hideButtons() # hide autoscale button
-
-        # show top and right axis, but hide labels (they are off by default apparently)
-        la = pi.getAxis('left')
-        la.style['textFillLimits'] = [(0,1.1)] # no limits basically to force labels by each tick no matter what
-        #la.setWidth(50) # this also kinda works but a little space wasteful, saving as reminder incase dynamic solution messes up
-
-        ba = pi.getAxis('bottom')
-        #ba.style['textFillLimits'] = [(0,1.1)]
-        ta = pi.getAxis('top')
-        ra = pi.getAxis('right')
-        ta.show()
-        ra.show()
-        ta.setStyle(showValues=False)
-        ra.setStyle(showValues=False)
 
     def initNewVar(self, dstr, dta, units='', times=None):
         # Add new variable name to list of datastrings
@@ -1764,10 +1784,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def getCDFPaths(self):
         fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
         return fileNames
-
-    def openCDF(self):
-        # Try loading in CDF datas, clearing any previous data
-        self.addCDF(clearPrev=True)
 
     def addCDF(self, files=None, exclude_keys=[], label_funcs=None,
                 clearPrev=False, clip_range=None):

@@ -97,7 +97,6 @@ class FileLoadDialog(QtWidgets.QDialog):
         # Add widget to layout and save
         self._layout.addWidget(widget, 1, 0, 1, 1)
         self.widget = widget
-
         self.widget.setVisible(show)
     
     def getWidget(self):
@@ -312,23 +311,27 @@ class MagPy4UI(object):
         window.setCentralWidget(frame)
 
         # Define actions.
-
         self.actionOpenFF = QtWidgets.QAction(window)
-        self.actionOpenFF.setText('&Open Flat File...')
-        self.actionOpenFF.setShortcut('Ctrl+O')
+        self.actionOpenFF.setText('Open Flat File...')
         self.actionOpenFF.setStatusTip('Opens a flat file')
 
-        self.actionAddFF = QtWidgets.QAction(window)
-        self.actionAddFF.setText('&Add Flat File...')
-        self.actionAddFF.setStatusTip('Adds a flat file')
-
         self.actionOpenCDF = QtWidgets.QAction(window)
-        self.actionOpenCDF.setText('Open &CDF File...')
+        self.actionOpenCDF.setText('Open CDF File...')
         self.actionOpenCDF.setStatusTip('Opens a CDF file (currently experimental)')
 
         self.actionOpenASCII = QtWidgets.QAction(window)
         self.actionOpenASCII.setText('Open ASCII File...')
         self.actionOpenASCII.setStatusTip('Opens a simple ASCII file')
+
+        self.actionOpenFile = QtWidgets.QAction(window)
+        self.actionOpenFile.setText('&Open File...')
+        self.actionOpenFile.setStatusTip('Opens a new file')
+        self.actionOpenFile.setShortcut('Ctrl+O')
+        
+        self.actionAddFile = QtWidgets.QAction(window)
+        self.actionAddFile.setText('&Add File...')
+        self.actionAddFile.setStatusTip('Add a new file')
+        self.actionAddFile.setShortcut('Ctrl+A')
 
         self.actionExportFF = QtWidgets.QAction(window)
         self.actionExportFF.setText('Export Flat File...')
@@ -501,9 +504,11 @@ class MagPy4UI(object):
         self.menuBar = window.menuBar()
 
         self.fileMenu = self.menuBar.addMenu('&File')
-        self.fileMenu.addAction(self.actionOpenFF)
-        self.fileMenu.addAction(self.actionAddFF)
         self.fileMenu.addSeparator()
+        self.fileMenu.addAction(self.actionOpenFile)
+        self.fileMenu.addAction(self.actionAddFile)
+        self.fileMenu.addSeparator()
+        self.fileMenu.addAction(self.actionOpenFF)
         self.fileMenu.addAction(self.actionOpenCDF)
         self.fileMenu.addAction(self.actionOpenASCII)
         self.fileMenu.addSeparator()
