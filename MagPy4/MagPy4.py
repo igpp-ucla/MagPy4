@@ -1475,6 +1475,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Clear previous files if necessary
         if clear:
+            self.epoch = None
             for f in self.FIDs:
                 del f
             self.FIDs = []
@@ -1564,16 +1565,20 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.errorFlag = min(flag, self.errorFlag)
         else:
             self.errorFlag = flag
-        
-        # Set epoch
-        epoch = file_data.get_epoch()
-        self.epoch = epoch
 
         # Get labels, units, resolution
         res = file_data.get_resolution()
         units = file_data.get_num_units()
         times = file_data.get_times()
         labels = file_data.get_numerical_keys()
+
+        # Set epoch and map times if previous epoch does not match
+        epoch = file_data.get_epoch()
+        if self.epoch is not None and epoch != self.epoch:
+            dates = ff_time.ticks_to_dates(times, epoch)[0]
+            times = ff_time.dates_to_ticks(dates, self.epoch, fold_mode=True)
+        else:
+            self.epoch = epoch
 
         # Set resolution
         self.resolution = min(self.resolution, res)
