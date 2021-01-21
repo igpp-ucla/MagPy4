@@ -3,6 +3,7 @@ import numpy as np
 import re
 from fflib import ff_time
 from ..data_util import find_gaps, get_resolution_diffs
+from .data_sort import merge_sort
 
 class FileData():
     ''' Time series data (and related info) from a given file '''
@@ -147,51 +148,11 @@ def merge_datas(ta, tb, dta_a, dta_b, flag):
     tb_slices = np.split(tb, gaps_b)
     dta_b_slices = np.split(dta_b, gaps_b)
 
-    t_grps = []
-    dta_grps = []
+    # Merge all slices
+    t = t_slices + tb_slices
+    d = dta_slices + dta_b_slices
+    times, data = merge_sort(t, d)
 
-    for tb, db in zip(tb_slices, dta_b_slices):
-        if len(tb) <= 0:
-            continue
-        t0, t1 = tb[0], tb[-1]
-        for i in range(0, len(t_slices)):
-            t = t_slices[i]
-            dta = dta_slices[i]
-            # Clip end so it's replaced by start of b array
-            if t0 >= t[0] and t0 <= t[-1]:
-                index = bisect_left(t, t0)
-                t_slices[i] = t[:index]
-                dta_slices[i] = dta[:index]
-            
-            # Clip beginning so it's replaced by end of b array
-            if t1 <= t[-1] and t1 >= t[0]:
-                index = bisect_right(t, t1)
-                t_slices[i] = t[index:]
-                dta_slices[i] = dta[index:]
-            
-            if t0 < t[0] and t1 > t[-1]:
-                t_slices[i] = []
-                dta_slices[i] = []
-
-    # Remove any empty slices
-    t_slices = [t for t in t_slices if len(t) > 0]
-    dta_slices = [d for d in dta_slices if len(d) > 0]
-
-    tb_slices = [t for t in tb_slices if len(t) > 0]
-    dta_b_slices = [d for d in dta_b_slices if len(d) > 0]
-
-    # Sort times and data
-    t_grps = t_slices[:]
-    dta_grps = dta_slices[:]
-    keys = [t[0] for t in t_grps]
-    for t, dta in zip(tb_slices, dta_b_slices):
-        index = bisect_left(keys, t[0])
-        t_grps.insert(index, t)
-        dta_grps.insert(index, dta)
-        keys.insert(index, t[0])
-    
-    times = np.concatenate(t_grps)
-    data = np.concatenate(dta_grps)
     return times, data        
 
 def single_fill_flags(ta, tb, dta_a, dta_b, flag):
