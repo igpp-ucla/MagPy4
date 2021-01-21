@@ -9,6 +9,11 @@ from fflib import ff_time, isoparser
 from .general_data_import import FileData
 from enum import Enum
 
+# Specific to PDS4 labels
+import os
+import xml.etree.ElementTree as ET
+import re
+
 def load_text_file(filename, epoch=None):
     ''' Helper function that creates a TextFileInfo object
         and returns it along with the FileData object
@@ -60,6 +65,145 @@ def guess_cols(hdr, first_line):
     
     return cols
 
+def read_pds_xml_info(filename, line=None):
+    ''' Looks for and attempts to read a corresponding XML file
+        for PDS4 formatted ASCII files if one exists
+    '''
+    # Skip if file has no extension
+    basename = os.path.basename(filename)
+    if '.' not in basename:
+        return None
+
+    # Check if XML file of same name / loc exists
+    name = basename.split('.')[0]
+    dir_loc = filename.split(name)[0]
+    xml_name = os.path.join(dir_loc, f'{name}.xml')
+
+    if not os.path.exists(xml_name):
+        return None
+    
+    # Read in data from file as an XML tree
+    try:
+        tree = ET.parse(xml_name)
+        root = tree.getroot()
+    except:
+        return None
+
+    # Try to find file_observational info
+    children = root.getchildren()
+    tag_expr = r'{http://pds.nasa.gov/pds4/pds/v[0-9]+}File_Area_Observational'
+    file_area_node = None
+    for c in children:
+        if re.fullmatch(tag_expr, c.tag):
+            file_area_node = c
+            break
+
+    if file_area_node is None:
+        return None
+    
+    # Get PDS version string
+    version = file_area_node.tag.split('}')[0] + '}'
+    
+    # Look for file info nodes
+    file_node = file_area_node.find(f'{version}File')
+    header = file_area_node.find(f'{version}Header')
+    table = file_area_node.find(f'{version}Table_Character')
+    if file_node is None or table is None:
+        return None
+
+    # Determine delimiter
+    delim_node = table.find(f'{version}record_delimiter')
+
+    # Check that corresponding file is correct
+    file_info = file_node.getchildren()
+    if len(file_info) > 0 and file_info[0].tag.endswith('file_name'):
+        if file_info[0].text != os.path.basename(filename):
+            return None
+
+    # Read in each column info from table
+    record_char = table.find(f'{version}Record_Character')
+    field_chars = record_char.iter(f'{version}Field_Character')
+    keys = ['name', 'field_number', 'field_location', 'data_type', 
+        'field_length', 'unit']
+
+    field_descs = []
+    field_chars = list(field_chars)
+    for f in field_chars:
+        d = {}
+        for key in keys:
+            node = f.find(f'{version}{key}')
+            if node is not None:
+                d[key] = node.text
+
+        if 'name' in d:
+            field_descs.append(d)
+
+    # Get missing flags if given
+    for desc, f in zip(field_descs, field_chars):
+        node = f.find(f'{version}Special_Constants')
+        if node is not None:
+            subnode = node.find(f'{version}missing_constant')
+            if subnode is not None:
+                desc['flag'] = float(subnode.text)
+
+    # Sort fields by field number
+    for desc in field_descs:
+        desc['field_number'] = int(desc['field_number'])
+        desc['field_length'] = int(desc['field_length'])
+        desc['field_location'] = int(desc['field_location'])
+    field_descs = sorted(field_descs, key=lambda d : d['field_number'])
+
+    # Determine time column and map field types
+    time_col = None
+    for desc in field_descs:
+        field_length = desc['field_length']
+        dtype = desc['data_type']
+        if dtype == 'ASCII_Real':
+            dtype = 'f8'
+        elif dtype == 'ASCII_Integer':
+            dtype = 'd'
+        elif re.fullmatch(r'ASCII_Date_Time_\w+', dtype) and time_col is None:
+            dtype = f'U{field_length}'
+            time_col = desc['field_number'] - 1
+        else:
+            dtype = f'U{field_length}'
+        desc['data_type'] = dtype
+    
+    if time_col is None:
+        return None
+
+    # Iterate over flags to get max
+    max_flag = 1e32
+    for desc in field_descs:
+        flag = desc.get('flag')
+        if flag is not None and flag > max_flag:
+            max_flag = flag
+
+    # Determine delimeter type (if separated by commas or fixed column-widths)
+    cols = [desc['field_location'] for desc in field_descs]
+    widths = [desc['field_length'] for desc in field_descs]
+    last_chars = [start+width-1 for start, width in zip(cols, widths)]
+    last_chars = [line[i] for i in last_chars]
+    cols += [cols[-1] + field_descs[-1]['field_length']]
+
+    fmt = FORMATS.TAB
+    delim = np.diff(cols)
+    if ',' in last_chars:
+        fmt = FORMATS.CSV
+        delim = ','
+    
+    # Assemble file info
+    file_info = {
+        'type' : fmt,
+        'delimiter' : delim,
+        'time_col' : time_col,
+        'field_descs' : field_descs,
+        'label_header' : header is not None,
+        'flag' : max_flag
+    }
+
+    return file_info
+
 def guess_file_info(hdr, first_line):
     ''' Determine file type and related info such as columns and
         the column number of the timestamps based on the header
@@ -105,6 +249,8 @@ def guess_file_info(hdr, first_line):
 
 def map_to_dates(times):
     ''' Map timestamps to datetimes '''
+    if len(times) > 0 and times[0].endswith(' '):
+        times = list(map(lambda s : s.strip(' '), times))
     parser = isoparser.ISOParser('T')
     return list(map(parser.isoparse, times))
 
@@ -123,24 +269,53 @@ def read_text_file(filename, epoch='J2000'):
         line = fd.readline()
 
     # Determine file type and delimeter
-    file_info = guess_file_info(hdr, line)
-    delimeter = file_info['delimiter']
+    pds_info = read_pds_xml_info(filename, line=line)
+    if pds_info is None:
+        file_info = guess_file_info(hdr, line)
+    else:
+        file_info = pds_info
 
+    delimeter = file_info['delimiter']
+    names = True if file_info.get('label_header') is None else file_info['label_header']
+    names = None if names == False else names
+    
     # Read in data using numpy
-    data = np.genfromtxt(filename, names=True, comments='#',
+    data = np.genfromtxt(filename, names=names, comments='#',
             filling_values=[np.nan, int(1e32), ''], delimiter=delimeter, 
             dtype=None, encoding=None, skip_header=skip_header)
     
-    # Adjust dtype so missing / non-numerical values are converted to strings
+    # Adjust labels if given by pds_info
     dtype = data.dtype.descr
-    new_dtype = []
-    for label, t in dtype:
-        if not (t.startswith('<U') or t.startswith('<i') or t.startswith('<f')):
-            t = 'U8'
-        new_dtype.append((label, t))
+    units = None
+    if pds_info is not None:
+        # Use PDS given data dtypes 
+        new_dtype = []
+        for desc in pds_info['field_descs']:
+            new_dtype.append((desc['name'], desc['data_type']))
 
-    if new_dtype != dtype:
-        data = np.array(data, dtype=np.dtype(new_dtype))
+        # Create new array
+        if new_dtype != dtype:
+            data = np.array(data, dtype=np.dtype(new_dtype))
+
+        # Get units if given
+        units = []
+        for desc in pds_info['field_descs']:
+            unit = desc.get('unit')
+            if unit is not None:
+                units.append(unit)
+            else:
+                units.append('')
+
+    # Otherwise, adjust dtype so missing / non-numerical values are converted to strings
+    else:
+        new_dtype = []
+        for label, t in dtype:
+            if not (t.startswith('<U') or t.startswith('<i') or t.startswith('<f')):
+                t = 'U8'
+            new_dtype.append((label, t))
+
+        if new_dtype != dtype:
+            data = np.array(data, dtype=np.dtype(new_dtype))
 
     # Get the time column data and convert to ticks
     time_col = file_info['time_col']
@@ -161,8 +336,26 @@ def read_text_file(filename, epoch='J2000'):
     table_data = np.insert(data, time_col, ticks, axis=1)
     table_data = rfn.unstructured_to_structured(table_data, dtype=dtype)
 
+    # Remove flag values if given
+    if pds_info is not None:
+        max_flag = pds_info.get('flag')
+        max_flag = 1e32 if max_flag is None else max_flag
+        descs = pds_info.get('field_descs')
+        for desc in descs:
+            key = desc['name']
+            flag = desc.get('flag')
+            if flag is not None:
+                data = table_data[key]
+                if flag >= 0:
+                    data[data >= flag] = max_flag
+                else:
+                    data[data <= flag] = max_flag
+    else:
+        max_flag = 1e32
+
     # Assemble file data object
-    file_data = FileData(table_data, table_data.dtype.names, epoch=epoch, time_col=time_col)
+    file_data = FileData(table_data, table_data.dtype.names, epoch=epoch, 
+        time_col=time_col, units=units, error_flag=max_flag)
 
     return file_data, file_info
 
