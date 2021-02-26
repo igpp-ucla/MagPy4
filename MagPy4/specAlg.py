@@ -122,7 +122,6 @@ class SpectraCalc():
         coh = ((c_ab ** 2) + (q_ab ** 2)) / (c_aa * c_bb)
         phase = np.arctan2(q_ab, c_ab)
         phase = np.rad2deg(phase)
-
         return (coh[:nfreq], phase[:nfreq])
 
     def calc_compress_power(data, bw, res):

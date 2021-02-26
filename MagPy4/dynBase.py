@@ -619,15 +619,15 @@ class GradLegend(pg.GraphicsLayout):
             self.editor.show()
 
 class DynamicAnalysisTool():
+    fftBins = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 
+        16384, 32768, 65536, 131072]
     def __init__(self):
         self.lineTool = None
         self.maskTool = None
         self.savedLineInfo = None
         self.lineHistory = set()
         self.lineInfoHist = set()
-        self.fftBins = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 
-            16384, 32768, 65536, 131072]
-        self.fftBinBound = self.fftBins[-1]*4
+        self.fftBinBound = DynamicAnalysisTool.fftBins[-1]*4
 
     def getState(self):
         state = {}
@@ -743,15 +743,20 @@ class DynamicAnalysisTool():
         self.ui.fftInt.setMaximum(nPoints)
         self.ui.fftShift.setMaximum(nPoints)
 
-        interval = max(min(nPoints, 10), int(nPoints*0.025))
-        if nPoints > self.fftBins[4] and nPoints < self.fftBinBound:
-            index = bisect.bisect(self.fftBins, interval)
-            if index < len(self.fftBins):
-                interval = self.fftBins[index]
+        interval = self.guess_fft_param(nPoints)
 
         self.ui.fftInt.setValue(interval)
         overlap = int(interval/4)
         self.ui.fftShift.setValue(overlap)
+
+    def guess_fft_param(self, npoints):
+        bins = DynamicAnalysisTool.fftBins
+        interval = max(min(npoints, 10), int(npoints*0.025))
+        if npoints > bins[4]:
+            index = bisect.bisect(bins, interval)
+            if index < len(bins):
+                interval = bins[index]
+        return interval
 
     def checkParameters(self, interval, overlap, bw, numPoints):
         if interval <= overlap:
@@ -1302,6 +1307,14 @@ class SpecData():
         self.legend_label = legend_label
         self.name = name
 
+        # Additional matplotlib gradient information
+        self.cmap = 'jet'
+    
+    def values(self):
+        y, x = self.get_bins(padded=True)
+        grid = self.get_grid()
+        return x, y, grid
+
     def single_y_bins(self):
         shape = self.y_bins.shape
         if len(shape) <= 1:
@@ -1412,6 +1425,9 @@ class SpecData():
     def set_gradient(self, grad):
         stops = list((a, b) for a,b in zip(grad.getColorPos(), grad.getColors()))
         self.gradient_stops = stops
+
+    def cyclic_grad(self):
+        return self.gradient_stops[0][1] == self.gradient_stops[-1][1]
 
     def get_mapped_grid(self, color_rng=None):
         grid = np.array(self.grid)
