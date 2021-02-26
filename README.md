@@ -26,3 +26,6 @@ Magnetic Field Analysis Program. Built for IGPP at UCLA.
 * Add the "--update" flag to the "MagPy4" command, i.e. "MagPy4 --update"
 ### Windows
 * Download the latest installer and run it again. This will overwrite the previous installation.
+
+## Resources
+Additional information is available at https://igpp-ucla.github.io/magpy-docs/
