@@ -435,10 +435,14 @@ def tranv_power_spec(times, sig1, sig2, sig3, fftint=None, fftshift=None, bw=3,
     return spec
 
 def _log_formatter(pos, val):
-    return f'$10^{val}$'
+    if int(pos) == float(pos):
+        pos = int(pos)
+    else:
+        pos = np.round(pos, 3)
+    return f'$10^{{{pos}}}$'
 
-def plot_spec_data(spec, figsize=(9, 6), logcolor=True, logy=None, title=None, 
-                cmap=None, rng=None):
+def plot_spec_data(spec, figsize=(9, 6), title=None, logy=None,
+                cmap=None, rng=None, logcolor=None):
     ''' 
         Plots a SpecData object and onto a matplotlib Figure
 
@@ -449,16 +453,12 @@ def plot_spec_data(spec, figsize=(9, 6), logcolor=True, logy=None, title=None,
         figsize : tuple of floats, optional
                   Indicates the fig size (width, height) in inches
                   Default is (9, 6)
-        logcolor : boolean or None, optional
-                    Specifies whether grid values should be mapped to log10
-                    values before mapping to color values;
-                    Default value is None, which will use the spec's value
-        logy : boolean, optional
-               Indicates whether the y-axis should be on a log-scale or not;
-                Default value is None, which will use the spec's value
         title : str, optional
                 Title to use for figure
                 Default is None
+        logy : boolean, optional
+               Indicates whether the y-axis should be on a log-scale or not;
+                Default value is None, which will use the spec's value
         cmap : ColorMap, optional
                matplotlib colormap to use for colorbar and grid mapping
                Default value is None
@@ -466,7 +466,10 @@ def plot_spec_data(spec, figsize=(9, 6), logcolor=True, logy=None, title=None,
               Specifies a range of values to limit color range to;
               Default is None, which will use the full range of values in
                 the data
-
+        logcolor : boolean or None, optional
+                    Specifies whether grid values should be mapped to log10
+                    values before mapping to color values;
+                    Default value is None, which will use the spec's value
         Returns
         ---------
         Figure object
@@ -482,7 +485,7 @@ def plot_spec_data(spec, figsize=(9, 6), logcolor=True, logy=None, title=None,
     fig.set_size_inches(*figsize)
 
     # Get color range and settings
-    logcolor = spec.log_color_scale() if logcolor is not None else logcolor
+    logcolor = spec.log_color_scale() if logcolor is None else logcolor
     if rng is not None:
         vmin, vmax = rng
         if logcolor:
