@@ -65,18 +65,31 @@ def _spec_wrapper(calc_func, times, sigs, fftint, fftshift, bw, detrend, flag, r
 
     # Compute frequency list
     y = SpectraCalc.calc_freq(bw, fftint, res)
-    return x, y, grid
+
+    # Assemble parameters info
+    params = {
+        'fftshift' : fftshift,
+        'fftint' : fftint,
+        'bw' : bw,
+        'detrend' : detrend,
+    }
+
+    return x, y, grid, params
 
 def _spec_data_wrapper(key, *args, **kwargs):
     # Calls _spec_wrapper and sets SpecData values
     # according to keyword's corresponding values in
     # spec_infos
-    x, y, grid = _spec_wrapper(*args, **kwargs)
+    x, y, grid, params = _spec_wrapper(*args, **kwargs)
     key_kwargs = spec_infos[key]
     key_kwargs['y_label'] = 'Frequency (Hz)'
     key_kwargs['log_color'] = (key_kwargs['color_rng'] is None)
     key_kwargs['log_y'] = True
     spec = SpecData(y, x, grid, **key_kwargs)
+
+    # Store parameters
+    spec.params().update(params)
+
     return spec
 
 def _coh_wrapper(sigs, bw, res):

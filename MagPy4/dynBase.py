@@ -1309,11 +1309,18 @@ class SpecData():
 
         # Additional matplotlib gradient information
         self.cmap = 'jet'
+
+        # Parameters used in calculations
+        self.param_vals = {}
     
     def values(self):
+        ''' Returns the x, y, grid values used to plot the spectrogram '''
         y, x = self.get_bins(padded=True)
         grid = self.get_grid()
         return x, y, grid
+
+    def params(self):
+        return self.param_vals
 
     def single_y_bins(self):
         shape = self.y_bins.shape
