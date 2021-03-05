@@ -20,5 +20,3 @@ MAGPY_VERSION = get_version(version_path)
 appname='MagPy'
 appauthor='IGPP_UCLA'
 USERDATALOC=user_data_dir(appname, appauthor)
-
-from . import nongui_interface as alg
