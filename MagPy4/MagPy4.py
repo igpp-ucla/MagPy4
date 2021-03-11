@@ -3381,9 +3381,10 @@ def startMagPy(files=None, display=True):
     fonts = os.listdir(font_dir)
     fonts = [os.path.join(font_dir, f) for f in fonts]
 
-    db = QtGui.QFontDatabase()
-    for font in fonts:
-        db.addApplicationFont(font)
+    if os.name in ['posix', 'nt']:
+        db = QtGui.QFontDatabase()
+        for font in fonts:
+            db.addApplicationFont(font)
 
     # Set default any default application fonts
     if os.name == 'nt':
