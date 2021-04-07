@@ -23,7 +23,7 @@ import functools
 import bisect
 import re
 
-def get_mms_grps(window):
+def get_mms_grps(window, coords_mode=None):
     ''' Get groups of variable names by vector '''
     # Determine coordinate system being used
     coords = 'gsm'
@@ -31,27 +31,24 @@ def get_mms_grps(window):
         for dstr, en in lst:
             if 'gse' in dstr.lower():
                 coords = 'gse'
+    if coords_mode is not None:
+        coords = coords
 
     # Get position and field variables
     btot_dstrs = []
     full_grps = {}
-    for label, name in [('r', 'Pos'), ['b', 'Field']]:
+    lowered_grps = {key.lower():key for key in window.VECGRPS}
+    for start_key, name in [('R', 'Pos'), ('B', 'Field')]:
         grps = {}
         full_grps[name] = grps
-        # Iterate over spacecraft
         for sc_id in [1,2,3,4]:
-            # Iterate over data rate
-            for data_rate in ['brst', 'srvy']:
-                key = f'mms{sc_id}_fgm_{label}_{coords}_{data_rate}_l2'
-                # Check if vector variable name in window's VECGRPS
-                # and save its list of dstrs if found
-                if key in window.VECGRPS:
-                    grp = window.VECGRPS[key]
-                    grps[sc_id] = grp[:3]
-
-                    if len(grp) == 4 and label == 'b':
-                        bt_lbl = f'{grp[3]}'
-                        btot_dstrs.append(bt_lbl)
+            key = f'{start_key}{coords}{sc_id}'.lower()
+            if key in lowered_grps:
+                base_key = lowered_grps[key]
+                grp = window.VECGRPS[base_key]
+                grps[sc_id] = grp
+                if len(grp) == 4:
+                    btot_dstrs.append(grp[-1])
 
     return full_grps, btot_dstrs 
 
