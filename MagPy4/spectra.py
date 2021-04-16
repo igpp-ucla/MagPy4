@@ -313,6 +313,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             # Set axis labels
             plot.getAxis('left').setLabel('Power (nT<sup>2</sup> Hz<sup>-1</sup>)')
             plot.getAxis('bottom').setLabel('Frequency (Hz)')
+            plot.hideAxis('right')
+            plot.hideAxis('top')
             plot.setLogMode(y=True)
 
             # Disable auto range

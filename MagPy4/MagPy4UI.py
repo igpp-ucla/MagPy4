@@ -1315,7 +1315,7 @@ class PlotGrid(GraphicsLayout):
         return len(self.colorPltInfo.keys())
 
     def resizeEvent(self, event):
-        if self.numPlots == 0:
+        if self.numPlots == 0 or event is None:
             super().resizeEvent(event)
             return
 
@@ -1329,6 +1329,7 @@ class PlotGrid(GraphicsLayout):
                 self.layout.setRowStretchFactor(row, self.factors[row-self.startRow])
 
             # Get the plot grid height / width
+
             newSize = event.newSize() if event is not None else self.boundingRect()
             width, height = newSize.width(), newSize.height()
 

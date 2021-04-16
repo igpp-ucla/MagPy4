@@ -443,6 +443,8 @@ class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
 
         if self.selectState:
             self.loadToolsFromState()
+        
+        self.ui.glw.resize(1100-25, 560)
 
     def clearStatusMsg(self):
         return
