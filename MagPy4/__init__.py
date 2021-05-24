@@ -1,5 +1,8 @@
+import os
 from os import path
 from appdirs import user_data_dir
+
+os.environ['QT_MAC_WANTS_LAYER'] = '1'
 
 # Function used to get absolute path to data/image files and directories
 def getRelPath(relPath='', directory=False):
