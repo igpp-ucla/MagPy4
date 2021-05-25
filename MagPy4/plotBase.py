@@ -1485,7 +1485,7 @@ class MagPyPlotDataItem(pg.PlotDataItem):
 
         return self.xDisp, self.yDisp
 
-    def updateItems(self):
+    def updateItems(self, *args, **kwargs):
         x, y = self.getData()
         curveArgs = {}
         for k,v in [('pen','pen'), ('shadowPen','shadowPen'), ('fillLevel','fillLevel'), ('fillBrush', 'brush'), ('antialias', 'antialias'), ('connect', 'connect'), ('stepMode', 'stepMode')]:
