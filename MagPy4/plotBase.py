@@ -1422,7 +1422,7 @@ class MagPyPlotDataItem(pg.PlotDataItem):
                         width = screenSize.width()
 
                     if width != 0.0:
-                        width *= 2 # Prefer smaller downsampling factors
+                        width *= 1.5 # Prefer smaller downsampling factors
                         ds = int(max(1, int((x1-x0) / (width*self.opts['autoDownsampleFactor']))))
 
             if self.opts['clipToView']:

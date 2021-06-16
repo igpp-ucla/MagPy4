@@ -110,6 +110,25 @@ def get_cdf_datas(cdf, labels, time_len, exclude_keys=[], clip=None):
             data = np.array(data, dtype='f4')
             data[np.isnan(data)] = 1.0e32
 
+            # Mask out flags
+            if 'FILLVAL' in attrs:
+                flag = attrs['FILLVAL']
+                if flag < 0:
+                    mask = data <= flag
+                else:
+                    mask = data >= flag
+                data[mask] = 1e32
+
+            if 'VALIDMIN' in attrs:
+                flag = attrs['VALIDMIN']
+                mask = data < flag
+                data[mask] = 1e32
+
+            if 'VALIDMAX' in attrs:
+                flag = attrs['VALIDMAX']
+                mask = data > flag
+                data[mask] = 1e32
+
             # Determine base data label and units
             data_lbl = label if 'FIELDNAM' not in attrs else attrs['FIELDNAM']
             units = '' if 'UNITS' not in attrs else attrs['UNITS']
@@ -129,6 +148,25 @@ def get_cdf_datas(cdf, labels, time_len, exclude_keys=[], clip=None):
             # Make sure data shape is correct
             if len(data) != time_len:
                 continue
+
+            # Mask out flags
+            if 'FILLVAL' in attrs:
+                flag = attrs['FILLVAL']
+                if flag < 0:
+                    mask = data <= flag
+                else:
+                    mask = data >= flag
+                data[mask] = 1e32
+
+            if 'VALIDMIN' in attrs:
+                flag = attrs['VALIDMIN']
+                mask = data < flag
+                data[mask] = 1e32
+
+            if 'VALIDMAX' in attrs:
+                flag = attrs['VALIDMAX']
+                mask = data > flag
+                data[mask] = 1e32
 
             # Get number of columns
             cols = dims[0]

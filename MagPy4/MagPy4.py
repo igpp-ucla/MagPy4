@@ -2049,7 +2049,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         numPts = self.plotData(dstrs, links, heights)
 
         # If a large number of points are plotted, enable downsampling for the plots
-        if numPts > 2500000:
+        if numPts > 50000:
             self.ui.downsampleAction.setChecked(True)
             msg = "Plot data downsampled; disable under 'Options' Menu"
             self.ui.statusBar.showMessage(msg, 10000)
