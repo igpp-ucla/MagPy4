@@ -16,10 +16,14 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
+        
+    - uses: actions/checkout@v2
+      with:
+        path: 'mp2'
 
     - name: Create create requirements.txt
       run: |
-        pip3 install --use-feature=in-tree-build .
+        pip3 install --use-feature=in-tree-build ./mp2
         echo 'y' | pip3 uninstall MagPy4
         pip3 freeze > requirements.txt
 
