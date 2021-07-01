@@ -19,8 +19,8 @@ jobs:
 
     - name: Create create requirements.txt
       run: |
-        pip3 install .
-        pip3 uninstall MagPy4
+        pip3 install --use-feature=in-tree-build .
+        echo 'y' | pip3 uninstall MagPy4
         pip3 freeze > requirements.txt
 
     - name: Install pynsist and additional packages
