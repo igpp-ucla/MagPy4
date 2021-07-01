@@ -52,6 +52,9 @@ jobs:
     - name: Create fflib wheel
       run: pip3 wheel fflib/ -w pip_wheels
 
+    - name: Create cdflib wheel
+      run: pip3 wheel cdflib -w pip_wheels
+
     - name: Create installer.cfg
       run: python config.py
 
