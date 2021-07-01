@@ -23,9 +23,14 @@ test_files/
 tests/
 test.py
 terminal.py
+
 version.py
 build.sh
+pypi_release.sh
+
 token.txt
+github_token.txt
+pypi_token.txt
 
 # User created data
 state.json

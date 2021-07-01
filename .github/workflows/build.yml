@@ -17,21 +17,21 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install pynsist
-      run: pip3 install git+https://github.com/pbravo-igpp/pynsist.git
+    - name: Create create requirements.txt
+      run: |
+        pip3 install .
+        pip3 uninstall MagPy4
+        pip3 freeze > requirements.txt
 
-    - name: Install wheel
-      run: pip3 install wheel
-    
-    - name: Install requests
-      run: pip3 install requests
+    - name: Install pynsist and additional packages
+      run: |
+        pip3 install pynsist
+        pip3 install wheel
+        pip3 install requests
 
     - name: Extract build scripts
       run: move build/* .
       
-    - name: Print python packages
-      run: pip3 list
-    
     - name: Copy over files needed for tkinter
       run: |
         mkdir lib
@@ -52,11 +52,8 @@ jobs:
     - name: Create fflib wheel
       run: pip3 wheel fflib/ -w pip_wheels
 
-    - name: Create cdflib wheel
-      run: pip3 wheel cdflib -w pip_wheels
-
     - name: Create installer.cfg
-      run: python create_config.py
+      run: python config.py
 
     - name: Build executable
       run: pynsist installer.cfg
