@@ -71,12 +71,11 @@ jobs:
     - name: Get version text
       run: python3 -c "fd=open('MagPy4\version.txt', 'r'); version=fd.read(); fd.close(); print (f'version={version}')" >> $GITHUB_ENV
     
-    - name: Get Release
-      if: ${{github.event_name == 'release'}}
+    - name: Get latest release
+      uses: bruceadams/get-release@v1.2.0
       id: get_release
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      uses: bruceadams/get-release@v1.2.0
 
     - name: Upload binaries to release
       uses: svenstaro/upload-release-action@v2
