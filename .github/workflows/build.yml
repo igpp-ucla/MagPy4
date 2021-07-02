@@ -67,12 +67,9 @@ jobs:
 
     - name: Create installer.cfg
       run: python config.py
-
     
     - name: Set up environment variables
       run: python3 get_env.py >> $GITHUB_ENV
-    - name: Test python get_env.py
-      run: python3 get_env.py | type $GITHUB_ENV
 
     - name: Build executable
       run: pynsist installer.cfg
