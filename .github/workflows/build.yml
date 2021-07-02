@@ -71,3 +71,17 @@ jobs:
     - name: Get version text
       run: python3 -c "fd=open('MagPy4\version.txt', 'r'); version=fd.read(); fd.close(); print (f'version={version}')" >> $GITHUB_ENV
     
+    - name: Get latest release
+      uses: bruceadams/get-release@v1.2.0
+      id: get_release
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+
+    - name: Upload binaries to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        tag: steps.get_release.outputs.tag_name
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: .\build\nsis\MagPy4_${{ env.version }}.exe
+        asset_name: MagPy4_installer_${{ env.version }}.exe
+        asset_content_type: application/vnd.microsoft.portable-executable
