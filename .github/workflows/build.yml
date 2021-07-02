@@ -69,7 +69,7 @@ jobs:
       run: pynsist installer.cfg
       
     - name: Get version text
-      run: python3 -c "fd=open('MagPy4\version.txt', 'r'); version=fd.read(); fd.close(); print (f'version={version}')" >> $GITHUB_ENV
+      run: python3 -c "fd=open('MagPy4\\version.txt', 'r'); version=fd.read(); fd.close(); print (f'version={version}')" >> $GITHUB_ENV
     
     - name: Get latest release
       uses: bruceadams/get-release@v1.2.0
