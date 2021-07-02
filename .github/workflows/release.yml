@@ -26,8 +26,8 @@ jobs:
       - name: Get version tag
         run: |
           git fetch --prune --unshallow
-          version_tag=$(git describe --tags)
           version=$(cat MagPy4/version.txt)
+          version_tag=v$version
           name="MagPy4 v$version"
           echo 'vtag='$version_tag >> $GITHUB_ENV
           echo 'vtagname='$name >> $GITHUB_ENV
