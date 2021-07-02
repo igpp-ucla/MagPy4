@@ -12,11 +12,14 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Checkout repository
+
     - name: Set up Python ${{ matrix.python-version}}
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
         
+    - name: Checkout temporary copy of MagPy
     - uses: actions/checkout@v2
       with:
         path: 'mp2'
@@ -64,9 +67,22 @@ jobs:
 
     - name: Build executable
       run: pynsist installer.cfg
+      
+    - name: Get version text
+      run: python3 -c "fd=open('MagPy4\version.txt', 'r'); version=fd.read(); fd.close(); print (f'version={version}')" >> $GITHUB_ENV
+    
+    - name: Get Release
+      if: ${{github.event_name == 'release'}}
+      id: get_release
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      uses: bruceadams/get-release@v1.2.0
 
-    - name: Zip up build
-      run: compress-archive .\build\nsis\* mp.zip
-
-    - name: Create release
-      run: python release.py ${{ secrets.GITHUB_TOKEN }} --zip=mp.zip
+    - name: Upload binaries to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        tag: steps.get_release.outputs.tag_name
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: .\build\nsis\MagPy4_${{ env.version }}.exe
+        asset_name: MagPy4_installer_${{ env.version }}.exe
+        asset_content_type: application/vnd.microsoft.portable-executable
