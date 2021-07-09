@@ -20,11 +20,8 @@ jobs:
       
     - name: Set up environment variables
       run: |
-        vars = (python3 get_env.py)
-        foreach($pair in $vars) {
-          $pair >> $GITHUB_ENV
-        }
-
+        $pairs = (python3 get_env.py)
+        $pairs | ForEach-Object ($pair >> $GITHUB_ENV)
   
     - name: Checkout temporary copy of MagPy
       uses: actions/checkout@v2
