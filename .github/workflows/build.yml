@@ -79,4 +79,3 @@ jobs:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: .\build\nsis\${{ env.installer_path }}
         asset_name: ${{ env.installer_name }}
-        asset_content_type: application/vnd.microsoft.portable-executable
