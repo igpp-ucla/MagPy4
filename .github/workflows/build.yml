@@ -23,7 +23,7 @@ jobs:
 
     - name: Set up environment variables
       run: |
-        python3 get_env.py -OutVariable pairs
+        $pairs = (python3 "get_env.py")
         echo $pairs
         $pairs = $pairs.Split(",")
         echo $pairs
