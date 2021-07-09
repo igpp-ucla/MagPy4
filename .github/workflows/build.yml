@@ -25,6 +25,7 @@ jobs:
       run: |
         $pairs = (python3 get_env.py)
         $pairs | ForEach-Object (echo $pair | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf-8 -Append)
+        $pairs | ForEach-Object (echo $pair)
         echo ${{ env.vtag_name }}
   
     - name: Checkout temporary copy of MagPy
