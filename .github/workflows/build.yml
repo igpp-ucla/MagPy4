@@ -65,11 +65,12 @@ jobs:
       run: python config.py
     
     - name: Set up environment variables
-      run: python3 get_env.py >> $GITHUB_ENV
+      run: |
+        python3 get_env.py >> github_env.txt
+        for /F "tokens=*" %%A in (myfile.txt) do %%A >> $GITHUB_ENV
 
     - name: Build executable
       run: pynsist installer.cfg
-
 
     - name: Upload binaries to release
       uses: svenstaro/upload-release-action@v2
