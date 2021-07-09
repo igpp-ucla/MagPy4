@@ -23,7 +23,7 @@ jobs:
 
     - name: Set up environment variables
       run: |
-        (python3 get_env.py) -outvariable pairs
+        python3 get_env.py -OutVariable pairs
         echo $pairs
         $pairs | ForEach-Object (echo $pair)
         $pairs | ForEach-Object (echo $pair | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf-8 -Append)
