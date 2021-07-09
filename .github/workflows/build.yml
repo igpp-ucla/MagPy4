@@ -21,7 +21,7 @@ jobs:
     - name: Set up environment variables
       run: |
         python3 get_env.py >> github_env.txt
-        for /F "tokens=*" %%A in (github_env.txt) do %%A >> $GITHUB_ENV      
+        for /F "tokens=*" %A in (github_env.txt) do %A >> $GITHUB_ENV      
   
     - name: Checkout temporary copy of MagPy
       uses: actions/checkout@v2
