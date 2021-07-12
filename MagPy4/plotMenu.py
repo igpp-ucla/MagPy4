@@ -71,11 +71,11 @@ class DragPixmap(QtGui.QPixmap):
         # End painter
         p.end()
 
-class DragLabel(QtGui.QLabel):
+class DragLabel(QtWidgets.QLabel):
     ''' Drag handle widget facilitates drag events for the given widget '''
     def __init__(self, widget, *args, **kwargs):
         self.widget = widget
-        QtGui.QLabel.__init__(self, *args, **kwargs)
+        QtWidgets.QLabel.__init__(self, *args, **kwargs)
         self.pixmap = DragPixmap()
         self.setPixmap(self.pixmap)
         self.setCursor(QtCore.Qt.OpenHandCursor)

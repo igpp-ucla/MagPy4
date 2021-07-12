@@ -1291,8 +1291,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def saveFileDialog(self, defSfx='.txt', defFilter='TXT file', appendSfx=True):
         defaultSfx = defSfx
         defFilter = defFilter + '(*'+defSfx+')'
-        QQ = QtGui.QFileDialog(self)
-        QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        QQ = QtWidgets.QFileDialog(self)
+        QQ.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
         path = os.path.expanduser(".")
         QQ.setDirectory(path)
         fullname = QQ.getSaveFileName(parent=None, directory=path, caption='Save Data', filter=defFilter)
@@ -2501,7 +2501,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def enableScrolling(self, val):
         # Minimum plot height set to 3 inches for now
-        min_height = self.minimumPlotHeight * QtGui.QDesktopWidget().logicalDpiY()
+        min_height = self.minimumPlotHeight * QtWidgets.QDesktopWidget().logicalDpiY()
 
         # Set minimum height for gview accordingly
         if val:
@@ -2521,7 +2521,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # the lower bound for the minimum plot height is set correctly
         # otherwise, increasePlotHeight doesn't always affect the view
         winHeight = self.ui.scrollFrame.size().height()
-        viewHeightInches = (winHeight / QtGui.QDesktopWidget().logicalDpiY()) - 2
+        viewHeightInches = (winHeight / QtWidgets.QDesktopWidget().logicalDpiY()) - 2
         minBound = max(viewHeightInches/len(self.plotItems), 1)
 
         # Decreases the minimum plot height used to set gview size
@@ -3367,9 +3367,9 @@ def startMagPy(files=None, display=True):
     app.setApplicationName('MagPy4')
 
     # Set fusion as default style if found
-    keys = QtGui.QStyleFactory().keys()
+    keys = QtWidgets.QStyleFactory().keys()
     if 'Fusion' in keys:
-        app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+        app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
 
     # Create the MagPy4 window
     main = MagPy4Window(app)

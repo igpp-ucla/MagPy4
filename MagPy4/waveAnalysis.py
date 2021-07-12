@@ -522,7 +522,7 @@ class DynamicWaveUI(BaseLayout):
 
         # Create additional widget for adding plots to main window
         self.addBtn = Frame.getAddBtn()
-        if isinstance(window, QtGui.QMainWindow):
+        if isinstance(window, QtWidgets.QMainWindow):
             widgets = [self.addBtn]
         else:
             widgets = []
@@ -737,7 +737,7 @@ class DynamicWaveUI(BaseLayout):
             box.setSingleStep(step)
             box.setPrefix(prefix)
 
-class DynamicWave(QtGui.QFrame, DynamicWaveUI, DynamicAnalysisTool):
+class DynamicWave(QtWidgets.QFrame, DynamicWaveUI, DynamicAnalysisTool):
     def __init__(self, window, parent=None):
         super(DynamicWave, self).__init__(parent)
         DynamicAnalysisTool.__init__(self)

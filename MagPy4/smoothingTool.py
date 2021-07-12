@@ -103,7 +103,7 @@ class SmoothingToolUI(object):
         if self.logWidget:
             self.logWidget.setText(txt)
 
-class SmoothingTool(QtGui.QFrame, SmoothingToolUI):
+class SmoothingTool(QtWidgets.QFrame, SmoothingToolUI):
     def __init__(self, window, editWindow, parent=None):
         super(SmoothingTool, self).__init__(parent)
         self.window = window

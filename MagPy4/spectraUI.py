@@ -17,7 +17,7 @@ class SpectraUI(object):
         grid = SpectraGrid(4)
         grid.setContentsMargins(0,0,0,0)
         labelLayout = GridGraphicsLayout()
-        labelLayout.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Maximum, QtGui.QSizePolicy.Minimum))
+        labelLayout.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Minimum))
         labelLayout.setContentsMargins(11, 3, 11, 5)
         gmain.addItem(grid, 0, 0, 1, 1)
         gmain.addItem(labelLayout, 1, 0, 1, 1)
@@ -61,26 +61,26 @@ class SpectraUI(object):
 
         # bandwidth label and spinbox
         bottomLayout = QtWidgets.QHBoxLayout()
-        bandWidthLabel = QtGui.QLabel("Average Bandwidth:  ")
-        self.bandWidthSpinBox = QtGui.QSpinBox()
+        bandWidthLabel = QtWidgets.QLabel("Average Bandwidth:  ")
+        self.bandWidthSpinBox = QtWidgets.QSpinBox()
         self.bandWidthSpinBox.setSingleStep(2)
         self.bandWidthSpinBox.setMinimum(1)
         self.bandWidthSpinBox.setProperty("value", 3)
         self.bandWidthSpinBox.setFixedWidth(50)
 
         # this will separate multiple traces on the same plot
-        self.separateTracesCheckBox = QtGui.QCheckBox('Separate Traces')
+        self.separateTracesCheckBox = QtWidgets.QCheckBox('Separate Traces')
         self.separateTracesCheckBox.setChecked(False)
-        ###separateTraces = QtGui.QLabel("Separate Traces")
+        ###separateTraces = QtWidgets.QLabel("Separate Traces")
       
-        self.aspectLockedCheckBox = QtGui.QCheckBox('Lock Aspect Ratio')
+        self.aspectLockedCheckBox = QtWidgets.QCheckBox('Lock Aspect Ratio')
         self.aspectLockedCheckBox.setChecked(False)
-        ###aspectLockedLabel = QtGui.QLabel("Lock Aspect Ratio")
+        ###aspectLockedLabel = QtWidgets.QLabel("Lock Aspect Ratio")
 
-        self.logModeCheckBox = QtGui.QCheckBox('Logarithmic scaling')
+        self.logModeCheckBox = QtWidgets.QCheckBox('Logarithmic scaling')
         self.logModeCheckBox.setChecked(True)
 
-        self.unitRatioCheckbox = QtGui.QCheckBox('Unit Ratio')
+        self.unitRatioCheckbox = QtWidgets.QCheckBox('Unit Ratio')
         self.unitRatioCheckbox.setChecked(False)
         self.unitRatioCheckbox.setToolTip('Set X/Y axes to have same scale and be the same size')
 

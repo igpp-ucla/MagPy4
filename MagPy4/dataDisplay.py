@@ -20,29 +20,29 @@ class DataDisplayUI(object):
     def setupUi(self, dataFrame):
         dataFrame.setObjectName(_fromUtf8("dataFrame"))
         dataFrame.resize(1000, 700)
-        dataFrame.setFrameShape(QtGui.QFrame.StyledPanel)
-        dataFrame.setFrameShadow(QtGui.QFrame.Raised)
-        self.verticalLayout = QtGui.QVBoxLayout(dataFrame)
+        dataFrame.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        dataFrame.setFrameShadow(QtWidgets.QFrame.Raised)
+        self.verticalLayout = QtWidgets.QVBoxLayout(dataFrame)
         self.verticalLayout.setObjectName(_fromUtf8("verticalLayout"))
-        self.widget = QtGui.QWidget(dataFrame)
+        self.widget = QtWidgets.QWidget(dataFrame)
         self.widget.setObjectName(_fromUtf8("widget"))
-        self.verticalLayout_2 = QtGui.QVBoxLayout(self.widget)
+        self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.widget)
         self.verticalLayout_2.setObjectName(_fromUtf8("verticalLayout_2"))
 
-        topHL = QtGui.QHBoxLayout()
-        self.timesLabel = QtGui.QLabel(self.widget)
+        topHL = QtWidgets.QHBoxLayout()
+        self.timesLabel = QtWidgets.QLabel(self.widget)
         self.timesLabel.setObjectName(_fromUtf8("timesLabel"))
         self.timesLabel.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         topHL.addWidget(self.timesLabel)
-        fileHL = QtGui.QGridLayout()
-        fileHL.addWidget(QtGui.QLabel('File Name:'), 0, 0, 1, 1)
-        self.fileCombo = QtGui.QComboBox(self.widget)
+        fileHL = QtWidgets.QGridLayout()
+        fileHL.addWidget(QtWidgets.QLabel('File Name:'), 0, 0, 1, 1)
+        self.fileCombo = QtWidgets.QComboBox(self.widget)
         self.fileCombo.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.fileCombo.setSizeAdjustPolicy(QtGui.QComboBox.AdjustToContents)
+        self.fileCombo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
         fileHL.addWidget(self.fileCombo, 0, 1, 1, 1)
-        filePathLayout = QtGui.QHBoxLayout()
-        self.filePathCB = QtGui.QCheckBox('Show Full &Path')
-        self.viewEdtdDta = QtGui.QCheckBox('View Edited Data')
+        filePathLayout = QtWidgets.QHBoxLayout()
+        self.filePathCB = QtWidgets.QCheckBox('Show Full &Path')
+        self.viewEdtdDta = QtWidgets.QCheckBox('View Edited Data')
         self.timeVarLabel = QtWidgets.QLabel('Time Variable:')
         self.timeVarBox = QtWidgets.QComboBox()
         filePathLayout.addWidget(self.filePathCB)
@@ -56,7 +56,7 @@ class DataDisplayUI(object):
         self.verticalLayout_2.addLayout(topHL)
 
         self.verticalLayout.addWidget(self.widget)
-        self.dataTableView = QtGui.QTableView(dataFrame)
+        self.dataTableView = QtWidgets.QTableView(dataFrame)
         self.dataTableView.setAlternatingRowColors(True)
         self.dataTableView.setEnabled(True)
         font = QtGui.QFont()
@@ -73,28 +73,28 @@ class DataDisplayUI(object):
         self.dataTableView.verticalHeader().setHighlightSections(False)
         self.dataTableView.setShowGrid(True)
         self.verticalLayout.addWidget(self.dataTableView)
-        self.widget_2 = QtGui.QWidget(dataFrame)
+        self.widget_2 = QtWidgets.QWidget(dataFrame)
         self.widget_2.setObjectName(_fromUtf8("widget_2"))
-        self.horizontalLayout = QtGui.QHBoxLayout(self.widget_2)
+        self.horizontalLayout = QtWidgets.QHBoxLayout(self.widget_2)
         self.horizontalLayout.setObjectName(_fromUtf8("horizontalLayout"))
-        self.checkBox = QtGui.QCheckBox(self.widget_2)
+        self.checkBox = QtWidgets.QCheckBox(self.widget_2)
         self.checkBox.setObjectName(_fromUtf8("checkBox"))
         self.horizontalLayout.addWidget(self.checkBox)
-        self.moveByTime = QtGui.QPushButton(self.widget_2)
+        self.moveByTime = QtWidgets.QPushButton(self.widget_2)
         self.moveByTime.setObjectName(_fromUtf8("moveByTime"))
         self.horizontalLayout.addWidget(self.moveByTime)
-        self.dateTimeEdit = QtGui.QDateTimeEdit(self.widget_2)
+        self.dateTimeEdit = QtWidgets.QDateTimeEdit(self.widget_2)
         self.dateTimeEdit.setObjectName(_fromUtf8("dateTimeEdit"))
         self.horizontalLayout.addWidget(self.dateTimeEdit)
-        self.moveByRow = QtGui.QPushButton(self.widget_2)
+        self.moveByRow = QtWidgets.QPushButton(self.widget_2)
         self.moveByRow.setObjectName(_fromUtf8("moveByRow"))
         self.horizontalLayout.addWidget(self.moveByRow)
-        self.Row = QtGui.QSpinBox(self.widget_2)
+        self.Row = QtWidgets.QSpinBox(self.widget_2)
         self.Row.setObjectName(_fromUtf8("Row"))
         self.horizontalLayout.addWidget(self.Row)
         self.verticalLayout.addWidget(self.widget_2)
-        self.buttonBox = QtGui.QDialogButtonBox(dataFrame)
-        self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Close)
+        self.buttonBox = QtWidgets.QDialogButtonBox(dataFrame)
+        self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Close)
         self.buttonBox.setObjectName(_fromUtf8("buttonBox"))
         self.verticalLayout.addWidget(self.buttonBox)
 
@@ -162,10 +162,10 @@ class FFTableModel(QtCore.QAbstractTableModel):
             return self.headers[col]
         return "section"
 
-class DataDisplay(QtGui.QFrame, DataDisplayUI):
+class DataDisplay(QtWidgets.QFrame, DataDisplayUI):
     """ file data dialog """
     def __init__(self, window, FIDs, Title=None, parent=None):
-        QtGui.QWidget.__init__(self, parent)
+        QtWidgets.QWidget.__init__(self, parent)
         self.window = window
         self.ui = DataDisplayUI()
         self.ui.setupUi(self)
@@ -183,12 +183,12 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
 
         self.ui.buttonBox.rejected.connect(self.close)
         buttonBox = self.ui.buttonBox
-        saveButton = QtGui.QPushButton("&Save All Data")
+        saveButton = QtWidgets.QPushButton("&Save All Data")
         saveButton.clicked.connect(self.saveData)
-        buttonBox.addButton(saveButton, QtGui.QDialogButtonBox.ApplyRole)
-        saveRangeBtn = QtGui.QPushButton("Save Range of Data")
+        buttonBox.addButton(saveButton, QtWidgets.QDialogButtonBox.ApplyRole)
+        saveRangeBtn = QtWidgets.QPushButton("Save Range of Data")
         saveRangeBtn.clicked.connect(self.selectRange)
-        buttonBox.addButton(saveRangeBtn, QtGui.QDialogButtonBox.ActionRole)
+        buttonBox.addButton(saveRangeBtn, QtWidgets.QDialogButtonBox.ActionRole)
         self.ui.checkBox.clicked.connect(self.toggleTimeDisplay)
         self.ui.moveByTime.clicked.connect(self.moveByTime)
         self.ui.moveByRow.clicked.connect(self.moveByRow)
@@ -464,8 +464,8 @@ class DataDisplay(QtGui.QFrame, DataDisplayUI):
     # saves flatfile data to a plain text file
     def saveData(self, sig, indices=None):
         defaultSfx = '.csv'
-        QQ = QtGui.QFileDialog(self)
-        QQ.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        QQ = QtWidgets.QFileDialog(self)
+        QQ.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
         path = os.path.expanduser(".")
         QQ.setDirectory(path)
         fullname = QQ.getSaveFileName(parent=None, directory=path, caption="Save Data", filter='CSV file (*.csv)')
@@ -528,8 +528,8 @@ class RangeSelectionUI(object):
 
         # Set up time range selection
         timeEditLayout = QtWidgets.QHBoxLayout()
-        self.startTimeEdit = QtGui.QDateTimeEdit()
-        startLbl = QtGui.QLabel('Start time: ')
+        self.startTimeEdit = QtWidgets.QDateTimeEdit()
+        startLbl = QtWidgets.QLabel('Start time: ')
         startRwLbl = QtWidgets.QLabel(' Start row: ')
         self.startRwBox = QtWidgets.QSpinBox()
         for e in [startLbl, self.startTimeEdit, startRwLbl, self.startRwBox]:
@@ -538,8 +538,8 @@ class RangeSelectionUI(object):
 
         # Set up row range selection
         rowLayout = QtWidgets.QHBoxLayout()
-        self.endTimeEdit = QtGui.QDateTimeEdit()
-        endLbl = QtGui.QLabel('End time:   ')
+        self.endTimeEdit = QtWidgets.QDateTimeEdit()
+        endLbl = QtWidgets.QLabel('End time:   ')
         self.endRwBox = QtWidgets.QSpinBox()
         endRwLbl = QtWidgets.QLabel(' End row:   ')
         for e in [endLbl, self.endTimeEdit, endRwLbl, self.endRwBox]:

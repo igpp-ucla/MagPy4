@@ -231,7 +231,7 @@ class simpleCalcUI(object):
         splitter.addWidget(frames[1])
         layout.addWidget(splitter, 0, 0, 1, 1)
 
-class simpleCalc(QtGui.QFrame, simpleCalcUI):
+class simpleCalc(QtWidgets.QFrame, simpleCalcUI):
     def __init__(self, editWindow, window, parent=None):
         super(simpleCalc, self).__init__(parent)
         self.ui = simpleCalcUI()

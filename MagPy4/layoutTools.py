@@ -283,7 +283,7 @@ class TableWidget(QtWidgets.QTableWidget):
 
         if len(data) > 0:
             data = '\n'.join(data)
-            QtGui.QApplication.clipboard().setText(data)
+            QtWidgets.QApplication.clipboard().setText(data)
 
     def removeRow(self, row):
         ''' Removes row without sending out signals

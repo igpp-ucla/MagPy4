@@ -99,11 +99,11 @@ class EditUI(object):
         builderFrame = QtWidgets.QGroupBox('Matrix Builders')
         builderLayout = QtWidgets.QVBoxLayout(builderFrame)
 
-        self.customRotButton = QtGui.QPushButton('Custom Rotation...')
+        self.customRotButton = QtWidgets.QPushButton('Custom Rotation...')
         self.customRotButton.setToolTip('Enter a custom matrix, or build one with simple builders')
         builderLayout.addWidget(self.customRotButton)
 
-        self.minVarButton = QtGui.QPushButton('Minimum Variance...')
+        self.minVarButton = QtWidgets.QPushButton('Minimum Variance...')
         self.minVarButton.setToolTip('Build a rotation matrix by selecting a minimum variance window')
         builderLayout.addWidget(self.minVarButton)
 
@@ -115,27 +115,27 @@ class EditUI(object):
         miscFrame.setSizePolicy(QSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Maximum))
 
         # Filter button setup
-        self.filterButton = QtGui.QPushButton('Filter...')
+        self.filterButton = QtWidgets.QPushButton('Filter...')
         self.filterButton.setToolTip('Apply various filters to smooth data')
 
         # Simple calculations setup
-        self.calcBtn = QtGui.QPushButton('Calculate...')
+        self.calcBtn = QtWidgets.QPushButton('Calculate...')
         self.calcBtn.setToolTip('Perform simple calculations on data')
 
         # Smoothing tool setup
-        self.smoothBtn = QtGui.QPushButton('Deglitch...')
+        self.smoothBtn = QtWidgets.QPushButton('Deglitch...')
         self.smoothBtn.setToolTip('Smooth and shift glitches in Insight data')
 
         btns = [self.filterButton, self.calcBtn]
 
         # Data removal tool setup
-        self.dataFlagBtn = QtGui.QPushButton('Remove Data...')
+        self.dataFlagBtn = QtWidgets.QPushButton('Remove Data...')
         self.dataFlagBtn.setToolTip('Remove bad data or replace with flag values')
         if len(window.FIDs) == 1:
             btns += [self.dataFlagBtn]
 
         # GSM/GSE rotations
-        self.gseGsmBtn = QtGui.QPushButton('GSE/GSM Coordinates...')
+        self.gseGsmBtn = QtWidgets.QPushButton('GSE/GSM Coordinates...')
         btns += [self.gseGsmBtn]
         
         # Add buttons to layout
@@ -195,11 +195,11 @@ class CustomRotUI(object):
         self.layout.addWidget(rFrame)
 
         extraButtons = QtWidgets.QHBoxLayout()
-        self.loadIdentity = QtGui.QPushButton('Load Identity')
+        self.loadIdentity = QtWidgets.QPushButton('Load Identity')
         self.loadIdentity.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.loadZeros = QtGui.QPushButton('Load Zeros')
+        self.loadZeros = QtWidgets.QPushButton('Load Zeros')
         self.loadZeros.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.loadCurrentEditMatrix = QtGui.QPushButton('Load Current Edit Matrix')
+        self.loadCurrentEditMatrix = QtWidgets.QPushButton('Load Current Edit Matrix')
         self.loadCurrentEditMatrix.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
         extraButtons.addWidget(self.loadIdentity)
         extraButtons.addWidget(self.loadZeros)
@@ -215,9 +215,9 @@ class CustomRotUI(object):
 
         axFrame = QtWidgets.QGroupBox('By Axis Angle')
         axLayout = QtWidgets.QHBoxLayout(axFrame)
-        angleLabel = QtGui.QLabel('Angle:')
+        angleLabel = QtWidgets.QLabel('Angle:')
         angleLabel.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        self.axisAngle = QtGui.QDoubleSpinBox()
+        self.axisAngle = QtWidgets.QDoubleSpinBox()
         self.axisAngle.setWrapping(True)
         self.axisAngle.setMaximum(360.0)
         self.axisAngle.setSuffix('\u00B0')
@@ -226,7 +226,7 @@ class CustomRotUI(object):
         axLayout.addWidget(self.axisAngle)
         self.genButtons = []
         for ax in Mth.AXES:
-            gb = QtGui.QRadioButton(f'{ax}')
+            gb = QtWidgets.QRadioButton(f'{ax}')
             gb.setMinimumWidth(5)
             gb.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum))
             axLayout.addWidget(gb)

@@ -411,7 +411,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         return True
 
     def openColorSelect(self):
-        clrDialog = QtWidgets.QColorDialog(self)
+        clrDialog = QtGui.QColorDialog(self)
         clrDialog.show()
         clrDialog.colorSelected.connect(self.setButtonColor)
 
@@ -1042,7 +1042,7 @@ class SpectraGridItem(pg.GraphicsObject):
 
         super().__init__()
 
-        self.setCacheMode(QtGui.QGraphicsItem.NoCache)
+        self.setCacheMode(QtWidgets.QGraphicsItem.NoCache)
     
     def dataBounds(self, ax, frac=1.0, orthoRange=None):
         if ax == 0:

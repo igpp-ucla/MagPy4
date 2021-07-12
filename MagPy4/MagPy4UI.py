@@ -66,7 +66,7 @@ class FileLoadDialog(QtWidgets.QDialog):
         super().__init__(*args, **kwargs)
 
         # Create widgets
-        self.label = QtGui.QLabel()
+        self.label = QtWidgets.QLabel()
         self.widget = None
         self.progbar = QtWidgets.QProgressBar()
         self.cancel_btn = QtWidgets.QPushButton('Cancel')
@@ -1010,10 +1010,10 @@ class MatrixWidget(QtWidgets.QWidget):
             row = []
             for x in range(3):
                 if type == 'labels':
-                    w = QtGui.QLabel('0.0')
+                    w = QtWidgets.QLabel('0.0')
                     w.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
                 elif type == 'lines':
-                    w = QtGui.QLineEdit()
+                    w = QtWidgets.QLineEdit()
                     w.setInputMethodHints(QtCore.Qt.ImhFormattedNumbersOnly) #i dont even know if this does anything
                     w.setText('0.0')
                 else:
@@ -1769,7 +1769,7 @@ class PlotGrid(GraphicsLayout):
 class MainPlotGrid(PlotGrid):
     def __init__(self, window=None, *args, **kwargs):
         PlotGrid.__init__(self, window, *args, **kwargs)
-        self.menu = QtGui.QMenu()
+        self.menu = QtWidgets.QMenu()
         self.menu.addAction(self.window.ui.plotApprAction) # Plot appearance
         self.menu.addAction(self.window.ui.addTickLblsAction) # Additional labels
 

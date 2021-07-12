@@ -78,7 +78,7 @@ class AddTickLabelsUI(object):
         minWidth = wrapFrame.minimumWidth()
         wrapFrame.setMinimumWidth(minWidth + 20)
 
-class AddTickLabels(QtGui.QFrame, AddTickLabelsUI):
+class AddTickLabels(QtWidgets.QFrame, AddTickLabelsUI):
     def __init__(self, window, pltGrd, parent=None):
         super(AddTickLabels, self).__init__(parent)
         self.ui = AddTickLabelsUI()

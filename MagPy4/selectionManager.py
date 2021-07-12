@@ -585,7 +585,7 @@ class TimeRegionSelector(QtWidgets.QFrame):
         self.window.selectTimeRegion(t0, t1)
         self.window.closeTimeSelect()
 
-class TimeFormatWidget(QtGui.QWidget):
+class TimeFormatWidget(QtWidgets.QWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setupLayout()

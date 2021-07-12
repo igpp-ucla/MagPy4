@@ -318,7 +318,7 @@ class GridGraphicsLayout(GraphicsLayout):
                 self.rows[row2][col2] = item
                 self.items[item].append((row2, col2))
 
-        borderRect = QtGui.QGraphicsRectItem()
+        borderRect = QtWidgets.QGraphicsRectItem()
 
         borderRect.setParentItem(self)
         borderRect.setZValue(1e3)
@@ -441,7 +441,7 @@ def cstmImageExport(self, fileName=None, toBytes=False, copy=False):
     painter.end()
     
     if copy:
-        QtGui.QApplication.clipboard().setImage(self.png)
+        QtWidgets.QApplication.clipboard().setImage(self.png)
     elif toBytes:
         return self.png
     else:
@@ -478,7 +478,7 @@ def cstmSVGExport(self, fileName=None, toBytes=False, copy=False):
     elif copy:
         md = QtCore.QMimeData()
         md.setData('image/svg+xml', QtCore.QByteArray(xml.encode('UTF-8')))
-        QtGui.QApplication.clipboard().setMimeData(md)
+        QtWidgets.QApplication.clipboard().setMimeData(md)
     else:
         with open(fileName, 'wb') as fh:
             fh.write(asUnicode(xml).encode('utf-8'))
@@ -489,7 +489,7 @@ def generateSvg(item, options={}):
         node, defs = cstmGenerateItemSvg(item, options=options)
     finally:
         ## reset export mode for all items in the tree
-        if isinstance(item, QtGui.QGraphicsScene):
+        if isinstance(item, QtWidgets.QGraphicsScene):
             items = item.items()
         else:
             items = [item]
@@ -543,11 +543,11 @@ def cstmGenerateItemSvg(item, nodes=None, root=None, options={}):
 
     ## Generate SVG text for just this item (exclude its children; we'll handle them later)
     tr = QtGui.QTransform()
-    if isinstance(item, QtGui.QGraphicsScene):
+    if isinstance(item, QtWidgets.QGraphicsScene):
         xmlStr = "<g>\n</g>\n"
         doc = xml.parseString(xmlStr)
         childs = [i for i in item.items() if i.parentItem() is None]
-    elif item.__class__.paint == QtGui.QGraphicsItem.paint:
+    elif item.__class__.paint == QtWidgets.QGraphicsItem.paint:
         xmlStr = "<g>\n</g>\n"
         doc = xml.parseString(xmlStr)
         childs = item.childItems()
@@ -556,7 +556,7 @@ def cstmGenerateItemSvg(item, nodes=None, root=None, options={}):
         tr = itemTransform(item, item.scene())
         
         ## offset to corner of root item
-        if isinstance(root, QtGui.QGraphicsScene):
+        if isinstance(root, QtWidgets.QGraphicsScene):
             rootPos = QtCore.QPoint(0,0)
         else:
             rootPos = root.scenePos()
@@ -569,7 +569,7 @@ def cstmGenerateItemSvg(item, nodes=None, root=None, options={}):
         buf = QtCore.QBuffer(arr)
         svg = QtSvg.QSvgGenerator()
         svg.setOutputDevice(buf)
-        dpi = QtGui.QDesktopWidget().logicalDpiX()
+        dpi = QtWidgets.QDesktopWidget().logicalDpiX()
         svg.setResolution(dpi)
 
         p = QtGui.QPainter()
@@ -578,8 +578,8 @@ def cstmGenerateItemSvg(item, nodes=None, root=None, options={}):
             item.setExportMode(True, {'painter': p})
         try:
             p.setTransform(tr)
-            opt = QtGui.QStyleOptionGraphicsItem()
-            if item.flags() & QtGui.QGraphicsItem.ItemUsesExtendedStyleOption:
+            opt = QtWidgets.QStyleOptionGraphicsItem()
+            if item.flags() & QtWidgets.QGraphicsItem.ItemUsesExtendedStyleOption:
                 opt.exposedRect = item.boundingRect()
             item.paint(p, opt, None)
         finally:
@@ -621,11 +621,11 @@ def cstmGenerateItemSvg(item, nodes=None, root=None, options={}):
     
     ## If this item clips its children, we need to take care of that.
     childGroup = g1  ## add children directly to this node unless we are clipping
-    if not isinstance(item, QtGui.QGraphicsScene):
+    if not isinstance(item, QtWidgets.QGraphicsScene):
         ## See if this item clips its children
         if int(item.flags() & item.ItemClipsChildrenToShape) > 0:
             ## Generate svg for just the path
-            path = QtGui.QGraphicsPathItem(item.mapToScene(item.shape()))
+            path = QtWidgets.QGraphicsPathItem(item.mapToScene(item.shape()))
             item.scene().addItem(path)
             try:
                 pathNode = cstmGenerateItemSvg(path, root=root, options=options)[0].getElementsByTagName('path')[0]
@@ -793,7 +793,7 @@ def itemTransform(item, root):
             if nextRoot is root or int(nextRoot.flags() & nextRoot.ItemIgnoresTransformations) > 0:
                 break
         
-        if isinstance(nextRoot, QtGui.QGraphicsScene):
+        if isinstance(nextRoot, QtWidgets.QGraphicsScene):
             tr = item.sceneTransform()
         else:
             tr = itemTransform(nextRoot, root) * item.itemTransform(nextRoot)[0]
@@ -916,7 +916,7 @@ class PDFExporter(pg.exporters.Exporter):
             self.pdfFile.setPageOrientation(QtGui.QPageLayout.Landscape)
 
         # Get the device resolution and set resolution for the PDF Writer
-        res = QtGui.QDesktopWidget().logicalDpiX()
+        res = QtWidgets.QDesktopWidget().logicalDpiX()
         self.pdfFile.setResolution(res)
 
         # Get the paintRect for the page in pixels
@@ -995,8 +995,8 @@ class PDFExporter(pg.exporters.Exporter):
     def getScaledRect(self, width, height):
         # Returns a rect w/ width = width in inches, height = height in inches
         # in pixel coordinates
-        hzDpi = QtGui.QDesktopWidget().logicalDpiX()
-        vtDpi = QtGui.QDesktopWidget().logicalDpiY()
+        hzDpi = QtWidgets.QDesktopWidget().logicalDpiX()
+        vtDpi = QtWidgets.QDesktopWidget().logicalDpiY()
 
         return QtCore.QRectF(0, 0, width*hzDpi, height*vtDpi)
 

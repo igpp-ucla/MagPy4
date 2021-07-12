@@ -28,7 +28,7 @@ class HelpWindowUI(object):
         self.layout = QtWidgets.QVBoxLayout(frame)
         self.layout.addWidget(self.view)
 
-        self.printButton = QtGui.QPushButton('&Print...')
+        self.printButton = QtWidgets.QPushButton('&Print...')
         self.printButton.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.printButton.clicked.connect(self.printHelp)
 

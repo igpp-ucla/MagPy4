@@ -386,7 +386,7 @@ class RangeSelectUI(object):
         layout.addLayout(stepLt, 2, 0, 1, 4)
         layout.addWidget(self.applyBtn, 3, 3, 1, 1)
 
-class RangeSelect(QtGui.QFrame, RangeSelectUI):
+class RangeSelect(QtWidgets.QFrame, RangeSelectUI):
     def __init__(self, window, axis, dataRanges, maxMin, minMax, parent=None):
         super(RangeSelect, self).__init__(parent)
         self.window = window
@@ -413,7 +413,7 @@ class RangeSelect(QtGui.QFrame, RangeSelectUI):
         self.window.update()
         self.close()
 
-class PlaneNormal(QtGui.QFrame, PlaneNormalUI, MMSTools):
+class PlaneNormal(QtWidgets.QFrame, PlaneNormalUI, MMSTools):
     def __init__(self, window, parent=None):
         super(PlaneNormal, self).__init__(parent)
 
@@ -842,7 +842,7 @@ class CurlometerUI(BaseLayout):
 
         return wrapFrame, frmLt
 
-class Curlometer(QtGui.QFrame, CurlometerUI, MMSTools):
+class Curlometer(QtWidgets.QFrame, CurlometerUI, MMSTools):
     def __init__(self, window, parent=None):
         super(Curlometer, self).__init__(parent)
         self.window = window
@@ -1244,7 +1244,7 @@ class CurvatureUI(BaseLayout):
 
         return plotFrame
 
-class Curvature(QtGui.QFrame, CurvatureUI, MMSTools):
+class Curvature(QtWidgets.QFrame, CurvatureUI, MMSTools):
     def __init__(self, window, parent=None):
         super(Curvature, self).__init__(parent)
         MMSTools.__init__(self, window)
@@ -1878,7 +1878,7 @@ class MMSColorPltTool():
         if 'Ranges' in state:
             self.setRangeSettings(state['Ranges'])
 
-class ElectronPitchAngle(QtGui.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
+class ElectronPitchAngle(QtWidgets.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
     def __init__(self, window, parent=None):
         super(ElectronPitchAngle, self).__init__(parent)
         MMSColorPltTool.__init__(self)

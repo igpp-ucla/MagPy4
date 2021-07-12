@@ -96,7 +96,7 @@ class TrajectoryUI(BaseLayout):
 
         return frame
 
-class TrajectoryAnalysis(QtGui.QFrame, TrajectoryUI):
+class TrajectoryAnalysis(QtWidgets.QFrame, TrajectoryUI):
     def __init__(self, window, parent=None):
         super().__init__(parent)
         self.window = window

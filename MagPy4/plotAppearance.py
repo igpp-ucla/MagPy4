@@ -137,7 +137,7 @@ class PlotAppearanceUI(BaseLayout):
 
         return scrollArea
 
-class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
+class PlotAppearance(QtWidgets.QFrame, PlotAppearanceUI):
     colorsChanged = QtCore.pyqtSignal(object)
     def __init__(self, window, plotItems, parent=None, mainWindow=False,
         links=None):
@@ -254,7 +254,7 @@ class PlotAppearance(QtGui.QFrame, PlotAppearanceUI):
 
     def openColorSelect(self, btn, lineInfo):
         # Open color selection dialog and connect to line color update function
-        clrDialog = QtWidgets.QColorDialog(self)
+        clrDialog = QtGui.QColorDialog(self)
         clrDialog.show()
         clrDialog.setCurrentColor(lineInfo['pen'].color())
         clrDialog.colorSelected.connect(functools.partial(self.setLineColor, btn, lineInfo))
@@ -822,7 +822,7 @@ class TimeTickWidget(TickWidget):
             fmt = ax.get_label_fmt()
             self.formatBox.setCurrentText(fmt)
 
-class TickIntervals(QtGui.QFrame):
+class TickIntervals(QtWidgets.QFrame):
     def __init__(self, window, plotItems, Frame, parent=None, links=None):
         self.Frame = Frame
         super(TickIntervals, self).__init__(parent)
@@ -1209,7 +1209,7 @@ class RenameLabelsUI(BaseLayout):
 
     def openColorSelect(self, item):
         # Open color selection dialog and connect to color update function
-        clrDialog = QtWidgets.QColorDialog(self.Frame)
+        clrDialog = QtGui.QColorDialog(self.Frame)
         clrDialog.show()
         func = functools.partial(self.setColorForItem, item)
         clrDialog.colorSelected.connect(func)

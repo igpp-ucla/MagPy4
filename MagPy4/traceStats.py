@@ -42,11 +42,11 @@ class TraceStatsUI(object):
         # Setup button in trace stats window to crop main window to selected range
         selectedRngFrame = QtWidgets.QGroupBox()
         selectedRngLayout = QtWidgets.QHBoxLayout(selectedRngFrame)
-        self.dispRangeBtn = QtGui.QPushButton('View Selection')
+        self.dispRangeBtn = QtWidgets.QPushButton('View Selection')
         self.dispRangeBtn.setSizePolicy(QSizePolicy(QSizePolicy.Minimum,
             QSizePolicy.Minimum))
         selectedRngLayout.addWidget(self.dispRangeBtn)
-        self.dtaBtn = QtGui.QPushButton('Data')
+        self.dtaBtn = QtWidgets.QPushButton('Data')
         self.dtaBtn.setSizePolicy(QSizePolicy(QSizePolicy.Minimum,
             QSizePolicy.Minimum))
         selectedRngLayout.addWidget(self.dtaBtn)
@@ -70,7 +70,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
         self.funcStrs = ['Min', 'Max', 'Mean', 'Median','Std Dev']
         self.funcs = [np.min, np.max, np.mean, np.median, np.std]
 
-        self.clip = QtGui.QApplication.clipboard()
+        self.clip = QtWidgets.QApplication.clipboard()
     
     def createRow(self, dta, prec):
         results = stats.describe(dta, axis=0, ddof=0)

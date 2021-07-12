@@ -83,7 +83,7 @@ class DetrendWindowUI(BaseLayout):
             self.btns.append(btn)
         return frame
 
-class DetrendWindow(QtGui.QFrame, DetrendWindowUI, TimeManager):
+class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI, TimeManager):
     # Plots detrended data and mimics some of main window's functionality
     def __init__(self, window, parent=None):
         super(DetrendWindow, self).__init__(parent)

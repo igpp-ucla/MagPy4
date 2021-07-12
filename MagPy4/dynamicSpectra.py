@@ -108,7 +108,7 @@ class DynamicSpectraUI(BaseLayout):
 
         # Create additional widget for adding plots to main window
         self.addBtn = Frame.getAddBtn()
-        if isinstance(window, QtGui.QMainWindow):
+        if isinstance(window, QtWidgets.QMainWindow):
             widgets = [self.addBtn]
         else:
             widgets = []
@@ -188,7 +188,7 @@ class DynamicSpectraUI(BaseLayout):
         self.minLbl.setEnabled(val)
         self.maxLbl.setEnabled(val)
 
-class DynamicSpectra(QtGui.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
+class DynamicSpectra(QtWidgets.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
     def __init__(self, window, parent=None):
         super(DynamicSpectra, self).__init__(parent)
         DynamicAnalysisTool.__init__(self)
@@ -520,7 +520,7 @@ class DynamicCohPhaUI(BaseLayout):
 
         # Create additional widget for adding plots to main window
         self.addBtn = Frame.getAddBtn()
-        if isinstance(window, QtGui.QMainWindow):
+        if isinstance(window, QtWidgets.QMainWindow):
             widgets = [self.addBtn]
         else:
             widgets = []
@@ -641,7 +641,7 @@ class DynamicCohPhaUI(BaseLayout):
         layout.addWidget(self.maskBtn, 0, 7, 1, 1)
         return layout
 
-class DynamicCohPha(QtGui.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
+class DynamicCohPha(QtWidgets.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
     def __init__(self, window, parent=None):
         super(DynamicCohPha, self).__init__(parent)
         DynamicAnalysisTool.__init__(self)

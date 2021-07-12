@@ -217,7 +217,7 @@ class MMS_FormationUI(BaseLayout):
         # Add new layout to outer frame's layout
         self.layout.addWidget(frm, 0, 1, 2, 1)
 
-class MMS_Formation(QtGui.QFrame, MMS_FormationUI, MMSTools):
+class MMS_Formation(QtWidgets.QFrame, MMS_FormationUI, MMSTools):
     def __init__(self, window, parent=None):
         self.window = window
         super().__init__(parent)
