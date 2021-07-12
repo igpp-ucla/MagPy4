@@ -866,7 +866,7 @@ def vbMenu_UpdateState(self):
 
     self.valid = True
 
-pg.ViewBoxMenu.ViewBoxMenu.updateState = vbMenu_UpdateState
+# pg.ViewBoxMenu.ViewBoxMenu.updateState = vbMenu_UpdateState
 
 from pyqtgraph.parametertree import Parameter
 class PDFExporter(pg.exporters.Exporter):
