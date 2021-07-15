@@ -1,11 +1,13 @@
 import numpy as np
-from ..dynBase import SpecData, DynamicAnalysisTool
+from ..dynBase import SpecData, DynamicAnalysisTool, ParallelGrid
 import matplotlib.pyplot as plt
 from ..specAlg import SpectraCalc, WaveCalc
 import matplotlib
+import matplotlib.dates as mpdates
 from datetime import datetime, timedelta
 import functools
 from scipy import signal as scipysig
+from scipy.interpolate import interp2d
 from .constants import spec_infos
 
 def _spec_wrapper(calc_func, times, sigs, fftint, fftshift, bw, detrend, flag, res):
@@ -474,6 +476,28 @@ def create_spec_object(x, y, z):
     z = np.array(z)
     return SpecData(y, x, z)
 
+def _realign_spec(x, y, z):
+    '''
+        Computes a new grid with evenly space time
+        intervals and y bins for plotting w/ imshow()
+    '''
+    # Set up interpolation function
+    xc = np.array(x, dtype=np.float64)
+    f = interp2d(xc, y, z, kind='linear')
+
+    # Compute evenly spaced x and y bins
+    xres = np.median(np.diff(x))
+    xnew = np.arange(x[0], x[-1]+xres/2, xres)
+
+    yres = np.median(np.diff(y))
+    ynew = np.arange(y[0], y[-1]+yres/2, yres)
+
+    # Compute the interpolated grid w/ the new x and y bins
+    xnewc = np.array(xnew, dtype=np.float64)
+    znew = f(xnewc, ynew)
+
+    return xnew, ynew, znew
+
 def plot_spec_data(spec, figsize=(9, 6), title=None, logy=None,
                 cmap=None, rng=None, logcolor=None, smooth=False,
                 fig_ax=None):
@@ -541,12 +565,12 @@ def plot_spec_data(spec, figsize=(9, 6), title=None, logy=None,
     # Extract data values
     x, y, z = spec.values()
 
-    # Adjust points if smoothing
+    # Adjust points to centered values if smoothing
     if smooth:
         x_diff = np.diff(x)
-        y_diff = np.diff(y)
         x = x[:-1] + (x_diff / 2)
-        y = y[:-1] + (y_diff / 2)
+        y = y[1:]
+        extent = [mpdates.date2num(x[0]), mpdates.date2num(x[-2]), y[0], y[-1]]
 
     # Map values to log scale if specified
     if logcolor:
@@ -556,10 +580,27 @@ def plot_spec_data(spec, figsize=(9, 6), title=None, logy=None,
         z = np.log10(z)
         z[mask] = np.nan
 
-    # Plot grid colors
+    # Assign colormap to use
     cmap = spec.cmap if cmap is None else cmap
-    shading = 'flat' if not smooth else 'gouraud'
-    img = ax.pcolormesh(x, y, z, cmap=cmap, vmin=vmin, vmax=vmax, shading=shading)
+
+    # Plot grid colors
+    # Smoothed plots are plotted as images
+    if smooth:
+        # Compute evenly spaced intervals and interpolate grid accoridnly
+        x, y, z = _realign_spec(x, y, z)
+
+        # Plot image
+        img = ax.imshow(z[::-1], extent=extent, aspect='auto', cmap=cmap, 
+            vmin=vmin, vmax=vmax, interpolation='hanning', filternorm=False,
+            norm=None, resample=False)
+        
+        # Set xaxis as a datetime axis
+        ax.xaxis_date()
+    # Non-smoothed plots are plotted using a color mesh
+    else:
+        shading = 'flat'
+        img = ax.pcolormesh(x, y, z, cmap=cmap, vmin=vmin, vmax=vmax, shading=shading, 
+        rasterized=smooth)
 
     # Set up color bar
     bar = fig.colorbar(img, ax=ax, pad=0.03, aspect=17)
@@ -579,6 +620,7 @@ def plot_spec_data(spec, figsize=(9, 6), title=None, logy=None,
     # Show top and right ticks
     ax.tick_params(top=True, right=True)
     ax.tick_params(length=4)
+    ax.margins(x=0)
 
     # Additional adjusments to figure if fig_ax not passed
     if fig_ax is None:
