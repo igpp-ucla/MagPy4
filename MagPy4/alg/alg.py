@@ -9,8 +9,10 @@ import functools
 from scipy import signal as scipysig
 from scipy.interpolate import interp2d
 from .constants import spec_infos
+from multiprocessing import Pool, cpu_count
 
-def _spec_wrapper(calc_func, times, sigs, fftint, fftshift, bw, detrend, flag, res):
+def _spec_wrapper(calc_func, times, sigs, fftint, fftshift, bw, 
+    detrend, flag, res):
     ''' Runs the main spectrogram algorithm, using calc_func
         to calculate the values for each column
     '''
@@ -58,12 +60,20 @@ def _spec_wrapper(calc_func, times, sigs, fftint, fftshift, bw, detrend, flag, r
         axis = 0 if len(sigstack.shape) < 2 else 1
         data_segs = [scipysig.detrend(seg, axis=axis) for seg in data_segs]
 
+    # Determine number of threads and break segments into groups
+    try:
+        nthreads = min(max(cpu_count(), 1), len(data_segs))
+    except:
+        nthreads = 1
+    grps = ParallelGrid.create_groups(data_segs, nthreads)
+
     # Compute grid values
-    grid = []
-    for seg in data_segs:
-        spectra = calc_func(seg, bw, res)
-        grid.append(spectra)
-    grid = np.array(grid).T
+    params = [(i, grps[i], calc_func, [bw, res]) for i in range(len(grps))]
+    pool = Pool(nthreads)
+    result = pool.map(_spec_section_wrapper, params)
+    grid = sorted(result, key=lambda v : v[0])
+    grid = [row for i, row in grid]
+    grid = np.vstack(grid).T
 
     # Compute frequency list
     y = SpectraCalc.calc_freq(bw, fftint, res)
@@ -77,6 +87,11 @@ def _spec_wrapper(calc_func, times, sigs, fftint, fftshift, bw, detrend, flag, r
     }
 
     return x, y, grid, params
+
+def _spec_section_wrapper(args):
+    index, segments, calc_func, func_args = args
+    spectra = [calc_func(seg, *func_args) for seg in segments]
+    return (index, spectra)
 
 def _spec_data_wrapper(key, *args, **kwargs):
     # Calls _spec_wrapper and sets SpecData values
@@ -586,7 +601,7 @@ def plot_spec_data(spec, figsize=(9, 6), title=None, logy=None,
     # Plot grid colors
     # Smoothed plots are plotted as images
     if smooth:
-        # Compute evenly spaced intervals and interpolate grid accoridnly
+        # Compute evenly spaced intervals and interpolate grid accordingly
         x, y, z = _realign_spec(x, y, z)
 
         # Plot image
