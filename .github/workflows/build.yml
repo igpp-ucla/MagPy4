@@ -79,5 +79,5 @@ jobs:
       with:
         tag: v${{ env.version }}
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: .\build\nsis\MagPy_${{ env.installer_path }}.exe
-        asset_name: MagPy_v${{ env.installer_path }}.exe
+        file: .\build\nsis\MagPy_${{ env.version }}.exe
+        asset_name: MagPy_v${{ env.version }}.exe
