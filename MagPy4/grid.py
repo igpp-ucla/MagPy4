@@ -297,6 +297,7 @@ class PlotGrid(Grid, QtGui.QGraphicsGridLayout):
         self.stretch = None
 
         self.wheel_enabled = [True, False]
+        self._changing_signal = False
         self.column_bounds = {0 : (10, 70), 2 : (5, 50), 3 : (0, 10)}
         self.itemBorders = {}
         self.setBorder(self.border)
@@ -326,11 +327,11 @@ class PlotGrid(Grid, QtGui.QGraphicsGridLayout):
             plot.blockSignals(True)
             plot.setXRange(*range, 0.0)
             plot.blockSignals(False)
-        
+
         self._update_axis_grid_range(vb, range)
         parent = self.parentLayoutItem()
         parent.sigXRangeChanged.emit(range)
-        parent.update_y_ranges(xrange=range)
+        parent.update_y_ranges()
 
     def set_x_range(self, t0, t1):
         self.update_grid_range(None, (t0, t1))
@@ -935,7 +936,7 @@ class PlotGridObject(pg.GraphicsWidget):
         if len(plots) == 0:
             return (0, 0)
         ref_plot = plots[0]
-        return ref_plot.getAxis('bottom').range
+        return ref_plot.getViewBox().viewRange()[0]
 
     def list_axis_grids(self):
         ''' Returns a dictionary of additional axes labels in each
@@ -948,13 +949,13 @@ class PlotGridObject(pg.GraphicsWidget):
             label_dict[key] = labels
         return label_dict
 
-    def update_y_ranges(self, xrange=None):
+    def update_y_ranges(self):
         plots = self.get_plots()
         ranges = []
 
         # Get data bounds for each plot in current (or given) x range
         if self.scale_to_range:
-            xrange = self._get_x_range() if xrange is None else xrange
+            xrange = self._get_x_range()
         else:
             xrange = None
 
