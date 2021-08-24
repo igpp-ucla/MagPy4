@@ -291,7 +291,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
     def setupSpectraPlots(self, plotInfo, split_trace=False):
         ''' Initialize spectra plots '''
-        plot_dstrs, self.pens = self.splitTraceInfo(plotInfo, split_trace)
+        plot_dstrs, spec_pens = self.splitTraceInfo(plotInfo, split_trace)
+        self.pens['spectra'] = spec_pens['spectra']
 
         # Iterate over each plot variable list to create a plot item for it
         plots = []
@@ -630,7 +631,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         for plot in self.plots['spectra']:
             self.ui.grid.addItem(plot)
         self.ui.grid.enableTracking(True, viewWidget=self.ui.gview)
-        
         self.toggleLogScale(self.ui.logModeCheckBox.isChecked())
         self.update()
 
