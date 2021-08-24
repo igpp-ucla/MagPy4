@@ -342,8 +342,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         start, stop = trange
         start += self.minTime
         stop += self.minTime
-        left, right = min(start, stop), max(start, stop)
-        start, stop = self.chkBoundaries(left, right, self.tE - self.tO)
         self._xrange_updated((start, stop))
     
     def _xrange_updated(self, trange):
