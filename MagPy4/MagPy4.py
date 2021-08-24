@@ -2783,7 +2783,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     
     def vecDict(self):
         vec_dict = {}
-        for grp in self.findVecGroups():
+        grps = self.findPlottedVecGroups()
+        for grp in grps:
             vec_dict[grp[0]] = grp
         return vec_dict
 
