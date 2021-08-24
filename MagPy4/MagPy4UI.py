@@ -601,13 +601,6 @@ class MagPy4UI(object):
         self.scrollPlusShrtct = QtWidgets.QShortcut('Ctrl+Shift+=', window)
         self.scrollMinusShrtct = QtWidgets.QShortcut('Ctrl+Shift+-', window)
 
-        # Enable/disable tracker
-        self.toggleTrackerAction = QtWidgets.QAction(window)
-        self.toggleTrackerAction.setText('Enable Tracker Line')
-        self.toggleTrackerAction.setStatusTip('Shows line that follows mouse in plot window & updates timestamp in status bar')
-        self.toggleTrackerAction.setCheckable(True)
-        self.optionsMenu.addAction(self.toggleTrackerAction)
-
         # Shift percentage box setup
         self.shftPrcntBox = QtWidgets.QSpinBox()
         self.shftPrcntBox.setButtonSymbols(QtWidgets.QAbstractSpinBox.PlusMinus)        
@@ -624,10 +617,10 @@ class MagPy4UI(object):
         margins.setBottom(5)
         self.statusBar.layout().setContentsMargins(margins)
 
-        self.timeStatus = QtWidgets.QLabel()
-        self.timeStatus.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        # self.timeStatus.setMinimumWidth(220)
-        self.statusBar.addPermanentWidget(self.timeStatus)
+        self.fileStatus = FileLabel([])
+        self.fileStatus.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
+        self.fileStatus.setMinimumWidth(500)
+        self.statusBar.addWidget(self.fileStatus, 1)
 
         sliderLayout.addWidget(self.timeEdit.start, 0, 0, 1, 1)
         self.scrollSelect = ScrollSelector()
@@ -1100,25 +1093,34 @@ class PyQtUtils:
             # this will activate the window
             window.activateWindow()
 
-class FileLabel(pg.LabelItem):
+class FileLabel(QtGui.QLabel):
     '''
         Self-adjusting label for lists of files opened
     '''
     def __init__(self, labels, *args, **kwargs):
+        self.labels = None
+        super().__init__('')
+        self.set_labels(labels)
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
+        self.setAlignment(QtCore.Qt.AlignRight)
+
+    def set_labels(self, labels):
         self.labels = labels
         font = QtGui.QFont()
         metrics = QtGui.QFontMetrics(font)
         self.widths = [metrics.boundingRect(lbl).width() for lbl in labels]
-        pg.LabelItem.__init__(self, '', *args, **kwargs)
-        self.setAttr('justify', 'right')
-        self.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum))
+        self.setToolTip('\n'.join(self.labels))
+        self.resizeEvent(None)
 
     def resizeEvent(self, ev):
-        if ev is None:
+        if self.labels is None or len(self.labels) == 0:
             return
 
         # Get the width of the new bounding rect
-        newSize = ev.newSize()
+        if ev is None:
+            newSize = self.geometry()
+        else:
+            newSize = ev.size()
         windowWidth = newSize.width() * 0.75
 
         # Set text based on sub-label widths and bounding rect width
@@ -1148,8 +1150,6 @@ class FileLabel(pg.LabelItem):
 
             self.setText(txt)
 
-        # Default resize event
-        pg.LabelItem.resizeEvent(self, ev)
 class AdjustedLabel(pg.LabelItem):
     def getFont(self):
         return self.item.font()

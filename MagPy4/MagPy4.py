@@ -124,9 +124,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.scrollPlusShrtct.activated.connect(self.increasePlotHeight)
         self.ui.scrollMinusShrtct.activated.connect(self.decreasePlotHeight)
 
-        # Toggle tracker shortcuts/actions
-        self.ui.toggleTrackerAction.triggered.connect(self.toggleTracker)
-
         # Main menu action connections
         self.ui.actionOpenFile.triggered.connect(self.openFileDialog)
         self.ui.actionAddFile.triggered.connect(self.addFileDialog)
@@ -157,7 +154,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.bridgeDataGaps.toggled.connect(self.replotDataCallback)
         self.ui.drawPoints.toggled.connect(self.replotDataCallback)
         self.ui.downsampleAction.toggled.connect(self.enableDownsampling)
-        self.ui.showFileLbl.toggled.connect(self.showFileLabel)
         self.ui.enableScrollingAction.toggled.connect(self.enableScrolling)
 
         # Disable the Tools and Options menus. They'll be enabled after the user opens a file.
@@ -178,7 +174,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.timeSelect = None
         self.asc = None
         self.batchSelect = None
-        self.fileNameLabel = None
         self.minimumPlotHeight = 3 # Inches
         self.tracker = None
 
@@ -582,10 +577,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def clearStatusMsg(self):
         self.ui.statusBar.clearMessage()
-
-    def showFileLabel(self, val):
-        if self.fileNameLabel:
-            self.fileNameLabel.setVisible(val)
 
     def enableToolsAndOptionsMenus(self, b):
         """Enable or disable the Tools and Options menus.
@@ -1568,7 +1559,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeAllSubWindows()
         self.initVariables()
         self.plotDataDefault()
+        self.updateFileLabel()
         self.workspace = None
+    
+    def updateFileLabel(self):
+        files = [os.path.basename(id.name) for id in self.FIDs]
+        self.ui.fileStatus.set_labels(files)
     
     def loadFileData(self, read_result):
         if read_result is None:
@@ -2060,7 +2056,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         selectState = self.getSelectState()
         self.closeFixSelection()
         self.closeBatchSelect()
-        self.disableTracker()
 
         # Clear any selected tools
         self.closeTraceStats()
@@ -2092,15 +2087,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Add label for file name at top right
         fileList = [os.path.basename(FID.name) for FID in self.FIDs]
         fileNameLabel = FileLabel(fileList)
-        self.fileNameLabel = fileNameLabel
-        self.ui.glw.addItem(fileNameLabel, 0, 0, 1, 1)
-        self.showFileLabel(self.ui.showFileLbl.isChecked())
 
         # Create new plot grid
         grid_object = PlotGridObject(self)
         self.pltGrd = grid_object.get_layout()
         self.pltGrdObject = grid_object
-        self.ui.glw.addItem(grid_object, 1, 0, 1, 1)
+        self.ui.glw.addItem(grid_object, 0, 0, 1, 1)
 
         # Connect plot to time range UI
         grid_object.sigXRangeChanged.connect(self._xrange_updated)
@@ -2335,27 +2327,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             dstrs = [self.getLabel(dstr, en) for dstr, en in row]
             if label is not None:
                 label.set_labels(dstrs)
-
-    def enableTracker(self):
-        ''' Creates a new tracker line item '''
-        if not self.hoverTracker:
-            self.hoverTracker = TrackerRegion(self, self.plotItems, mode='Single', color='#383838')
-            self.hoverTracker.hideLabel()
-
-    def disableTracker(self):
-        ''' Removes any tracker lines present in plot grid '''
-        if self.hoverTracker:
-            self.hoverTracker.setAllRegionsVisible(False)
-            self.hoverTracker.deleteLater()
-            self.hoverTracker = None
-            self.ui.timeStatus.setText('')
-
-    def toggleTracker(self):
-        ''' Toggles tracker line '''
-        if self.hoverTracker:
-            self.disableTracker()
-        else:
-            self.enableTracker()
 
     def enableScrolling(self, val):
         # Minimum plot height set to 3 inches for now
@@ -2880,7 +2851,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             tool.leftClick(x, vb, ctrlPressed)
 
     def gridRightClick(self, vb):
-        # Apply right click to current tool
+        # Apply right click to current toolg
         tool = self.getCurrentTool(setTrace=False) # Don't set trace as select
         if tool:
             tool.rightClick(vb)
@@ -2889,45 +2860,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # can determine whether to apply the default right click action instead
         res = True if tool is not None else False
         return res
-
-    def hoverStart(self, pos):
-        ''' Action when mouse hover started '''
-        # Ignore if hover tracker object hasn't been created
-        if not self.hoverTracker:
-            return
-
-        # Set hover tracker visible
-        for i in range(0, len(self.plotItems)):
-            self.hoverTracker.setVisible(True, i)
-
-        # Set tracker position
-        self.gridHover(pos)
-
-    def gridHover(self, pos):
-        ''' Action as mouse hover continues '''
-        # Ignore if hover tracker object hasn't been created
-        if not self.hoverTracker:
-            return
-
-        # Adjust tick position by offset and set tracker position
-        x = pos.x() + self.tickOffset
-        self.hoverTracker.setRegion((x-self.tickOffset, x-self.tickOffset))
-
-        # Update timestamp in statusbar
-        ts = ff_time.tick_to_ts(x, self.epoch)
-        self.ui.timeStatus.setText(ts+' ')
-
-    def hoverEnd(self):
-        ''' Action when hover ends '''
-        if not self.hoverTracker:
-            return
-
-        # Set hover tracker hidden
-        for i in range(0, len(self.plotItems)):
-            self.hoverTracker.setVisible(False, i)
-
-        # Clear timestamp in statusbar
-        self.ui.timeStatus.setText('')
 
 def read_files(read_funcs, files, progress_func, cancel_func, *args, **kwargs):
     ''' Function used to facilitate reading of files asynchronously '''
