@@ -393,6 +393,7 @@ def load_cdf(path, exclude_expr=[], label_func=None, clip_range=None):
         cols = [epoch_lbl] + data_labels
         table_data = FileData(table, cols, 
             units=['Sec'] + data_units, epoch=epoch, specs=specs)
+        table_data.vec_grps = vec_grps
         tables[epoch_lbl] = table_data
 
 

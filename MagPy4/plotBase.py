@@ -8,6 +8,68 @@ from dateutil import rrule
 from dateutil.rrule import rrule
 from dateutil.rrule import rrule, SECONDLY, MINUTELY, HOURLY, DAILY, MONTHLY, YEARLY
 
+class StackedAxisLabel(pg.GraphicsLayout):
+    def __init__(self, lbls, angle=90, *args, **kwargs):
+        self.lblTxt = lbls
+        self.sublabels = []
+        self.angle = angle
+        pg.GraphicsLayout.__init__(self, *args, **kwargs)
+
+        orientation = QtCore.Qt.Vertical if angle in [0, 270] else QtCore.Qt.Horizontal
+        self.orientation = orientation
+
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.setupLabels(lbls)
+
+    def setHtml(self, *args):
+        return
+
+    def getLabelText(self):
+        return self.lblTxt
+
+    def setupLabels(self, lbls):
+        self.lblTxt = lbls
+        self.setupSublayout()
+        if self.angle != 0:
+            lbls = lbls[::-1]
+        self.sublayout.addStretch()
+        for i in range(0, len(lbls)):
+            item = pg.LabelItem(lbls[i], angle=self.angle)
+            self.sublabels.append(item)
+            self.sublayout.addItem(item)
+        self.sublayout.addStretch()
+
+    def setupSublayout(self):
+        if self.layout.rowCount() > 0 and self.layout.columnCount() > 0:
+            layout_item = self.layout.itemAt(0, 0)
+            if layout_item is not None:
+                for item in self.sublabels:
+                    self.sublayout.removeItem(item)
+                    item.deleteLater()
+                self.layout.removeItem(layout_item)
+
+        self.sublabels = []
+        self.sublayout = QtGui.QGraphicsLinearLayout()
+        self.sublayout.setOrientation(self.orientation)
+        self.sublayout.setSpacing(0)
+        self.layout.addItem(self.sublayout, 0, 0, 1, 1)
+
+    def getFont(self):
+        # Returns the font w/ the correct point size set
+        if self.sublabels == []:
+            return QtGui.QFont()
+
+        font = self.sublabels[0].item.font()
+        if 'size' in self.sublabels[0].opts:
+            fontSize = self.sublabels[0].opts['size'][:-2]
+            fontSize = float(fontSize)
+        else:
+            fontSize = QtGui.QFont().pointSize()
+
+        fontSize = min(fontSize, 12)
+        font.setPointSize(fontSize)
+        return font
+
 class GraphicsView(pg.GraphicsView):
     def __init__(self, *args, **kwargs):
         self.shortcut_dict = {}
@@ -159,12 +221,88 @@ class GraphicsLayout(pg.GraphicsLayout):
         # Show timed message indicating tracking status
         if msg is not None:
             self.message.showMessage(msg)
+
+class MagPyViewBox(pg.ViewBox):
+    def __init__(self, *args, **kwargs):
+        self.scroll_enabled = [True, True]
+        super().__init__(*args, **kwargs)
+        self.window = None
     
+    def enable_yscroll(self, val=True):
+        self.scroll_enabled[1] = val
+    
+    def set_window(self, w):
+        self.window = w
+
+    def wheelEvent(self, ev, axis=None):
+        self.setMouseEnabled(*self.scroll_enabled)
+        result = super().wheelEvent(ev, axis=axis)
+        self.setMouseEnabled(*self.mouseEnabled())
+        return result
+
+    def mouseClickEvent(self, ev):
+        if self.window is None:
+            super().mouseClickEvent(ev)
+            return
+
+        if ev.button() == QtCore.Qt.LeftButton:
+            self.onLeftClick(ev)
+
+        else: # asume right click i guess, not sure about middle mouse button click
+            self.onRightClick(ev)
+
+        ev.accept()
+
+    def onLeftClick(self, ev):
+        # map the mouse click to data coordinates
+        mc = self.mapToView(ev.pos())
+        x = mc.x()
+        y = mc.y()
+
+        pos = ev.scenePos()
+        rect = self.sceneBoundingRect()
+
+        if not rect.contains(pos):
+            return
+
+        # Apply left click to plot grid; Window manages behavior
+        ctrlPressed = (ev.modifiers() == QtCore.Qt.ControlModifier)
+        self.window.gridLeftClick(x, self, ctrlPressed)
+
+    def onRightClick(self, ev):
+        # Attempt to apply right click to plot grid
+        res = self.window.gridRightClick(self)
+        if not res: # No selections currently active, use default right click method
+            pg.ViewBox.mouseClickEvent(self, ev)
+
+    def mouseDragEvent(self, ev, axis=None):
+        if self.window is None:
+            pg.ViewBox.mouseDragEvent(self, ev)
+            return
+
+        if ev.isFinish(): # on release
+            if ev.button() == QtCore.Qt.LeftButton:
+                self.onLeftClick(ev)
+            elif ev.button() == QtCore.Qt.RightButton:
+                self.onRightClick(ev)
+        ev.accept()
+    
+    def get_plot(self):
+        parent = self.parentLayoutItem()
+        if parent is not None:
+            parent = parent.parentLayoutItem()
+        return parent
+
+    def hoverEvent(self, ev):
+        # Update hover tracker position if present
+        self.get_plot().vbHoverEvent(ev)
+
 class MagPyPlotItem(pg.PlotItem):
     def __init__(self, epoch=None, name=None, selectable=False, *args, **kwargs):
         # Initialize axis items
         axisKws = ['left', 'top', 'right', 'bottom']
         axisItems = {kw:MagPyAxisItem(kw) for kw in axisKws}
+        vb = MagPyViewBox()
 
         # If epoch is passed, set bottom/top axes to Date Axes
         self.epoch = epoch
@@ -186,14 +324,16 @@ class MagPyPlotItem(pg.PlotItem):
         # Hover tracking disabled by default
         self.hoverTracker = None
 
-        super().__init__(axisItems=axisItems, *args, **kwargs)
+        super().__init__(viewBox=vb, axisItems=axisItems, *args, **kwargs)
+        for ax in axisItems:
+            axisItems[ax].setZValue(1000)
         self.hideButtons()
 
     def isSpecialPlot(self):
         '''
             Returns whether this is regular line plot or not
         '''
-        return False
+        return (len(self.get_specs()) > 0)
     
     def setName(self, name):
         ''' Sets internal name/label for this plot '''
@@ -230,6 +370,76 @@ class MagPyPlotItem(pg.PlotItem):
         
         return item
     
+    def clear_data(self):
+        ''' Clears all data items (traces) from plot '''
+        pdis = self.listDataItems()
+        for pdi in pdis:
+            self.removeItem(pdi)
+    
+    def get_specs(self):
+        from .dynBase import SpectraGridItem
+        grids = []
+        for item in self.items:
+            if isinstance(item, SpectraGridItem):
+                grids.append(item)
+        return grids
+
+    def clear_specs(self):
+        specs = self.get_specs()
+        for spec in specs:
+            self.removeItem(spec)
+
+    def load_color_plot(self, specData, winFrame=None, showLabel=True):
+        ''' Loads spectrogram from specData object '''
+        from .dynBase import SpectraGridItem
+        from .dynBase import SpectraLegend
+        # Extract grid info
+        y, x = specData.get_bins()
+
+        # Set log y scaling
+        self.logYScale = specData.log_y_scale()
+        self.setLogMode(x=False, y=self.logYScale)
+        x_range, y_range = specData.get_ranges()
+        ys, ye = y_range
+        if self.logYScale:
+            ys = np.log10(ys)
+            ye = np.log10(ye)
+        self.setYRange(ys, ye, 0.0)
+
+        # Set labels
+        left_label, grad_label = specData.get_labels()
+        self.getAxis('left').setLabel(left_label)
+
+        # Get spectra grid item
+        mapped_grid = specData.get_mapped_grid()
+        get_color = lambda r : QtGui.QColor(*r)
+        n = len(mapped_grid)
+        colorGrid = [list(map(get_color, mapped_grid[i])) for i in range(0, n)]
+        grid_obj = SpectraGridItem(y, colorGrid, x)
+        grid_obj.spec = specData
+        grid_obj.setZValue(-1000)
+        self.addItem(grid_obj)
+
+        # Create gradient legend
+        legend = SpectraLegend(offsets=(0, 0))
+        legend.setPlot(self)
+        legend.enableMenu(True)
+        legend.setRange(specData.get_gradient(), specData.get_value_range())
+
+        # Create gradient legend label
+        lgnd_lbl = StackedAxisLabel(grad_label)
+        legend.setLabel(lgnd_lbl)
+        legend.setLogMode(specData.log_color_scale())
+        return (grid_obj, legend, lgnd_lbl)
+
+    def getSpecData(self):
+        datas = []
+        specs = self.get_specs()
+        for spec in specs:
+            if spec.spec is not None:
+                datas.append(spec.spec)
+        return datas
+
     def getLineInfo(self):
         '''
             Extract dictionaries containing info about
@@ -240,7 +450,7 @@ class MagPyPlotItem(pg.PlotItem):
 
         # Save info for each plot data item
         infos = []
-        pdis = self.listDataItems()
+        pdis = self.listAllDataItems()
         for pdi in pdis:
             info = {}
             info['pen'] = pdi.opts['pen']
@@ -250,6 +460,10 @@ class MagPyPlotItem(pg.PlotItem):
         
         return infos
     
+    def listAllDataItems(self):
+        grids = self.get_specs()
+        return grids + self.listDataItems()
+
     def setVarInfo(self, info):
         self.varInfo = info
     
@@ -277,23 +491,17 @@ class MagPyPlotItem(pg.PlotItem):
             in plot and returns the min/max upper bounds
             for the plot if valid
         '''
-        pdis = self.listDataItems()
-        plot_min = None
-        plot_max = None
+        pdis = self.listAllDataItems()
+        lower, upper = None, None
         for pdi in pdis:
-            lower, upper = pdi.dataBounds(ax, frac, orthoRange)
-            if lower is not None and not np.isnan(lower):
-                if plot_min is None:
-                    plot_min = lower
-                else:
-                    plot_min = min(lower, plot_min)
+            bounds = pdi.dataBounds(ax=ax, frac=frac, orthoRange=orthoRange)
+            if lower is None:
+                lower, upper = bounds
+            else:
+                lower = min(lower, bounds[0])
+                upper = max(upper, bounds[-1])
 
-                if plot_max is None:
-                    plot_max = upper
-                else:
-                    plot_max = max(upper, plot_max)
-
-        return (plot_min, plot_max)
+        return (lower, upper)
     
     def enableTracking(self, val=True, format_funcs={}):
         if self.hoverTracker:
@@ -315,7 +523,7 @@ class MagPyPlotItem(pg.PlotItem):
         if self.hoverTracker:
             self.hoverTracker.toggle()
     
-    def hoverEvent(self, ev):
+    def vbHoverEvent(self, ev):
         if self.hoverTracker:
             if ev.isEnter():
                 self.hoverTracker.setVisible(True)
@@ -324,8 +532,7 @@ class MagPyPlotItem(pg.PlotItem):
                 return
 
             pos = ev.pos()
-            tr = self.viewTransform()
-            pos = tr.map(pos)
+            pos = self.getViewBox().mapToView(pos)
             self.hoverTracker.update_position(pos)
 
     def clear(self, *args ,**kwargs):
@@ -333,28 +540,131 @@ class MagPyPlotItem(pg.PlotItem):
         if self.hoverTracker:
             self.enableTracking(True)
 
-class MagPyColorPlot(MagPyPlotItem):
-    def __init__(self, *args, **kwargs):
-        MagPyPlotItem.__init__(self, *args, **kwargs)
-        self.actionLink = None
-
-    def isSpecialPlot(self):
-        return True
-
-    def getContextMenus(self, event):
-        if self.actionLink:
-            self.stateGroup.autoAdd(self.actionLink)
-            return [self.ctrlMenu, self.actionLink]
+class Spacer(pg.GraphicsWidget):
+    def __init__(self, mode='horizontal'):
+        super().__init__()
+        expanding = QtWidgets.QSizePolicy.GrowFlag
+        maximum = QtWidgets.QSizePolicy.ShrinkFlag
+        if mode == 'horizontal':
+            left = expanding | maximum
+            right = QtWidgets.QSizePolicy.Maximum
         else:
-            return self.ctrlMenu
+            left = QtWidgets.QSizePolicy.Maximum
+            right = expanding | maximum
+            self.setMinimumHeight(0)
+        
+        self.setSizePolicy(QtWidgets.QSizePolicy(left, right))
+    
+class StackedLabel(pg.GraphicsLayout):
+    def __init__(self, labels, colors=[], units=[], size=None):
+        self.sublayout = None
+        super().__init__()
+        # self.setBorder(pg.mkPen((0, 0, 255)))
+
+        # Set up sublayout
+        self.sublayout = pg.GraphicsLayout()
+        sp = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
+        self.sublayout.setSizePolicy(sp)
+        self.sublayout.setSpacing(-10)
+        self.sublayout.setContentsMargins(0, 0, 0, 0)
+        spacer1 = Spacer('vertical')
+        spacer2 = Spacer('vertical')
+        for spacer in [spacer1, spacer2]:
+            spacer.setMinimumHeight(0)
+
+        self.addItem(spacer1, 0, 0, 1, 1)
+        self.addItem(self.sublayout, 1, 0, 1, 1)
+        self.addItem(spacer2, 2, 0, 1, 1)
+
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setSpacing(0)
+
+        # Add label_items
+        self.label_items = []
+        self.units = []
+        self.labels = []
+        self.colors = []
+        self.text_size = str(QtGui.QFont().pointSize()) if size is None else str(size) + 'pt'
+        self.set_sublabels(labels, colors, units)
+
+    def add_sublabel(self, label, color='#FFFFFF', unit=None, readjust=True):
+        self.labels.append(label)
+        self.colors.append(color)
+        self.units.append(unit if unit is not None else '')
+        self.readjust_labels()
+
+    def clear_items(self):
+        self.sublayout.clear()
+        self.label_items = []
+        self.units = []
+        self.labels = []
+        self.colors = []
+    
+    def set_sublabels(self, labels, colors=[], units=[]):
+        self.clear_items()
+        self.labels = labels
+        self.label_items = []
+        self.units = []
+        self.colors = []
+        for i in range(len(labels)):
+            if i >= len(colors):
+                color = '#FFFFFF'
+            else:
+                color = colors[i]
+            if i >= len(units):
+                unit = ''
+            else:
+                unit = units[i]
+
+            label = pg.LabelItem(labels[i], color=color, size=self.text_size)
+            label.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum))
+            label.setMinimumWidth(2000)
+            self.sublayout.addItem(label, i, 0)
+
+            self.units.append(unit)
+            self.colors.append(color)
+            self.label_items.append(label)
+        self._add_units()
+
+    def readjust_labels(self):
+        self.set_sublabels(self.labels, self.colors, self.units)
+    
+    def _add_units(self):
+        unit_set = list(set(self.units))
+        if len(unit_set) == 1 and unit_set[0] != '':
+            unit = unit_set[0]
+            unit_label = pg.LabelItem(f'[{unit}]', color='#808080', size=self.text_size)
+            unit_label.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum))
+            self.sublayout.addItem(unit_label, len(self.labels), 0)
+    
+    def set_colors(self, colors):
+        self.colors = colors
+        self.readjust_labels()
+    
+    def set_labels(self, labels):
+        self.labels = labels
+        self.readjust_labels()
+    
+    def get_colors(self):
+        return self.colors
+
+    def get_labels(self):
+        return self.labels
+    
+    def set_font_size(self, pt_size, replot=True):
+        self.text_size = str(pt_size)+'pt'
+        if replot:
+            self.readjust_labels()
 
 class MagPyAxisItem(pg.AxisItem):
+    ticksChanged = QtCore.pyqtSignal(object)
     textSizeChanged = QtCore.pyqtSignal(object)
     axisClicked = QtCore.pyqtSignal()
     def __init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True):
         self.tickDiff = None
         self.minWidthSet = False
         self.levels = None
+        self.ignore_bounds = False
         pg.AxisItem.__init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True)
 
     def getTickSpacing(self):
@@ -551,7 +861,7 @@ class MagPyAxisItem(pg.AxisItem):
                 for val, strn in level:
                     values.append(val)
                     strings.append(strn)
-
+        
         ## determine mapping between tick values and local coordinates
         dif = self.range[1] - self.range[0]
         if dif == 0:
@@ -636,7 +946,7 @@ class MagPyAxisItem(pg.AxisItem):
                 strings = self.tickStrings(values, self.autoSIPrefixScale * self.scale, spacing)
             else:
                 strings = tickStrings[i]
-
+            
             if len(strings) == 0:
                 continue
 
@@ -652,7 +962,7 @@ class MagPyAxisItem(pg.AxisItem):
             ## Measure density of text; decide whether to draw this level
             rects = []
             for s in strings:
-                if s is None:
+                if s is None and (not self.ignore_bounds):
                     rects.append(None)
                 else:
                     br = p.boundingRect(QtCore.QRectF(0, 0, 100, 100), QtCore.Qt.AlignCenter, pg.asUnicode(s))
@@ -684,6 +994,7 @@ class MagPyAxisItem(pg.AxisItem):
                 textSize = 0
                 textSize2 = 0
 
+
             if i > 0:  ## always draw top level
                 ## If the strings are too crowded, stop drawing text now.
                 ## We use three different crowding limits based on the number
@@ -694,6 +1005,7 @@ class MagPyAxisItem(pg.AxisItem):
                     if len(textSpecs) >= nTexts and textFillRatio >= limit:
                         finished = True
                         break
+                finished = finished and (not self.ignore_bounds)
                 if finished:
                     break
 
@@ -730,6 +1042,8 @@ class MagPyAxisItem(pg.AxisItem):
 
         ## update max text size if needed.
         self._updateMaxTextSize(textSize2)
+        if visibleLevels != self.levels:
+            self.ticksChanged.emit(visibleLevels)
         self.levels = visibleLevels
 
         return (axisSpec, tickSpecs, textSpecs)
@@ -743,6 +1057,7 @@ class DateAxis(pg.AxisItem):
     ticksChanged = QtCore.pyqtSignal(object)
     axisClicked = QtCore.pyqtSignal()
     formatChanged = QtCore.pyqtSignal(str)
+    labelChanged = QtCore.pyqtSignal(str)
     def __init__(self, epoch, orientation, offset=0, *args, **kwargs):
         self.tickOffset = offset
         self.timeRange = None
@@ -840,6 +1155,9 @@ class DateAxis(pg.AxisItem):
         self.tm.tO = mn + self.tickOffset
         self.tm.tE = mx + self.tickOffset
 
+        if self.label_visible:
+            self.setLabel(self.get_label())
+
     def get_label_modes(self):
         ''' Returns the full list of label formats available '''
         return list(self.fmt_strs.keys())
@@ -904,6 +1222,10 @@ class DateAxis(pg.AxisItem):
             self.setLabel(label)
         else:
             self.showLabel(False)
+
+    def setLabel(self, *args, **kwargs):
+        super().setLabel(*args, **kwargs)
+        self.labelChanged.emit(self.get_label())
 
     def guess_mode(self, td):
         ''' Get the default time mode by comparing
@@ -1351,6 +1673,9 @@ class DateAxis(pg.AxisItem):
         super().mouseClickEvent(ev)
         if (ev.button() == QtCore.Qt.LeftButton):
             self.axisClicked.emit()
+    
+    def get_levels(self):
+        return self.levels
 
 class MagPyPlotDataItem(pg.PlotDataItem):
     def __init__(self, *args, **kwargs):
@@ -1507,7 +1832,7 @@ class MagPyPlotDataItem(pg.PlotDataItem):
             self.scatter.show()
         else:
             self.scatter.hide()
-
+    
 class TraceLegend(pg.LegendItem):
     ''' Legend that displays the x,y values for each trace passed to it '''
     def __init__(self, vb, *args, **kwargs):
@@ -1564,9 +1889,10 @@ class LabeledScatter(pg.ScatterPlotItem):
     ''' Scatter plot item that is able to generate
         labels for each point
     '''
-    def __init__(self, format_funcs={}, *args, **kwargs):
+    def __init__(self, format_funcs={}, *args, z_value=None, **kwargs):
         self.format_funcs = format_funcs
         self.labels = []
+        self.z_value = z_value
         super().__init__(*args, **kwargs)
 
     def get_labels(self):
@@ -1579,10 +1905,18 @@ class LabeledScatter(pg.ScatterPlotItem):
             pos = pt.pos()
             x, y = pos.x(), pos.y()
             x = str(np.round(x, decimals=5)) if 'x' not in self.format_funcs else self.format_funcs['x'](x)
-            y = str(np.round(y, decimals=5)) if 'y' not in self.format_funcs else self.format_funcs['y'](x)
+            y = str(np.round(y, decimals=5)) if 'y' not in self.format_funcs else self.format_funcs['y'](y)
+            items = [x, y]
+
+            # Map z value if given
+            if self.z_value is not None:
+                z = str(self.z_value)
+                z = str(z) if 'z' not in self.format_funcs else self.format_funcs['z'](z)
+                items.append(z)
 
             # Save string pair
-            label = f'({x}, {y})'
+            label = ', '.join(items)
+            label = f'({label})'
             labels.append(label)
         
         return labels
@@ -1611,6 +1945,7 @@ class GridTracker(pg.GraphicsObject):
     def __init__(self, plot, format_funcs={}, pen=None, *args, **kwargs):
         self.plot = plot
         self.mode = 1 # 1 = points mode, 2 = tracker mode, 0 = off
+        self._show_spec_vals = True
 
         # Store formatting functions
         self.format_funcs = format_funcs
@@ -1656,6 +1991,9 @@ class GridTracker(pg.GraphicsObject):
         self.clearPoints()
         if self.mode != 2:
             self.showLines(False)
+
+    def enable_spec_values(self, val=True):
+        self._show_spec_vals = val
 
     def setVisible(self, val):
         super().setVisible(val)
@@ -1724,6 +2062,10 @@ class GridTracker(pg.GraphicsObject):
 
         # Get list of child items hovering over
         self.hover_pts = self.get_hover_points(pos)
+
+        # Get list of spec values hovered over
+        if self._show_spec_vals:
+            self.hover_pts += self.get_hover_squares(pos)
 
         # Create new legend item if missing
         if self.legend is None:
@@ -1843,6 +2185,32 @@ class GridTracker(pg.GraphicsObject):
             hover_items = []
 
         return hover_items
+    
+    def get_hover_squares(self, pos):
+        from bisect import bisect_right
+        spec_objects = self.plot.get_specs()
+        spec_points = []
+        for spec in spec_objects:
+            mapped_grid = spec.cached_mapped_grid()
+            if mapped_grid is None:
+                continue
+            x, y, z = spec.spec.values()
+            xs, ys = pos.x(), pos.y()
+            if self.plot.getAxis('left').logMode:
+                ys = 10 ** ys
+            x_index = bisect_left(x, xs) - 1
+            if len(np.array(y).shape) > 1:
+                y = y[x_index]
+            y_index = bisect_left(y, ys) - 1
+            if x_index < len(z[0]) and y_index < len(z) and x_index >= 0 and y_index >= 0:                
+                value = z[y_index][x_index]
+                mapped_value = mapped_grid[y_index][x_index]
+                pen = pg.mkPen(mapped_value)
+                brush = pg.mkBrush(mapped_value)
+                scatter = LabeledScatter(self.format_funcs, [xs], [ys], 
+                    size=10, pen=pen, brush=brush, z_value=value)
+                spec_points.append(scatter)
+        return spec_points
 
     def create_hover_points(self, pdis, radius_rect):
         '''

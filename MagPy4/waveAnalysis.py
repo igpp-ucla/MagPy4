@@ -7,16 +7,11 @@ from .layoutTools import BaseLayout, VBoxLayout, HBoxLayout
 from scipy import fftpack, signal
 import pyqtgraph as pg
 from .specAlg import SpecWave
+from .grid import PlotGridObject
 
 import multiprocessing
-from multiprocessing import Process, Queue
 import numpy as np
-from .mth import Mth
-import bisect
-import math
-from .MagPy4UI import MatrixWidget, NumLabel, StackedAxisLabel
-import functools
-import os
+from .plotBase import StackedAxisLabel, MagPyPlotItem
 from . import config
 
 class VectorWidget(QtWidgets.QWidget):
@@ -223,7 +218,7 @@ class WaveAnalysisUI(object):
 
         # Set up vector options box
         ## Determine vector groupings
-        grps = window.VECGRPS
+        grps = window.vecDict()
         if len(grps) == 0:
             grps = {}
             dstrs = window.DATASTRINGS
@@ -809,8 +804,6 @@ class DynamicWave(QtWidgets.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.closeLineTool()
         self.closeMaskTool()
         self.window.endGeneralSelect()
-        if self.plotItem:
-            self.plotItem.closePlotAppearance()
 
     def getToolType(self):
         return self.ui.waveParam.currentText()
@@ -888,17 +881,12 @@ class DynamicWave(QtWidgets.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         # Calculate grid values and generate plot items
         grid, freqs, times = self.calcGrid(plotType, dtaRng, fftParam, vecDstrs, detrendMode)
         colorRng = self.getColorRng(plotType, grid)
-        plt = self.generatePlots(grid, freqs, times, colorRng, plotType, logScale)
-        self.setupPlotLayout(plt, plotType, times, logScale)
+        plt, items = self.generatePlots(grid, freqs, times, colorRng, plotType, logScale)
+        self.setupPlotLayout(plt, plotType, times, logScale, items)
 
         # Save state
         self.plotItem = plt
         self.lastCalc = (times, freqs, grid)
-
-        # Enable exporting plot data
-        fftParam = (fftInt, fftShift, bw, detrendMode)
-        exportFunc = functools.partial(self.exportData, self.window, plt, fftParam)
-        self.plotItem.setExportEnabled(exportFunc)
 
         if self.savedLineInfo: # Add any saved lines
             self.addSavedLine()
@@ -937,32 +925,43 @@ class DynamicWave(QtWidgets.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             tickSpacing = (1, 0.5)
         return tickSpacing
 
-    def setupPlotLayout(self, plt, plotType, times, logMode):
+    def setupPlotLayout(self, plt, plotType, times, logMode, items):
         # Get gradient legend and set its tick spacing accordingly
-        gradLegend = plt.getGradLegend(logMode=False)
+        grad, lgnd_lbl = items
         major, minor = self.getGradTickSpacing(plotType)
-        gradLegend.setTickSpacing(major, minor)
-        gradLegend.setBarWidth(40)
+        grad.setTickSpacing(major, minor)
+        grad.setBarWidth(40)
 
         # Get title, y axis, and gradient legend labels
         title, axisLbl, legendLbl = self.getLabels(plotType, logMode)
         plt.setTitle(title, size='13pt')
         plt.getAxis('left').setLabel(axisLbl)
+        plt.getAxis('right').setStyle(showValues=False)
 
         # Update specData information
-        specData = plt.getSpecData()
+        specData = plt.getSpecData()[0]
         specData.set_name(title)
         specData.set_y_label(axisLbl)
         specData.set_legend_label(legendLbl.getLabelText())
 
-        # Add in time range label at bottom
+        # Time range information
         timeInfo = self.getTimeInfoLbl((times[0], times[-1]))
 
+        # Clear previous layout
         self.ui.glw.clear()
-        self.ui.glw.addItem(plt, 0, 0, 1, 1)
-        self.ui.glw.addItem(gradLegend, 0, 1, 1, 1)
-        self.ui.glw.addItem(legendLbl, 0, 2, 1, 1)
-        self.ui.glw.addItem(timeInfo, 1, 0, 1, 3)
+
+        # Add plot grid and items to grid
+        pltGrd = PlotGridObject(self.window)
+        sp = QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
+        pltGrd.setSizePolicy(sp)
+        layout = pltGrd.get_layout()
+        layout.add_row()
+        layout[0] = [None, plt, grad, legendLbl]
+        layout.set_x_range(times[0], times[-1])
+
+        # Add items to outer layout
+        self.ui.glw.addItem(pltGrd, 0, 0, 1, 1)
+        self.ui.glw.addItem(timeInfo, 1, 0, 1, 1)
 
     def getColorRng(self, plotType, grid):
         defaultRng, gradStr, gradUnits = self.defParams[plotType]
@@ -1054,12 +1053,14 @@ class DynamicWave(QtWidgets.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         return valGrid, freqs, timeStops
 
     def generatePlots(self, grid, freqs, times, colorRng, plotType, logMode):
-        freqs = self.extendFreqs(freqs, logMode)
-        plt = SpectrogramPlotItem(self.window.epoch, logMode)
         logColorScale = True if plotType in self.plotGroups['Power'] else False
-        plt.createPlot(freqs, grid, times, colorRng, winFrame=self,
-            logColorScale=logColorScale)
-        return plt
+        freqs = self.extendFreqs(freqs, logMode) # Get lower bounding frequency
+        spec = SpecData(freqs, times, grid, log_y=logMode, 
+            color_rng=colorRng, log_color=logColorScale)
+        plt = MagPyPlotItem(self.window.epoch)
+        grid_item, grad, label = plt.load_color_plot(spec)
+        grid_item.spec = spec
+        return (plt, [grad, label])
 
     def extendFreqs(self, freqs, logScale):
         # Calculate frequency that serves as lower bound for plot grid

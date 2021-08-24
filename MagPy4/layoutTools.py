@@ -1,11 +1,11 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .pyqtgraphExtensions import GridGraphicsLayout
+from .plot_extensions import GridGraphicsLayout
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
-from .MagPy4UI import TimeEdit, NumLabel
+from .MagPy4UI import TimeEdit
 
 class LabeledProgress(QtWidgets.QProgressBar):
     ''' Displays a progress bar with text overlaying it '''

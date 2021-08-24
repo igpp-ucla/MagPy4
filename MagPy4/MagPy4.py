@@ -11,9 +11,11 @@ import argparse
 import json
 import re
 from fflib import ff_reader, ff_time, ff_writer
+from . import plot_helper
 
 # Version number and copyright notice displayed in the About box
 from . import getRelPath, MAGPY_VERSION, USERDATALOC
+from MagPy4 import edit
 
 NAME = f'MagPy4'
 VERSION = f'Version {MAGPY_VERSION}'
@@ -25,23 +27,21 @@ from PyQt5.QtWidgets import QSizePolicy
 import numpy as np
 import numpy.lib.recfunctions as rfn
 import pyqtgraph as pg
-from .MagPy4UI import MagPy4UI, PyQtUtils, MainPlotGrid, StackedLabel, TimeEdit, StackedAxisLabel, FileLabel, ProgStates, FileLoadDialog, ProgressChecklist, ScrollArea
+from .MagPy4UI import MagPy4UI, FileLabel, ProgStates, FileLoadDialog, ProgressChecklist, ScrollArea
 from .pyqtgraphExtensions import TrackerRegion
 from .plotMenu import PlotMenu
 from .spectra import Spectra
 from .dataDisplay import DataDisplay
-from .plotAppearance import MagPyPlotApp
 from .addTickLabels import AddTickLabels
 from .edit import Edit
 from .traceStats import TraceStats
 from .helpWindow import HelpWindow
 from .AboutDialog import AboutDialog
-from .plotBase import DateAxis, MagPyPlotItem, MagPyPlotDataItem
-from .MMSTools import PlaneNormal, Curlometer, Curvature, ElectronPitchAngle, ElectronOmni, PressureTool, FEEPS_EPAD, get_mms_grps
+from .plotBase import MagPyPlotItem
+from .MMSTools import PlaneNormal, Curlometer, Curvature, PressureTool, get_mms_grps
 from .mms_data import MMSDataDownloader
 from . import mms_orbit
 from . import mms_formation
-from .dynBase import SimpleColorPlot
 from .detrendWin import DetrendWindow
 from .dynBase import SpecData
 from .dynamicSpectra import DynamicSpectra, DynamicCohPha
@@ -50,17 +50,20 @@ from .structureUtil import CircularList
 from .trajectory import TrajectoryAnalysis
 from .smoothingTool import SmoothingTool
 from .mth import Mth
+from scipy import interpolate
 import bisect
 from .timeManager import TimeManager
-from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect, SelectableViewBox
-from .layoutTools import BaseLayout, LabeledProgress
-from . import data_import 
-from .data_import import merge_datas, find_vec_grps, get_resolution_diffs, FileData
-from .data_import import TextFileInfo, load_text_file, load_flat_file, load_cdf
+from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect
+from .layoutTools import LabeledProgress
+from .data_import import merge_datas, find_vec_grps, get_resolution_diffs
+from .data_import import load_text_file, load_flat_file, load_cdf
 import numpy.lib.recfunctions as rfn
 from .qtThread import TaskRunner, ThreadPool, TaskThread
 
-import cdflib
+from .grid import PlotGridObject
+from .plotBase import StackedLabel
+from . import plot_helper
+
 import time
 import functools
 import multiprocessing as mp
@@ -99,8 +102,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.ui.scrollSelect.startChanged.connect(self.onStartSliderChanged)
         self.ui.scrollSelect.endChanged.connect(self.onEndSliderChanged)
-        self.ui.scrollSelect.rangeChanged.connect(self.rangeChanged)
-        self.ui.scrollSelect.sliderReleased.connect(self.setTimes)
+        self.ui.scrollSelect.sliderReleased.connect(self.sliderReleased)
+        self.ui.scrollSelect.rangeChanged.connect(self._scroll_updated)
 
         # Shift window connections
         self.ui.mvRgtBtn.clicked.connect(self.shiftWinRgt)
@@ -115,8 +118,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.zoomAllShrtct.activated.connect(self.viewAllData)
         self.zoomFrac = 0.4
 
-        self.ui.timeEdit.start.dateTimeChanged.connect(self.onStartEditChanged)
-        self.ui.timeEdit.end.dateTimeChanged.connect(self.onEndEditChanged)
+        self.ui.timeEdit.rangeChanged.connect(self._xrange_updated)
 
         # Scrolling zoom connects
         self.ui.scrollPlusShrtct.activated.connect(self.increasePlotHeight)
@@ -149,10 +151,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.ui.actionSelectByTime.triggered.connect(self.openTimeSelect)
         self.ui.actionSelectView.triggered.connect(self.autoSelectRange)
 
-        # Content menu action connections
-        self.ui.plotApprAction.triggered.connect(self.openPlotAppr)
-        self.ui.addTickLblsAction.triggered.connect(self.openAddTickLbls)
-
         # options menu dropdown
         self.ui.scaleYToCurrentTimeAction.toggled.connect(self.updateYRange)
         self.ui.antialiasAction.toggled.connect(self.toggleAntialiasing)
@@ -169,8 +167,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.epoch = None
         self.errorFlag = None
 
-        self.plotAppr = None
-        self.addTickLbls = None
         self.helpWindow = None
         self.aboutDialog = None
         self.FIDs = []
@@ -184,6 +180,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.batchSelect = None
         self.fileNameLabel = None
         self.minimumPlotHeight = 3 # Inches
+        self.tracker = None
 
         self.savedPlotInfo = None
 
@@ -346,6 +343,50 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.pool = ThreadPool()
         self.load_dialog = None
 
+    def _scroll_updated(self, trange):
+        start, stop = trange
+        start += self.minTime
+        stop += self.minTime
+        left, right = min(start, stop), max(start, stop)
+        start, stop = self.chkBoundaries(left, right, self.tE - self.tO)
+        self._xrange_updated((start, stop))
+    
+    def _xrange_updated(self, trange):
+        start, stop = trange
+        if isinstance(start, (datetime, np.datetime64)):
+            start_tick = ff_time.date_to_tick(start, self.epoch) 
+            end_tick = ff_time.date_to_tick(stop, self.epoch) 
+            start_date = start
+            stop_date = stop
+        else:
+            start_tick = start
+            end_tick = stop
+
+            start_date = ff_time.tick_to_date(start, self.epoch)
+            stop_date = ff_time.tick_to_date(stop, self.epoch)
+
+        self.tO = start_tick
+        self.tE = end_tick
+
+        self.ui.scrollSelect.blockSignals(True)
+        self.ui.scrollSelect.set_start(start_tick-self.minTime)
+        self.ui.scrollSelect.set_end(end_tick-self.minTime)
+        self.ui.scrollSelect.blockSignals(False)
+        
+        self.ui.timeEdit.blockSignals(True)
+        self.ui.timeEdit.start.blockSignals(True)
+        self.ui.timeEdit.end.blockSignals(True)
+
+        self.ui.timeEdit.setTimeRange(start_date, stop_date)
+
+        self.ui.timeEdit.start.blockSignals(False)
+        self.ui.timeEdit.end.blockSignals(False)
+        self.ui.timeEdit.blockSignals(False)
+        
+        self.pltGrdObject.blockSignals(True)
+        self.pltGrd.set_x_range(start_tick, end_tick)
+        self.pltGrdObject.blockSignals(False)
+
     def updateStateFile(self, key, val):
         ''' Updates state file with key value pair '''
         # Get state file and read in contents
@@ -415,31 +456,22 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.updateSelectionMenu()
 
     def getWinTickWidth(self):
-        winWidth = abs(self.iE - self.iO) # Number of ticks currently displayed
+        winWidth = abs(self.tE - self.tO) # Number of ticks currently displayed
         return winWidth
 
     def setNewWindowTicks(self, newTO, newTE):
-        # Update slider values and self.iO, self.iE
-        self.setSliderNoCallback('start', newTO)
-        self.setSliderNoCallback('stop', newTE)
-
-        # Update timeEdit values
-        self.onStartSliderChanged(newTO)
-        self.onEndSliderChanged(newTE)
-        self.ui.timeEdit.start.update() # Update appearance for OSX users
-        self.ui.timeEdit.end.update()
-
-        # Update plots
-        self.setTimes()
+        start = ff_time.tick_to_date(newTO, self.epoch)
+        stop = ff_time.tick_to_date(newTE, self.epoch)
+        self.ui.timeEdit.setTimeRange(start, stop)
 
     def shiftWindow(self, direction):
         winWidth = self.getWinTickWidth() # Number of ticks currently displayed
-        shiftAmt = int(winWidth*self.shftPrcnt)
+        shiftAmt = winWidth*self.shftPrcnt
 
         if direction == 'L': # Shift amt is negative if moving left
             shiftAmt = shiftAmt * (-1) 
-        newTO = self.iO + shiftAmt
-        newTE = self.iE + shiftAmt
+        newTO = self.tO + shiftAmt
+        newTE = self.tE + shiftAmt
 
         # Case where adding shift amnt gives ticks beyond min and max ticks
         if self.tO > self.tE:
@@ -447,7 +479,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             newTE, newTO = self.chkBoundaries(newTE, newTO, winWidth)
         else:
             newTO, newTE = self.chkBoundaries(newTO, newTE, winWidth)
-
+        
         self.setNewWindowTicks(newTO, newTE)
 
     def shiftWinRgt(self):
@@ -459,11 +491,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def chkBoundaries(self, origin, end, winWidth):
         # When adding/subtracting shift amount goes past min and max ticks,
         # shift window to that edge while maintaining the num of ticks displayed
-        if (origin < 0):
-            origin = 0
+        if (origin < self.minTime):
+            origin = self.minTime
             end = origin + winWidth
-        elif end > self.iiE:
-            end = self.iiE
+        elif end > self.maxTime:
+            end = self.maxTime
             origin = end - winWidth
         return (origin, end)
 
@@ -540,9 +572,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Update y range
         self.updateYRange()
 
-        # Update time label
-        self.pltGrd.setTimeLabel()
-
     def viewAllData(self):
         self.setNewWindowTicks(0, self.iiE)
 
@@ -577,8 +606,10 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     # this should also get called if flatfile changes
     def closeEvent(self, event):
         self.closeAllSubWindows()
-        if self.pltGrd:
-            self.pltGrd.deleteLater()
+        if self.pltGrdObject:
+            self.pltGrdObject.closePlotAppr()
+            self.pltGrdObject.closeTickLabels()
+            self.pltGrdObject.deleteLater()
 
     def openWsOpenDialog(self):
         # Opens file dialog for user to select a workspace file to open
@@ -923,7 +954,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeFixSelection()
         self.closeTimeSelect()
         self.closeBatchSelect()
-        self.closePlotAppr()
 
     def closePlotTools(self):
         for tool in self.select_opts:
@@ -1091,6 +1121,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Create tool
         tool = WidgetClass(self)
+        tool.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
         self.tools[name] = tool
 
         # Create show/close functions
@@ -1133,20 +1164,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         geo = self.geometry()
         self.tools['PlotMenu'].move(geo.x() + 200, geo.y() + 100)
         self.tools['PlotMenu'].show()
-
-    def openPlotAppr(self, tab=None):
-        self.closePlotAppr()
-        self.plotAppr = MagPyPlotApp(self, self.plotItems)
-
-        if tab is not None:
-            self.plotAppr.ui.setTab(tab)
-
-        self.plotAppr.show()
-
-    def closePlotAppr(self):
-        if self.plotAppr:
-            self.plotAppr.close()
-            self.plotAppr = None
 
     def openAddTickLbls(self):
         self.closeAddTickLbls()
@@ -1583,6 +1600,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Set resolution
         self.resolution = min(self.resolution, res)
 
+        # Update vector groups
+        self.VECGRPS.update(file_data.vec_grps)
+
         # Assemble data into list format
         datas = file_data.get_numerical_data()
         specs = file_data.get_spec_datas()
@@ -1593,8 +1613,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.FIDs.append(file_id)
 
         # Finish file opening
-        self.updateAfterOpening()
         self.afterFileRead()
+        self.updateAfterOpening()
 
     def openTextFile(self, filename):
         ''' Open an ASCII file '''
@@ -1640,12 +1660,17 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         t = t[mask] if len(t) == len(dta) else t
         diff = np.diff(t)
         dta = dta[mask]
+
+        # Clip data if there is a difference
+        n = min(len(t), len(dta))
+        t = t[:n]
+        diff = diff[:n]
+        dta = dta[:n]
         times = (t, diff, res)
 
+        # Add in data to dictionaries, no units
         self.TIMES.append(times)
         self.TIMEINDEX[dstr] = len(self.TIMES) - 1
-
-        # Add in data to dictionaries, no units
         self.ORIGDATADICT[dstr] = dta
         self.DATADICT[dstr] = [dta]
         self.UNITDICT[dstr] = units
@@ -1834,10 +1859,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
             self.ABBRV_DSTR_DICT[dstr] = abbrvStr
 
-        #for k,v in self.ABBRV_DSTR_DICT.items():
-        #    print(f'{k} : {v}')
-
-
     def getMinAndMaxDateTime(self):
         minDt = ff_time.tick_to_date(self.minTime, self.epoch)
         maxDt = ff_time.tick_to_date(self.maxTime, self.epoch)
@@ -1845,125 +1866,35 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
     def getCurrentDateTime(self):
         return self.ui.timeEdit.start.dateTime(), self.ui.timeEdit.end.dateTime()
+    
+    def sliderReleased(self):
+        self.tracker.setAllRegionsVisible(False)
 
     def onStartSliderChanged(self, val):
-        """callback for when the top (start) slider is moved"""
-        self.iO = val
-
-        # move tracker lines to show where new range will be
-        tt = self.getTimeFromTick(self.iO)
-        for line in self.trackerLines:
-            line.show()
-            line.setValue(tt-self.tickOffset)
-
-        dt = ff_time.tick_to_date(tt, self.epoch)
-        self.ui.timeEdit.setStartNoCallback(dt)
+        self.onSliderChanged(self.ui.timeEdit.start, val)
 
     def onEndSliderChanged(self, val):
-        """callback for when the bottom (end) slider is moved"""
-        self.iE = val
+        self.onSliderChanged(self.ui.timeEdit.end, val)
+    
+    def onSliderChanged(self, edit, val):
+        ''' 
+            Updates other elements and tracker lines when slider
+            buttons dragged
+        '''
+        # Show tracker line
+        if self.tracker:
+            self.tracker.setAllRegionsVisible(True)
+            self.tracker.setRegion((val+self.minTime, self.maxTime + 1))
 
-        # move tracker lines to show where new range will be
-        tt = self.getTimeFromTick(self.iE)
-        for line in self.trackerLines:
-            line.show()
-            line.setValue(tt - self.tickOffset + 1) #offset by linewidth so its not visible once released
-
-        dt = ff_time.tick_to_date(tt, self.epoch)
-        self.ui.timeEdit.setEndNoCallback(dt)
-
-    def setSliderNoCallback(self, slider, i):
-        ''' Update start/end slider with given value i '''
-        # Determine which function to call to set value on
-        if slider == 'start':
-            f = self.ui.scrollSelect.set_start
-        else:
-            f = self.ui.scrollSelect.set_end
-
-        # Block signals and set value
-        self.ui.scrollSelect.blockSignals(True)
-        f(i)
-        self.ui.scrollSelect.blockSignals(False)
-
-    def rangeChanged(self, rng):
-        ''' Updates the view range with the current slider tick range '''
-        # Hide tracker lines while updating range
-        for line in self.trackerLines:
-            line.hide()
-
-        # Extract values
-        start, stop = rng
-
-        # Save start slider tick and update start time edit
-        self.iO = start
-        tt = self.getTimeFromTick(self.iO)
-        dt = ff_time.tick_to_date(tt, self.epoch)
-        self.ui.timeEdit.setStartNoCallback(dt)
-
-        # Save stp[] slider tick and update start time edit
-        self.iE = stop
-        tt = self.getTimeFromTick(self.iE)
-        dt = ff_time.tick_to_date(tt, self.epoch)
-        self.ui.timeEdit.setEndNoCallback(dt)
-
-        # Update view range by calling setTimes
-        self.setTimes()
-
-    def onStartEditChanged(self, val, set_times=True):
-        """this gets called when the start date time edit is changed directly"""
-        if not isinstance(val, datetime):
-            val = val.toPyDateTime()
-        tick = ff_time.date_to_tick(val, self.epoch)
-        self.iO = self.calcTickIndexByTime(tick)
-        self.setSliderNoCallback('start', self.iO)
-        for line in self.trackerLines:
-            line.hide()
-        
-        if set_times:
-            self.setTimes()
-
-    def onEndEditChanged(self, val, set_times=True):
-        """this gets called when the end date time edit is changed directly"""
-        if not isinstance(val, datetime):
-            val = val.toPyDateTime()
-        tick = ff_time.date_to_tick(val, self.epoch)
-        self.iE = self.calcTickIndexByTime(tick)
-        self.setSliderNoCallback('stop', self.iE)
-        for line in self.trackerLines:
-            line.hide()
-
-        if set_times:
-            self.setTimes()
-
-    def setTimes(self):
-        """function that updates both the x and y range of the plots based on current time variables"""
-
-        # if giving exact same time index then slightly offset
-        if self.iO == self.iE:
-            if self.iE < self.iiE:
-                self.iE += 1
-            else:
-                self.iO -= 1
-
-        self.tO = self.getTimeFromTick(self.iO)
-        self.tE = self.getTimeFromTick(self.iE)
-        self.updateXRange()
-        self.updateYRange()
+        # Update time edit
+        d = ff_time.tick_to_date(val+self.minTime, self.epoch)
+        edit.blockSignals(True)
+        edit.setDateTime(d)
+        edit.blockSignals(False)
 
     def getTimeFromTick(self, tick):
         assert(tick >= 0 and tick <= self.iiE)
         return self.minTime + (self.maxTime - self.minTime) * tick / self.iiE
-
-    def updateXRange(self):
-        for pi in self.plotItems:
-            pi.setXRange(self.tO-self.tickOffset, self.tE-self.tickOffset, 0.0)
-        self.pltGrd.setTimeLabel()
-
-        # Update ticks/labels on bottom axis, clear top axis
-        if self.pltGrd.labelSetGrd:
-            startTick = self.tO-self.tickOffset
-            endTick = self.tE-self.tickOffset
-            self.pltGrd.labelSetGrd.setXRange(startTick, endTick, 0.0)
 
     # try to find good default plot strings
     def getDefaultPlotInfo(self):
@@ -1979,7 +1910,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             # and map to axis grouping and plotStrings format
             grps, btots = get_mms_grps(self)
             grps = grps['Field']
-            mms_dstrs = [[],[],[]]
+            mms_dstrs = [[],[],[], []]
             for sc_id in [1,2,3,4]:
                 if sc_id not in grps:
                     continue
@@ -1987,8 +1918,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                 for i in range(0, len(sc_grp)):
                     mms_dstrs[i].append((sc_grp[i], 0))
             
-            mms_dstrs.append([(dstr, 0) for dstr in btots])
-
+            mms_dstrs = [row for row in mms_dstrs if len(row) > 0]
+            
             # Check if full set of MMS variables loaded
             if set(list(map(len, mms_dstrs))) == set([4]):
                 dstrs = mms_dstrs
@@ -2049,7 +1980,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         numPts = self.plotData(dstrs, links, heights)
 
         # If a large number of points are plotted, enable downsampling for the plots
-        if numPts > 50000:
+        if numPts > 5000:
             self.ui.downsampleAction.setChecked(True)
             msg = "Plot data downsampled; disable under 'Options' Menu"
             self.ui.statusBar.showMessage(msg, 10000)
@@ -2114,26 +2045,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def getAbbrvDstr(self, dstr):
         return self.ABBRV_DSTR_DICT[dstr]
 
-    def buildStackedLabel(self, plotStrings, colors):
-        labels = []
-        unitsSet = set()
-        for dstr, en in plotStrings:
-            lbl = self.getLabel(dstr, en)
-            if lbl in self.ABBRV_DSTR_DICT:
-                lbl = self.ABBRV_DSTR_DICT[lbl]
-            labels.append(lbl)
-            units = self.UNITDICT[dstr]
-            unitsSet.add(units)
-
-        unitsString = None
-        if len(unitsSet) == 1:
-            unitsString = unitsSet.pop()
-            if unitsString == '':
-                unitsString = None
-
-        stackLbl = StackedLabel(labels, colors, units=unitsString)
-        return stackLbl
-
     def onPlotRemoved(self, oldPlt):
         # Remove all linked region items from this plot and GeneralSelect
         # lists before removing the old plot
@@ -2141,149 +2052,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             if select is not None:
                 select.onPlotRemoved(oldPlt)
 
-    def addColorPltToGrid(self, plt, name, gradLbl, units=None):
-        # Generate plot item and related elements from plot info
-        labelTxt = gradLbl.getLabelText() if gradLbl is not None else None
-        plotInfo = plt.getPlotInfo()
-        newPlt, grad, gradLbl = self.loadColorPlot(plotInfo, labelTxt)
-
-        # First, check if already plotted in main window
-        pltIndex = self.pltGrd.getColorPlotIndex(name)
-        if pltIndex is not None:
-            self.pltGrd.replaceColorPlot(pltIndex, newPlt, name, grad, gradLbl, 
-                units=units)
-            self.plotItems[pltIndex] = newPlt
-            self.onPlotRemoved(plt)
-
-            # Update plot index used for selections
-            vb = newPlt.getViewBox()
-            vb.setPlotIndex(pltIndex)
-        else:
-            # Otherwise, add it to the end + update plotStrings list
-            pltIndex = self.pltGrd.numPlots - 1
-            self.pltGrd.addColorPlt(newPlt, name, grad, gradLbl, units=units)
-            self.lastPlotStrings.append([(name, -1)])
-            self.plotItems.append(newPlt)
-
-            # Reset height factors
-            self.lastPlotHeightFactors.append(1)
-            self.pltGrd.setHeightFactors(self.lastPlotHeightFactors)
-
-            # Also, update trace pens list if adding new plot
-            self.plotTracePens.append(None)
-
-        # Update local state information about color plot grid values
-        self.colorPlotInfo[name] = (plotInfo, labelTxt, units)
-        self.pltGrd.resizeEvent(None)
-        self.pltGrd.adjustPlotWidths()
-
-        # Return plot index to be used when creating link lists
-        return pltIndex
-
-    def loadColorPlot(self, plotInfo, labelTxt):
-        # Extract specific plot info and offset times by main window's tick offset
-        grid, x, y, logY, logColor, valRng, maskInfo = plotInfo
-        x = x - self.tickOffset
-        plotInfo = (grid, x, y, logY, logColor, valRng, maskInfo)
-
-        # Generate plot item
-        vb = MagPyViewBox(self, self.pltGrd.numPlots)
-        plt = SimpleColorPlot(self.epoch, logY, vb=vb)
-        plt.getAxis('bottom').tickOffset = self.tickOffset
-        plt.loadPlotInfo(plotInfo)
-
-        # Generate gradient legend and its axis label
-        gradLegend = plt.getGradLegend(logColor)
-
-        if labelTxt is not None:
-            gradLbl = StackedAxisLabel(labelTxt)
-            gradLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
-        else:
-            gradLbl = None
-
-        return plt, gradLegend, gradLbl
-
-    def addPlot(self, plt, label, pltStrs, links=None, hf=None, pens=None):
-        # Close any selected tools
-        self.closeFixSelection()
-        self.closeBatchSelect()
-        self.closeTraceStats()
-        self.endGeneralSelect()
-
-        # Add plot to grid
-        self.pltGrd.addPlt(plt, label)
-
-        # Add tracker line to plot item
-        trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=self.trackerPen)
-        plt.addItem(trackerLine)
-        self.trackerLines.append(trackerLine)
-
-        # Update selectable viewbox information
-        vb = plt.getViewBox()
-        vb._lastScene = None
-        vb.window = self
-        vb.plotIndex = len(self.plotItems)
-
-        # Adjust datetime offsets
-        for pdi in plt.listDataItems():
-            times = pdi.xData
-            pdi.setData(times-self.tickOffset, pdi.yData)
-        plt.getAxis('bottom').tickOffset = self.tickOffset
-        plt.getAxis('top').tickOffset = self.tickOffset
-
-        # Adjust axes and buttons
-        for ax in ['left', 'top', 'right', 'bottom']:
-            plt.showAxis(ax)
-        for ax in ['top', 'right']:
-            plt.getAxis(ax).setStyle(showValues=False)
-        plt.hideButtons()
-
-        # Update state info for plotItems, plotStrings, plotLinks, 
-        # heightFactors, and plotPens
-        self.plotItems.append(plt)
-        self.lastPlotStrings.append(pltStrs)
-
-        if links is not None:
-            self.lastPlotLinks.append(links)
-
-        if hf is None:
-            self.lastPlotHeightFactors.append(1)
-
-        self.plotTracePens.append(pens)
-        self.updateXRange()
-        self.pltGrd.resizeEvent(None)
-
-    def addSpectrogram(self, specData):
-        ''' Adjusts specData before passing to pltGrd to load spectrogram '''
-        # Adjust by tick offset
-        specData.x_bins = specData.x_bins - self.tickOffset
-
-        # Store specData in dictionary
-        duplicate = specData.get_name() in self.SPECDICT
-        self.SPECDICT[specData.get_name()] = specData
-
-        # Replot if given spectrogram was previously plotted (in SPECDICT)
-        if duplicate:
-            self.plotAfterSpecUpdate()
-            return
-
-        # Add spectrogram to plotGrid and update state
-        plt = self.pltGrd.addSpectrogram(specData)
-        plt.setDownsampling(True)
-
-        self.plotItems.append(plt)
-        self.lastPlotStrings.append([(specData.get_name(), -1)])
-        self.plotTracePens.append([None])
-
-        self.updateXRange()
-
-    def plotAfterSpecUpdate(self):
-        ''' Replots data with same settings as before '''
-        self.plotData(self.lastPlotStrings, self.lastPlotLinks, 
-            self.lastPlotHeightFactors)
-
     def plotData(self, dataStrings, links, heightFactors, save=False):
         # Remove any saved linked regions from plots and save their state
+        self.ui.scrollSelect.set_range(self.maxTime-self.minTime)
+        self.ui.scrollSelect.set_start(self.tO-self.minTime)
+        self.ui.scrollSelect.set_range(self.tE-self.minTime)
         selectState = self.getSelectState()
         self.closeFixSelection()
         self.closeBatchSelect()
@@ -2309,7 +2082,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.plotTracePens = []
 
         # Store any previous label sets (for current file)
-        prevLabelSets = []
+        label_sets = []
+        if self.pltGrd is not None:
+            label_sets = self.pltGrdObject.list_axis_grids()
 
         # Clear previous grid
         self.ui.glw.clear()
@@ -2322,161 +2097,244 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.showFileLabel(self.ui.showFileLbl.isChecked())
 
         # Create new plot grid
-        self.pltGrd = MainPlotGrid(self)
-        self.pltGrd.setHeightFactors(heightFactors)
-        self.ui.glw.addItem(self.pltGrd, 1, 0, 1, 1)
+        grid_object = PlotGridObject(self)
+        self.pltGrd = grid_object.get_layout()
+        self.pltGrdObject = grid_object
+        self.ui.glw.addItem(grid_object, 1, 0, 1, 1)
 
-        self.trackerLines = []
-        newColorPlotInfo = {} # Keep track of which color plots are re-plotted
-        newSpec = {}
+        # Connect plot to time range UI
+        grid_object.sigXRangeChanged.connect(self._xrange_updated)
 
-        numPts = 0
-        for plotIndex, dstrs in enumerate(dataStrings):
-            # Check if special plot
-            colorPlt = False
-            colorPltName = None
-            for dstr, en in dstrs:
-                if en < 0:
-                    colorPlt = True
-                    colorPltName = dstr
+        # Set plot grid attributes
+        self.pltGrd.set_height_factors(heightFactors)
+        self.pltGrdObject.set_tick_text_size(11)
+        self.pltGrdObject.set_plot_styles(tickLength=-10)
 
-            if colorPlt:
-                # Save old color plot info and generate spectrogram
-                if colorPltName in self.CDFSPECS:
-                    specData = self.CDFSPECS[colorPltName]
-                    specData = copy(specData)
-                    specData.x_bins = specData.x_bins - self.tickOffset
-                else:
-                    specData = self.SPECDICT[colorPltName]
-                newSpec[colorPltName] = specData
-                plt = self.pltGrd.addSpectrogram(specData)
-                self.plotItems.append(plt)
-                self.plotTracePens.append([None])
-                plt.setLimits(xMin=self.minTime-self.tickOffset, xMax=self.maxTime-self.tickOffset)
-                continue
+        nplots = len(dataStrings)
+        npoints = 0
+        plot_colors = plot_helper.get_colors(dataStrings)
+        self.plotTracePens = plot_colors
+        spec_objects_full = []
+        for i in range(nplots):
+            dstrs = dataStrings[i]
+            colors = plot_colors[i]
 
-            vb = MagPyViewBox(self, plotIndex)
-            pi = MagPyPlotItem(epoch=self.epoch, viewBox=vb)
+            # Set up plot
+            self.pltGrd.add_row()
+            pi = MagPyPlotItem(epoch=self.epoch)
+            pi.getAxis('right').setStyle(showValues=False)
+
+            # Set plot styles
+            vb = pi.getViewBox()
+            vb.set_window(self)
             vb.enableAutoRange(x=False, y=False) # range is being set manually in both directions
+            vb.setMouseEnabled(y=False)
 
-            pi.ctrl.logYCheck.toggled.connect(functools.partial(self.updateLogScaling, plotIndex))
+            # Plot lines
+            points, spec_objects = self.plot_traces(pi, dstrs, colors)
+            npoints += points
 
-            # add some lines used to show where time series sliders will zoom to
-            trackerLine = pg.InfiniteLine(movable=False, angle=90, pos=0, pen=self.trackerPen)
-            pi.addItem(trackerLine)
-            self.trackerLines.append(trackerLine)
+            # Add horizontal zero line
+            zero_line = pg.InfiniteLine(movable=False, angle=0, pos=0)
+            zero_line.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
+            pi.addItem(zero_line, ignoreBounds=True)
+            pi.ctrl.logYCheck.toggled.connect(functools.partial(self.updateLogScaling, i))
 
-            # add horizontal zero line
-            zeroLine = pg.InfiniteLine(movable=False, angle=0, pos=0)
-            zeroLine.setPen(pg.mkPen('#000000', width=1, style=QtCore.Qt.DotLine))
-            pi.addItem(zeroLine, ignoreBounds=True)
+            # Set up label
+            units = [self.UNITDICT[dstr] for dstr, en in dstrs if dstr in self.UNITDICT]
+            sublabels, label_colors = self.split_labels(dstrs, colors)
+            label = StackedLabel(sublabels, label_colors, units, size=12)
+            self.pltGrd[i] = [label, pi]
 
-            pi.hideButtons() # hide autoscale button
+            # Store additional spectrogram graphics items
+            if spec_objects is not None:
+                spec_objects_full.append((i, spec_objects))
+        
+        # Add in any spectrogram-related additional objects
+        if len(spec_objects_full) > 0:
+            self.pltGrd.add_col()
+            self.pltGrd.add_col()
+            for i, objects in spec_objects_full:
+                self.pltGrd[i] = self.pltGrd[i][:2] + [objects[1], objects[2]]
 
-            # show top and right axis, but hide labels (they are off by default apparently)
-            la = pi.getAxis('left')
-            la.style['textFillLimits'] = [(0,1.1)] # no limits basically to force labels by each tick no matter what
-            #la.setWidth(50) # this also kinda works but a little space wasteful, saving as reminder incase dynamic solution messes up
+        # Add in previously seen axis grids
+        for key in label_sets:
+            for label in label_sets[key]:
+                x = self.getTimes(label, self.currentEdit)[0]
+                y = self.getData(label, self.currentEdit)
+                interp = interpolate.interp1d(x, y, bounds_error=False, 
+                    fill_value=self.errorFlag)
+                self.pltGrdObject.get_layout().add_axis(label, interp, loc=key)
 
-            ba = pi.getAxis('bottom')
-            ba.style['textFillLimits'] = [(2, 0.45)]
-            ta = pi.getAxis('top')
-            ra = pi.getAxis('right')
-            ta.show()
-            ra.show()
-            ta.setStyle(showValues=False)
-            ra.setStyle(showValues=False)
+        self.pltGrd.set_x_range(self.tO, self.tE)
+        self.pltGrd.set_x_lim(self.minTime, self.maxTime)
+        self.pltGrdObject.set_links(links)
+        self.pltGrdObject.sigPlotColorsChanged.connect(self.update_plot_colors)
 
-            # only show tick labels on bottom most axis
-            if plotIndex != len(dataStrings) - 1:
-                ba.setStyle(showValues=False)
+        # Add trackers
+        plots = self.pltGrd.get_plots()
+        self.tracker = TrackerRegion(self, plots)
 
-            tracePens = []
-            dstrList = []
-            colorsList = []
-
-            self.plotItems.append(pi) #save it for ref elsewhere
-
-            # add traces on this plot for each dstr
-            for i, (dstr, editNum) in enumerate(dstrs):
-                if dstr == '':
-                    continue
-
-                # figure out which pen to use
-                numPens = len(self.pens)
-                if len(dstrs) == 1: # if just one trace then base it off which plot
-                    penIndex = plotIndex % numPens
-                    pen = self.pens[penIndex]
-                elif i >= numPens:
-                    # If past current number of pens, generate a random one and
-                    # add it to the standard pen list for consistency between plots
-                    pen = self.genRandomPen()
-                    self.pens.append(pen)
-                else: # else if base off trace index, capped at pen count
-                    penIndex = min(i,numPens - 1)
-                    pen = self.pens[penIndex]
-
-                # If user set custom trace pen through plotAppr, use that pen instead,
-                # searching through the customPens list for a match
-                if plotIndex < len(self.customPens):
-                    if i < len(self.customPens[plotIndex]):
-                        prevDstr, prevEn, prevPen = self.customPens[plotIndex][i]
-                        if prevDstr == dstr and prevEn == editNum:
-                            pen = prevPen
-
-                #save pens so spectra can stay synced with main plot
-                tracePens.append(pen)
-
-                pts = self.plotTrace(pi, dstr, editNum, pen)
-                numPts += pts
-                dstrList.append(dstr)
-                colorsList.append(pen.color().name())
-
-            self.plotTracePens.append(tracePens)
-
-            # set plot to current range based on time sliders
-            pi.setXRange(self.tO-self.tickOffset, self.tE-self.tickOffset, 0.0)
-
-            #todo: needs to be set for current min and max of all time ranges
-            pi.setLimits(xMin=self.minTime-self.tickOffset, xMax=self.maxTime-self.tickOffset)
-
-            # Create plot label and add to grid
-            stckLbl = self.buildStackedLabel(dstrs, colorsList)
-            self.pltGrd.addPlt(pi, stckLbl)
-
-        map_func = lambda s : ff_time.tick_to_ts(s+self.tickOffset, self.epoch)
-        self.pltGrd.enableTracking(True, textFuncs={'x':map_func}, viewWidget=self.ui.gview)
-
-        ## end of main for loop
-
-        # Downsample data if checked
+        # # Downsample data if checked
         self.enableDownsampling(self.ui.downsampleAction.isChecked())
 
-        # Add in all previous label sets, if there are any
-        for labelSetDstr in prevLabelSets:
-            self.pltGrd.addLabelSet(labelSetDstr)
+        return npoints
 
-        self.updateXRange()
-        self.updateYRange()
+    def update_plot_colors(self, info):
+        # Find plot index trace is in
+        changed_plot, label, (old_color, new_color) = info
+        plots = self.pltGrdObject.get_plots()
+        plot_index = None
+        i = 0
+        for plot in plots:
+            if plot == changed_plot:
+                plot_index = i
+                break
+            i += 1
 
-        for pi in self.plotItems:
-            for item in pi.items:
-                item.viewRangeChanged()
+        if plot_index is None:
+            return
+        
+        # Find corresponding label
+        i = 0
+        for dstr, en in self.lastPlotStrings[plot_index]:
+            if self.getLabel(dstr, en) == label:
+                self.plotTracePens[plot_index][i] = new_color.name()
+                break
+            i += 1
 
-        self.colorPlotInfo = newColorPlotInfo
+    def split_labels(self, dstrs, colors):
+        # Split any spectrogram plot labels onto multiple lines
+        # if they go over character limit
+        labels = []
+        label_colors = []
+        for (dstr, en), color in zip(dstrs, colors):
+            if en < 0:
+                # Split label by spaces
+                max_chars = 10
+                split_label = dstr.split(' ')
 
-        # Rebuild any saved selections
-        self.loadSelectState(selectState)
+                # Merge lines if less than max chars per line
+                row = []
+                split_keys = []
+                for item in split_label:
+                    row.append(item)
+                    row_sum = sum(list(map(len, row)))
+                    if row_sum > max_chars:
+                        split_keys.append(' '.join(row))
+                        row = []
+                if len(row) > 0:
+                    split_keys.append(' '.join(row))
 
-        # Return the total number of points plotted through plotTrace function
-        self.pltGrd.resizeEvent(None)
+                labels.extend(split_keys)
+                label_colors.extend(['#000000']*len(split_keys))
+            else:
+                labels.append(dstr)
+                label_colors.append(color)
+        return labels, label_colors
 
-        # Enable tracker if option checked
-        if self.ui.toggleTrackerAction.isChecked():
-            self.enableTracker()
+    def plot_traces(self, plot, dstrs, colors):
+        points = 0
+        bridge_gaps = self.ui.bridgeDataGaps.isChecked()
+        scatter = self.ui.drawPoints.isChecked()
+        result = None
+        for color, (dstr, en) in zip(colors, dstrs):
+            # Plot spectrograms separately
+            if en < 0:
+                result = self.plot_spec_data(plot, dstr)
+                continue
 
-        self.SPECDICT = newSpec
-        return numPts
+            # Get data for trace and label
+            data = self.getData(dstr, en)
+            time, diffs, res = self.getTimes(dstr, en)
+            pen = pg.mkPen(color)
+            name = self.getLabel(dstr, en)
+
+            # Scatter plot
+            if scatter:
+                color = pen.color()
+                outline_color = pg.mkPen(color.darker(150))
+                brush = pg.mkBrush(color)
+                pdi = plot.plot(time, data, pen=None, symbolPen=outline_color,
+                    symbolBrush=brush, name=name, symbol='o', symbolSize=6, 
+                    pxMode=True)
+            # Trace plot
+            else:
+                if bridge_gaps:
+                    segments = 'all'
+                else:
+                    segments = plot_helper.get_segments(diffs, res)
+                plot.plot(time, data, pen=pen, connect=segments, name=name)
+            
+            points += len(data)
+        return points, result
+    
+    def plot_spec_data(self, plot, key):
+        # Find spec data corresponding to key
+        spec = None
+        if key in self.CDFSPECS:
+            spec = self.CDFSPECS[key]
+        elif key in self.SPECDICT:
+            spec = self.SPECDICT[key]
+
+        # Load spec data
+        if spec is not None:
+            return plot.load_color_plot(spec)
+        return None
+    
+    def add_spectrogram(self, spec_data, key):
+        # Add spec to data dict, add to plot list, then replot
+        self.SPECDICT[key] = spec_data
+        self.lastPlotStrings.append([(key, -1)])
+        self.plotTracePens.append([])
+        self.replotGrid()
+
+    def plot_added(self):
+        # Updates to grid after plot added
+        self.pltGrd.set_x_range(self.tO, self.tE)
+        self.pltGrd.set_x_lim(self.minTime, self.maxTime)
+        self.pltGrdObject.set_tick_text_size(11)
+        self.pltGrdObject.set_plot_styles(tickLength=-10)
+        self.pltGrdObject.update_y_ranges()
+        if self.tracker:
+            self.tracker.add_plot(self.pltGrd.get_plots()[-1])
+
+    def replotData(self):
+        plots = self.pltGrd.get_plots()
+        for i in range(len(plots)):
+            plot = plots[i]
+            plot.clear_data()
+            dstrs = self.lastPlotStrings[i]
+            colors = self.plotTracePens[i]
+            self.plot_traces(plot, dstrs, colors)
+        self.pltGrdObject.update_y_ranges()
+    
+    def replotGrid(self):
+        self.plotData(self.lastPlotStrings, self.lastPlotLinks, self.lastPlotHeightFactors)
+
+    def update_current_edit(self, old_edit, editnum):
+        newPlotStrings = []
+        for row in self.lastPlotStrings:
+            rowStrings = []
+            for dstr, en in row:
+                if en < 0:
+                    rowStrings.append((dstr, en))
+                else:
+                    if old_edit >= en:
+                        rowStrings.append((dstr, editnum))
+                    else:
+                        rowStrings.append((dstr, en))
+            newPlotStrings.append(rowStrings)
+        self.lastPlotStrings = newPlotStrings
+        self.replotData()
+        self.update_plot_labels()
+    
+    def update_plot_labels(self):
+        labels = self.pltGrd[:,0]
+        for row, label, in zip(self.lastPlotStrings, labels):
+            dstrs = [self.getLabel(dstr, en) for dstr, en in row]
+            if label is not None:
+                label.set_labels(dstrs)
 
     def enableTracker(self):
         ''' Creates a new tracker line item '''
@@ -2531,90 +2389,19 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.enableScrolling(True)
 
     def enableDownsampling(self, val):
+        plots = self.pltGrd.get_plots()
         if val:
-            for plt in self.plotItems:
+            for plt in plots:
                 plt.setDownsampling(ds=None, auto=True, mode='peak')
                 plt.setClipToView(True)
         else:
-            for plt in self.plotItems:
+            for plt in plots:
                 plt.setDownsampling(ds=False)
                 plt.setClipToView(False)
-
-    def genRandomPen(self):
-        r = np.random.randint(low=0, high=255)
-        g = np.random.randint(low=0, high=255)
-        b = np.random.randint(low=0, high=255)
-        return pg.mkPen([r,g,b])
 
     def replotDataCallback(self):
         # done this way to ignore the additional information ui callbacks will provide
         self.replotData()
-
-    def replotData(self, desiredEdit=None):
-        """simply redraws the traces and ensures y range is correct without rebuilding everything
-           if desiredEdit is defined it will try to plot strings at that edit if they have data there
-        """
-
-        newPltStrs = []
-        for i in range(len(self.plotItems)):
-            pi = self.plotItems[i]
-            plotStrs = self.lastPlotStrings[i]
-            pens = self.plotTracePens[i]
-            if pens == [None]:
-                continue
-            if self.pltGrd.colorPltKws[i] is not None:
-                newPltStrs.append(plotStrs)
-                continue
-            pi.clearPlots()
-
-            # keep track of the frequency of strings in each plot (regardless of edit number)
-            if desiredEdit is not None:
-                seenCount = {} # how many times this string has been seen
-                for dstr,en in plotStrs:
-                    if dstr in seenCount:
-                        seenCount[dstr]+=1
-                    else:
-                        seenCount[dstr] = 1
-
-            subPltStrs = []
-            j = 0
-            while j < len(plotStrs):
-                dstr, editNum = plotStrs[j]
-                prevEdit = editNum
-                if editNum < 0:
-                    subPltStrs.append((dstr, editNum))
-                    j += 1
-                    continue
-
-                edits = self.DATADICT[dstr]
-
-                # if u have multiple edits of same data string on this plot then ignore the desiredEdit option
-                if desiredEdit is not None and seenCount[dstr] == 1:
-                    # if string has data with this edit
-                    if len(edits[desiredEdit]) > 0:
-                        editNum = desiredEdit
-                elif editNum >= len(edits): # if bad edit number then delete (happens usually when u delete an edit that is currently plotted)
-                    del plotStrs[j]
-                    continue
-
-                plotStrs[j] = dstr,editNum #save incase changes were made (so this reflects elsewhere)
-
-                self.plotTrace(pi, dstr, editNum, pens[j])
-
-                # Update custom pens
-                if i < len(self.customPens):
-                    cstmPenIndex = 0
-                    for cstmDstr, cstmEn, cstmPen in self.customPens[i]:
-                        if cstmDstr == dstr and cstmEn == prevEdit:
-                            self.customPens[i][cstmPenIndex] = (dstr, editNum, cstmPen)
-                        cstmPenIndex += 1
-
-                subPltStrs.append((dstr, editNum))
-
-                j+=1
-            newPltStrs.append(subPltStrs)
-        self.lastPlotStrings = newPltStrs
-        self.updateYRange()
 
     def getTimes(self, dstr, editNumber):
         times, resolutions, avgRes = self.TIMES[self.TIMEINDEX[dstr]]
@@ -2641,130 +2428,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     def getTimeIndex(self, dstr, en):
         return self.TIMEINDEX[dstr]
 
-    def getConnectionList(self, resolutions, avgRes):
-        mask = resolutions > (avgRes * 2)
-        segments = np.array(np.logical_not(mask), dtype=np.int32)
-        return segments
-
-    # both plotData and replot use this function internally
-    def plotTrace(self, pi, dstr, editNumber, pen):
-        Y = self.getData(dstr, editNumber)
-        if len(Y) <= 1: # not sure if this can happen but just incase
-            print(f'Error: insufficient Y data for column "{dstr}"')
-            return 0
-        errMask = abs(Y) < abs(self.errorFlag)
-
-        times,resolutions,avgRes = self.getTimes(dstr, editNumber)
-        Y = Y[errMask]
-        times = times[errMask]
-        resolutions = np.diff(times)
-        resolutions = np.concatenate([resolutions, [resolutions[-1]]])
-
-        # Find smallest tick in data
-        ofst = int(self.minTime)
-        self.tickOffset = ofst
-        pi.tickOffset = ofst
-        pi.getAxis('bottom').tickOffset = ofst
-        pi.getAxis('top').tickOffset = ofst
-        # Subtract offset value from all times values for plotting
-        ofstTimes = times - ofst
-
-        # Determine data segments/type and plot
-        if not self.ui.bridgeDataGaps.isChecked():
-            # Find segments of data that should not be connected due to time gaps
-            segs = self.getConnectionList(resolutions, avgRes)
-            if self.ui.drawPoints.isChecked():
-                brush = pg.mkBrush(pen.color())
-                outlinePen = self.getPointsOutlinePen(pen)
-                pi.scatterPlot(ofstTimes, Y, pen=outlinePen, brush=brush, size=2, 
-                    connect=segs, name=dstr)
-            else:
-                pdi = MagPyPlotDataItem(ofstTimes, Y, pen=pen, connect=segs, 
-                    name=dstr)
-                pi.addItem(pdi)
-        else:
-            if self.ui.drawPoints.isChecked():
-                brush = pg.mkBrush(pen.color())
-                outlinePen = self.getPointsOutlinePen(pen)
-                pi.scatterPlot(ofstTimes, Y, pen=outlinePen, brush=brush, size=2,
-                    name=dstr)
-            else:
-                pdi = MagPyPlotDataItem(ofstTimes, Y, pen=pen, name=dstr)
-                pi.addItem(pdi)
-
-        return len(Y)
-
-    def getPointsOutlinePen(self, pen):
-        color = pen.color()
-        r, g, b, alpha = color.getRgb()
-        new_r = max(r-25, 0)
-        new_g = max(g-25, 0)
-        new_b = max(b-25, 0)
-        return pg.mkPen(new_r, new_g, new_b)
-
     def getViewRange(self):
         return self.tO, self.tE
-
-    def updateYRange(self, force=False):
-        """
-        this function scales Y axis to have equally scaled ranges but not the same actual range
-        pyqtgraph has built in y axis linking but doesn't work exactly how we want
-        also this replicates pyqtgraph setAutoVisible to have scaling for currently selected time vs the whole file
-        """
-        if self.lastPlotStrings is None or len(self.lastPlotStrings) == 0:
-            return
-        
-        if (not force) and (not self.ui.scaleYToCurrentTimeAction.isChecked()):
-            return
-
-        # Get plots in each link group
-        plots = self.plotItems[:]
-        plot_grps = []
-        for plot_links in self.lastPlotLinks:
-            group = [plots[i] for i in plot_links]
-            plot_grps.append(group)
-
-        # Get the view range
-        start, stop = self.getViewRange()
-        start = start - self.tickOffset
-        stop = stop - self.tickOffset
-
-        # Find the range for each link group
-        scales = []
-        group_centers = []
-        for group in plot_grps:
-            group_scale = None
-            # Get data bounds for each plot and compare to group
-            # lower / upper bounds
-            plot_centers = []
-            for plot in group:
-                lower, upper = plot.dataBounds(ax=1, orthoRange=[start, stop])
-
-                # Check if lower and upper are valid and compare against
-                # current group scale
-                if lower is not None and upper is not None:
-                    diff = abs(upper - lower)
-                    if group_scale is None:
-                        group_scale = diff
-                    else:
-                        group_scale = max(diff, group_scale)
-
-                    # Store center value of plot data to use later
-                    center = (lower+upper)/2
-                    plot_centers.append(center)
-
-            # Store group information
-            scales.append(group_scale)
-            group_centers.append(plot_centers)
-
-        # Set the ranges for each group       
-        for group, scale, centers in zip(plot_grps, scales, group_centers):
-            if scale is not None:
-                half = scale / 2
-                for plot, center in zip(group, centers):
-                    ymin = center - half
-                    ymax = center + half
-                    plot.setYRange(ymin, ymax, 0.05)
 
     def updateLogScaling(self, plotIndex, val):
         # Look through all link sets the plot at the given index is in
@@ -2789,6 +2454,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         # Manually update y ranges
         self.updateYRange()
+
+    def updateYRange(self):
+        self.pltGrdObject.set_autoscale(self.ui.scaleYToCurrentTimeAction.isChecked())
 
     def flagData(self, flag=None):
         if len(self.FIDs) > 1:
@@ -3124,8 +2792,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         plotInfo = []
         region = self.currSelect.regions[0]
+        plots = self.pltGrd.get_plots()
         for pltNum in range(0, len(region.regionItems)):
-            if region.isVisible(pltNum) and not self.plotItems[pltNum].isSpecialPlot():
+            if region.isVisible(pltNum) and not plots[pltNum].isSpecialPlot():
                 plotInfo.append((self.lastPlotStrings[pltNum], self.plotTracePens[pltNum]))
 
         return plotInfo
@@ -3142,6 +2811,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
                     f.append(dstr)
             found.append(f)
         return found
+    
+    def vecDict(self):
+        vec_dict = {}
+        for grp in self.findVecGroups():
+            vec_dict[grp[0]] = grp
+        return vec_dict
 
     def findPlottedVecGroups(self):
         # Try to identify fully plotted vectors by looking at the
@@ -3190,25 +2865,25 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         else:
             return None
 
-    def gridLeftClick(self, x, plotIndex, ctrlPressed):
+    def gridLeftClick(self, x, vb, ctrlPressed):
         # Get current tool selection (or set trace as select tool if batch select
         # is not open) and pass the left click to it
         batchOpen = self.batchSelect is not None
         tool = self.getCurrentTool(setTrace=(not batchOpen))
         if tool:
-            tool.leftClick(x, plotIndex, ctrlPressed)
+            tool.leftClick(x, vb, ctrlPressed)
 
         # If batch select is open and the selections are not locked, then
         # pass the left click to it as well
         if batchOpen and not self.batchSelect.isLocked():
             tool = self.batchSelect.linkedRegion
-            tool.leftClick(x, plotIndex, ctrlPressed)
+            tool.leftClick(x, vb, ctrlPressed)
 
-    def gridRightClick(self, plotIndex):
+    def gridRightClick(self, vb):
         # Apply right click to current tool
         tool = self.getCurrentTool(setTrace=False) # Don't set trace as select
         if tool:
-            tool.rightClick(plotIndex)
+            tool.rightClick(vb)
 
         # Return whether this click was applied to a selection or not so the viewbox
         # can determine whether to apply the default right click action instead
@@ -3298,57 +2973,15 @@ def read_cdf_files(files, progress_func, cancel_func, exclude_keys=None,
 
         # Read in data from files and create a tuple for each set of data
         # read from the CDF (since multiple epochs are allowed)
-        try:
-            datas, reader = load_cdf(file, exclude_keys, label_func=label_func, clip_range=clip_range)
-            file_data = [(data, reader) for key, data in datas.items()]
-            file_datas.extend(file_data)
-            progress_func((base, i, n, ProgStates.SUCCESS))
-        except:
-            progress_func((base, i, n, ProgStates.FAILURE))
-    
+        datas, reader = load_cdf(file, exclude_keys, label_func=label_func, clip_range=clip_range)
+        file_data = [(data, reader) for key, data in datas.items()]
+        file_datas.extend(file_data)
+
     # Do not return anything if thread is to be canceled
     if cancel_func():
         return []
     
     return file_datas
-
-# look at the source here to see what functions you might want to override or call
-#http://www.pyqtgraph.org/documentation/_modules/pyqtgraph/graphicsItems/ViewBox/ViewBox.html#ViewBox
-class MagPyViewBox(SelectableViewBox): # custom viewbox event handling
-    def __init__(self, window, plotIndex, *args, **kwds):
-        SelectableViewBox.__init__(self, window, plotIndex, *args, **kwds)
-        self.window = window
-        self.plotIndex = plotIndex
-        self.menuSetup()
-        self.setCursor(QtCore.Qt.CrossCursor)
-
-    def menuSetup(self):
-        # Remove menu options that won't be used
-        actions = self.menu.actions()
-        xAction, yAction, mouseAction = actions[1:4]
-        for a in [xAction, mouseAction]:
-            self.menu.removeAction(a)
-
-    def setPlotIndex(self, index):
-        self.plotIndex = index
-
-    def hoverEvent(self, ev):
-        # Update hover tracker position if present
-        if ev.isEnter():
-            # Start hover
-            pos = self.mapToView(ev.pos())
-            self.window.hoverStart(pos)
-        elif ev.isExit():
-            # End hover
-            self.window.hoverEnd()
-        else:
-            # Start and update hover
-            pos = self.mapToView(ev.pos())
-            self.window.hoverStart(pos)
-            self.window.gridHover(pos)
-
-    def wheelEvent(self, ev, axis=None):
-        self.window.zoomCentered(ev, axis)
 
 def myexepthook(type, value, tb):
     print(f'{type} {value}')
@@ -3397,10 +3030,8 @@ def startMagPy(files=None, display=True):
         extension = split_name[-1]
         if extension == 'cdf': # CDF
             main.addCDF(files, clearPrev=True)
-        elif extension.startswith('ff') or len(split_name) == 1: # Flat files
-            main.openFileList(files, True, True)
-        else: # ASCII files
-            main.openFileList(files, False, True)
+        else:
+            main.openFileList(files, True)
 
     if display:
         args = sys.argv

@@ -1,14 +1,9 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 import pyqtgraph as pg
-import pyqtgraph.exporters
-from datetime import datetime, timedelta
-from .timeManager import TimeManager
 from fflib import ff_time
-from math import ceil
 import functools
-from bisect import bisect_left, bisect_right
-from .plotBase import GraphicsLayout
+from .plotBase import GraphicsLayout, MagPyPlotItem
 
 # Label item placed at top
 class RegionLabel(pg.InfLineLabel):
@@ -51,26 +46,34 @@ class LinkedRegion(pg.LinearRegionItem):
         self.linkedTE = linkedTE
         self.lblPos = lblPos
         self.labelHidden = False
+        self.color = color
 
         pg.LinearRegionItem.__init__(self, values=(0,0))
 
         for plt in self.plotItems:
-            # Create a LinearRegionItem for each plot with same initialized vals
-            regionItem = LinkedSubRegion(self, values=values, color=color)
-            regionItem.setBounds([self.window.minTime - self.window.tickOffset, self.window.maxTime-self.window.tickOffset])
-            plt.addItem(regionItem)
-            self.regionItems.append(regionItem)
-            # Connect plot's regions/lines to each other
-            line0, line1 = regionItem.lines
-            line0.sigDragged.connect(functools.partial(self.linesChanged, line0, 0))
-            line1.sigDragged.connect(functools.partial(self.linesChanged, line1, 1))
+            self.add_plot(plt, values)
 
         # Initialize region label at top-most plot
         self.labelPltIndex = 0 if lblPos == 'top' else len(self.plotItems) - 1
         self.setLabel(self.labelPltIndex)
         if self.linkedTE:
             self.updateTimeEditByLines(self.linkedTE)
-        
+
+    def add_plot(self, plot, values=None):
+        # Create a LinearRegionItem for each plot with same initialized vals
+        values = self.getRegion() if values is None else values
+        regionItem = LinkedSubRegion(self, values=values, color=self.color)
+        regionItem.setBounds([self.window.minTime, self.window.maxTime])
+        plot.addItem(regionItem)
+        self.regionItems.append(regionItem)
+
+        # Connect plot's regions/lines to each other
+        line0, line1 = regionItem.lines
+        line0.sigDragged.connect(functools.partial(self.linesChanged, line0, 0))
+        line1.sigDragged.connect(functools.partial(self.linesChanged, line1, 1))
+    
+        return regionItem
+
     def setLinkedTE(self, te):
         self.linkedTE = te
 
@@ -98,7 +101,7 @@ class LinkedRegion(pg.LinearRegionItem):
         self.labelPltIndex = plotNum
     
     def hideLabel(self):
-        self.regionItems[self.labelPltIndex].lines[0].setVisible(False)
+        self.regionItems[self.labelPltIndex].lines[0].label.setVisible(False)
 
     def mouseDragEvent(self, ev):
         # Called by sub-regions to drag all regions at same time
@@ -231,23 +234,34 @@ class TrackerRegion(LinkedRegion):
     def __init__(self, *args, **kwargs):
         LinkedRegion.__init__(self, *args, **kwargs)
         for region in self.regionItems:
-            for line in region.lines:
-                pen = line.pen
-                pen.setStyle(QtCore.Qt.DashLine)
-                line.setPen(pen)
+            self.set_region_style(region)
+        self.hideLabel()
 
-                pen = line.hoverPen
-                pen.setWidth(1)
-                pen.setStyle(QtCore.Qt.DashLine)
-                line.setHoverPen(pen)
+    def set_region_style(self, region):
+        # Sets dashed line style and no hover filler brush
+        for line in region.lines:
+            pen = line.pen
+            pen.setStyle(QtCore.Qt.DashLine)
+            line.setPen(pen)
 
-            brush = pg.mkBrush(0, 0, 0, 0)
-            region.setHoverBrush(brush)
-            region.setBrush(brush)
-            region.lines[0].setVisible(False)
+            pen = line.hoverPen
+            pen.setWidth(1)
+            pen.setStyle(QtCore.Qt.DashLine)
+            line.setHoverPen(pen)
+        line.setVisible(False)
+
+        brush = pg.mkBrush(0, 0, 0, 0)
+        region.setHoverBrush(brush)
+        region.setBrush(brush)
+        region.setBounds([self.window.minTime, self.window.maxTime])
 
     def mouseClickEvent(self, ev):
         return
+    
+    def add_plot(self, plot, values=None):
+        # Adds a new plot region item to plot
+        item = super().add_plot(plot, values=values)
+        self.set_region_style(item)
 
 class LinkedSubRegion(pg.LinearRegionItem):
     def __init__(self, grp, values=(0, 1), color=None, orientation='vertical', brush=None, pen=None):
@@ -290,48 +304,6 @@ class LinkedSubRegion(pg.LinearRegionItem):
 
 # subclass based off example here:
 # https://github.com/ibressler/pyqtgraph/blob/master/examples/customPlot.py
-
-class GridGraphicsLayout(GraphicsLayout):
-    def __init__(self, window=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.window = window
-        self.lastWidth = 0
-        self.lastHeight = 0
-
-    def addItem(self, item, row=None, col=None, rowspan=1, colspan=1):
-        """
-        Add an item to the layout and place it in the next available cell (or in the cell specified).
-        The item must be an instance of a QGraphicsWidget subclass.
-        """
-        if row is None:
-            row = self.currentRow
-        if col is None:
-            col = self.currentCol
-            
-        self.items[item] = []
-        for i in range(rowspan):
-            for j in range(colspan):
-                row2 = row + i
-                col2 = col + j
-                if row2 not in self.rows:
-                    self.rows[row2] = {}
-                self.rows[row2][col2] = item
-                self.items[item].append((row2, col2))
-
-        borderRect = QtWidgets.QGraphicsRectItem()
-
-        borderRect.setParentItem(self)
-        borderRect.setZValue(1e3)
-        borderRect.setPen(pg.mkPen(self.border))
-
-        self.itemBorders[item] = borderRect
-
-        item.geometryChanged.connect(self._updateItemBorder)
-
-        self.layout.addItem(item, row, col, rowspan, colspan)
-                               # Allows some PyQtGraph features to also work without Qt event loop.
-        
-        self.nextColumn()
 
 class BLabelItem(pg.LabelItem):
     def setHtml(self, html):
@@ -381,10 +353,46 @@ class RowGridLayout(GraphicsLayout):
         return rowItems
 
 class SpectraGrid(RowGridLayout):
+    def __init__(self, *args, **kwargs):
+        self.name = ''
+        self.window = None
+        super().__init__(*args, **kwargs)
+
+    def set_name(self, name):
+        self.name = name
+    
+    def set_window(self, window):
+        self.window = window
+
     def addItem(self, *args, **kwargs):
         super().addItem(*args, **kwargs)
+
+        # Custom actions and helper windows
+        self.plotAppr = None
+        self.plotApprAction = QtWidgets.QAction(self)
+        self.plotApprAction.triggered.connect(self.openPlotAppr)
+        self.plotApprAction.setText('Change Plot Appearance...')
         self.updateRowWidths()
+
+    def openPlotAppr(self):
+        from .plotAppearance import PlotAppearance
+        self.closePlotAppr()
+        self.plotAppr = PlotAppearance(self)
+        if self.window is not None:
+            color_func = functools.partial(self.window.updateTitleColors, self.name)
+            self.plotAppr.colorsChanged.connect(color_func)
+        self.destroyed.connect(self.plotAppr.close)
+        self.plotAppr.show()
     
+    def closePlotAppr(self):
+        if self.plotAppr:
+            self.plotAppr.close()
+            self.plotAppr = None
+
+    def getContextMenus(self, *args, **kwargs):
+        menus = [self.plotApprAction]
+        return menus
+
     def updateRowWidths(self):
         rowItems = self.getRowItems()
         for row in rowItems:
@@ -398,426 +406,54 @@ class SpectraGrid(RowGridLayout):
 
             for plot in rowPlots:
                 plot.setMinimumWidth(minWidth)
-
-# Same as export() from pyqtgraph's ImageExporter class
-# But fixed bug where width/height params are not set as integers
-def cstmImageExport(self, fileName=None, toBytes=False, copy=False):
-    if fileName is None and not toBytes and not copy:
-        filter = ["*."+bytes(f).decode('utf-8') for f in QtGui.QImageWriter.supportedImageFormats()]
-        preferred = ['*.png', '*.tif', '*.jpg']
-        for p in preferred[::-1]:
-            if p in filter:
-                filter.remove(p)
-                filter.insert(0, p)
-        self.fileSaveDialog(filter=filter)
-        return
-        
-    targetRect = QtCore.QRect(0, 0, self.params['width'], self.params['height'])
-    sourceRect = self.getSourceRect()
     
-    w, h = self.params['width'], self.params['height']
-    if w == 0 or h == 0:
-        raise Exception("Cannot export image with size=0 (requested export size is %dx%d)" % (w,h))
-    bg = np.empty((int(self.params['width']), int(self.params['height']), 4), dtype=np.ubyte)
-    color = self.params['background']
-    bg[:,:,0] = color.blue()
-    bg[:,:,1] = color.green()
-    bg[:,:,2] = color.red()
-    bg[:,:,3] = color.alpha()
-    self.png = pg.makeQImage(bg, alpha=True)
+    def get_plots(self):
+        items = self.getRowItems()
+        plots = []
+        for row in items:
+            for item in row:
+                if isinstance(item, MagPyPlotItem): 
+                    plots.append(item)
+        return plots
+
+    def set_tick_text_size(self, val):
+        plots = self.get_plots()
+        font = QtGui.QFont()
+        font.setPointSize(val)
+        for plot in plots:
+            for key in ['left', 'bottom', 'right', 'top']:
+                ax = plot.getAxis(key)
+                ax.setStyle(tickFont=font)
+
+    def get_traces(self):
+        traces = []
+        plots = self.get_plots()
+        index = 0
+        for plot in plots:
+            lines = plot.getLineInfo()
+            traces.append((index, lines))
+            index += 1
+        return traces
     
-    ## set resolution of image:
-    origTargetRect = self.getTargetRect()
-    resolutionScale = targetRect.width() / origTargetRect.width()
+    def get_links(self):
+        plots = self.get_plots()
+        links = [[i for i in range(len(plots))]]
+        return links
 
-    painter = QtGui.QPainter(self.png)
+    def update_label_color(self, plot, name, color):
+        from .spectra import SpectraPlot
+        if isinstance(plot, SpectraPlot):
+            label = plot.getTitleObject()
+            colors = label.getColors()
+            labels = label.getLabels()
+            index = -1
+            for i in range(len(labels)):
+                if labels[i] == name:
+                    index = i
 
-    try:
-        self.setExportMode(True, {'antialias': self.params['antialias'], 'background': self.params['background'], 'painter': painter, 'resolutionScale': resolutionScale})
-        painter.setRenderHint(QtGui.QPainter.Antialiasing, self.params['antialias'])
-        self.getScene().render(painter, QtCore.QRectF(targetRect), QtCore.QRectF(sourceRect))
-    finally:
-        self.setExportMode(False)
-    painter.end()
-    
-    if copy:
-        QtWidgets.QApplication.clipboard().setImage(self.png)
-    elif toBytes:
-        return self.png
-    else:
-        self.png.save(fileName)
-
-pg.exporters.ImageExporter.export = cstmImageExport
-
-import xml.dom.minidom as xml
-import numpy as np
-import re
-from pyqtgraph.python2_3 import asUnicode
-from pyqtgraph.Qt import QtSvg, QT_LIB
-
-xmlHeader = """\
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"  version="1.2" baseProfile="tiny">
-<title>pyqtgraph SVG export</title>
-<desc>Generated with Qt and pyqtgraph</desc>
-"""
-
-def cstmSVGExport(self, fileName=None, toBytes=False, copy=False):
-    if toBytes is False and copy is False and fileName is None:
-        self.fileSaveDialog(filter="Scalable Vector Graphics (*.svg)")
-        return
-
-    ## Qt's SVG generator is not complete. (notably, it lacks clipping)
-    ## Instead, we will use Qt to generate SVG for each item independently,
-    ## then manually reconstruct the entire document.
-    options = {ch.name():ch.value() for ch in self.params.children()}
-    xml = generateSvg(self.item, options)
-
-    if toBytes:
-        return xml.encode('UTF-8')
-    elif copy:
-        md = QtCore.QMimeData()
-        md.setData('image/svg+xml', QtCore.QByteArray(xml.encode('UTF-8')))
-        QtWidgets.QApplication.clipboard().setMimeData(md)
-    else:
-        with open(fileName, 'wb') as fh:
-            fh.write(asUnicode(xml).encode('utf-8'))
-
-def generateSvg(item, options={}):
-    global xmlHeader
-    try:
-        node, defs = cstmGenerateItemSvg(item, options=options)
-    finally:
-        ## reset export mode for all items in the tree
-        if isinstance(item, QtWidgets.QGraphicsScene):
-            items = item.items()
-        else:
-            items = [item]
-            for i in items:
-                items.extend(i.childItems())
-        for i in items:
-            if hasattr(i, 'setExportMode'):
-                i.setExportMode(False)
-
-    cleanXml(node)
-    defsXml = "<defs>\n"
-    for d in defs:
-        defsXml += d.toprettyxml(indent='    ')
-    defsXml += "</defs>\n"
-    return xmlHeader + defsXml + node.toprettyxml(indent='    ') + "\n</svg>\n"
-
-
-def cstmGenerateItemSvg(item, nodes=None, root=None, options={}):
-    # Color plots need to be prepared for SVG export
-    refItem = item
-    if isinstance(refItem, pg.PlotItem):
-        if hasattr(refItem, 'prepareForExport'):
-            refItem.prepareForExport()
-            app = QtCore.QCoreApplication.instance()
-            app.processEvents()
-
-    if nodes is None:  ## nodes maps all node IDs to their XML element. 
-                       ## this allows us to ensure all elements receive unique names.
-        nodes = {}
-        
-    if root is None:
-        root = item
-                
-    ## Skip hidden items
-    if hasattr(item, 'isVisible') and not item.isVisible():
-        # Reset color plots back to previous values after export is complete
-        if isinstance(refItem, pg.PlotItem):
-            if hasattr(refItem, 'prepareForExport'):
-                refItem.resetAfterExport()
-
-        return None
-        
-    ## If this item defines its own SVG generator, use that.
-    if hasattr(item, 'generateSvg'):
-        # Reset color plots back to previous values after export is complete
-        if isinstance(refItem, pg.PlotItem):
-            if hasattr(refItem, 'prepareForExport'):
-                refItem.resetAfterExport()
-        return item.generateSvg(nodes)
-    
-
-    ## Generate SVG text for just this item (exclude its children; we'll handle them later)
-    tr = QtGui.QTransform()
-    if isinstance(item, QtWidgets.QGraphicsScene):
-        xmlStr = "<g>\n</g>\n"
-        doc = xml.parseString(xmlStr)
-        childs = [i for i in item.items() if i.parentItem() is None]
-    elif item.__class__.paint == QtWidgets.QGraphicsItem.paint:
-        xmlStr = "<g>\n</g>\n"
-        doc = xml.parseString(xmlStr)
-        childs = item.childItems()
-    else:
-        childs = item.childItems()
-        tr = itemTransform(item, item.scene())
-        
-        ## offset to corner of root item
-        if isinstance(root, QtWidgets.QGraphicsScene):
-            rootPos = QtCore.QPoint(0,0)
-        else:
-            rootPos = root.scenePos()
-
-        tr2 = QtGui.QTransform()
-        tr2.translate(-rootPos.x(), -rootPos.y())
-        tr = tr * tr2
-
-        arr = QtCore.QByteArray()
-        buf = QtCore.QBuffer(arr)
-        svg = QtSvg.QSvgGenerator()
-        svg.setOutputDevice(buf)
-        dpi = QtWidgets.QDesktopWidget().logicalDpiX()
-        svg.setResolution(dpi)
-
-        p = QtGui.QPainter()
-        p.begin(svg)
-        if hasattr(item, 'setExportMode'):
-            item.setExportMode(True, {'painter': p})
-        try:
-            p.setTransform(tr)
-            opt = QtWidgets.QStyleOptionGraphicsItem()
-            if item.flags() & QtWidgets.QGraphicsItem.ItemUsesExtendedStyleOption:
-                opt.exposedRect = item.boundingRect()
-            item.paint(p, opt, None)
-        finally:
-            p.end()
-
-        if QT_LIB in ['PySide', 'PySide2']:
-            xmlStr = str(arr)
-        else:
-            xmlStr = bytes(arr).decode('utf-8')
-        doc = xml.parseString(xmlStr.encode('utf-8'))
-        
-    try:
-        ## Get top-level group for this item
-        g1 = doc.getElementsByTagName('g')[0]
-        ## get list of sub-groups
-        g2 = [n for n in g1.childNodes if isinstance(n, xml.Element) and n.tagName == 'g']
-        
-        defs = doc.getElementsByTagName('defs')
-        if len(defs) > 0:
-            defs = [n for n in defs[0].childNodes if isinstance(n, xml.Element)]
-    except:
-        print(doc.toxml())
-        raise
-
-    ## Get rid of group transformation matrices by applying
-    ## transformation to inner coordinates
-    correctCoordinates(g1, defs, item, options)
-    
-    ## decide on a name for this item
-    baseName = item.__class__.__name__
-    i = 1
-    while True:
-        name = baseName + "_%d" % i
-        if name not in nodes:
-            break
-        i += 1
-    nodes[name] = g1
-    g1.setAttribute('id', name)
-    
-    ## If this item clips its children, we need to take care of that.
-    childGroup = g1  ## add children directly to this node unless we are clipping
-    if not isinstance(item, QtWidgets.QGraphicsScene):
-        ## See if this item clips its children
-        if int(item.flags() & item.ItemClipsChildrenToShape) > 0:
-            ## Generate svg for just the path
-            path = QtWidgets.QGraphicsPathItem(item.mapToScene(item.shape()))
-            item.scene().addItem(path)
-            try:
-                pathNode = cstmGenerateItemSvg(path, root=root, options=options)[0].getElementsByTagName('path')[0]
-                # assume <defs> for this path is empty.. possibly problematic.
-            finally:
-                item.scene().removeItem(path)
-            
-            ## and for the clipPath element
-            clip = name + '_clip'
-            clipNode = g1.ownerDocument.createElement('clipPath')
-            clipNode.setAttribute('id', clip)
-            clipNode.appendChild(pathNode)
-            g1.appendChild(clipNode)
-            
-            childGroup = g1.ownerDocument.createElement('g')
-            childGroup.setAttribute('clip-path', 'url(#%s)' % clip)
-            g1.appendChild(childGroup)
-            
-    ## Add all child items as sub-elements.
-    childs.sort(key=lambda c: c.zValue())
-    for ch in childs:
-        csvg = cstmGenerateItemSvg(ch, nodes, root, options=options)
-        if csvg is None:
-            continue
-        cg, cdefs = csvg
-        childGroup.appendChild(cg)  ### this isn't quite right--some items draw below their parent (good enough for now)
-        defs.extend(cdefs)
-
-    # Reset color plots back to previous values after export is complete
-    if isinstance(refItem, pg.PlotItem):
-        if hasattr(refItem, 'prepareForExport'):
-            refItem.resetAfterExport()
-
-    return g1, defs
-
-
-def correctCoordinates(node, defs, item, options):
-    ## Remove transformation matrices from <g> tags by applying matrix to coordinates inside.
-    ## Each item is represented by a single top-level group with one or more groups inside.
-    ## Each inner group contains one or more drawing primitives, possibly of different types.
-    groups = node.getElementsByTagName('g')
-    
-    ## Since we leave text unchanged, groups which combine text and non-text primitives must be split apart.
-    ## (if at some point we start correcting text transforms as well, then it should be safe to remove this)
-    groups2 = []
-    for grp in groups:
-        subGroups = [grp.cloneNode(deep=False)]
-        textGroup = None
-        for ch in grp.childNodes[:]:
-            if isinstance(ch, xml.Element):
-                if textGroup is None:
-                    textGroup = ch.tagName == 'text'
-                if ch.tagName == 'text':
-                    if textGroup is False:
-                        subGroups.append(grp.cloneNode(deep=False))
-                        textGroup = True
-                else:
-                    if textGroup is True:
-                        subGroups.append(grp.cloneNode(deep=False))
-                        textGroup = False
-            subGroups[-1].appendChild(ch)
-        groups2.extend(subGroups)
-        for sg in subGroups:
-            node.insertBefore(sg, grp)
-        node.removeChild(grp)
-    groups = groups2
-        
-    
-    for grp in groups:
-        matrix = grp.getAttribute('transform')
-        match = re.match(r'matrix\((.*)\)', matrix)
-        if match is None:
-            vals = [1,0,0,1,0,0]
-        else:
-            vals = [float(a) for a in match.groups()[0].split(',')]
-        tr = np.array([[vals[0], vals[2], vals[4]], [vals[1], vals[3], vals[5]]])
-
-        removeTransform = False
-        for ch in grp.childNodes:
-            if not isinstance(ch, xml.Element):
-                continue
-            if ch.tagName == 'polyline':
-                removeTransform = True
-                coords = np.array([[float(a) for a in c.split(',')] for c in ch.getAttribute('points').strip().split(' ')])
-                coords = pg.transformCoordinates(tr, coords, transpose=True)
-                ch.setAttribute('points', ' '.join([','.join([str(a) for a in c]) for c in coords]))
-            elif ch.tagName == 'path':
-                removeTransform = True
-                newCoords = ''
-                oldCoords = ch.getAttribute('d').strip()
-                if oldCoords == '':
-                    continue
-                for c in oldCoords.split(' '):
-                    x,y = c.split(',')
-                    if x[0].isalpha():
-                        t = x[0]
-                        x = x[1:]
-                    else:
-                        t = ''
-                    nc = pg.transformCoordinates(tr, np.array([[float(x),float(y)]]), transpose=True)
-                    newCoords += t+str(nc[0,0])+','+str(nc[0,1])+' '
-                # If coords start with L instead of M, then the entire path will not be rendered.
-                # (This can happen if the first point had nan values in it--Qt will skip it on export)
-                if newCoords[0] != 'M':
-                    newCoords = 'M' + newCoords[1:]
-                ch.setAttribute('d', newCoords)
-            elif ch.tagName == 'text':
-                removeTransform = False
-                ## leave text alone for now. Might need this later to correctly render text with outline.
-
-                ## Correct some font information
-                families = ch.getAttribute('font-family').split(',')
-                if len(families) == 1:
-                    font = QtGui.QFont(families[0].strip('" '))
-                    if font.style() == font.SansSerif:
-                        families.append('sans-serif')
-                    elif font.style() == font.Serif:
-                        families.append('serif')
-                    elif font.style() == font.Courier:
-                        families.append('monospace')
-                    ch.setAttribute('font-family', ', '.join([f if ' ' not in f else '"%s"'%f for f in families]))
-                
-            ## correct line widths if needed
-            if removeTransform and ch.getAttribute('vector-effect') != 'non-scaling-stroke' and grp.getAttribute('stroke-width') != '':
-                w = float(grp.getAttribute('stroke-width'))
-                s = pg.transformCoordinates(tr, np.array([[w,0], [0,0]]), transpose=True)
-                w = ((s[0]-s[1])**2).sum()**0.5
-                ch.setAttribute('stroke-width', str(w))
-            
-            # Remove non-scaling-stroke if requested
-            if options.get('scaling stroke') is True and ch.getAttribute('vector-effect') == 'non-scaling-stroke':
-                ch.removeAttribute('vector-effect')
-
-        if removeTransform:
-            grp.removeAttribute('transform')
-
-def itemTransform(item, root):
-    ## Return the transformation mapping item to root
-    ## (actually to parent coordinate system of root)
-    
-    if item is root:
-        tr = QtGui.QTransform()
-        tr.translate(*item.pos())
-        tr = tr * item.transform()
-        return tr
-        
-    
-    if int(item.flags() & item.ItemIgnoresTransformations) > 0:
-        pos = item.pos()
-        parent = item.parentItem()
-        if parent is not None:
-            pos = itemTransform(parent, root).map(pos)
-        tr = QtGui.QTransform()
-        tr.translate(pos.x(), pos.y())
-        tr = item.transform() * tr
-    else:
-        ## find next parent that is either the root item or 
-        ## an item that ignores its transformation
-        nextRoot = item
-        while True:
-            nextRoot = nextRoot.parentItem()
-            if nextRoot is None:
-                nextRoot = root
-                break
-            if nextRoot is root or int(nextRoot.flags() & nextRoot.ItemIgnoresTransformations) > 0:
-                break
-        
-        if isinstance(nextRoot, QtWidgets.QGraphicsScene):
-            tr = item.sceneTransform()
-        else:
-            tr = itemTransform(nextRoot, root) * item.itemTransform(nextRoot)[0]
-    
-    return tr
-
-def cleanXml(node):
-    ## remove extraneous text; let the xml library do the formatting.
-    hasElement = False
-    nonElement = []
-    for ch in node.childNodes:
-        if isinstance(ch, xml.Element):
-            hasElement = True
-            cleanXml(ch)
-        else:
-            nonElement.append(ch)
-    
-    if hasElement:
-        for ch in nonElement:
-            node.removeChild(ch)
-    elif node.tagName == 'g':  ## remove childless groups
-        node.parentNode.removeChild(node)
-
-pg.exporters.SVGExporter.export = cstmSVGExport
+            if index >= 0:
+                colors[index] = color
+                label.setColors(colors)
 
 # Modified ViewBoxMenu's function to set strings that represent ranges
 # as floats instead of rewriting them in scientific notation since precision
@@ -869,12 +505,13 @@ def vbMenu_UpdateState(self):
 # pg.ViewBoxMenu.ViewBoxMenu.updateState = vbMenu_UpdateState
 
 from pyqtgraph.parametertree import Parameter
-class PDFExporter(pg.exporters.Exporter):
+import pyqtgraph.exporters
+class PDFExporter(pyqtgraph.exporters.Exporter):
     Name = "PDF Document"
     allowCopy = False
 
     def __init__(self, item):
-        pg.exporters.Exporter.__init__(self, item)
+        pyqtgraph.exporters.Exporter.__init__(self, item)
 
         # Orientation option
         self.params = Parameter(name='params', type='group', children=[

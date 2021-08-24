@@ -3,14 +3,11 @@ from PyQt5.QtWidgets import QSizePolicy
 from .MagPy4UI import TimeEdit
 import pyqtgraph as pg
 from .pyqtgraphExtensions import LinkedRegion
-import functools
-import re
-import time
 import time as tm
-import numpy as np
 from datetime import datetime
 from .layoutTools import BaseLayout, TableWidget, SplitterWidget
 from fflib import ff_time
+from .plotBase import MagPyViewBox
 
 class GeneralSelect(object):
     '''
@@ -158,10 +155,11 @@ class GeneralSelect(object):
         else:
             return False
 
-    def leftClick(self, x, pltNum, ctrlPressed=False):
+    def leftClick(self, x, vb, ctrlPressed=False):
         # Show sub-regions in this plot if applicable
+        index = self.get_plot_index(vb)
         if not ctrlPressed:
-            self.setSubRegionsVisible(pltNum)
+            self.setSubRegionsVisible(index)
 
         # First region
         if self.regions == []:
@@ -186,9 +184,23 @@ class GeneralSelect(object):
             return True
         return False
 
-    def rightClick(self, pltNum):
+    def get_plot_index(self, vb):
+        ''' Returns plot index associated with viewbox '''
+        plots = self.window.pltGrd.get_plots()
+        index = 0
+        i = 0
+        for plot in plots:
+            if plot.getViewBox() == vb:
+                index = i
+                break
+            i += 1
+        
+        return index
+
+    def rightClick(self, vb):
         # Hide sub regions in this plot
-        self.setSubRegionsVisible(pltNum, visible=False)
+        index = self.get_plot_index(vb)
+        self.setSubRegionsVisible(index, visible=False)
 
         # Checks if any region is visible in this plot
         anyVisible = False
@@ -283,7 +295,7 @@ class GeneralSelect(object):
 
     def addLinkedItem(self, x):
         # Initializes the linked region object
-        plts = self.window.plotItems
+        plts = self.window.pltGrd.get_plots()
         linkRegion = LinkedRegion(self.window, plts, (x, x), mode=self.name, 
             color=self.color, updateFunc=self.callUpdateFunc, linkedTE=self.timeEdit, 
             lblPos=self.lblPos)
@@ -431,7 +443,7 @@ class BatchSelectRegions(GeneralSelect):
         if len(self.regions) > 0:
             self.regions[-1].setFixedLine(False)
 
-class SelectableViewBox(pg.ViewBox):
+class SelectableViewBox(MagPyViewBox):
     # Viewbox that calls its window's GeneralSelect object in response to clicks
     def __init__(self, window, plotIndex, *args, **kwds):
         super().__init__(*args, **kwds)

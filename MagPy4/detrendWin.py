@@ -1,20 +1,19 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .MagPy4UI import TimeEdit, GridGraphicsLayout, PlotGrid, StackedLabel
+from .plotBase import StackedLabel
 from fflib import ff_time
+from .grid import PlotGridObject
 from .layoutTools import BaseLayout
 from .timeManager import TimeManager
-from .selectionManager import SelectableViewBox, GeneralSelect
-from .plotBase import MagPyPlotItem, DateAxis, GraphicsLayout, GraphicsView
+from .selectionManager import  GeneralSelect
+from .plotBase import MagPyPlotItem, GraphicsLayout, GraphicsView
 from .traceStats import TraceStats
 
 from .dynamicSpectra import DynamicSpectra, DynamicCohPha
 from .spectra import Spectra
 
-import pyqtgraph as pg
 import numpy as np
 from scipy import signal
-import functools
 
 class DetrendWindowUI(BaseLayout):
     def setupUI(self, Frame, window):
@@ -339,11 +338,9 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI, TimeManager):
 
         # Set up grid elements
         self.ui.glw.clear()
-        self.pltGrd = PlotGrid(self)
-        xFunc = lambda t : ff_time.tick_to_ts(t, self.epoch)
-        self.pltGrd.enableTracking(True, textFuncs={'x':xFunc}, viewWidget=self.ui.gview)
-        self.ui.glw.addItem(self.pltGrd)
-        self.pltGrd.addItem(pg.LabelItem('Detrended Data'), 0, 1, 1, 1)
+        self.grid_object = PlotGridObject(self.window)
+        self.pltGrd = self.grid_object.get_layout()
+        self.ui.glw.addItem(self.grid_object, 1, 0, 1, 1)
 
         detrendType = self.getDetrendType().lower()
 
@@ -360,32 +357,26 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI, TimeManager):
                 ens.append(en)
 
             # Build plot item
-            vb = SelectableViewBox(self, plotNum)
-            plt = MagPyPlotItem(epoch=self.epoch, viewBox=vb)
+            # vb = SelectableViewBox(self, plotNum)
+            plt = MagPyPlotItem(epoch=self.epoch)
             self.plotItems.append(plt)
 
-            # Set tick offsets for datetime axes
-            for ax in ['bottom', 'top']:
-                axis = plt.getAxis(ax)
-                axis.tickOffset = self.tickOffset
-                axis.setStyle(showValues=False)
-
-            # Build plot label
-            colors = [pen.color().name() for pen in pens]
-            stackLbl = self.window.buildStackedLabel(plotStrings, colors)
-            if stackLbl.units:
-                modifiedLabels = stackLbl.dstrs.copy()[:-1]
-            else:
-                modifiedLabels = stackLbl.dstrs.copy()
-            modifiedLabels = [lblStr+self.modifier for lblStr in modifiedLabels]
-            stackLbl = StackedLabel(modifiedLabels, stackLbl.colors, stackLbl.units)
+            # # Build plot label
+            colors = [pen for pen in pens]
+            labels = [self.window.getLabel(dstr, en) + self.modifier for dstr, en in plotStrings]
+            units = [self.window.UNITDICT[dstr] for dstr, en in plotStrings]
+            label = StackedLabel(labels, colors, units)
 
             # Add to grid
-            self.pltGrd.addPlt(plt, stackLbl)
+            self.pltGrd.add_row()
+            if plotNum == 0:
+                plt.setTitle('Detrended Data')
+            self.pltGrd[plotNum] = [label, plt]
+
+            # Plot traces
             pltStrs = []
             pltDtas = []
-            for dstr, pen in zip(dstrs, pens):
-                modifiedStr = dstr + self.modifier
+            for dstr, pen, label in zip(dstrs, pens, labels):
                 startIndex, endIndex = self.window.calcDataIndicesFromLines(dstr, 
                     self.window.currentEdit)
 
@@ -398,22 +389,21 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI, TimeManager):
 
                 # Detrend the data and store it in dictionary
                 dtData = signal.detrend(dtaSubset, type=detrendType)
-                self.dtDatas[modifiedStr] = dtData
+                self.dtDatas[label] = dtData
                 pltDtas.append(dtData)
 
                 # Plot and store for lastPlotStrings
-                plt.plot(timeSubset, dtData, pen=pen)
-                pltStrs.append((modifiedStr, 0))
+                plt.plot(timeSubset, dtData, pen=pen, name=label)
+                pltStrs.append((label, 0))
             plotDataLists.append(pltDtas)
 
-            # Update time range and axis appearance settings
-            plt.setXRange(timeSubset[0], timeSubset[-1], 0.0)
-            plt.setLimits(xMin=timeSubset[0], xMax=timeSubset[-1])
-            self.tO = timeSubset[0] + self.tickOffset
-            self.tE = timeSubset[-1] + self.tickOffset
+            # # Update time range and axis appearance settings
+            self.tO = timeSubset[0]
+            self.tE = timeSubset[-1]
             self.minTime = self.tO
             self.maxTime = self.tE
-            self.adjustPlotAppr(plt)
+            self.pltGrd.set_x_range(self.tO, self.tE)
+            self.pltGrd.set_x_lim(self.tO, self.tE)
 
             self.lastPlotStrings.append(pltStrs)
             plotNum += 1
@@ -426,20 +416,8 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI, TimeManager):
         self.ui.glw.enableTracking(True, textFuncs={'x':map_func}, viewWidget=self.ui.gview)
         self.ui.glw.update()
 
-        # Set time label
-        startTime, endTime = self.window.getSelectionStartEndTimes()
-        rng = endTime - startTime
-        mode = self.window.getTimeLabelMode(rng)
-        lbl = self.window.getTimeLabel(rng)
-        self.pltGrd.setTimeLabel()
-
-        # Show tick labels on bottom axis
-        plt.getAxis('bottom').setStyle(showValues=True)
-
         # Link plots if necessary
-        if self.getLinkMode():
-            dtas = [i for k, i in self.dtDatas.items()]
-            self.linkPlots(plotDataLists, self.plotItems)
+        self.linkPlots()
 
         if self.selectState:
             self.loadToolsFromState()
@@ -449,29 +427,12 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI, TimeManager):
     def clearStatusMsg(self):
         return
 
-    def linkPlots(self, dtas, plts):
-        # Re-implementation of plot linking code in updateYRange of main window
-        ranges = []
-        maxDiff = 0
-        for pltDta in dtas:
-            minVal, maxVal = None, None
-            for dta in pltDta:
-                if minVal is None:
-                    minVal = np.min(dta)
-                    maxVal = np.max(dta)
-                else:
-                    minVal = min(np.min(dta), minVal)
-                    maxVal = max(np.max(dta), maxVal)
-
-            if np.isnan(minVal) or np.isnan(maxVal):
-                return
-
-            ranges.append((minVal, maxVal))
-            maxDiff = max(maxDiff, maxVal-minVal)
-
-        for plt, (minVal, maxVal) in zip(plts, ranges):
-            l2 = (maxDiff - (maxVal - minVal)) / 2
-            plt.setYRange(minVal - l2, maxVal+l2, padding=0.05)
+    def linkPlots(self):
+        plts = self.pltGrd.get_plots()
+        if self.getLinkMode():
+            self.grid_object.set_links([[i for i in range(len(plts))]])
+        else:
+            self.grid_object.set_links([])
 
     def adjustPlotAppr(self, plt):
         # Show all axes and hide all values except on left axis
@@ -569,6 +530,12 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI, TimeManager):
 
     def findVecGroups(self):
         return self.window.findVecGroups()
+    
+    def vecDict(self):
+        vec_dict = {}
+        for grp in self.findVecGroups():
+            vec_dict[grp[0]] = grp
+        return vec_dict
 
     def findPlottedVecGroups(self):
         return self.window.findPlottedVecGroups()

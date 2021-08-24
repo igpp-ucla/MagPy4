@@ -1,22 +1,18 @@
+from MagPy4.grid import PlotGridObject
 from PyQt5 import QtGui, QtCore, QtWidgets
-import copy
 from PyQt5.QtWidgets import QSizePolicy
 
-from .plotAppearance import DynamicPlotApp
 from scipy.interpolate import CubicSpline
 from bisect import bisect_left, bisect_right
 import pyqtgraph as pg
 from scipy import fftpack, signal
 import numpy as np
-from .MagPy4UI import TimeEdit, NumLabel, StackedAxisLabel
-from .pyqtgraphExtensions import GridGraphicsLayout
-from .plotBase import DateAxis, GraphicsView
-import bisect
+from .plotBase import StackedAxisLabel
+from .plot_extensions import GridGraphicsLayout
+from .plotBase import GraphicsView, MagPyPlotItem
 import functools
-from .mth import Mth
 from .layoutTools import BaseLayout
-from .dynBase import DynamicAnalysisTool, SpectraLineEditor, SpectrogramPlotItem, SpectraLegend, PhaseGradient
-import os
+from .dynBase import DynamicAnalysisTool, SpecData, PhaseGradient
 from .specAlg import SpectraCalc
 
 class DynamicSpectraUI(BaseLayout):
@@ -232,8 +228,6 @@ class DynamicSpectra(QtWidgets.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         self.closeLineTool()
         self.closeMaskTool()
         self.window.endGeneralSelect()
-        if self.plotItem:
-            self.plotItem.closePlotAppearance()
         self.window.clearStatusMsg()
         self.wasClosed = True
 
@@ -295,17 +289,15 @@ class DynamicSpectra(QtWidgets.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
             minPower = np.min(grid[grid>0])
             maxPower = np.max(grid[grid>0])
             colorRng = (minPower, maxPower)
-        plt = self.generatePlot(grid, freqs, times, colorRng, logScaling)
-        self.setupPlotLayout(plt, dstr, times, logScaling)
+        plot, grad, lgndlbl = self.generatePlot(grid, freqs, times, colorRng, logScaling)
+        self.setupPlotLayout(plot, grad, dstr, times, logScaling)
+        self.plotItem = plot
 
         # Store calculations for displaying values at a point
         self.lastCalc = (times, freqs, grid)
 
         # Update min / max color map boxes
         self.updateMinMaxBoxes(grid)
-
-        # Enable context menu option for saving plot data
-        self.enableDataExport(interval, shift, bw, detrendMode)
 
         if self.savedLineInfo:
             self.addSavedLine()
@@ -343,7 +335,6 @@ class DynamicSpectra(QtWidgets.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         fftParam = (interval, shift, bw, detrend)
         exportFunc = functools.partial(self.exportData, self.window, 
             self.plotItem, fftParam)
-        self.plotItem.setExportEnabled(exportFunc)
 
     def getVecIdentifiers(self, vecGrps):
         if len(vecGrps) == 1:
@@ -441,23 +432,22 @@ class DynamicSpectra(QtWidgets.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
 
     def generatePlot(self, grid, freqs, times, colorRng, logScaling):
         freqs = self.extendFreqs(freqs, logScaling) # Get lower bounding frequency
-        plt = SpectrogramPlotItem(self.window.epoch, logScaling)
-        plt.createPlot(freqs, grid, times, colorRng, winFrame=self)
-        self.plotItem = plt
-        return plt
+        spec = SpecData(freqs, times, grid, log_y=logScaling, 
+            color_rng=colorRng, log_color=True)
+        plt = MagPyPlotItem(self.window.epoch)
+        grid_item, grad, label = plt.load_color_plot(spec)
+        grid_item.spec = spec
+        return (plt, grad, label)
 
-    def setupPlotLayout(self, plt, dstr, times, logScaling):
-        # Create gradient legend and add it to the graphics layout
-        gradLegend = plt.getGradLegend()
-        gradLegend.setBarWidth(40)
-
+    def setupPlotLayout(self, plot, grad, dstr, times, logScaling):
         # Get labels
         title, axisLbl, legendLbl = self.getLabels(dstr, logScaling)
-        plt.setTitle(title, size='14pt')
-        plt.getAxis('left').setLabel(axisLbl)
+        plot.setTitle(title, size='14pt')
+        plot.getAxis('left').setLabel(axisLbl)
+        plot.getAxis('right').setStyle(showValues=False)
 
         # Update specData information
-        specData = plt.getSpecData()
+        specData = plot.getSpecData()[0]
         specData.set_name(title)
         specData.set_y_label(axisLbl)
         specData.set_legend_label(legendLbl.getLabelText())
@@ -465,11 +455,19 @@ class DynamicSpectra(QtWidgets.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
         # Time range information
         timeInfo = self.getTimeInfoLbl((times[0], times[-1]))
 
+        # Clear grid and setup plot grid
         self.ui.glw.clear()
-        self.ui.glw.addItem(plt, 0, 0, 1, 1)
-        self.ui.glw.addItem(gradLegend, 0, 1, 1, 1)
-        self.ui.glw.addItem(legendLbl, 0, 2, 1, 1)
-        self.ui.glw.addItem(timeInfo, 1, 0, 1, 3)
+        sp = QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
+        pltGrd = PlotGridObject(self.window)
+        pltGrd.setSizePolicy(sp)
+        layout = pltGrd.get_layout()
+        layout.add_row()
+        layout[0] = [None, plot, grad, legendLbl]
+        layout.set_x_range(times[0], times[-1])
+
+        # Add items to outer layout
+        self.ui.glw.addItem(pltGrd, 0, 0, 1, 1)
+        self.ui.glw.addItem(timeInfo, 1, 0, 1, 1)
 
     def extendFreqs(self, freqs, logScale):
         # Calculate frequency that serves as lower bound for plot grid
@@ -761,10 +759,6 @@ class DynamicCohPha(QtWidgets.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         self.closeLineTool()
         self.closeMaskTool()
         self.window.endGeneralSelect()
-        if self.cohPlt:
-            self.cohPlt.closePlotAppearance()
-        if self.phaPlt:
-            self.phaPlt.closePlotAppearance()
         self.window.clearStatusMsg()
         self.wasClosed = True
         self.close()
@@ -809,16 +803,16 @@ class DynamicCohPha(QtWidgets.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
 
         # Calculate grid values for each plot and add to respective grids
         grids, freqs, times = self.calcGrids(indexRng, fftParam, varPair, detrendMode)
-        self.cohPlt, self.phaPlt = self.generatePlots(grids, freqs, times, logMode)
-        self.setupPlotLayout(self.cohPlt, 'Coherence', varPair, times, logMode)
-        self.setupPlotLayout(self.phaPlt, 'Phase', varPair, times, logMode)
+        plots, items = self.generatePlots(grids, freqs, times, logMode)
+        self.cohPlt, self.phaPlt = plots
+        self.setupPlotLayout(self.cohPlt, 'Coherence', varPair, times, logMode, items[0])
+        self.setupPlotLayout(self.phaPlt, 'Phase', varPair, times, logMode, items[1])
 
         # Enable exporting data
         fftParam = (interval, shiftAmnt, bw, detrendMode)
         for plt in [self.cohPlt, self.phaPlt]:
             exportFunc = functools.partial(self.exportData, self.window, plt,
                 fftParam)
-            plt.setExportEnabled(exportFunc)
         self.lastCalc = (freqs, times, grids[0], grids[1])
 
         if self.savedLineInfo: # Add any saved lines
@@ -829,37 +823,40 @@ class DynamicCohPha(QtWidgets.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
             self.addSavedLine()
             self.savedLineInfo = None
 
-    def setupPlotLayout(self, plt, plotType, varPair, times, logScaling):
+    def setupPlotLayout(self, plt, plotType, varPair, times, logScaling, items):
         # Create gradient legend and add it to the graphics layout
-        gradLegend = plt.getGradLegend(logMode=False)
-        gradLegend.setBarWidth(38)
-
+        grad, lgnd_lbl = items
         cohMode = (plotType == 'Coherence')
         if cohMode:
-            gradLegend.setTickSpacing(0.2, 0.1)
+            grad.setTickSpacing(0.2, 0.1)
         else:
-            gradLegend.setTickSpacing(60, 30)
+            grad.setTickSpacing(60, 30)
 
         # Get labels
         title, axisLbl, legendLbl = self.getLabels(plotType, varPair, logScaling)
         plt.setTitle(title, size='13pt')
         plt.getAxis('left').setLabel(axisLbl)
+        plt.getAxis('right').setStyle(showValues=False)
 
-        specData = plt.getSpecData()
+        specData = plt.getSpecData()[0]
         specData.set_name(title)
         specData.set_y_label(axisLbl)
         specData.set_legend_label(legendLbl.getLabelText())
 
         # Time range information
         timeInfo = self.getTimeRangeLbl(times[0], times[-1])
+        sp = QtWidgets.QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum)
+        timeInfo.setSizePolicy(sp)
+        plt.setXRange(times[0], times[-1], 0.0)
 
         # Determine which grid to use and add items to layout
         gridLt = self.ui.cohGrid if cohMode else self.ui.phaGrid
         gridLt.clear()
-        gridLt.addItem(plt, 0, 0, 1, 1)
-        gridLt.addItem(gradLegend, 0, 1, 1, 1)
-        gridLt.addItem(legendLbl, 0, 2, 1, 1)
-        gridLt.addItem(timeInfo, 1, 0, 1, 3)
+        plt_grd = PlotGridObject(self.window)
+        plt_grd.get_layout().add_row()
+        plt_grd.get_layout()[0] = [None, plt, grad, legendLbl]
+        gridLt.addItem(plt_grd, 0, 0, 1, 1)
+        gridLt.addItem(timeInfo, 1, 0, 1, 1)
 
     def getLabels(self, plotType, varInfos, logScaling):
         cohMode = (plotType == 'Coherence')
@@ -936,18 +933,22 @@ class DynamicCohPha(QtWidgets.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
     def generatePlots(self, grids, freqs, times, logScaling):
         freqs = self.extendFreqs(freqs, logScaling)
         cohGrid, phaGrid = grids
-        cohPlt = SpectrogramPlotItem(self.window.epoch, logScaling)
-        phaPlt = SpectrogramPlotItem(self.window.epoch, logScaling)
-        phaPlt.setGradient(PhaseGradient())
-        cohRng = (0, 1.0)
-        phaRng = (-180, 180)
-        cohPlt.createPlot(freqs, cohGrid, times, cohRng, winFrame=self, 
-            logColorScale=False)
-        phaPlt.createPlot(freqs, phaGrid, times, phaRng, winFrame=self, 
-            logColorScale=False)
-        phaPlt.getSpecData().set_gradient(PhaseGradient())
 
-        return (cohPlt, phaPlt)
+        coh_spec = SpecData(freqs, times, cohGrid, (0, 1.0), log_color=False,
+            log_y=logScaling)
+        pha_spec = SpecData(freqs, times, phaGrid, (-180, 180), log_color=False,
+            log_y=logScaling)
+        pha_spec.set_gradient(PhaseGradient())
+
+        coh_plot = MagPyPlotItem(self.window.epoch)
+        pha_plot = MagPyPlotItem(self.window.epoch)
+
+        coh_items = coh_plot.load_color_plot(coh_spec)
+        pha_items = pha_plot.load_color_plot(pha_spec)
+        coh_items[0].spec = coh_spec
+        pha_items[0].spec = pha_spec
+
+        return (coh_plot, pha_plot), (coh_items[1:], pha_items[1:])
     
     def extendFreqs(self, freqs, logScale):
         # Calculate frequency that serves as lower bound for plot grid

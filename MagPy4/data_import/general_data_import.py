@@ -18,6 +18,7 @@ class FileData():
         self.resolution = res if res is not None else self._guess_resolution()
         self._num_indices = None
         self.specs = specs
+        self.vec_grps = {}
 
     def _get_num_indices(self):
         ''' Determine the column numbers that contain strictly

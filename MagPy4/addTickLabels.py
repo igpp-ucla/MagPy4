@@ -1,11 +1,7 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .plotBase import DateAxis, MagPyAxisItem
-
-import pyqtgraph as pg
 import functools
-import bisect
-import numpy as np
+from scipy import interpolate
 
 class ColumnLayout(QtWidgets.QGridLayout):
     def __init__(self, numCols=1, *args, **kwargs):
@@ -25,7 +21,7 @@ class ColumnLayout(QtWidgets.QGridLayout):
         self.numItems += 1
 
 class AddTickLabelsUI(object):
-    def setupUI(self, Frame, window, dstrList, prevDstrs):
+    def setupUI(self, Frame, dstrList):
         Frame.setWindowTitle('Additional Tick Labels')
         Frame.resize(100, 100)
         wrapLt = QtWidgets.QVBoxLayout(Frame)
@@ -61,221 +57,69 @@ class AddTickLabelsUI(object):
             chkbx = QtWidgets.QCheckBox(dstr)
             layout.addWidget(chkbx)
             self.chkboxes.append(chkbx)
-        
-        # Add in checkboxes for all previously set tick labels
-        for dstr in prevDstrs:
-            if dstr in dstrList:
-                # Set previously added labels' boxes as checked
-                index = dstrList.index(dstr)
-                self.chkboxes[index].setChecked(True)
-            else: # In case also plotted, add UI element so it can be removed if needed
-                chkbx = QtWidgets.QCheckBox(dstr)
-                layout.addWidget(chkbx)
-                self.chkboxes.append(chkbx)
-                chkbx.setChecked(True)
 
         # Adjust wrap frame minimum width
         minWidth = wrapFrame.minimumWidth()
         wrapFrame.setMinimumWidth(minWidth + 20)
 
 class AddTickLabels(QtWidgets.QFrame, AddTickLabelsUI):
-    def __init__(self, window, pltGrd, parent=None):
+    def __init__(self, pltGrd, window, parent=None):
         super(AddTickLabels, self).__init__(parent)
         self.ui = AddTickLabelsUI()
         self.window = window
         self.pltGrd = pltGrd
 
-        # Get list of all dstrs not currently plotted
-        allDstrs = window.DATASTRINGS[:]
-        for dstrList in window.lastPlotStrings:
-            for dstr, en in dstrList:
-                if dstr in allDstrs: # Remove currently plotted dstrs
-                    allDstrs.remove(dstr)
-        
-        # Get list of all dstrs that currently have extra tick labels set
-        prevDstrs = []
-        if self.pltGrd.labelSetGrd:
-            prevDstrs = [lbl.dstr for lbl in self.pltGrd.labelSetGrd.labelSets]
-        
-        # Set up UI based on dstrs not plotted and check/add all current labelsets
-        self.ui.setupUI(self, window, allDstrs, prevDstrs)
+        # Set up UI
+        dstrs = list(self.window.DATADICT.keys())
+        self.ui.setupUI(self, dstrs)
 
         # Set default as last set location
-        if pltGrd.labelSetLoc == 'bottom':
-            self.ui.locBox.setCurrentIndex(1)
+        self.ui.locBox.setCurrentIndex(1)
 
         # Connect every checkbox to function
         for chkbx in self.ui.chkboxes:
             chkbx.clicked.connect(functools.partial(self.addLabelSet, chkbx))
-        self.ui.locBox.currentTextChanged.connect(self.pltGrd.moveLabelSets)
+        self.ui.locBox.currentTextChanged.connect(self.loc_changed)
+        self.loc_changed()
+
+    def get_loc(self):
+        ''' Return the location where axes are being added '''
+        return self.ui.locBox.currentText().lower()
 
     def addLabelSet(self, chkbx):
-        # Add to pltGrd if chkbx is checked, remove it if unchecked
+        # Get axis name and location
         dstr = chkbx.text()
-        if chkbx.isChecked():
-            self.pltGrd.addLabelSet(dstr)
+        loc = self.get_loc()
+        checked = chkbx.isChecked()
+
+        # Remove or create axis item
+        if checked:
+            # Create interpolator function
+            en = self.window.currentEdit
+            x = self.window.getTimes(dstr, en)[0]
+            y = self.window.getData(dstr, en)
+            interp = interpolate.interp1d(x, y, bounds_error=False, fill_value=self.window.errorFlag)
+
+            # Add axis item to grid
+            self.pltGrd.grid.add_axis(dstr, interp, loc)
         else:
-            self.pltGrd.removeLabelSet(dstr)
-
-from scipy.interpolate import CubicSpline
-
-class invisAxis(DateAxis):
-    # Axis item that hides all lines and only paints text items at ticks
-    def __init__(self, window, dstr, orientation):
-        self.window = window
-        self.dstr = dstr
-        self.matchedTicks = None
-        DateAxis.__init__(self, window.epoch, orientation)
-        self.setStyle(textFillLimits=[(0, 1.1)])
-        self.setStyle(tickTextOffset=0)
-        self.setStyle(tickLength=0)
-
-    def tickStrings(self, values, scale, spacing):
-        # Interpolate values along values that are within a valid range
-        data = self.window.getData(self.dstr, self.window.currentEdit)
-        times = self.window.getTimes(self.dstr, self.window.currentEdit)[0]
+            # Remove axis item
+            self.pltGrd.grid.remove_axis(dstr, loc)
         
-        values = np.array([val + self.window.tickOffset for val in values])
-        mask1 = (values >= times[0])
-        mask2 = (values <= times[-1])
-        mask = np.logical_and(mask1, mask2)
-        interp_data = np.interp(values[mask], times, data)
+    def set_checked_items(self, prev_dstrs):
+        ''' Set checked items to reflect previously added axis items '''
+        for box in self.ui.chkboxes:
+            check = (box.text() in prev_dstrs)
+            box.blockSignals(True)
+            box.setChecked(check)
+            box.blockSignals(False)
 
-        ## Replace out of range values with None
-        string_arr = np.empty(values.shape)
-        string_arr[~mask] = None
-        string_arr[mask] = interp_data
+    def loc_changed(self):
+        # Get current axis location
+        loc = self.get_loc()
 
-        # Convert values to strings
-        strings = []
-        for val in string_arr:
-            if val is None:
-                strings.append('')
-            else:
-                txt = str(np.round(val, decimals=4))
-                strings.append(txt)
+        # Get list of all dstrs that currently have extra tick labels set
+        prev_dstrs = self.pltGrd.list_axis_grids()[loc]
 
-        return strings
-
-    def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
-        pen, p1, p2 = axisSpec
-        p.setPen(pen)
-
-        p.setRenderHint(p.Antialiasing, False)
-        p.setRenderHint(p.TextAntialiasing, True)
-        p.translate(0.5,0)
-        
-        ## Draw all text
-        if self.getTickFont() is not None:
-            p.setFont(self.getTickFont())
-        p.setPen(self.pen())
-        for rect, flags, text in textSpecs:
-            p.drawText(rect, flags, text)
-
-    def matchTicks(self, ticks):
-        levels = []
-        if ticks != self.matchedTicks:
-            for spacing, values in ticks:
-                rowStrings = self.tickStrings(values, 0, spacing)
-                rowLevels = [(val, s) for val, s in zip(values, rowStrings)]
-                levels.append(rowLevels)
-            self.setTicks(levels)
-        self.matchedTicks = ticks
-
-class LabelSet(pg.PlotItem):
-    # PlotItem subclass used to draw additional tick labels to match main plot's ticks
-    # This was simpler than trying to adjust resize events with only an axisItem
-    def __init__(self, window, dstr, parent=None, name=None, labels=None, title=None, viewBox=None, axisItems=None, enableMenu=True, **kargs):
-        self.window = window
-        self.dstr = dstr
-
-        # Initialize axisItems to be used to show labels and for resizing
-        topAxis = invisAxis(window, dstr, 'top')
-        topAxis.tickOffset = window.tickOffset
-        axisDict = {'top': topAxis, 'right': MagPyAxisItem('right')}
-        pg.PlotItem.__init__(self, parent, name, labels, title, viewBox, enableMenu=False, axisItems=axisDict, **kargs)
-
-        # Reduce the plotItem to just the invisAxis item, visually.
-        self.getAxis('left').setHeight(0)
-        self.getAxis('right').setHeight(0)
-        self.vb.setMaximumHeight(0)
-        self.vb.setMinimumHeight(0)
-        self.hideAxis('bottom')
-        self.showAxis('top')
-
-        # Disable interactive elements of plotItem
-        self.hideButtons()
-        self.setMouseEnabled(False)
-
-    def setCstmTickSpacing(self, diff):
-        self.getAxis('top').setCstmTickSpacing(diff)
-    
-    def setFontSize(self, val):
-        # Get axis tickFont and update it
-        axis = self.getAxis('top')
-        font = axis.style['tickFont']
-        if font == None:
-            font = QtGui.QFont()
-        font.setPointSize(val)
-        axis.setTickFont(font)
-
-        # Calculate the new bounding rect height and
-        # set a fixed height for the axis item
-        met = QtGui.QFontMetrics(font)
-        rect = met.boundingRect('0123456789')
-        axis.setStyle(tickTextHeight=rect.height())
-        axis.update()
-        axis.setFixedHeight(rect.height())
-
-    def setTickLevels(self, ticks):
-        self.getAxis('top').matchTicks(ticks)
-
-class LabelSetGrid(pg.GraphicsLayout):
-    # GraphicsLayout used to easily synchronize all resize events and tick
-    # value updates across label sets, as well as adding new label sets
-    def __init__(self, window, *args, **kwargs):
-        self.window = window
-        self.labelSets = []
-        pg.GraphicsLayout.__init__(self, *args, **kwargs)
-        self.layout.setVerticalSpacing(1)
-        self.layout.setContentsMargins(0,0,0,0)
-        # self.layout.setColumnAlignment(0, QtCore.Qt.AlignBottom)
-    
-    def addLabelSet(self, dstr):
-        # Creates a new label set from the given dstr and adds it to grid
-        labelSet = LabelSet(self.window, dstr)
-        self.addItem(labelSet, len(self.labelSets), 0, 1, 1)
-        self.layout.setRowAlignment(len(self.labelSets), QtCore.Qt.AlignCenter)
-        self.labelSets.append(labelSet)
-        startTime = self.window.tO-self.window.tickOffset
-        endTime = self.window.tE-self.window.tickOffset
-        labelSet.setXRange(startTime, endTime, 0)
-
-        # Set tick spacing if set for main grid's time axis
-        if self.window.plotItems != []:
-            btmPlt = self.window.plotItems[-1]
-            diff = btmPlt.getAxis('bottom').tickDiff
-            if diff is not None:
-                labelSet.setCstmTickSpacing(diff)
-    
-    def setTickLevels(self, ticks):
-        for lblSt in self.labelSets:
-            lblSt.setTickLevels(ticks)
-
-    def adjustWidths(self, width):
-        # Used by pltGrd to sync labelSet widths w/ plot widths
-        for lblSt in self.labelSets:
-            lblSt.getAxis('left').setWidth(width)
-
-    def setXRange(self, x0, x1, padding=0):
-        # Update tick locs/labels for all label sets
-        for lblSt in self.labelSets:
-            lblSt.setXRange(x0, x1, padding)
-
-    def setCstmTickSpacing(self, diff):
-        for lblSet in self.labelSets:
-            lblSet.setCstmTickSpacing(diff)
-
-    def setFontSize(self, val):
-        for ls in self.labelSets:
-            ls.setFontSize(val)
+        # Check list of items
+        self.set_checked_items(prev_dstrs)

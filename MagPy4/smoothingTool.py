@@ -1,6 +1,6 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel
+from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit
 from .edit import Edit
 
 from scipy import interpolate as scInter

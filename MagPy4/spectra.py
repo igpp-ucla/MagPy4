@@ -4,18 +4,10 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 import pyqtgraph as pg
-from scipy import fftpack
 import numpy as np
-from .plotAppearance import PlotAppearance, SpectraPlotApp
-from .pyqtgraphExtensions import GridGraphicsLayout, BLabelItem
 from .plotBase import MagPyPlotItem
-from .MagPy4UI import TimeEdit
-from .spectraUI import SpectraUI, SpectraViewBox
-from .layoutTools import BaseLayout
+from .spectraUI import SpectraUI
 from .waveAnalysis import WaveAnalysis
-import functools
-import time
-from .mth import Mth
 import os
 from bisect import bisect_left, bisect_right
 from scipy.interpolate import CubicSpline
@@ -40,6 +32,9 @@ class ColorPlotTitle(pg.LabelItem):
         self.colors = colors
         self.updateText()
     
+    def getLabels(self):
+        return self.labels
+
     def setLabels(self, labels):
         ''' Set new sublabels '''
         self.labels = labels
@@ -80,6 +75,12 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.window = window
         self.ui = SpectraUI()
         self.ui.setupUI(self, window)
+        self.grid_map = {
+            'spectra' : self.ui.grid,
+            'coherence' : self.ui.cohGrid,
+            'phase' : self.ui.phaGrid,
+            'sum' : self.ui.sumGrid
+        }
         
         self.ui.updateButton.clicked.connect(self.update)
         self.ui.bandWidthSpinBox.valueChanged.connect(self.update)
@@ -261,11 +262,6 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 act = QtWidgets.QAction(self)
                 act.setText('Change Plot Appearance...')
 
-                func = functools.partial(self.openPlotAppr, grp)
-                act.triggered.connect(func)
-
-                plot.getViewBox().menu.addAction(act)
-
         # Update y scaling
         self.toggleLogScale(self.ui.logModeCheckBox.isChecked())
 
@@ -306,7 +302,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
             # Set plot item title
             var_labels = [self.window.getLabel(dstr, en) for (dstr, en) in dstrs]
-            colors = [pen.color().name() for pen in pens]
+            colors = [pen for pen in pens]
             label = ColorPlotTitle(var_labels, colors)
             plot.setTitleObject(label)
 
@@ -435,7 +431,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
                 datas.append(power)
 
                 # Plot trace
-                plot.plot(freq, power, pen=pen)
+                label = self.window.getLabel(dstr, en)
+                plot.plot(freq, power, pen=pen, name=label)
         
         return freq, datas
     
@@ -463,6 +460,8 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         pen = self.window.pens[0]
         self.plots['coherence'][0].plot(freq, coh, pen=pen)
         self.plots['phase'][0].plot(freq, pha, pen=pen)
+        self.pens['coherence'] = [[pen]]
+        self.pens['phase'] = [[pen]]
 
         return (freq, [coh, pha])
 
@@ -497,7 +496,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         for plot, label_set, values in zip(plots, labels, groups):
             plot.clear()
             for label, value in zip(label_set, values):
-                plot.plot(freq, value, pen=self.pens['sum'][label])
+                plot.plot(freq, value, pen=self.pens['sum'][label], name=label)
         
         return freq, [sum_powers, pt, sum_minus]
     
@@ -612,25 +611,11 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.waveAnalysis = WaveAnalysis(self, self.window)
         self.waveAnalysis.show()
 
-    def openPlotAppr(self, grp):
-        ''' Opens plot appearance tool for the given plot group '''
-        self.closePlotAppr()
-        plots = self.plots[grp]
-        self.plotAppr = PlotAppearance(self.window, plots)
-        self.plotAppr.colorsChanged.connect(self.updateTitleColors)
-        self.plotAppr.show()
-
-    def closePlotAppr(self):
-        ''' Closes plot appearance tool '''
-        if self.plotAppr:
-            self.plotAppr.close()
-
     def closeEvent(self, event):
         if self.wasClosed:
             return
 
         self.closeWaveAnalysis()
-        self.closePlotAppr()
         self.wasClosed = True
         self.window.endGeneralSelect()
 
@@ -669,18 +654,35 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
             for plot in self.plots[grp]:
                 plot.setAspectLocked(val, ratio=None)
 
-    def updateTitleColors(self, result):
-        # Extract line and pen info
-        lineInfo, pen = result
-        plotNum = lineInfo['plotIndex']
-        traceNum = lineInfo['traceIndex']
+    def updateTitleColors(self, plot_type, plot_info):
+        # Extract color and plot trace info
+        changed_plot, name, (old_color, new_color) = plot_info
 
-        # Update state and title colors
-        self.pens['spectra'][plotNum][traceNum] = pen
-        plotTitle = self.plots['spectra'][plotNum].getTitleObject()
-        colors = plotTitle.getColors()
-        colors[traceNum] = pen.color().name()
-        plotTitle.setColors(colors)
+        # Find corresponding plot in grid
+        grid = self.grid_map[plot_type]
+        plots = grid.get_plots()
+        index = None
+        for i in range(len(plots)):
+            if plots[i] == changed_plot:
+                index = i
+                break
+
+        # Do not change stored title color if has no color set
+        if not isinstance(changed_plot, SpectraPlot):
+            self.pens[plot_type][index][0] = new_color.name()
+            return
+
+        # Find corresponding trace in plot
+        if index is not None:
+            label_index = None
+            labels = changed_plot.getTitleObject().getLabels()
+            i = 0
+            for label in labels:
+                if label == name:
+                    label_index = i
+                    break
+                i += 1
+            self.pens[plot_type][index][label_index] = new_color.name()
 
 class SpectraTests():
     def __init__(self, window):

@@ -121,7 +121,7 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
                 for regNum in range(len(self.window.currSelect.regions)):
                     indices.append(self.window.calcDataIndicesFromLines(dstr, en, regNum))
 
-                rowStrs.append([self.window.getLabel(dstr,en), pens[i].color().name()])
+                rowStrs.append([self.window.getLabel(dstr,en), pens[i]])
                 row = []
                 if singleLine:
                     row.append(f'{self.window.getData(dstr, en)[indices[0][0]]:.{prec}f}')
@@ -167,15 +167,6 @@ class TraceStats(QtWidgets.QFrame, TraceStatsUI):
 
         size = self.ui.layout.sizeHint()
         self.resize(size)
-
-        # trying to do something with auto scrollbar if window tall enough but not working exactly
-        #maxHeight = 300
-        #if size.height() > maxHeight:
-        #    self.ui.table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
-        #    size = self.ui.layout.sizeHint()
-        #    size = QtCore.QSize(size.width(),maxHeight)
-        #else:
-        #    self.ui.table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
     def updtDispRange(self):
         # Uses trace stat's timeEdit values to update main's vals/sliders

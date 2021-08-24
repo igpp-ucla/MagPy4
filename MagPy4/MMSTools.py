@@ -1,14 +1,10 @@
+from .grid import PlotGridObject
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit, NumLabel, GridGraphicsLayout, StackedLabel, PlotGrid, StackedAxisLabel, ScientificSpinBox
+from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit
 
-from .dataDisplay import DataDisplay
-
-from .dynBase import SpectrogramPlotItem, SpectraLine, SpectraLegend, SimpleColorPlot
-from .plotBase import MagPyPlotItem, MagPyColorPlot, DateAxis, GraphicsView
-from .selectionManager import SelectableViewBox
+from .plotBase import MagPyPlotItem, StackedLabel
 from .layoutTools import BaseLayout
-from .plotAppearance import PressurePlotApp
 
 from .qtThread import TaskRunner
 
@@ -18,10 +14,13 @@ from scipy.interpolate import CubicSpline
 
 import pyqtgraph as pg
 import numpy as np
-
-import functools
 import bisect
-import re
+
+def key_search(key, d):
+    for comp_key in d:
+        if key in comp_key:
+            return comp_key
+    return None
 
 def get_mms_grps(window, coords_mode=None):
     ''' Get groups of variable names by vector '''
@@ -42,9 +41,9 @@ def get_mms_grps(window, coords_mode=None):
         grps = {}
         full_grps[name] = grps
         for sc_id in [1,2,3,4]:
-            key = f'{start_key}{coords}{sc_id}'.lower()
-            if key in lowered_grps:
-                base_key = lowered_grps[key]
+            key = f'mms{sc_id}_fgm_{start_key}_{coords}'.lower()
+            base_key = key_search(key, lowered_grps)
+            if base_key:
                 grp = window.VECGRPS[base_key]
                 grps[sc_id] = grp
                 if len(grp) == 4:
@@ -82,28 +81,42 @@ class MMSTools():
     def raiseErrorMsg(self):
         self.window.ui.statusBar.showMessage('Error: Missing MMS Data')
 
-    def getDstrsBySpcrft(self, scNum, grp='Field'):
-        return self.scGrps[grp][scNum]
+    def getDstrsBySpcrft(self, scNum, grp='Field', magn=False):
+        data = self._clip_magn(self.scGrps[grp][scNum], magn)
+        return data
 
-    def getDstrsByVec(self, vec, grp='Field'):
-        return self.grps[grp][vec]
+    def getDstrsByVec(self, vec, grp='Field', magn=False):
+        data = self._clip_magn(self.grps[grp][vec], magn)
+        return data
 
-    def getVec(self, scNum, index, grp='Field'):
-        return self.vecArrays[grp][scNum][:,index]
+    def getVec(self, scNum, index, grp='Field', magn=False):
+        data = self._clip_magn(self.vecArrays[grp][scNum][:,index], magn)
+        return data
 
-    def getPosData(self, scNum, startIndex=None, endIndex=None):
+    def _clip_magn(self, data, magn=False):
+        if len(data) == 4 and magn == False:
+            return data[:-1]
+        return data
+
+    def getPosData(self, scNum, startIndex=None, endIndex=None, radius=False):
         if startIndex is None:
             startIndex = 0
         if endIndex is None:
             endIndex = len(self.vecArrays['Pos'][scNum][0])
-        return self.vecArrays['Pos'][scNum][:,startIndex:endIndex]
+        data = self.vecArrays['Pos'][scNum][:,startIndex:endIndex]
+        if radius is False and len(data) == 4:
+            return data[:-1]
+        return data
 
     def getMagData(self, scNum, startIndex=None, endIndex=None, btot=False):
         if startIndex is None:
             startIndex = 0
         if endIndex is None:
             endIndex = len(self.vecArrays['Field'][scNum][0])
-        return self.vecArrays['Field'][scNum][:,startIndex:endIndex]
+        data = self.vecArrays['Field'][scNum][:,startIndex:endIndex]
+        if btot is False and len(data) == 4:
+            return data[:-1]
+        return data
 
     def initArrays(self):
         '''
@@ -1318,12 +1331,15 @@ class Curvature(QtWidgets.QFrame, CurvatureUI, MMSTools):
         '''
         # Clear and generate a new plot grid
         self.ui.glw.clear()
-        pltGrd = PlotGrid()
+        pltGrd = PlotGridObject()
+        pltGrd.set_window(self.window)
         self.ui.glw.addItem(pltGrd, 0, 0, 1, 1)
 
         # For each result
         plotItems = {}
         penIndex = 0
+        index = 0
+        plotColors = []
         for key in results:
             # Extract data
             data = results[key]
@@ -1331,13 +1347,13 @@ class Curvature(QtWidgets.QFrame, CurvatureUI, MMSTools):
             # Get pens
             ncols = self.colMap[key]
             pens = self.window.pens[penIndex:penIndex + ncols]
-            colors = [pen.color().name() for pen in pens]
+            colors = [pen.color() for pen in pens]
             penIndex += ncols
 
             # Build plot items and plot each trace
             sublabels = self.labels[key]
             units = self.units[key]
-            label = StackedLabel(sublabels, units=units, colors=colors)
+            label = StackedLabel(sublabels, units=[units]*len(sublabels), colors=colors)
 
             plt = MagPyPlotItem(self.window.epoch)
             for col in range(0, ncols):
@@ -1346,20 +1362,19 @@ class Curvature(QtWidgets.QFrame, CurvatureUI, MMSTools):
 
             # Add to grid if not just creating copy
             if not copy:
-                pltGrd.addPlt(plt, label)
+                pltGrd.get_layout().add_row()
+                pltGrd.get_layout()[index] = [label, plt]
+                index += 1
             else:
                 plotItems[key] = (plt, label)
 
             # Make sure radius of curvature is log scale
             if key == 'Radius':
                 plt.setLogMode(x=False, y=True)
-
-        # Adjustments to label font size behavior
-        pltGrd.setLabelFontSizes(12)
-        pltGrd.lockLabelSizes()
+            plotColors.append(colors)
 
         self.ui.glw.update()
-        return plotItems
+        return plotItems, plotColors
 
     def createVariables(self, sigHand=None, close=True):
         ''' Creates new plot variables in main window '''
@@ -1399,14 +1414,14 @@ class Curvature(QtWidgets.QFrame, CurvatureUI, MMSTools):
 
         # Create new plots from the previous results
         data, times = result['data'], result['times']
-        plots = self.plot(data, times, copy=True)
+        plots, plotColors = self.plot(data, times, copy=True)
 
         # Add plots to main window
         for key in data:
-            plt, lbl = plots[key]
-            pens = lbl.getPens()
             varLst = [(dstr, 0) for dstr in self.varNames[key]]
-            self.window.addPlot(plt, lbl, varLst, pens=pens)
+            self.window.lastPlotStrings.append(varLst)
+        self.window.plotTracePens.extend(plotColors)
+        self.window.replotGrid()
 
         self.close()
 
@@ -1599,243 +1614,22 @@ class Curvature(QtWidgets.QFrame, CurvatureUI, MMSTools):
         curvature = np.matmul(G, bUnit)
         return curvature
 
-class ParticlePlotItem(SpectrogramPlotItem):
-    def __init__(self, epoch, logMode=False):
-        SpectrogramPlotItem.__init__(self, epoch, logMode)
-
-    def plotSetup(self):
-        SpectrogramPlotItem.plotSetup(self)
-        # Additional plot appearance adjustments specific to EPAD plots
-        self.getAxis('bottom').setStyle(tickLength=4)
-        self.getAxis('bottom').setStyle(tickTextOffset=2)
-        self.getAxis('left').setStyle(tickLength=4)
-        self.getViewBox().setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
-
-class PitchAnglePlotItem(ParticlePlotItem):
-    def __init__(self, epoch, logMode=False):
-        ParticlePlotItem.__init__(self, epoch, logMode)
-
-    def plotSetup(self):
-        ParticlePlotItem.plotSetup(self)
-        self.getAxis('left').setCstmTickSpacing(30)
-
-class ElectronPitchAngleUI(BaseLayout):
-    def setupUI(self, Frame, window):
-        maxSizePolicy = QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
-        Frame.setWindowTitle('Electron Pitch-Angle Distribution')
-        Frame.resize(1200, 800)
-        layout = QtWidgets.QGridLayout(Frame)
-
-        # Set up plot grid
-        self.gview = GraphicsView()
-        self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        self.glw = GridGraphicsLayout(window)
-        self.gview.setCentralItem(self.glw)
-        self.glw.layout.setHorizontalSpacing(10)
-        self.glw.layout.setContentsMargins(15, 10, 25, 10)
-
-        # Set up time edits and status bar
-        self.timeEdit = TimeEdit()
-        self.timeEdit.setupMinMax(window.getMinAndMaxDateTime())
-        self.statusBar = QtWidgets.QStatusBar()
-        timeLt = QtWidgets.QHBoxLayout()
-        timeLt.addWidget(self.timeEdit.start)
-        timeLt.addWidget(self.timeEdit.end)
-        timeLt.addWidget(self.statusBar)
-        timeLt.addStretch()
-
-        self.rangeElems = []
-        settingsLt = self.setupSettingsLt()
-        self.addPltBtn = QtWidgets.QPushButton('Add To Main Grid')
-
-        # Add everything to main layout
-        layout.addLayout(settingsLt, 0, 1, 1, 1)
-        layout.addWidget(self.gview, 0, 0, 1, 1)
-        layout.addLayout(timeLt, 1, 0, 1, 2)
-
-    def getVerticalSpacer(self, ht=10):
-        spacer = QtWidgets.QSpacerItem(0, ht, QSizePolicy.Maximum, QSizePolicy.Minimum)
-        return spacer
-
-    def setupSettingsLt(self):
-        settingsLt = QtWidgets.QVBoxLayout()
-        frame = QtWidgets.QGroupBox(' Plot Settings')
-        layout = QtWidgets.QVBoxLayout(frame)
-
-        # Set up color map scaling mode box/layout
-        scaleModeLbl = QtWidgets.QLabel('Color Map Scale:')
-        self.scaleModeBox = QtWidgets.QComboBox()
-        self.scaleModeBox.addItem('Logarithmic')
-        self.scaleModeBox.addItem('Linear')
-        scaleLt = QtWidgets.QVBoxLayout()
-        scaleLt.addWidget(scaleModeLbl)
-        scaleLt.addWidget(self.scaleModeBox)
-        layout.addLayout(scaleLt)
-
-        spacer = self.getVerticalSpacer()
-        layout.addItem(spacer)
-
-        # Set up range settings boxes for each plot
-        num = 0
-        self.rangeToggles = []
-        lbls = ['High Energy', 'Mid Energy', 'Low Energy']
-        for lbl in lbls:
-            # Create groupbox w/ lbl as title
-            frm = QtWidgets.QGroupBox(lbl)
-            subLt = QtWidgets.QVBoxLayout(frm)
-            subLt.setContentsMargins(5,5,5,5)
-            layout.addWidget(frm)
-            layout.addItem(self.getVerticalSpacer())
-
-            # Set up, store, and add range sublayout/elements to groupbox
-            rngLt, selectToggle, rngElems = self.getRangeLt()
-            selectToggle.toggled.connect(functools.partial(self.valRngSelectToggled, num))
-            self.rangeElems.append(rngElems)
-            self.rangeToggles.append(selectToggle)
-            self.valRngSelectToggled(num, False)
-            subLt.addLayout(rngLt)
-            num += 1
-
-        # Set up default spinbox min/max settings
-        self.colorScaleToggled()
-
-        # Add in update button
-        settingsLt.addWidget(frame)
-        layout.addItem(self.getVerticalSpacer(2))
-        self.updtBtn = QtWidgets.QPushButton('Update')
-        self.updtBtn.setFixedWidth(150)
-        updtLt = QtWidgets.QHBoxLayout()
-        updtLt.addWidget(self.updtBtn)
-
-        layout.addLayout(updtLt)
-        layout.addItem(self.getVerticalSpacer(5))
-
-        settingsLt.addStretch()
-        selectLt, self.addToPlotBtn, self.addCheckboxes = self.setupAddToWinLt()
-        settingsLt.addLayout(selectLt)
-
-        return settingsLt
-
-    def setupAddToWinLt(self):
-        addLt = QtWidgets.QVBoxLayout()
-        btn = QtWidgets.QPushButton('Add to Main Window')
-        selectionBox = QtWidgets.QGroupBox('Selected Plots')
-        selectionBox.setAlignment(QtCore.Qt.AlignCenter)
-        selectionBox.setToolTip('Plots that will be added to main window')
-        selectionLt = QtWidgets.QHBoxLayout(selectionBox)
-        checkBoxes = []
-        for kw in ['High', 'Mid', 'Lo']:
-            checkBox = QtWidgets.QCheckBox(kw)
-            checkBox.setChecked(True)
-            selectionLt.addWidget(checkBox)
-            checkBoxes.append(checkBox)
-        addLt.addWidget(selectionBox)
-        addLt.addWidget(btn)
-        return addLt, btn, checkBoxes
-
-    def getRangeLt(self):
-        selectToggle = QtWidgets.QCheckBox(' Set Value Range: ')
-        rangeLt = QtWidgets.QGridLayout()
-
-        rngTip = 'Toggle to set max/min values represented by color gradient'
-        selectToggle.setToolTip(rngTip)
-
-        minTip = 'Minimum value represented by color gradient'
-        maxTip = 'Maximum value represented by color gradient'
-
-        valueMin = ScientificSpinBox()
-        valueMax = ScientificSpinBox()
-
-        # Set spinbox defaults
-        for box in [valueMax, valueMin]:
-            box.setFixedWidth(100)
-            box.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-
-        spc = '       ' # Spaces that keep spinbox lbls aligned w/ chkbx lbl
-
-        rangeLt.addWidget(selectToggle, 0, 0, 1, 2)
-        maxLbl = self.addPair(rangeLt, spc+'Max: ', valueMax, 1, 0, 1, 1, maxTip)
-        minLbl = self.addPair(rangeLt, spc+'Min: ', valueMin, 2, 0, 1, 1, minTip)
-
-        # Connects checkbox to func that enables/disables rangeLt's items
-        return rangeLt, selectToggle, (valueMin, valueMax, minLbl, maxLbl)
-
-    def addPair(self, layout, name, elem, row, col, rowspan, colspan, tooltip=None):
-        # Create a label for given widget and place both into layout
-        lbl = QtWidgets.QLabel(name)
-        lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-        if name != '':
-            layout.addWidget(lbl, row, col, 1, 1)
-        layout.addWidget(elem, row, col+1, rowspan, colspan)
-
-        # Set any tooltips if given
-        if tooltip is not None:
-            lbl.setToolTip(tooltip)
-
-        return lbl
-
-    def valRngSelectToggled(self, num, val):
-        # Enables/disables range settings layout if toggled
-        for elem in self.rangeElems[num]:
-            elem.setEnabled(val)
-
-    def colorScaleToggled(self):
-        # Update spinboxes when color map scale is changed
-        logMode = self.isLogColorScale()
-        if logMode:
-            minVal, maxVal = -100, 100
-            prefix = '10^'
-        else:
-            minVal, maxVal = 0, 1e32
-            prefix = ''
-
-        for rngElems in self.rangeElems:
-            for box in rngElems[0:2]:
-                box.setMinimum(minVal)
-                box.setMaximum(maxVal)
-                box.setPrefix(prefix)
-
-        for i in range(0, len(self.rangeToggles)):
-            self.rangeToggles[i].setChecked(False)
-
-    def isLogColorScale(self):
-        if self.scaleModeBox.currentText() == 'Logarithmic':
-            return True
-        else:
-            return False
-
-    def getRangeChksAndBoxes(self):
-        toggles = self.rangeToggles
-        boxes = [elems[0:2] for elems in self.rangeElems]
-        return toggles, boxes
-
 class MMSColorPltTool():
-    def inMainWindow(self, kw):
-        kwFound = False
-        pltIndex = None
-        for lbl in self.window.pltGrd.labels:
-            if kw in lbl.dstrs:
-                kwFound = True
-                pltIndex = self.window.pltGrd.labels.index(lbl)
-                break
-        return kwFound, pltIndex
-
     def addPlotsToMain(self, kws, selectedKws, units, editLink=None):
-        links = []
         for plt, gradLbl, kw in zip(self.plotItems, self.gradLabels, kws):
             # Skip plots that aren't selected
             if kw not in selectedKws:
                 continue
 
             # Pass plot to main window to add it to the main grid
-            specData = plt.getSpecData()
+            specData = plt.get_specs()[0]
             specData.set_name(kw)
             specData.set_y_label(units)
             specData.set_legend_label(gradLbl.getLabelText())
-            self.window.addSpectrogram(specData)
 
-        # Update ranges and resize
-        self.window.updateXRange()
+            self.window.SPECDICT[kw] = specData
+
+        self.window.replotData()
         self.close()
 
     def getRangeSettings(self):
@@ -1877,441 +1671,6 @@ class MMSColorPltTool():
 
         if 'Ranges' in state:
             self.setRangeSettings(state['Ranges'])
-
-class ElectronPitchAngle(QtWidgets.QFrame, ElectronPitchAngleUI, MMSColorPltTool):
-    def __init__(self, window, parent=None):
-        super(ElectronPitchAngle, self).__init__(parent)
-        MMSColorPltTool.__init__(self)
-
-        self.ui = ElectronPitchAngleUI()
-        self.window = window
-        self.wasClosed = False
-
-        self.lowKw, self.midKw, self.hiKw = 'PAD_Lo', 'PAD_Mid', 'PAD_Hi'
-        self.paDstrs = self.findStrings()
-        self.plotItems = []
-
-        self.ui.setupUI(self, window)
-        self.ui.updtBtn.clicked.connect(self.update)
-        self.ui.scaleModeBox.currentIndexChanged.connect(self.ui.colorScaleToggled)
-        self.ui.addToPlotBtn.clicked.connect(self.addToMainWindow)
-
-        # Valid state checking
-        paDstrsLens = list(map(len, self.paDstrs))
-        if min(paDstrsLens) != 30 and max(paDstrsLens) != 30:
-            self.window.ui.statusBar.showMessage('Error: Missing particle data')
-            return
-
-    def addToMainWindow(self):
-        kws = [f'Electron {kw} Energy PAD' for kw in ['High', 'Mid', 'Low']]
-        selectedKws = []
-        for kw in kws: # Gather all selected keywords
-            index = kws.index(kw)
-            if self.ui.addCheckboxes[index].isChecked():
-                selectedKws.append(kw)
-
-        self.addPlotsToMain(kws, selectedKws, 'Degrees', None)
-
-    def findStrings(self):
-        # Extract the variable names corresponding to each electron pitch-angle
-        # distribution set (each dstr corresponds to one row of data)
-        lowDstrs, midDstrs, hiDstrs = [], [], []
-
-        for dstr in self.window.DATASTRINGS:
-            if self.lowKw in dstr:
-                lowDstrs.append(dstr)
-            elif self.midKw in dstr:
-                midDstrs.append(dstr)
-            elif self.hiKw in dstr:
-                hiDstrs.append(dstr)
-
-        return [lowDstrs, midDstrs, hiDstrs]
-
-    def buildValGrids(self, paDstrs, dtaRange):
-        # Builds grids from the data for each pitch-angle set (lo, mid, hi)
-        # and returns a list of these grids
-        valueGrids = []
-        for dstrLst in paDstrs:
-            subGrid = []
-            for dstr in dstrLst:
-                # Extract data only from the selected range
-                rowDta = self.window.getData(dstr)[dtaRange[0]:dtaRange[1]]
-                subGrid.append(rowDta)
-            subGrid = np.array(subGrid)
-            valueGrids.append(subGrid)
-
-        return valueGrids
-
-    def update(self):
-        # Get variable names and selected data range
-        dataRng = self.window.calcDataIndicesFromLines(self.paDstrs[0][0], 0)
-
-        # Clear previous plots and add title
-        self.ui.glw.clear()
-        title = pg.LabelItem('Electron Pitch-Angle Distribution')
-        self.ui.glw.addItem(title, 0, 0, 1, 4)
-
-        # Generate the value grids for each plot
-        labels = ['Electron '+lbl+' Energy PAD' for lbl in ['High', 'Mid', 'Low']]
-        pixelGrids = self.buildValGrids(self.paDstrs, dataRng)
-        pixelGrids.reverse() # Plot in reverse order so high energy is top-most plot
-        yVals = [i for i in range(0, 180+1, 6)] # Pitch angle values
-
-        # Extract the selected time ticks and subtract offset
-        times = self.window.getTimes(self.paDstrs[0][0], 0)[0]
-        times = np.array(times[dataRng[0]:dataRng[1]])
-        times = np.append(times, times[-1])
-
-        self.gradients = []
-        self.plotItems = []
-        self.gradLabels = []
-        logColor = self.ui.isLogColorScale()
-
-        # Create each plot from its value grid and any user parameters
-        pltNum = 0
-        index = 0
-        valRngs = self.getRangeSettings()
-        for pixelGrid, lbl in zip(pixelGrids, labels):
-            plt = PitchAnglePlotItem(self.window.epoch)
-
-            # Check if custom value range is set
-            index = labels.index(lbl)
-            selectToggle = valRngs[index]
-            if selectToggle is not None: # User selected range
-                minVal, maxVal = selectToggle
-                if logColor: # Map log scale values to non-log values
-                    minVal = 10 ** minVal
-                    maxVal = 10 ** maxVal
-            else:
-                # Otherwise, use min/max values in grid
-                minVal = np.min(pixelGrid)
-                maxVal = np.max(pixelGrid)
-                if logColor: # Ignore zeros if color mapping scale is in log mode
-                    minVal = np.min(pixelGrid[pixelGrid>0])
-                    maxVal = np.max(pixelGrid[pixelGrid>0])
-
-                # Initialize min/max values for value range spinboxes
-                minBox, maxBox = self.ui.rangeElems[index][0:2]
-                minBox.setValue(minVal)
-                maxBox.setValue(maxVal)
-                if logColor:
-                    minBox.setValue(np.log10(minVal))
-                    maxBox.setValue(np.log10(maxVal))
-            colorRng = (minVal, maxVal)
-
-            # Generate the color mapped plot
-            plt.createPlot(yVals, pixelGrid, times, colorRng, logColor)
-            self.plotItems.append(plt)
-            self.ui.glw.addItem(plt, pltNum + 1, 1, 1, 1)
-
-            # Add in the y axis label
-            lbl = StackedAxisLabel([lbl, '[Degrees]'], angle=-90)
-            lbl.setFixedWidth(40)
-            self.ui.glw.addItem(lbl, pltNum + 1, 0, 1, 1)
-
-            # Update date time axis and set plot view ranges
-            plt.setXRange(times[0], times[-1], 0.0)
-            plt.setYRange(yVals[0], yVals[-1], 0.0)
-
-            # Add in gradient color bar
-            grad = plt.getGradLegend(logColor, (1, 26))
-            gradWidth = 45 if logColor else 65
-            grad.setFixedWidth(gradWidth)
-            grad.setEdgeMargins(0, 0)
-            grad.setBarWidth(28)
-            self.ui.glw.addItem(grad, pltNum + 1, 2, 1, 1)
-            self.gradients.append(grad)
-
-            # Add in color bar label
-            unitsLbl = 'Log DEF' if logColor else 'DEF'
-            lbl = StackedAxisLabel([unitsLbl, '[keV/(cm^2 s sr keV)]'])
-            lbl.setFixedWidth(40)
-            self.ui.glw.addItem(lbl, pltNum + 1, 3, 1, 1)
-            self.gradLabels.append(lbl)
-
-            # Set bottom axis defaults
-            plt.getAxis('bottom').setStyle(showValues=True)
-            plt.getAxis('bottom').showLabel(False)
-
-            pltNum += 1
-
-        # Set time label for bottom axis and adjust margins for gradient bar
-        plt = self.plotItems[-1]
-        grad = self.gradients[-1]
-        grad.setOffsets(1, 45, 0, 0)
-        plt.getAxis('bottom').showLabel(True)
-
-        # Add in time and file info labels
-        lbl = self.getTimeRangeLbl(times[0], times[-1])
-        self.ui.glw.addItem(lbl, pltNum + 1, 0, 1, 3)
-
-        self.ui.statusBar.clearMessage()
-
-    def getTimeRangeLbl(self, t1, t2):
-        t1Str = self.window.getTimestampFromTick(t1)
-        t2Str = self.window.getTimestampFromTick(t2)
-        txt = 'Time Range: ' + t1Str + ' to ' + t2Str
-        lbl = pg.LabelItem(txt)
-        lbl.setAttr('justify', 'left')
-        return lbl
-
-    def closeEvent(self, ev):
-        self.ui.glw.clear()
-        self.window.endGeneralSelect()
-        for plt in self.plotItems:
-            plt.closePlotAppearance()
-        self.wasClosed = True
-        self.close()
-
-class ElectronOmniUI(BaseLayout):
-    def setupUI(self, Frame, window, edta=[], idta=[]):
-        layout = QtWidgets.QGridLayout(Frame)
-        self.glw = self.getGraphicsGrid(window)
-        self.edta = edta
-        self.idta = idta
-
-        # Set window size
-        if edta == [] or idta == []:
-            Frame.resize(1100, 300) # Single plot
-        else:
-            Frame.resize(1100, 600) # Two plots
-
-        if edta == []:
-            Frame.setWindowTitle('Omni-directional Electron Energy Spectrum')
-        elif idta == []:
-            Frame.setWindowTitle('Omni-directional Ion Energy Spectrum')
-        else:
-            Frame.setWindowTitle('Omni-directional Electron/Ion Energy Spectrum')
-
-        settingsLt = self.setupSettingsLt()
-        layout.addLayout(settingsLt, 0, 1, 1, 1)
-
-        layout.addWidget(self.gview, 0, 0, 1, 1) # Graphics/plot grid
-
-        timeLt, self.timeEdit, self.statusBar = self.getTimeStatusBar()
-        layout.addLayout(timeLt, 1, 0, 1, 2)
-
-    def setupSettingsLt(self):
-        sideBarLt = QtWidgets.QVBoxLayout()
-        settingsFrame = QtWidgets.QGroupBox('Settings')
-        layout = QtWidgets.QVBoxLayout(settingsFrame)
-
-        # Set up color scaling settings UI
-        scaleLbl = QtWidgets.QLabel('Color Scaling Mode:')
-        self.scaleModeBox = QtWidgets.QComboBox()
-        self.scaleModeBox.addItems(['Logarithmic', 'Linear'])
-        self.scaleModeBox.currentTextChanged.connect(self.colorScaleToggled)
-        colorLt = QtWidgets.QVBoxLayout()
-        colorLt.addWidget(scaleLbl)
-        colorLt.addWidget(self.scaleModeBox)
-        layout.addLayout(colorLt)
-
-        # Set up min/max boxes for each item + toggles
-        self.valBoxes = {'Electron':[], 'Ion':[]}
-        self.valToggles = {}
-
-        for dta, name in [(self.edta, 'Electron'), (self.idta, 'Ion')]:
-            if dta == []:
-                continue
-            valueFrame = QtWidgets.QGroupBox(' Set Value Range: ')
-            valueFrame.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-            valueFrame.setCheckable(True)
-            self.valToggles[name] = valueFrame
-            valueLt = QtWidgets.QGridLayout(valueFrame)
-            for lbl, row in [('  Max: ', 0), ('  Min: ', 2)]:
-                box = ScientificSpinBox()
-                box.setFixedWidth(125)
-                self.valBoxes[name].append(box)
-                self.addPair(valueLt, lbl, box, row, 0, 1, 1)
-            layout.addWidget(valueFrame)
-
-        self.colorScaleToggled(self.scaleModeBox.currentText())
-
-        # Set up update button
-        self.updtBtn = QtWidgets.QPushButton('Update')
-        layout.addWidget(self.updtBtn)
-        sideBarLt.addWidget(settingsFrame)
-
-        # Add 'add to main' btn
-        sideBarLt.addStretch()
-        self.addToMainBtn = QtWidgets.QPushButton('Add To Main Window')
-        sideBarLt.addWidget(self.addToMainBtn)
-        return sideBarLt
-
-    def getRangeChksAndBoxes(self):
-        toggles = []
-        boxes = []
-        for kw in ['Electron', 'Ion']:
-            if kw in self.valBoxes:
-                toggles.append(self.valToggles[kw])
-                boxes.append(self.valBoxes[kw])
-
-        return toggles, boxes
-
-    def colorScaleToggled(self, val):
-        # Reset selection boxes
-        for dstr, valToggle in self.valToggles.items():
-            valToggle.setChecked(False)
-
-        # Adjust min/max spinboxes values according to color scaling mode
-        for dstr, boxes in self.valBoxes.items():
-            for box in boxes:
-                if val == 'Logarithmic':
-                    box.setPrefix('10^')
-                    box.setMinimum(-100)
-                    box.setMaximum(100)
-                else:
-                    box.setPrefix('')
-                    box.setMinimum(1e-24)
-                    box.setMaximum(1e24)
-
-class ElectronOmni(QtWidgets.QFrame, ElectronOmniUI, MMSColorPltTool):
-    def __init__(self, window, parent=None):
-        super(ElectronOmni, self).__init__(parent)
-        MMSColorPltTool.__init__(self)
-        self.ui = ElectronOmniUI()
-        self.window = window
-        self.wasClosed = False
-
-        # State and parameter information
-        self.plotItems = []
-        self.kwString = 'En_Omn'
-        self.electronDstrs, self.ionDstrs = self.findStrings()
-
-        # Default energy bin values
-        arr1 = np.array([1.51000e+00, 1.51000e+00, 2.37000e+00, 2.62000e+00, 3.79000e+00,
-            4.44000e+00, 6.14000e+00, 7.45000e+00, 1.00100e+01, 1.24200e+01,
-            1.63900e+01, 2.06200e+01, 2.69100e+01, 3.41400e+01, 4.42800e+01,
-            5.64400e+01, 7.29300e+01, 9.32500e+01, 1.20210e+02, 1.53970e+02,
-            1.98210e+02, 2.54160e+02, 3.26900e+02, 4.19470e+02, 5.39230e+02,
-            6.92200e+02, 8.89550e+02, 1.14218e+03, 1.46754e+03, 1.88460e+03,
-            2.42117e+03, 3.10952e+03])
-        arr2 = np.array([1.71000e+00, 1.71000e+00, 2.69000e+00, 2.97000e+00, 4.30000e+00,
-            5.04000e+00, 6.96000e+00, 8.45000e+00, 1.13400e+01, 1.40800e+01,
-            1.85700e+01, 2.33600e+01, 3.05000e+01, 3.86900e+01, 5.01800e+01,
-            6.39700e+01, 8.26600e+01, 1.05680e+02, 1.36240e+02, 1.74510e+02,
-            2.24640e+02, 2.88060e+02, 3.70490e+02, 4.75400e+02, 6.11130e+02,
-            7.84500e+02, 1.00817e+03, 1.29449e+03, 1.66324e+03, 2.13591e+03,
-            2.74403e+03, 3.52417e+03])
-
-        self.energyBins = [np.mean([arr1[i], arr2[i]]) for i in range(0, 32)]
-        self.energyBins.sort()
-
-        # Set up ui and link buttons to actions
-        self.ui.setupUI(self, window, self.electronDstrs, self.ionDstrs)
-        self.ui.updtBtn.clicked.connect(self.update)
-        self.ui.addToMainBtn.clicked.connect(self.addToMain)
-
-    def findStrings(self):
-        electDstrs = []
-        ionDstrs = []
-        for dstr in self.window.DATASTRINGS:
-            if self.kwString in dstr:
-                if '_I' in dstr: # Gather ion spectrum variable names
-                    ionDstrs.append(dstr)
-                else: # Gather electron spectrum variable names
-                    electDstrs.append(dstr)
-        return electDstrs, ionDstrs
-
-    def addToMain(self):
-        kws = ['Electron Spectrum', 'Ion Spectrum']
-        selectedKws = []
-        if self.electronDstrs != []:
-            selectedKws.append(kws[0])
-        if self.ionDstrs != []:
-            selectedKws.append(kws[1])
-
-        self.addPlotsToMain(selectedKws, selectedKws, 'eV', None)
-
-    def update(self):
-        self.plotItems = []
-        self.gradLabels = []
-        self.gradients = []
-        self.ui.glw.clear()
-
-        rowNum = 0
-        for dstrLst, pltName in zip([self.electronDstrs, self.ionDstrs],
-                ['Electron', 'Ion']):
-            if dstrLst == []: # Skip either missing data set
-                continue
-            # Generate color map plot elements, add them to grid, and store
-            plt, grad, lbl = self.plotData(mode=pltName)
-            self.ui.glw.addItem(plt, rowNum, 0, 1, 1)
-            self.ui.glw.addItem(grad, rowNum, 1, 1, 1)
-            self.ui.glw.addItem(lbl, rowNum, 2, 1, 1)
-            self.plotItems.append(plt)
-            self.gradients.append(grad)
-            self.gradLabels.append(lbl)
-            rowNum += 1
-
-    def plotData(self, mode='Electron'):
-        dstrs = self.electronDstrs if mode == 'Electron' else self.ionDstrs
-        i0, i1 = self.window.calcDataIndicesFromLines(dstrs[0], self.window.currentEdit)
-        yVals = self.energyBins
-
-        # Build grid from data slices for each variable in list
-        times = self.window.getTimes(dstrs[0], self.window.currentEdit)[0]
-        times = times[i0:i1+1] # Use inclusive endpoint for times
-        valGrid = []
-        for dstr in dstrs:
-            dta = self.window.getData(dstr, self.window.currentEdit)
-            valGrid.append(dta[i0:i1])
-        valGrid = np.array(valGrid)
-
-        # Determine min/max ranges for color scale
-        logColor = True if self.getColorScaleMode() == 'Logarithmic' else False
-        maxBox, minBox = self.ui.valBoxes[mode]
-        setToggle = self.ui.valToggles[mode]
-        if setToggle.isChecked(): # Use user-set values
-            minVal = minBox.value()
-            maxVal = maxBox.value()
-            if logColor:
-                minVal = 10 ** minVal
-                maxVal = 10 ** maxVal
-        else: # Get min/max from grid and set default values in spinboxes
-            if logColor:
-                # Get valid min/max only for log mode
-                minVal = np.min(valGrid[valGrid>0])
-                maxVal = np.max(valGrid[valGrid>0])
-                minBox.setValue(np.log10(minVal))
-                maxBox.setValue(np.log10(maxVal))
-            else:
-                minVal = np.min(valGrid)
-                maxVal = np.max(valGrid)
-                minBox.setValue(minVal)
-                maxBox.setValue(maxVal)
-
-        # Adjust frequency lower bound
-        diff = yVals[1] - yVals[0]
-        yVals = [yVals[0] - diff] + yVals
-
-        # Create color-mapped plot
-        plt = ParticlePlotItem(self.window.epoch, True)
-        plt.createPlot(yVals, valGrid, times, (minVal, maxVal), logColorScale=logColor)
-
-        title = 'Omni-directional ' + mode + ' Energy Spectrum'
-
-        # Set plot title and update time ticks/labels
-        plt.setTitle(title)
-
-        # Create gradient object
-        grad = plt.getGradLegend(logMode=logColor, offsets=(31, 45))
-        grad.setMaximumWidth(50 if logColor else 85)
-        grad.setBarWidth(28)
-
-        # Add in units label
-        unitsLbl = 'Log DEF' if logColor else 'DEF'
-        lbl = StackedAxisLabel([unitsLbl, '[keV/(cm^2 s sr keV)]'])
-        lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
-
-        return plt, grad, lbl
-
-    def closeEvent(self, ev):
-        self.window.endGeneralSelect()
-        for plt in self.plotItems:
-            plt.closePlotAppearance()
-        self.wasClosed = True
-        self.close()
 
 class SelectableList(QtWidgets.QWidget):
     def __init__(self):
@@ -2379,273 +1738,6 @@ class SelectableList(QtWidgets.QWidget):
         for item in newItems:
             self.outputList.addItem(item)
 
-class FEEPS_EPAD_UI(BaseLayout):
-    def setupUI(self, frame):
-        layout = QtWidgets.QGridLayout(frame)
-        frame.resize(100, 700)
-        frame.setWindowTitle('FEEPS Pitch Angle Distributions')
-
-        # Set up time edits
-        timeLt = QtWidgets.QHBoxLayout()
-        self.timeEdit = TimeEdit()
-        timeLt.addWidget(self.timeEdit.start)
-        timeLt.addWidget(self.timeEdit.end)
-        timeLt.addStretch()
-
-        # Set up selection list
-        self.selectList = SelectableList()
-        self.selectList.setLabel('Distributions: ')
-        self.selectList.setMaximumWidth(300)
-
-        ## Add items to list input
-        items = []
-        for energy_type in frame.grps:
-            for bin_start, bin_end in frame.grps[energy_type]:
-                label = f'{energy_type.capitalize()} {bin_start}-{bin_end} keV'
-                items.append(label)
-        self.selectList.setInput(items)
-
-        # Set up log scale checkbox
-        self.logCheck = QtWidgets.QCheckBox('Log Color Scale')
-
-        # Set up update and add to main buttons
-        btnLt = QtWidgets.QHBoxLayout()
-        self.updateBtn = QtWidgets.QPushButton(' Plot ')
-        self.addToMainBtn = QtWidgets.QPushButton('Add To Main Window')
-        for btn in [self.addToMainBtn, self.updateBtn]:
-            btnLt.addWidget(btn)
-
-        leftLt = QtWidgets.QVBoxLayout()
-        for elem in [self.selectList, self.logCheck]:
-            leftLt.addWidget(elem)
-        leftLt.addLayout(btnLt)
-
-        # Set up graphics grid
-        self.glw = self.getGraphicsGrid()
-
-        ## Wrap in a scroll frame
-        self.gridWrapper = QtWidgets.QScrollArea()
-        self.gridWrapper.setWidget(self.gview)
-        self.gridWrapper.setWidgetResizable(True)
-        self.gridWrapper.setMinimumWidth(800)
-        self.gridWrapper.setVisible(False)
-
-        # Add graphics view and settings layouts to upper layout above time edits
-        upperLt = QtWidgets.QHBoxLayout()
-        upperLt.addLayout(leftLt)
-        upperLt.addWidget(self.gridWrapper)
-
-        layout.addLayout(upperLt, 0, 0, 1, 1, alignment=QtCore.Qt.AlignLeft)
-        layout.addLayout(timeLt, 1, 0, 1, 1)
-
-class FEEPS_EPAD(QtWidgets.QFrame):
-    def __init__(self, window):
-        self.window = window
-        QtWidgets.QFrame.__init__(self)
-        self.ui = FEEPS_EPAD_UI()
-        self.grps = self.findGrps()
-        self.ui.setupUI(self)
-        self.lastCalc = None
-        self.ui.updateBtn.clicked.connect(self.update)
-        self.ui.addToMainBtn.clicked.connect(self.addToMainWindow)
-
-    def findGrps(self):
-        ''' Find groups of PAD variables for each energy type and
-            splits by energy bins
-        '''
-        grps = {'electron': {}, 'ion': {}}
-        energy_map = {'e':'electron', 'i':'ion'}
-
-        # Get all datastrings and setup regex pattern
-        dstrs = self.window.DATASTRINGS[:]
-        expr = '(i|e)_pad_[0-9]+_[0-9]+_[0-9]+'
-
-        # Place each variable name into a grps if expression
-        # matches pattern
-        for dstr in dstrs:
-            if re.fullmatch(expr, dstr):
-                # Determine energy type
-                energy_type = energy_map[dstr[0]]
-
-                # Get energy bin
-                bins = tuple(dstr.split('_')[2:4])
-
-                # Add to grps list
-                if bins not in grps[energy_type]:
-                    grps[energy_type][bins] = []
-                grps[energy_type][bins].append(dstr)
-
-        return grps
-
-    def sortByRange(self, items):
-        ''' Sorts lists of selected items by energy levels '''
-        bins = [item.split(' ')[2].split('-') for item in items]
-        startRng = [b[0] for b in bins]
-        order = np.argsort(startRng)[::-1]
-        return [items[i] for i in order]
-
-    def update(self):
-        results = {}
-
-        # Get state information
-        logScale = self.ui.logCheck.isChecked()
-
-        # Get list of selected plot items and sort them
-        selectedItems = self.ui.selectList.getSelectedItems()
-        electronItems = [item for item in selectedItems if 'Electron' in item]
-        ionItems = [item for item in selectedItems if 'Ion' in item]
-        electronItems = self.sortByRange(electronItems)
-        ionItems = self.sortByRange(ionItems)
-        selectedItems = electronItems + ionItems
-
-        # Get data and labels for each item
-        for item in selectedItems:
-            # Split item text into elements
-            energy_type, bins, unit = item.split(' ')
-
-            # Get relevant dstrs
-            energy_type = energy_type.lower()
-            bins = tuple(bins.split('-'))
-            dstrs = self.grps[energy_type][bins]
-
-            # Get selected start/end indices
-            sI, eI = self.window.calcDataIndicesFromLines(dstrs[0], 0)
-
-            # Get times for this variable
-            times = self.window.getTimes(dstrs[0], 0)[0][sI:eI+1]
-
-            # Get data from list of dstrs
-            datas = []
-            for dstr in dstrs:
-                data = self.window.getData(dstr, 0)[sI:eI+1]
-                rawDta = self.window.ORIGDATADICT[dstr][sI:eI+1]
-                data[rawDta >= 1e31] = np.nan
-                datas.append(data)
-            datas = np.stack(datas)
-
-            # Set up label and units
-            label = item[:len(energy_type)] + ' PAD' + item[len(energy_type):]
-            units = self.window.UNITDICT[dstrs[0]]
-
-            # Create dictionary of plot variable data
-            results[item] = {}
-            results[item]['times'] = times
-            results[item]['data'] = datas
-            results[item]['units'] = units
-            results[item]['label'] = label
-
-        self.lastCalc = results
-        self.plot(results, logScale)
-
-    def plot(self, results, logScale, copy=False):
-        if len(results) == 0:
-            return
-
-        # Store generated plot items and label/legends/legend-labels
-        plotItems = []
-        labelItems = []
-
-        # Set up plot grid
-        self.ui.gridWrapper.setVisible(True)
-        pltGrd = PlotGrid()
-        pltGrd.setLabelFontSizes(14)
-        pltGrd.lockLabelSizes()
-        self.ui.glw.clear()
-        self.ui.glw.addItem(pltGrd, 0, 0, 1, 1)
-
-        # Set up pitch angle bins
-        bins = np.arange(0, 181, step=180/11)
-
-        i = 0 
-
-        for var in results:
-            # Extract data, times, units
-            data = results[var]['data']
-            data = np.array(data)
-            times = results[var]['times']
-            units = results[var]['units']
-            label = results[var]['label']
-            if copy:
-                times = times - self.window.tickOffset
-
-            # Get color range and error flag mask
-            cleanData = data[~np.isnan(data)]
-            mask = np.isnan(data)
-            data[mask] = 0
-            if len(cleanData) == 0:
-                colorRng = (0.01, 1)
-            else:
-                colorRng = (min(cleanData), max(cleanData))
-
-            # Create spectogram
-            if copy:
-                vb = SelectableViewBox(self.window, len(self.window.plotItems))
-                plt = SpectrogramPlotItem(self.window.epoch, logMode=False, vb=vb)
-                plt.setPlotMenuEnabled(False)
-            else:
-                plt = SpectrogramPlotItem(self.window.epoch, logMode=False)
-            plt.createPlot(bins, data, times, colorRng, 
-                logColorScale=logScale, maskInfo=(mask, (255, 255, 255), False))
-            plt.getAxis('left').setTickSpacing(30, 15)
-
-            # Create legend items
-            lgnd = plt.getGradLegend(logMode=logScale)
-            lgndLblTxt = 'DEF' if not logScale else 'Log DEF'
-            lgndLbl = StackedAxisLabel([lgndLblTxt, units], angle=90)
-            for item in [lgnd, lgndLbl]:
-                item.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
-            labelItems.append((label, lgnd, lgndLbl))
-
-            # Add plot to grid
-            if not copy:
-                pltGrd.addColorPlt(plt, label, lgnd, lgndLbl, units='Degrees')
-                plt.setMinimumHeight(100)
-                plt.setCursor(QtCore.Qt.ArrowCursor)
-            else:
-                plotItems.append(plt)
-            i += 1
-
-        # Update grid heights
-        if not copy:
-            pltGrd.resizeEvent(None)
-            self.ui.gview.setMinimumHeight(pltGrd.minimumHeight() + 100)
-            self.ui.gridWrapper.verticalScrollBar().setValue(0)
-
-        return plotItems, labelItems
-
-    def addToMainWindow(self):
-        ''' Adds plots to main window '''
-        if self.lastCalc is None or len(self.lastCalc) == 0:
-            self.close()
-            return
-
-        # Generate new plots
-        logScale = self.ui.logCheck.isChecked()
-        plts, labelItems = self.plot(self.lastCalc, logScale, copy=True)
-        if len(plts) == 0:
-            self.close()
-            return
-
-        # Add each plot and corresponding label items to plot grid
-        for plt, (lbl, lgnd, lgndLbl) in zip(plts, labelItems):
-            self.window.pltGrd.addColorPlt(plt, lbl, lgnd, lgndLbl)
-            self.window.lastPlotStrings.append([(lbl, -1)])
-            self.window.plotTracePens.append([None])
-            self.window.plotItems.append(plt)
-
-            labelTxt = lgndLbl.getLabelText()
-            plotInfo = plt.getPlotInfo()
-            self.window.colorPlotInfo[lbl] = (plotInfo, labelTxt, 'Degrees')
-        self.window.pltGrd.resizeEvent(None)
-        self.window.updateXRange()
-
-        # Close window after loading plots into main grid
-        self.close()
-
-    def closeEvent(self, ev):
-        self.window.endGeneralSelect()
-        self.close()
-
 class PressureToolUI(BaseLayout):
     def setupUI(self, frame):
         frame.setWindowTitle('Pressure')
@@ -2710,20 +1802,14 @@ class PressureToolUI(BaseLayout):
 
     def setupPlots(self, frame):
         # Create plot grid and add to grid graphics layout
-        grid = PlotGrid()
+        grid = PlotGridObject()
+        grid.set_window(frame.window)
         self.glw.addItem(grid)
         self.pltGrd = grid
 
-        # Create plot appearance menu action
-        apprAct = QtWidgets.QAction('Plot Appearance...')
-        apprAct.triggered.connect(frame.openPlotAppr)
-
         # Generate plot
         ## Set up axis items and viewbox
-        vb = SelectableViewBox(None, 0)
-        vb.addMenuAction(apprAct)
-
-        plt = MagPyPlotItem(epoch=frame.window.epoch, viewBox=vb)
+        plt = MagPyPlotItem(epoch=frame.window.epoch)
         plt.getAxis('bottom').enableAutoSIPrefix(False)
 
         ## Get plot label, trace pen, and units
@@ -2740,8 +1826,11 @@ class PressureToolUI(BaseLayout):
             plt.getAxis(ax).setStyle(showValues=False)
 
         ## Create stacked label and add plot + label to grid
-        label = StackedLabel(dstrs, colors, units=units)
-        grid.addPlt(plt, label)
+        label = StackedLabel(dstrs, colors, units=[units]*len(dstrs))
+
+        row = grid.get_layout().shape()[0]
+        grid.get_layout().add_row()
+        grid.get_layout()[row] = [label, plt]
 
         frame.labels.append(label)
         frame.plotItems.append(plt)
@@ -2809,13 +1898,10 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         # Stores last calculation
         self.lastCalc = None
 
-    def calcMagneticPress(self, scNum, index):
+    def calcMagneticPress(self, btotal):
         # Compute magnetic pressure as |B|^2/(2*mu0)
-        btot_dstr = self.btotDstrs[scNum-1]
-        btot_val = self.window.getData(btot_dstr, 0)[index]
-        btot_val *= self.nt_to_T
-
-        pressure = (btot_val ** 2) / (2 * self.mu0)
+        btotal *= self.nt_to_T
+        pressure = (btotal ** 2) / (2 * self.mu0)
         return pressure * self.pa_to_npa
 
     def getNumDensity(self, kw='N_Dens', index=0):
@@ -2891,9 +1977,13 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         mag_times = self.window.getTimes(mag_dstr, 0)[0][sI:eI]
 
         # Calculate magnetic pressure over the given range
-        magn_press = np.empty(eI - sI)
-        for i in range(sI, eI):
-            magn_press[i-sI] = self.calcMagneticPress(1, i)
+        sc = 1
+        data = self.getMagData(sc, sI, eI, btot=True)
+        if len(data) == 4:
+            btotal = np.array(data[-1])
+        else:
+            btotal = np.sqrt((data[0]**2) + (data[1]**2) + (data[2]**2))
+        magn_press = self.calcMagneticPress(btotal)
 
         return mag_times, magn_press
 
@@ -2947,7 +2037,8 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
             return
 
         # Initialize plot grids
-        self.ui.pltGrd = PlotGrid(self)
+        self.ui.pltGrd = PlotGridObject()
+        self.ui.pltGrd.set_window(self.window)
         self.ui.glw.addItem(self.ui.pltGrd)
 
         # Use same time range for all plots
@@ -2959,14 +2050,7 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         penIndex = 0
         for grp in self.pltGrps:
             # Create plot item for each group
-            vb = SelectableViewBox(None, 0)
-            plt = MagPyPlotItem(epoch=self.window.epoch, viewBox=vb)
-
-            # Create plot appearance menu action
-            apprAct = QtWidgets.QAction('Plot Appearance...')
-            apprAct.triggered.connect(self.openPlotAppr)
-            if not copy:
-                vb.addMenuAction(apprAct)
+            plt = MagPyPlotItem(epoch=self.window.epoch)
 
             # Plot each trace in plot
             units = None
@@ -2996,28 +2080,20 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
 
             # Create label item
             colors = [pen.color() for pen in penList]
-            labelItem = StackedLabel(labelList, colors, units=units)
+            labelItem = StackedLabel(labelList, colors, units=[units]*len(labelList))
 
             # Set plot range
             plt.setXRange(t0, t1, padding=0.0)
 
             # Add plot to grid
             if not copy:
-                self.ui.pltGrd.addPlt(plt, labelItem)
+                row = self.ui.pltGrd.get_layout().shape()[0]
+                self.ui.pltGrd.get_layout().add_row()
+                self.ui.pltGrd.get_layout()[row] = [labelItem, plt]
             plotItems.append(plt)
             labelItems.append(labelItem)
 
         return plotItems, labelItems
-
-    def openPlotAppr(self):
-        self.closePlotAppr()
-        self.plotAppr = PressurePlotApp(self, self.plotItems, links=[[0]])
-        self.plotAppr.show()
-
-    def closePlotAppr(self):
-        if self.plotAppr:
-            self.plotAppr.close()
-            self.plotAppr = None
 
     def addToMain(self):
         self.update()
@@ -3073,14 +2149,13 @@ class PressureTool(QtWidgets.QFrame, PressureToolUI, MMSTools):
         # Create label and add plots + labels to plot grid
         plts, lbls = self.plotData(times, results, copy=True)
         for plt, lbl, pltStrs, pltPens in zip(plts, lbls, plotStrings, plotPens):
-            self.window.addPlot(plt, lbl, pltStrs, pens=pltPens)
+            self.window.lastPlotStrings.append(pltStrs)
+            self.window.plotTracePens.append(pltPens)
+        self.window.replotGrid()
 
         # Update plot grid ranges and appearance
-        self.window.updateXRange()
-        self.window.pltGrd.resizeEvent(None)
         self.close()
 
     def closeEvent(self, ev):
-        self.closePlotAppr()
         self.window.endGeneralSelect()
         self.close()

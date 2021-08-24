@@ -2,7 +2,8 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
-from .MagPy4UI import StackedLabel, TimeEdit, ScientificSpinBox
+from .MagPy4UI import TimeEdit, ScientificSpinBox
+from .plotBase import StackedLabel
 
 import numpy as np
 from math import sin, cos, acos, fabs, pi
@@ -215,7 +216,6 @@ class Edit(QtWidgets.QFrame, EditUI):
 
         uihist.addItem(item)   
         uihist.setCurrentRow(uihist.count() - 1)
-        self.updateYLabels(uihist.count() - 1)
 
     # removes selected history
     def removeHistory(self):
@@ -236,41 +236,21 @@ class Edit(QtWidgets.QFrame, EditUI):
         self.ui.history.takeItem(curRow)
         del self.history[curRow]
 
-    def updateYLabels(self, currentEdit):
-        """Updates Y axis label strings for each plot"""
-        plotNum = 0
-        for dstrs, pens in zip(self.window.lastPlotStrings,self.window.plotTracePens):
-            previousLabel = self.window.pltGrd.getPlotLabel(plotNum)
-            labels = []
-            colors = previousLabel.colors[:]
-            units = previousLabel.units
-            if self.window.pltGrd.colorPltKws[plotNum] is not None:
-                plotNum += 1
-                continue
-            for (dstr,editNum), pen in zip(dstrs,pens):
-                l = self.window.getLabel(dstr, editNum)
-                if l in self.window.ABBRV_DSTR_DICT:
-                    l = self.window.ABBRV_DSTR_DICT[l]
-                labels.append(l)
-            newLabel = StackedLabel(labels, colors, units=units)
-            
-            self.window.pltGrd.setPlotLabel(newLabel, plotNum)
-            plotNum += 1
-
-        self.window.pltGrd.resizeEvent(None)
-
     def onHistoryChanged(self):
         row = self.ui.history.currentRow()
         self.curSelection = self.history[row]
+        old_edit = self.window.currentEdit
         self.window.currentEdit = row
         self.ui.M.setMatrix(self.curSelection[0])
         self.ui.extraLabel.setText(self.curSelection[1])
 
-        # rebuild edit name list
+        # Rebuild edit name list
+        old_names = self.window.editNames[:]
         self.window.editNames = [self.ui.history.item(i).text() for i in range(self.ui.history.count())]
 
-        self.window.replotData(row) # provide row (which is the edit number) so plotter can try to swap things to that automatically
-        self.updateYLabels(row)
+        # Update plot edits
+        if row != old_edit or old_names != self.window.editNames:
+            self.window.update_current_edit(old_edit, row) 
 
     # takes a matrix, notes for the history, and a name for the history entry
     # axisVecs defines vectors to modify instead of dropdown selections

@@ -1,7 +1,6 @@
-from .dynBase import SpectrogramPlotItem, PhaseSpectrogram
 from .layoutTools import BaseLayout
 from . import waveAnalysis
-from .MagPy4UI import StackedAxisLabel
+from .plotBase import MagPyPlotItem, StackedAxisLabel
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import numpy as np
@@ -408,9 +407,9 @@ class MaskTool(QtWidgets.QFrame):
         # Wrapped colors should be used for phase plots
         # A regular spectrogram plot item should be used otherwise
         if self.plotType == 'Phase':
-            plt = PhaseSpectrogram(self.window.epoch, logScale)
+            plt = MagPyPlotItem(self.window.epoch)
         else:
-            plt = SpectrogramPlotItem(self.window.epoch, logScale)
+            plt = MagPyPlotItem(self.window.epoch)
 
         # Get the lower bound for the frequencies and generate the plot
         # from the grid values and mask info

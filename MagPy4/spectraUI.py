@@ -3,7 +3,8 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 import pyqtgraph as pg
-from .pyqtgraphExtensions import GridGraphicsLayout, SpectraGrid, BLabelItem
+from .pyqtgraphExtensions import SpectraGrid, BLabelItem
+from .plot_extensions import GridGraphicsLayout
 from .MagPy4UI import TimeEdit
 from .plotBase import GraphicsView
 
@@ -58,6 +59,12 @@ class SpectraUI(object):
 
         self.combView, self.sumGrid = self.buildCombinedView()
         self.tabs.addTab(self.combView, 'Sum of Powers')
+
+        grids = [self.grid, self.phaGrid, self.cohGrid, self.sumGrid]
+        labels = ['spectra', 'coherence', 'phase', 'sum']
+        for grid, label in zip(grids, labels):
+            grid.set_name(label)
+            grid.set_window(Frame)
 
         # bandwidth label and spinbox
         bottomLayout = QtWidgets.QHBoxLayout()
@@ -213,22 +220,3 @@ class SpectraUI(object):
     def greyOutSumOfPowers(self, val):
         if val == False:
             self.tabs.setTabEnabled(3, False)
-
-class SpectraViewBox(pg.ViewBox): # custom viewbox event handling
-    def __init__(self, *args, **kwds):
-        pg.ViewBox.__init__(self, *args, **kwds)
-
-    # overriding part of this function to get resizing to work correctly with
-    # manual y range override and fixed aspect ratio settings
-    def updateViewRange(self, forceX=False, forceY=False):
-        tr = self.targetRect()
-        bounds = self.rect()
-        aspect = self.state['aspectLocked']
-        if aspect is not False and 0 not in [aspect, tr.height(), bounds.height(), bounds.width()]:
-            targetRatio = tr.width()/tr.height() if tr.height() != 0 else 1
-            viewRatio = (bounds.width() / bounds.height() if bounds.height() != 0 else 1) / aspect
-            viewRatio = 1 if viewRatio == 0 else viewRatio
-            if viewRatio > targetRatio:
-                pg.ViewBox.updateViewRange(self,False,True) 
-                return
-        pg.ViewBox.updateViewRange(self,forceX,forceY) #default

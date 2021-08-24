@@ -2,22 +2,35 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from copy import copy
 
-from .plotAppearance import DynamicPlotApp
 import pyqtgraph as pg
-from scipy import signal
-from scipy import fft as fftpack 
 import numpy as np
-from .MagPy4UI import TimeEdit, NumLabel, StackedAxisLabel
-from .pyqtgraphExtensions import GridGraphicsLayout
-from .plotBase import MagPyAxisItem, DateAxis, MagPyPlotItem
 import bisect
 import functools
-from .mth import Mth
 from .layoutTools import BaseLayout
-from .simpleCalculations import simpleCalc
 import os
 from .data_util import find_gaps
 from multiprocessing import Pool
+
+class NumLabel(QtWidgets.QLabel):
+    def __init__(self, val=None, prec=None):
+        super(NumLabel, self).__init__(None)
+        self.prec = prec
+        if val is not None:
+            self.setText(val)
+        self.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+
+    def setText(self, val):
+        txt = str(val)
+        if self.prec is not None and not np.isnan(val):
+            txt = NumLabel.formatVal(val, self.prec)
+        QtWidgets.QLabel.setText(self, txt)
+
+    def formatVal(val, prec):
+        if abs(val) < 1/1000 or abs(val) > (10 ** (prec + 1)):
+            txt = np.format_float_scientific(val, precision=prec)
+        else:
+            txt = str(np.round(val, decimals=prec))
+        return txt
 
 class ParallelGrid():
     ''' Helper functions for parallelizing dynamic
@@ -90,7 +103,7 @@ class ParallelGrid():
 class GradEditor(QtWidgets.QFrame):
     def __init__(self, grad):
         self.grad = grad
-        self.spec = grad.getPlot().getSpecData()
+        self.spec = grad.getPlot().get_specs()[0].spec
         QtWidgets.QFrame.__init__(self)
         self.setWindowTitle('Spectrogram Editor')
         self.resize(250, 200)
@@ -150,11 +163,29 @@ class GradEditor(QtWidgets.QFrame):
         log_scale = self.logY.isChecked()
         self.spec.set_y_log_scale(log_scale)
 
+        # Update prepended 'log' label on plot axis
         plt = self.grad.getPlot()
-        plt.getAxis('left').setLabel(self.spec.get_y_label())
+        label = self.spec.get_y_label()
+        new_label = self.update_log_label(label, log_scale)
+        plt.getAxis('left').setLabel(new_label)
+        self.spec.set_y_label(new_label)
 
         # Reload plot
-        plt.reloadPlot(self.spec)
+        plt.clear_specs()
+        plt.load_color_plot(self.spec)
+
+    def update_log_label(self, label, log_scale):
+        items = label.split(' ')
+        new_label = label
+        if len(items) > 0:
+            if items[0] == 'Log' and not log_scale:
+                new_label = ' '.join(items[1:])
+            elif items[0] != 'Log' and log_scale:
+                new_label = ' '.join(['Log'] + items)
+        return new_label
+
+    def setLabel(self, lbl):
+        self.stacked_label = lbl
 
     def scalingUpdated(self, val):
         ''' Updates minBox and maxBoxes when color scaling changed '''
@@ -192,8 +223,8 @@ class GradEditor(QtWidgets.QFrame):
             lbl = QtWidgets.QLabel(label)
             lbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
             box = QtWidgets.QDoubleSpinBox()
-            box.setMinimum(-100)
-            box.setMaximum(100)
+            box.setMinimum(-360)
+            box.setMaximum(360)
             lbls.append(lbl)
             boxes.append(box)
 
@@ -263,7 +294,7 @@ class AddBtn(QtWidgets.QPushButton):
         self.setIcon(icon)
         self.setToolTip('Add plot to main plot grid')
 
-class SpectraLineEditorUI(BaseLayout):
+class SpectraLineEditorUI():
     def setupUI(self, Frame, window):
         Frame.resize(100, 100)
         Frame.setWindowTitle('Line Tool')
@@ -350,6 +381,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
 
     def evalExpr(self, exprStr, tO, tE):
         # Attempt to evaluate expression, print error if an exception occurs
+        from .simpleCalculations import simpleCalc
         rng = (tO, tE)
         tool = simpleCalc(None, self.window)
         result = tool.evaluate(exprStr, rng)
@@ -365,10 +397,6 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
             data = np.array([data, data])
         else:
             times, data = data.value()
-
-        # Adjust values if plot is in log scale
-        if self.isLogMode():
-            data = np.log10(data)
 
         return (times, data)
 
@@ -539,11 +567,18 @@ class GradLegend(pg.GraphicsLayout):
         super().__init__(parent)
         self.layout.setVerticalSpacing(0)
         self.layout.setHorizontalSpacing(0)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum))
+        self.layout.setContentsMargins(0, 2, 0, 0)
 
         self.addItem(self.colorBar, 0, 0, 1, 1)
         self.addItem(self.axisItem, 0, 1, 1, 1)
+
+        self.setMinimumWidth(10)
+
+    def getColorBar(self):
+        return self.colorBar
+
+    def getAxis(self):
+        return self.axisItem
 
     def getPlot(self):
         return self.plot
@@ -574,7 +609,7 @@ class GradLegend(pg.GraphicsLayout):
     def setOffsets(self, top, bottom, left=None, right=None):
         ''' Set top/bottom margins and optionally, left and right margins '''
         if left is None:
-            left = 10
+            left = 0
         if right is None:
             right = 0
         self.layout.setContentsMargins(left, top, right, bottom)
@@ -962,7 +997,7 @@ class DynamicAnalysisTool():
         # If there is a plot generated
         if plt:
             # Get its specData and create a copy
-            specData = plt.getSpecData()
+            specData = plt.getSpecData()[0]
             specCopy = copy(specData)
 
             # Remove analysis from plot name to make it shorter
@@ -972,7 +1007,7 @@ class DynamicAnalysisTool():
             specCopy.set_name(name)
 
             # Add spectrogram to main plot grid and close window
-            self.window.addSpectrogram(specCopy)
+            self.window.add_spectrogram(specCopy, name)
             self.close()
 
 class SpectraLegend(GradLegend):
@@ -981,6 +1016,10 @@ class SpectraLegend(GradLegend):
         topOff, botOff = offsets
         self.setOffsets(topOff, botOff)
         self.logMode = False
+        self.setMinimumWidth(10)
+        self.setMaximumWidth(70)
+        self.setMaximumHeight(1e5)
+        self.setMinimumHeight(10)
 
     def getCopy(self):
         newLegend = SpectraLegend()
@@ -995,25 +1034,26 @@ class SpectraLegend(GradLegend):
             self.setTickSpacing(None, None)
 
         # Update label if there is one linked to this gradlegend
-        if self.getLabel():
-            # Get label and sublabel text
-            label = self.getLabel()
-            subLabels = label.getLabelText()
+        label = self.getLabel()
+        if label:
+            labels = label.getLabelText()
+            if len(labels) == 0:
+                return
 
-            # Check if first label starts with 'Log'
-            if len(subLabels) > 0:
-                firstLabel = subLabels[0]
-                # Add log to first label
-                if logMode and (not firstLabel.startswith('Log')):
-                    firstLabel = f'Log {firstLabel}'
-                # Remove log from first label
-                elif (not logMode) and firstLabel.startswith('Log'):
-                    firstLabel = ' '.join(firstLabel.split(' ')[1:])
+            top_label = labels[0]
+            new_top_label = self.update_log_label(top_label, logMode)
+            labels[0] = new_top_label
+            label.setupLabels(labels)
 
-                # Update label item with new list of sublabels
-                labels = [firstLabel] + subLabels[1:]
-                label.clear()
-                label.setupLabels(labels)
+    def update_log_label(self, label, log_scale):
+        items = label.split(' ')
+        new_label = label
+        if len(items) > 0:
+            if items[0] == 'Log' and not log_scale:
+                new_label = ' '.join(items[1:])
+            elif items[0] != 'Log' and log_scale:
+                new_label = ' '.join(['Log'] + items)
+        return new_label
 
     def logModeSetting(self):
         return self.logMode
@@ -1029,6 +1069,9 @@ class SpectraGridItem(pg.GraphicsObject):
 
         # Used to update window's status bar w/ the clicked value if passed
         self.window = window
+        self.clickable = True
+        self.spec = None
+        self.logmode = False
 
         # Color and rect tuples to draw on plot
         shape = np.array(freqs).shape
@@ -1038,17 +1081,44 @@ class SpectraGridItem(pg.GraphicsObject):
         else:
             self.paths = list(self.setupPath(freqs, colors, times))
 
+        # Caching purposes
         self._boundingRect = None
-
+        self._mapped_grid = None
+    
         super().__init__()
 
-        self.setCacheMode(QtWidgets.QGraphicsItem.NoCache)
-    
+        self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
+
+    def cached_mapped_grid(self):
+        ''' Returns a cached version of the mapped grid '''
+        if self._mapped_grid is None and self.spec is not None:
+            self._mapped_grid = self.spec.get_mapped_grid()
+        return self._mapped_grid
+
+    def setLogMode(self, x=False, val=True):
+        if self.logmode != val:
+            self.remap_paths(val)
+            self.logmode = val
+
+    def remap_paths(self, val):
+        ''' Update rects when y scaling mode is updated '''
+        for color, rect in self.paths:
+            top, bottom = rect.top(), rect.bottom()
+            if val: # Log scale
+                top, bottom = np.log10(top), np.log10(bottom)
+            else: # Linear scale
+                top, bottom = top ** 10, bottom ** 10
+            rect.setTop(top)
+            rect.setBottom(bottom)
+        self.prepareGeometryChange()
+
     def dataBounds(self, ax, frac=1.0, orthoRange=None):
         if ax == 0:
             b = self.x_bound
         else:
             b = self.y_bound
+            if self.logmode:
+                b = np.log10(self.y_bound)
         return b
 
     def pixelPadding(self):
@@ -1312,7 +1382,7 @@ class SpecData():
 
         # Parameters used in calculations
         self.param_vals = {}
-    
+
     def values(self):
         ''' Returns the x, y, grid values used to plot the spectrogram '''
         y, x = self.get_bins(padded=True)
@@ -1337,6 +1407,12 @@ class SpecData():
         print ('grad_range:', self.grad_range)
         print ('gradient_stops:', self.gradient_stops)
         print ('grid_range:', self.grid_range)
+
+    def get_ranges(self):
+        y, x = self.get_bins()
+        x_range = (np.min(x), np.max(x))
+        y_range = (np.min(y), np.max(y))
+        return x_range, y_range
 
     def get_name(self):
         return self.name
@@ -1546,261 +1622,6 @@ class SpecData():
         self.grid = grid
         self.grid_range = None
 
-class SimpleColorPlot(MagPyPlotItem):
-    def __init__(self, epoch, logYScale=False, vb=None, axItems=None):
-        self.gradient = RGBGradient()
-        self.mappedGrid = None # Mapped colors
-        self.xTicks = None # m-length
-        self.yTicks = None # n-length
-        self.logYScale = logYScale # Y-axis scaling mode
-        self.logColor = False # Color scaling mode
-        self.gridItem = None # Grid PlotCurveItem
-        self.valueRange = (0, 1) # Gradient legend value range
-        self.baseOffset = None # Parameter used when exporting as SVG
-        self.maskInfo = None
-        self.tickOffset = 0
-
-        # Initialize default viewbox and axis items
-        vb = SpectrogramViewBox() if vb is None else vb
-
-        MagPyPlotItem.__init__(self, epoch=epoch, viewBox=vb)
-        if logYScale:
-            self.setLogMode(x=False, y=True)
-
-        # Additional plot adjustments to tick lengths, axis z-values, etc.
-        self.plotSetup()
-
-    def isSpecialPlot(self):
-        return True
-
-    def getPlotInfo(self):
-        info = (self.mappedGrid, self.xTicks, self.yTicks, self.logYScale, 
-            self.logColor, self.valueRange, self.maskInfo)
-        return info
-
-    def loadPlotInfo(self, plotInfo):
-        grid, x, y, logY, logColor, valRng, maskInfo = plotInfo
-
-        # Apply mask to color mapped grid
-        if maskInfo:
-            mask, maskColor, outline = maskInfo
-            r, g, b = maskColor
-            grid[mask] = (r, g, b, 255)
-
-        self.valueRange = valRng
-        self.logColor = logColor
-        self.setMappedGrid(grid, y, x)
-        self.fillPlot()
-
-    def getColor(self, rgb):
-        r, g, b, a = rgb
-        return QtGui.QColor(r, g, b)
-
-    def getGradLegend(self, logMode=True, offsets=None, cstmTicks=None):
-        # Use default offsets if none passed
-        if offsets:
-            gradLegend = SpectraLegend(offsets)
-        else:
-            gradLegend = SpectraLegend()
-        gradLegend.setRange(self.gradient, self.valueRange)
-
-        # Set log mode
-        gradLegend.setLogMode(logMode)
-
-        return gradLegend
-
-    def mapGrid(self, grid, valRng=None, logColorScale=False):
-        # Set value range as min/max of grid values if none is specified
-        if valRng is None:
-            minVal, maxVal = np.min(grid), np.max(grid)
-        else:
-            minVal, maxVal = valRng
-
-        # Map values and range to log base if necessary
-        mask = None
-        if logColorScale:
-            if valRng is None:
-                minVal = np.log10(np.min(grid[grid>0]))
-                maxVal = np.log10(np.max(grid[grid>0]))
-            else:
-                minVal = np.log10(minVal)
-                maxVal = np.log10(maxVal)
-            # Mask out any values that the log can't be computed for
-            mask = (grid <= 0)
-            grid[mask] = 1
-            grid = np.log10(grid)
-
-        self.valueRange = (minVal, maxVal)
-
-        # Create color map
-        rng = maxVal - minVal
-        positions = self.getGradient().getColorPos()
-        colors = self.getGradient().getColors()
-        valStops = []
-        for pos in positions:
-            valStop = minVal + (rng * pos)
-            valStops.append(valStop)
-        colorMap = pg.ColorMap(valStops, colors)
-
-        # Map values using color map and set all invalid log values to white
-        mappedGrid = colorMap.map(grid)
-        if mask is not None:
-            mappedGrid[mask] = (255, 255, 255, 255)
-
-        self.logColor = logColorScale
-
-        return mappedGrid
-
-    def setMappedGrid(self, mapGrid, yTicks, xTicks):
-        # TODO: Check that shapes of input are correct (m-1, n-1), m, n
-        m = len(yTicks)
-        n = len(xTicks)
-        r, c = len(mapGrid), len(mapGrid[0])
-
-        # Set attributes and return True
-        self.mappedGrid = mapGrid
-        self.xTicks = xTicks
-        self.yTicks = yTicks
-
-        return True
-
-    def setYScaling(self, logScale=False):
-        self.logYScale = logScale
-
-    def setGradient(self, gradient):
-        self.gradient = gradient
-
-    def getGradient(self):
-        return self.gradient
-
-    def fillPlot(self):
-        ''' 
-            Takes the mapped grid values (as RGB tuples) and the corresponding
-            x/y ticks and generates each line accordingly
-
-            updtRng specifies whether x and y ranges should be set automatically
-        '''
-        yTicks = self.yTicks[:]
-        if self.logYScale:
-            yTicks = np.log10(yTicks)
-
-        cols = len(yTicks) - 1
-        shape = np.array(yTicks).shape
-        # Use min and max of all y values if multiple bins
-        if len(shape) > 1 and shape[1] > 1:
-            cols = len(yTicks[0]) - 1
-            minY = np.min(yTicks)
-            maxY = np.max(yTicks)
-        else:
-            # Otherwise use standard bin range
-            minY = yTicks[0]
-            maxY = yTicks[-1]
-
-        # Create grid item
-        colorGrid = [list(map(self.getColor, self.mappedGrid[i])) for i in range(0, cols)]
-        self.gridItem = SpectraGridItem(yTicks, colorGrid, self.xTicks)
-        self.addItem(self.gridItem)
-
-        # Set x and y ranges to min/max values of each range w/ no padding
-        self.enableAutoRange(x=False, y=False)
-        self.setYRange(minY, maxY, 0.0)
-        self.setXRange(self.xTicks[0], self.xTicks[-1], 0.0)
-
-    def plotSetup(self):
-        # Shift axes ticks outwards instead of inwards
-        la = self.getAxis('left')
-        la.setStyle(tickLength=8)
-
-        ba = self.getAxis('bottom')
-        ba.setStyle(tickLength=8)
-        ba.autoSIPrefix = False # Disable extra label used in tick offset
-
-        # Hide tick marks on right/top axes
-        for ax in ['right', 'top']:
-            self.showAxis(ax)
-            axis = self.getAxis(ax)
-            axis.setStyle(showValues=False, tickLength=0)
-
-        # Draw axes on top of any plot items (covered by SpectraLines o/w)
-        for ax in ['bottom', 'right', 'top', 'left']:
-            self.getAxis(ax).setZValue(1000)
-
-        # Disable mouse panning/scaling
-        self.setMouseEnabled(y=False, x=False)
-        self.setDownsampling(mode='subsample')
-        self.hideButtons()
-
-    def addItem(self, item, *args, **kargs):
-        # Optimized from original pg.PlotItem's addItem method
-        """
-        Add a graphics item to the view box. 
-        If the item has plot data (PlotDataItem, PlotCurveItem, ScatterPlotItem), it may
-        be included in analysis performed by the PlotItem.
-        """
-        self.items.append(item)
-        vbargs = {}
-        self.vb.addItem(item, *args, **vbargs)
-        name = None
-        if hasattr(item, 'implements') and item.implements('plotData'):
-            name = item.name()
-            self.dataItems.append(item)
-
-            params = kargs.get('params', {})
-            self.itemMeta[item] = params
-
-    # Prepares plot item for export as an SVG image by adjusting large time values
-    def prepareForExport(self):
-        # Offset times for each data tiem
-        pdis = self.listDataItems()
-        self.baseOffset = self.xTicks[0]
-        for pdi in pdis:
-            if pdi == self.gridItem:
-                pdi.setEdgeMode(True)
-                pdi.setOffset(self.baseOffset)
-            else:
-                pdi.setData(x=pdi.xData - self.baseOffset, y=pdi.yData)
-            pdi.update()
-
-        # Adjust time tick offset
-        ba = self.getAxis('bottom')
-        ba.tickOffset = self.baseOffset
-
-        # Offset viewbox range/state as well
-        vb = self.getViewBox()
-        xRange, yRange = vb.viewRange()
-        xMin, xMax = xRange
-        vb.setRange(xRange=(xMin-self.baseOffset, xMax-self.baseOffset), padding=0)
-        vb.prepareForPaint()
-        vb.update()
-
-    def resetAfterExport(self):
-        # Add in offset back into all spectra lines
-        pdis = self.listDataItems()
-        if self.baseOffset:
-            for pdi in pdis:
-                if pdi == self.gridItem:
-                    pdi.setEdgeMode(False)
-                    pdi.setOffset(None)
-                else:
-                    pdi.setData(x=pdi.xData+self.baseOffset, y=pdi.yData)
-                pdi.path = None
-        else:
-            return
-
-        # Reset tick offset
-        ba = self.getAxis('bottom')
-        ba.tickOffset = 0
-
-        # Add offset back into view range and reset viewbox state
-        vb = self.getViewBox()
-        xRange, yRange = vb.viewRange()
-        xMin, xMax = xRange
-        vb.setRange(xRange=(xMin+self.baseOffset, xMax+self.baseOffset), padding=0)
-        vb.prepareForPaint()
-        vb.update()
-
-        self.baseOffset = None
-
 class SpectrogramViewBox(pg.ViewBox):
     # Optimized viewbox class, removed some steps in addItem/clear methods
     def __init__(self, *args, **kargs):
@@ -1821,156 +1642,6 @@ class SpectrogramViewBox(pg.ViewBox):
         for item in self.addedItems:
             self.scene().removeItem(item)
         self.addedItems = []
-
-class SpectrogramPlotItem(SimpleColorPlot):
-    def __init__(self, epoch, logMode=False, *args, **kwargs):
-        super().__init__(epoch, logMode, *args, **kwargs)
-        self.savedPlot = None
-        self.specData = None
-
-        # Initialize default pg.PlotItem settings
-        self.plotAppr = None
-        self.plotApprAct = None
-        self.plotMenuEnabled = True
-        self.exportAct = None
-        self.exportEnabled = False
-
-    def setPlotMenuEnabled(self, val=True):
-        if val:
-            self.plotMenuEnabled = True
-        else:
-            self.plotMenuEnabled = False
-
-    def openPlotAppearance(self):
-        self.closePlotAppearance()
-        self.plotAppr = DynamicPlotApp(self, [self])
-        self.plotAppr.show()
-
-    def closePlotAppearance(self):
-        if self.plotAppr:
-            self.plotAppr.close()
-            self.plotAppr = None
-
-    def setExportEnabled(self, linkFunc):
-        self.exportEnabled = True
-        self.exportAct = QtWidgets.QAction('Save Plot Data...')
-        self.exportAct.triggered.connect(linkFunc)
-
-    def getPlotApprMenu(self):
-        self.plotApprAct = QtWidgets.QAction('Change Plot Appearance...')
-        self.plotApprAct.triggered.connect(self.openPlotAppearance)
-        self.stateGroup.autoAdd(self.plotApprAct)
-        return self.plotApprAct
-
-    def getContextMenus(self, event):
-        if self.plotMenuEnabled or self.exportEnabled:
-            actList = [self.ctrlMenu]
-            if self.exportEnabled:
-                self.stateGroup.autoAdd(self.exportAct)
-                actList = [self.exportAct] + actList
-            if self.plotMenuEnabled:
-                plotApp = self.getPlotApprMenu()
-                actList = [plotApp] + actList
-            return actList
-        else:
-            return self.ctrlMenu
-
-    def loadPlot(self, specData, winFrame=None, showLabel=True):
-        ''' Loads spectrogram from specData object '''
-        # Extract grid info
-        y, x = specData.get_bins()
-        grid = specData.get_grid()
-
-        # Get color and mask info
-        color_rng = specData.val_range
-        mask_info = specData.get_mask()
-
-        # Set log y scaling
-        self.logYScale = specData.log_y_scale()
-        if self.logYScale:
-            self.setLogMode(x=False, y=True)
-        else:
-            self.setLogMode(x=False, y=False)
-
-        # Set gradient
-        gradient = specData.get_gradient()
-        self.setGradient(gradient)
-
-        # Generate plot
-        self.createPlot(y, grid, x, color_rng, specData.log_color_scale(),
-            winFrame, mask_info, showLabel=showLabel)
-
-        # Make sure specData object is original one
-        self.specData = specData
-
-    # Takes the y-vals (length m), time ticks (length n), a matrix of values 
-    # (of shape (m-1) x (n-1)), and a tuple of min/max values repres. by color gradient
-    def createPlot(self, yVals, valueGrid, timeVals, colorRng, logColorScale=True, 
-        winFrame=None, maskInfo=None, showLabel=True):
-        # Map values in grid to RGB colors
-        self.specData = SpecData(yVals, timeVals, valueGrid, colorRng, logColorScale,
-            maskInfo, self.logYScale)
-
-        mappedGrid = self.specData.get_mapped_grid()
-        self.valueRange = self.specData.grad_range
-        self.logColor = self.specData.log_color_scale()
-
-        # Set the mapped grid colors for this plot and generate
-        self.setMappedGrid(mappedGrid, yVals, timeVals)
-        self.fillPlot()
-
-        # Set the time axis label
-        if showLabel:
-            timeLbl = self.getAxis('bottom').tm.getTimeLabel(timeVals[-1]-timeVals[0])
-            self.getAxis('bottom').setLabel(timeLbl)
-
-        # Add in mask outlines
-        mask_outline = self.specData.mask_outline()
-        if mask_outline is not None:
-            self.addItem(mask_outline)
-
-        # Link tool's statusBar to clicks on the plot
-        if winFrame:
-            self.linkToStatusBar(winFrame)
-
-    def reloadPlot(self, specData):
-        ''' Reloads plot with given specData '''
-        # Save old x range
-        t0, t1 = self.getAxis('bottom').range
-        if self.gridItem:
-            # Remove old item and load specData
-            self.removeItem(self.gridItem)
-            self.loadPlot(specData, showLabel=False)
-
-            # Reset x range and z-value so it's underneath other items
-            self.setXRange(t0, t1, 0.0)
-            self.gridItem.setZValue(-100)
-
-    def getSpecData(self):
-        return self.specData
-
-    def savePlotInfo(self, freqs, times, grid):
-        self.savedPlot = (freqs, times, grid)
-
-    def getSavedPlotInfo(self):
-        # Build plot info from specData object
-        freqs, times = self.specData.get_bins()
-        grid = self.specData.get_grid()
-        mappedGrid = self.specData.get_mapped_grid()
-        mappedColors = [list(map(self.getColor, row)) for row in mappedGrid]
-
-        return (freqs, times, grid, mappedColors)
-
-    def linkToStatusBar(self, window):
-        # Link clicks on this plot to the window's statusBar to display
-        # relevant values
-        self.gridItem.linkToStatusBar(window)
-
-class PhaseSpectrogram(SpectrogramPlotItem):
-    def __init__(self, epoch, logMode=True):
-        super().__init__(epoch, logMode)
-        self.valueRange = (-180, 180)
-        self.gradient = PhaseGradient()
 
 class MaskOutline(pg.PlotCurveItem):
     def __init__(self, mask, yVals, times, *args, **kargs):
