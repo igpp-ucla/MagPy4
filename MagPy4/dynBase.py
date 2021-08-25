@@ -1,3 +1,4 @@
+from MagPy4.plotBase import MagPyPlotDataItem
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from copy import copy
@@ -294,7 +295,7 @@ class AddBtn(QtWidgets.QPushButton):
         self.setIcon(icon)
         self.setToolTip('Add plot to main plot grid')
 
-class SpectraLineEditorUI():
+class SpectraLineEditorUI(BaseLayout):
     def setupUI(self, Frame, window):
         Frame.resize(100, 100)
         Frame.setWindowTitle('Line Tool')
@@ -376,7 +377,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
         # Constructs a plotDataItem object froms given settings and data
         pen = pg.mkPen(color=color, width=width)
         pen.setStyle(style)
-        line = pg.PlotDataItem(times, dta, pen=pen)
+        line = MagPyPlotDataItem(times, dta, pen=pen)
         return line
 
     def evalExpr(self, exprStr, tO, tE):

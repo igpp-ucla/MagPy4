@@ -61,7 +61,7 @@ class PlotAppearanceUI(BaseLayout):
             if len(info) == 0:
                 plotFrame.setVisible(False)
             else:
-                count += 1
+                count += len(info)
 
             styleBoxes, widthBoxes, colorBtns = elems
             self.styleGrps.append(styleBoxes)

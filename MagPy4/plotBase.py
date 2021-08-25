@@ -445,12 +445,9 @@ class MagPyPlotItem(pg.PlotItem):
             Extract dictionaries containing info about
             the plot data item, trace pen, and name
         '''
-        if self.isSpecialPlot():
-            return []
-
         # Save info for each plot data item
         infos = []
-        pdis = self.listAllDataItems()
+        pdis = self.listDataItems()
         for pdi in pdis:
             info = {}
             info['pen'] = pdi.opts['pen']

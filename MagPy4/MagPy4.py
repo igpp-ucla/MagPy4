@@ -1633,6 +1633,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         # Use any datastring's times as base
         if times is None:
             times = self.getTimes(self.DATASTRINGS[0], 0)
+        
 
         # Mask out any errors in calculated data and apply mask to times
         t, diff, res = times
@@ -1640,7 +1641,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         mask2 = np.abs(dta) < self.errorFlag
         mask = np.logical_and(mask1, mask2)
         t = t[mask] if len(t) == len(dta) else t
-        diff = np.diff(t)
+        diff = np.diff(t, append=[diff[0]])
         dta = dta[mask]
 
         # Clip data if there is a difference
