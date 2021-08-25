@@ -415,15 +415,20 @@ class PlotGrid(Grid, QtGui.QGraphicsGridLayout):
 
         if plots[-1] != self.ref_plot:
             # Unlink previously linked plot
+            parent = self.parentLayoutItem()
             if self.ref_plot is not None:
                 ax = self.ref_plot.getAxis('bottom')
                 ax.ticksChanged.disconnect(self._update_axis_grids)
+                ax.axisClicked.disconnect(parent.openPlotAppr)
+                ax.setCursor(QtCore.Qt.ArrowCursor)
                 plots[-1].setXRange(*self.ref_plot.getAxis('bottom').range, 0.0)
 
             # Link bottom plot
             self.ref_plot = plots[-1]
             ax = self.ref_plot.getAxis('bottom')
             ax.ticksChanged.connect(self._update_axis_grids)
+            ax.axisClicked.connect(parent.openPlotAppr)
+            ax.setCursor(QtCore.Qt.PointingHandCursor)
 
         # Make sure bottom plot displays values
         plots[-1].getAxis('bottom').setStyle(showValues=True)
@@ -912,10 +917,6 @@ class PlotGridObject(pg.GraphicsWidget):
         self.plotApprAction.triggered.connect(self.openPlotAppr)
         self.plotApprAction.setText('Change Plot Appearance...')
 
-        self.addTickLblsAction = QtWidgets.QAction(self)
-        self.addTickLblsAction.triggered.connect(self.openTickLabels)
-        self.addTickLblsAction.setText('Extra Tick Labels...')
-
         self.tickLabels = None
         self.plotAppr = None
 
@@ -1090,20 +1091,9 @@ class PlotGridObject(pg.GraphicsWidget):
         self._update_plot_styles()
 
     def getContextMenus(self, *args, **kwargs):
-        menus = [self.plotApprAction, self.addTickLblsAction]
+        menus = [self.plotApprAction]
         return menus
     
-    def openTickLabels(self):
-        from .addTickLabels import AddTickLabels
-        self.closeTickLabels()
-        self.tickLabels = AddTickLabels(self, self.window)
-        self.tickLabels.show()
-
-    def closeTickLabels(self):
-        if self.tickLabels:
-            self.tickLabels.close()
-        self.tickLabels = None
-
     def openPlotAppr(self):
         from .plotAppearance import PlotAppearance
         self.closePlotAppr()
@@ -1134,5 +1124,4 @@ class PlotGridObject(pg.GraphicsWidget):
 
     def close(self, *args, **kwargs):
         self.closePlotAppr()
-        self.closeTickLabels()
         super().close(*args, **kwargs)

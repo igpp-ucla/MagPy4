@@ -1,3 +1,5 @@
+from numpy.core.fromnumeric import trace
+from MagPy4.addTickLabels import AddTickLabels
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .plotBase import DateAxis
@@ -7,7 +9,6 @@ import numpy as np
 from .layoutTools import BaseLayout
 
 import pyqtgraph as pg
-from bisect import bisect
 import functools
 
 class PlotAppearanceUI(BaseLayout):
@@ -24,12 +25,13 @@ class PlotAppearanceUI(BaseLayout):
 
         # Set up UI for setting plot trace colors, line style, thickness, etc.
         plotsInfo = plt_grd.get_traces()
-        tracePropFrame = self.getTracePropFrame(plotsInfo)
+        tracePropFrame, trace_count = self.getTracePropFrame(plotsInfo)
 
         # If there are a lot of traces, wrap the trace properties frame
         # inside a scroll area
         tracePropScroll = self.wrapTracePropFrame(tracePropFrame)
-        tw.addTab(tracePropScroll, 'Trace Properties')
+        if trace_count > 0:
+            tw.addTab(tracePropScroll, 'Trace Properties')
 
         # # Set up tick intervals widget
         tickIntWidget = MagPyTickIntervals(plt_grd)
@@ -37,7 +39,12 @@ class PlotAppearanceUI(BaseLayout):
 
         # Set up label properties widget
         self.lblPropWidget = LabelAppear(plt_grd)
-        tw.addTab(self.lblPropWidget, 'Label Properties')
+        tw.addTab(self.lblPropWidget, 'Label Sizes')
+
+        # Set up tick labels widget
+        self.tickLabels = AddTickLabels(plt_grd, plt_grd.window)
+        if self.tickLabels.valid:
+            tw.addTab(self.tickLabels, 'Tick Labels')
 
     def setTab(self, tab_num):
         self.tabWidget.setCurrentIndex(tab_num)
@@ -46,12 +53,15 @@ class PlotAppearanceUI(BaseLayout):
         frame = QtWidgets.QFrame()
         layout = QtWidgets.QVBoxLayout(frame)
         self.styleGrps, self.widthGrps, self.colorGrps = [], [], []
+        count = 0
         for index, info in plotInfos:
             plotFrame, elems = self.getPlotPropFrame(index, len(info))
 
             # Hide if special plot
             if len(info) == 0:
                 plotFrame.setVisible(False)
+            else:
+                count += 1
 
             styleBoxes, widthBoxes, colorBtns = elems
             self.styleGrps.append(styleBoxes)
@@ -60,7 +70,7 @@ class PlotAppearanceUI(BaseLayout):
             layout.addWidget(plotFrame)
         layout.addStretch()
 
-        return frame
+        return frame, count
 
     def getPlotPropFrame(self, index, numTraces):
         # Build the properties frame for a single plot item

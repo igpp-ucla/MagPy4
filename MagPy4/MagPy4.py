@@ -32,7 +32,6 @@ from .pyqtgraphExtensions import TrackerRegion
 from .plotMenu import PlotMenu
 from .spectra import Spectra
 from .dataDisplay import DataDisplay
-from .addTickLabels import AddTickLabels
 from .edit import Edit
 from .traceStats import TraceStats
 from .helpWindow import HelpWindow
@@ -597,7 +596,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.closeAllSubWindows()
         if self.pltGrdObject:
             self.pltGrdObject.closePlotAppr()
-            self.pltGrdObject.closeTickLabels()
             self.pltGrdObject.deleteLater()
 
     def openWsOpenDialog(self):
@@ -1153,16 +1151,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         geo = self.geometry()
         self.tools['PlotMenu'].move(geo.x() + 200, geo.y() + 100)
         self.tools['PlotMenu'].show()
-
-    def openAddTickLbls(self):
-        self.closeAddTickLbls()
-        self.addTickLbls = AddTickLabels(self, self.pltGrd)
-        self.addTickLbls.show()
-
-    def closeAddTickLbls(self):
-        if self.addTickLbls:
-            self.addTickLbls.close()
-            self.addTickLbls = None
 
     def openEdit(self):
         self.closeTraceStats()

@@ -68,6 +68,11 @@ class AddTickLabels(QtWidgets.QFrame, AddTickLabelsUI):
         self.ui = AddTickLabelsUI()
         self.window = window
         self.pltGrd = pltGrd
+        if not isinstance(self.window, QtWidgets.QMainWindow):
+            self.valid = False
+            return
+        else:
+            self.valid = True
 
         # Set up UI
         dstrs = list(self.window.DATADICT.keys())
