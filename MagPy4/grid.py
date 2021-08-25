@@ -969,7 +969,10 @@ class PlotGridObject(pg.GraphicsWidget):
             for plot_set in self.links:
                 # Get bounds for plot data items
                 set_bounds = [ranges[i] for i in plot_set]
-                set_bounds = [b for b in set_bounds if b is not None]
+                set_bounds = [b for b in set_bounds if (b is not None and b[1] is not None)]
+
+                if len(set_bounds) == 0:
+                    continue
 
                 # Determine scale and padding
                 max_range = max([upper-lower for lower, upper in set_bounds])
@@ -982,7 +985,7 @@ class PlotGridObject(pg.GraphicsWidget):
                 # Set bounds for each plot in link group
                 for index in plot_set:
                     bound = ranges[index]
-                    if bound is None:
+                    if bound is None or bound[1] is None:
                         continue
                     mid = (bound[-1]+bound[0])/2
                     plots[index].setYRange(mid-half_range, mid+half_range, 0.0)

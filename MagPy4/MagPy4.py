@@ -2132,13 +2132,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
             # Set up label
             units = [self.UNITDICT[dstr] for dstr, en in dstrs if dstr in self.UNITDICT]
-            sublabels, label_colors = self.split_labels(dstrs, colors)
-            label = StackedLabel(sublabels, label_colors, units, size=12)
+            label = StackedLabel([], [], units, size=12)
             self.pltGrd[i] = [label, pi]
 
             # Store additional spectrogram graphics items
             if spec_objects is not None:
                 spec_objects_full.append((i, spec_objects))
+        self.update_plot_labels()
         
         # Add in any spectrogram-related additional objects
         if len(spec_objects_full) > 0:
@@ -2321,10 +2321,21 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
     
     def update_plot_labels(self):
         labels = self.pltGrd[:,0]
-        for row, label, in zip(self.lastPlotStrings, labels):
-            dstrs = [self.getLabel(dstr, en) for dstr, en in row]
+
+        for row, label, pens in zip(self.lastPlotStrings, labels, self.plotTracePens):
+            dstrs = []
+            label_colors = []
+            for (dstr, en), color in zip(row, pens):
+                if en < 0:
+                    subdstrs, subcolors = self.split_labels([(dstr, en)], [color])
+                    dstrs += subdstrs
+                    label_colors += subcolors
+                else:
+                    dstrs.append(self.getLabel(dstr, en))
+                    label_colors.append(color)
             if label is not None:
                 label.set_labels(dstrs)
+                label.set_colors(label_colors)
 
     def enableScrolling(self, val):
         # Minimum plot height set to 3 inches for now
