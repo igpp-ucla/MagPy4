@@ -1,12 +1,12 @@
-from .grid import PlotGridObject
+from ..grid import PlotGridObject
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit
+from ..MagPy4UI import MatrixWidget, VectorWidget, TimeEdit
 
-from .plotbase import MagPyPlotItem, StackedLabel
-from .layouttools import BaseLayout
+from ..plotbase import MagPyPlotItem, StackedLabel
+from ..layouttools import BaseLayout
 
-from .qtthread import TaskRunner
+from ..qtthread import TaskRunner
 
 import scipy
 from scipy import constants

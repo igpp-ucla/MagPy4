@@ -2,11 +2,11 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
-from . import USERDATALOC
-from .qtthread import TaskRunner
-from .selectbase import TimeFormatWidget
+from .. import USERDATALOC
+from ..qtthread import TaskRunner
+from ..selectbase import TimeFormatWidget
 from fflib import ff_time
-from .layouttools import LabeledProgress
+from ..layouttools import LabeledProgress
 
 import requests
 import json

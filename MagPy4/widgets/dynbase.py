@@ -7,9 +7,9 @@ import pyqtgraph as pg
 import numpy as np
 import bisect
 import functools
-from .layouttools import BaseLayout
+from ..layouttools import BaseLayout
 import os
-from .data_util import find_gaps
+from ..data_util import find_gaps
 from multiprocessing import Pool
 
 class NumLabel(QtWidgets.QLabel):

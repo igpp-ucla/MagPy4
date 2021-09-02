@@ -7,13 +7,13 @@ from bisect import bisect_left, bisect_right
 import pyqtgraph as pg
 from scipy import fftpack, signal
 import numpy as np
-from .plotbase import StackedAxisLabel
-from .plotbase import MagPyPlotItem
-from .plotuibase import GraphicsView
+from ..plotbase import StackedAxisLabel
+from ..plotbase import MagPyPlotItem
+from ..plotuibase import GraphicsView
 import functools
-from .layouttools import BaseLayout
+from ..layouttools import BaseLayout
 from .dynbase import DynamicAnalysisTool, SpecData, PhaseGradient
-from .spectraalg import SpectraCalc
+from ..spectraalg import SpectraCalc
 
 class DynamicSpectraUI(BaseLayout):
     def setupUI(self, Frame, window):

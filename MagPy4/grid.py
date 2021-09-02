@@ -2,9 +2,9 @@ import pyqtgraph as pg
 import numpy as np
 
 from fflib import ff_time
-from MagPy4.dynbase import GradLegend
+from .widgets.dynbase import GradLegend
 import pyqtgraph as pg
-from MagPy4.plotbase import DateAxis, MagPyPlotItem, MagPyAxisItem
+from .plotbase import DateAxis, MagPyPlotItem, MagPyAxisItem
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 class ColorLabel(pg.LabelItem):

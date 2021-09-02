@@ -354,7 +354,7 @@ class MagPyPlotItem(pg.PlotItem):
             self.removeItem(pdi)
     
     def get_specs(self):
-        from .dynbase import SpectraGridItem
+        from .widgets.dynbase import SpectraGridItem
         grids = []
         for item in self.items:
             if isinstance(item, SpectraGridItem):
@@ -368,8 +368,8 @@ class MagPyPlotItem(pg.PlotItem):
 
     def load_color_plot(self, specData, winFrame=None, showLabel=True):
         ''' Loads spectrogram from specData object '''
-        from .dynbase import SpectraGridItem
-        from .dynbase import SpectraLegend
+        from .widgets.dynbase import SpectraGridItem
+        from .widgets.dynbase import SpectraLegend
         # Extract grid info
         y, x = specData.get_bins()
 

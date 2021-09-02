@@ -2,8 +2,8 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
-from .mth import Mth
-from .MagPy4UI import TimeEdit, MatrixWidget
+from ..mth import Mth
+from ..MagPy4UI import TimeEdit, MatrixWidget
 import functools
 
 class VectorLayout(QtWidgets.QGridLayout):

@@ -8,7 +8,7 @@ import datetime, time
 import bisect, functools
 import os
 import numpy.lib.recfunctions as rfn
-from . import config
+from .. import config
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8

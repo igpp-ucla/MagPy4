@@ -28,22 +28,22 @@ import numpy.lib.recfunctions as rfn
 import pyqtgraph as pg
 from .MagPy4UI import MagPy4UI, FileLabel, ProgStates, FileLoadDialog, ProgressChecklist, ScrollArea
 from .pgextensions import TrackerRegion
-from .plotmenu import PlotMenu
-from .spectra import Spectra
-from .datadisplay import DataDisplay
-from .edit import Edit
-from .tracestats import TraceStats
-from .helpwin import HelpWindow
-from .aboutdialog import aboutdialog
+from .widgets.plotmenu import PlotMenu
+from .widgets.spectra import Spectra
+from .widgets.datadisplay import DataDisplay
+from .widgets.edit import Edit
+from .widgets.tracestats import TraceStats
+from .widgets.helpwin import HelpWindow
+from .widgets.aboutdialog import aboutdialog
 from .plotbase import MagPyPlotItem
-from .mmstools import PlaneNormal, Curlometer, Curvature, PressureTool, get_mms_grps
-from .mms_data import MMSDataDownloader
-from . import mms_orbit
-from . import mms_formation
-from .detrendwin import DetrendWindow
-from .dynamicspectra import DynamicSpectra, DynamicCohPha
-from .waveanalysis import DynamicWave
-from .trajectory import TrajectoryAnalysis
+from .widgets.mmstools import PlaneNormal, Curlometer, Curvature, PressureTool, get_mms_grps
+from .widgets.mms_data import MMSDataDownloader
+from .widgets import mms_orbit
+from .widgets import mms_formation
+from .widgets.detrendwin import DetrendWindow
+from .widgets.dynamicspectra import DynamicSpectra, DynamicCohPha
+from .widgets.waveanalysis import DynamicWave
+from .widgets.trajectory import TrajectoryAnalysis
 from .mth import Mth
 from scipy import interpolate
 import bisect

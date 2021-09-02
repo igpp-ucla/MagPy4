@@ -5,13 +5,13 @@ from PyQt5.QtWidgets import QSizePolicy
 
 import pyqtgraph as pg
 import numpy as np
-from .plotbase import MagPyPlotItem
+from ..plotbase import MagPyPlotItem
 from .spectraui import SpectraUI
 from .waveanalysis import WaveAnalysis
 import os
 from bisect import bisect_left, bisect_right
 from scipy.interpolate import CubicSpline
-from .spectraalg import SpectraCalc
+from ..spectraalg import SpectraCalc
 
 class ColorPlotTitle(pg.LabelItem):
     ''' LabelItem with horizontally stacked labels in given colors '''

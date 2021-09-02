@@ -12,7 +12,7 @@ from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 import os
-from . import get_relative_path
+from .. import get_relative_path
 
 class HelpWindowUI(object):
     def setupUI(self, frame, window):

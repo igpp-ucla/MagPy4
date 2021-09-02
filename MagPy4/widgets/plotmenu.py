@@ -4,11 +4,11 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 
 import functools
-from .MagPy4UI import PyQtUtils
-from . import get_relative_path
+from ..MagPy4UI import PyQtUtils
+from .. import get_relative_path
 import os
 import numpy as np
-from .layouttools import HBoxLayout, VBoxLayout
+from ..layouttools import HBoxLayout, VBoxLayout
 
 class TraceInfo():
     ''' Object containing information about a plot variable '''

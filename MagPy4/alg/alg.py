@@ -1,5 +1,5 @@
 import numpy as np
-from ..dynbase import SpecData, DynamicAnalysisTool, ParallelGrid
+from .widgets.dynbase import SpecData, DynamicAnalysisTool, ParallelGrid
 import matplotlib.pyplot as plt
 from ..spectraalg import SpectraCalc, WaveCalc
 import matplotlib

@@ -2,8 +2,8 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
-from .MagPy4UI import TimeEdit, ScientificSpinBox
-from .plotbase import StackedLabel
+from ..MagPy4UI import TimeEdit, ScientificSpinBox
+from ..plotbase import StackedLabel
 
 import numpy as np
 from math import sin, cos, acos, fabs, pi
@@ -16,11 +16,11 @@ from .editui import EditUI, CustomRotUI, MinVarUI
 from .filterdialog import filterdialog
 from .calctool import simpleCalc
 
-from .mth import Mth
-from .MagPy4UI import PyQtUtils
+from ..mth import Mth
+from ..MagPy4UI import PyQtUtils
 
 from datetime import datetime
-from .geopack.geopack import geopack
+from ..geopack.geopack import geopack
 from fflib import ff_time
 
 class Edit(QtWidgets.QFrame, EditUI):

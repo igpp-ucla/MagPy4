@@ -1,7 +1,7 @@
-from .layouttools import BaseLayout
-from .MagPy4UI import TimeEdit
+from ..layouttools import BaseLayout
+from ..MagPy4UI import TimeEdit
 from .mmstools import MMSTools
-from .plotbase import MagPyPlotItem
+from ..plotbase import MagPyPlotItem
 from .mms_orbit import MMS_Data_Tool
 
 from PyQt5 import QtGui, QtCore, QtWidgets

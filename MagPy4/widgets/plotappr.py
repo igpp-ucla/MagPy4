@@ -2,11 +2,11 @@ from numpy.core.fromnumeric import trace
 from MagPy4.extraticklabels import AddTickLabels
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .plotbase import DateAxis
+from ..plotbase import DateAxis
 import re
 from datetime import datetime, timedelta
 import numpy as np
-from .layouttools import BaseLayout
+from ..layouttools import BaseLayout
 
 import pyqtgraph as pg
 import functools

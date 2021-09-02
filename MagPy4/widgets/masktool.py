@@ -1,6 +1,6 @@
-from .layouttools import BaseLayout
+from ..layouttools import BaseLayout
 from . import waveanalysis
-from .plotbase import MagPyPlotItem, StackedAxisLabel
+from ..plotbase import MagPyPlotItem, StackedAxisLabel
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import numpy as np

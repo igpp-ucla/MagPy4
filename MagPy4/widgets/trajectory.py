@@ -1,18 +1,18 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
-from .MagPy4UI import TimeEdit
+from ..MagPy4UI import TimeEdit
 from PyQt5.QtWidgets import QSizePolicy
-from .layouttools import BaseLayout
-from .plotbase import DateAxis, MagPyPlotItem
+from ..layouttools import BaseLayout
+from ..plotbase import DateAxis, MagPyPlotItem
 from .dynbase import GradLegend, ColorBar
 import pyqtgraph as pg
 from pyqtgraph import GraphicsWidgetAnchor
 import numpy as np
 from scipy import interpolate
-from .mth import Mth
+from ..mth import Mth
 
 # Magnetosphere modules
 import sys
-from .geopack.geopack import geopack
+from ..geopack.geopack import geopack
 from datetime import datetime, timedelta
 import multiprocessing
 from multiprocessing import Pool

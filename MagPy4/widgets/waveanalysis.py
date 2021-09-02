@@ -2,17 +2,17 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .dynbase import *
-from .spectraalg import SpectraCalc, WaveCalc
-from .layouttools import BaseLayout, VBoxLayout, HBoxLayout
+from ..spectraalg import SpectraCalc, WaveCalc
+from ..layouttools import BaseLayout, VBoxLayout, HBoxLayout
 from scipy import fftpack, signal
 import pyqtgraph as pg
-from .spectraalg import SpecWave
-from .grid import PlotGridObject
+from ..spectraalg import SpecWave
+from ..grid import PlotGridObject
 
 import multiprocessing
 import numpy as np
-from .plotbase import StackedAxisLabel, MagPyPlotItem
-from . import config
+from ..plotbase import StackedAxisLabel, MagPyPlotItem
+from .. import config
 
 class VectorWidget(QtWidgets.QWidget):
     def __init__(self, vec_grps={}, init_vec=None, *args, **kwargs):
