@@ -11,6 +11,7 @@ from PyQt5 import QtWidgets
 
 from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWebEngineWidgets import QWebEngineView
+import os
 from . import getRelPath
 
 class HelpWindowUI(object):
@@ -18,7 +19,8 @@ class HelpWindowUI(object):
         frame.setWindowTitle('MagPy4 Help')
         frame.resize(800, 600)
 
-        htmlPath = getRelPath('help.html')
+        html_dir = getRelPath('help')
+        htmlPath = os.path.join(html_dir, 'help.html')
         html = Path(htmlPath).read_text()
 
         cssPath = getRelPath('help.css')

@@ -769,7 +769,8 @@ class MagPy4UI(object):
         startLt = QtWidgets.QVBoxLayout(self.startFrame)
 
         # Set background image
-        img_path = getRelPath('magpy_background.png')
+        img_dir = getRelPath('images', directory=True)
+        img_path = os.path.join(img_dir, 'magpy_background.png')
         if os.name == 'nt':
             img_path = img_path.replace('\\', '/')
 
