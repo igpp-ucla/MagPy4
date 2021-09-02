@@ -9,7 +9,7 @@ import functools
 import os
 
 from .plot_extensions import GridGraphicsLayout
-from . import getRelPath
+from . import get_relative_path
 from .mth import Mth
 import re
 from . import config
@@ -191,7 +191,7 @@ class ProgressChecklist(QtWidgets.QFrame):
         to each of them that indicates whether it has been successfull,
         failed, or is the current task
     '''
-    img_path = getRelPath('images')
+    img_path = get_relative_path('images')
     image_dict = {
         ProgStates.LOADING : os.path.join(img_path, 'l_loading_icon.svg'),
         ProgStates.SUCCESS : os.path.join(img_path, 'finished_icon.svg'),
@@ -769,7 +769,7 @@ class MagPy4UI(object):
         startLt = QtWidgets.QVBoxLayout(self.startFrame)
 
         # Set background image
-        img_dir = getRelPath('images', directory=True)
+        img_dir = get_relative_path('images', directory=True)
         img_path = os.path.join(img_dir, 'magpy_background.png')
         if os.name == 'nt':
             img_path = img_path.replace('\\', '/')

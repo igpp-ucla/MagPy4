@@ -3,7 +3,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from .MagPy4UI import TimeEdit, ScientificSpinBox
-from .plotBase import StackedLabel
+from .plotbase import StackedLabel
 
 import numpy as np
 from math import sin, cos, acos, fabs, pi
@@ -12,9 +12,9 @@ from scipy import signal
 import functools
 import time
 
-from .editUI import EditUI, CustomRotUI, MinVarUI
-from .FilterDialog import FilterDialog
-from .simpleCalculations import simpleCalc
+from .editui import EditUI, CustomRotUI, MinVarUI
+from .filterdialog import filterdialog
+from .calctool import simpleCalc
 
 from .mth import Mth
 from .MagPy4UI import PyQtUtils
@@ -174,7 +174,7 @@ class Edit(QtWidgets.QFrame, EditUI):
 
     def openFilter(self):
         self.closeSubWindows()
-        self.filter = FilterDialog(self, self.window)
+        self.filter = filterdialog(self, self.window)
         self.window.initGeneralSelect('Filter', '#32a852', self.filter.ui.timeEdit,
             'Single', closeFunc=self.closeFilter)
         self.filter.finished.connect(self.window.endGeneralSelect)

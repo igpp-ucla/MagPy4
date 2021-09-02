@@ -1,10 +1,10 @@
-# FilterDialog.py - Filter dialog box
+# filterdialog.py - Filter dialog box
 #
 # The Filter dialog box user interface was designed using Qt Designer, which
-# writes out the file FilterDialog.ui. This file is in turn converted into
-# FilterDialogUI.py at the command-line using the command:
+# writes out the file filterdialog.ui. This file is in turn converted into
+# filterdialogui.py at the command-line using the command:
 #
-# pyuic5 FilterDialog.ui -o FilterDialogUI.py
+# pyuic5 filterdialog.ui -o filterdialogui.py
 
 # The following notes apply to some of the code below and to code in
 # filter.py:
@@ -40,19 +40,19 @@ from .filter import triangularWindow
 from .filter import hammingWindow
 from .filter import kaiserWindow
 from .filter import chebyshevWindow
-from .FilterDialogUI import Ui_FilterDialog
+from .filterdialogui import Ui_filterdialog
 from .mth import Mth
 from PyQt5 import QtCore
 from PyQt5 import QtGui
 from PyQt5 import QtWidgets
 import bisect
 
-class FilterDialog(QtWidgets.QDialog, Ui_FilterDialog):
+class filterdialog(QtWidgets.QDialog, Ui_filterdialog):
 
     def __init__(self, edit, parent=None):
-        super(FilterDialog, self).__init__()
+        super(filterdialog, self).__init__()
 
-        self.ui = Ui_FilterDialog()
+        self.ui = Ui_filterdialog()
         self.ui.setupUi(self)
 
 

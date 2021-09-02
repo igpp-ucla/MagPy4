@@ -1,4 +1,4 @@
-# helpWindow.py - Help window
+# helpwin.py - Help window
 #
 # Displays the program's online help.
 
@@ -12,18 +12,18 @@ from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 import os
-from . import getRelPath
+from . import get_relative_path
 
 class HelpWindowUI(object):
     def setupUI(self, frame, window):
         frame.setWindowTitle('MagPy4 Help')
         frame.resize(800, 600)
 
-        html_dir = getRelPath('help')
+        html_dir = get_relative_path('help')
         htmlPath = os.path.join(html_dir, 'help.html')
         html = Path(htmlPath).read_text()
 
-        cssPath = getRelPath('help.css')
+        cssPath = get_relative_path('help.css')
         self.view = QWebEngineView()
         self.view.setHtml(html, QtCore.QUrl.fromLocalFile(cssPath))
 

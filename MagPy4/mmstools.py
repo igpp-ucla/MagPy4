@@ -3,10 +3,10 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .MagPy4UI import MatrixWidget, VectorWidget, TimeEdit
 
-from .plotBase import MagPyPlotItem, StackedLabel
-from .layoutTools import BaseLayout
+from .plotbase import MagPyPlotItem, StackedLabel
+from .layouttools import BaseLayout
 
-from .qtThread import TaskRunner
+from .qtthread import TaskRunner
 
 import scipy
 from scipy import constants

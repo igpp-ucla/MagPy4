@@ -14,7 +14,7 @@ from fflib import ff_reader, ff_time, ff_writer
 from . import plot_helper
 
 # Version number and copyright notice displayed in the About box
-from . import getRelPath, MAGPY_VERSION, USERDATALOC
+from . import get_relative_path, MAGPY_VERSION, USERDATALOC
 from MagPy4 import edit
 
 NAME = f'MagPy4'
@@ -28,39 +28,38 @@ import numpy as np
 import numpy.lib.recfunctions as rfn
 import pyqtgraph as pg
 from .MagPy4UI import MagPy4UI, FileLabel, ProgStates, FileLoadDialog, ProgressChecklist, ScrollArea
-from .pyqtgraphExtensions import TrackerRegion
-from .plotMenu import PlotMenu
+from .pgextensions import TrackerRegion
+from .plotmenu import PlotMenu
 from .spectra import Spectra
-from .dataDisplay import DataDisplay
+from .datadisplay import DataDisplay
 from .edit import Edit
-from .traceStats import TraceStats
-from .helpWindow import HelpWindow
-from .AboutDialog import AboutDialog
-from .plotBase import MagPyPlotItem
-from .MMSTools import PlaneNormal, Curlometer, Curvature, PressureTool, get_mms_grps
+from .tracestats import TraceStats
+from .helpwin import HelpWindow
+from .aboutdialog import aboutdialog
+from .plotbase import MagPyPlotItem
+from .mmstools import PlaneNormal, Curlometer, Curvature, PressureTool, get_mms_grps
 from .mms_data import MMSDataDownloader
 from . import mms_orbit
 from . import mms_formation
-from .detrendWin import DetrendWindow
-from .dynBase import SpecData
-from .dynamicSpectra import DynamicSpectra, DynamicCohPha
-from .waveAnalysis import DynamicWave
-from .structureUtil import CircularList
+from .detrendwin import DetrendWindow
+from .dynbase import SpecData
+from .dynamicspectra import DynamicSpectra, DynamicCohPha
+from .waveanalysis import DynamicWave
+from .structureutil import CircularList
 from .trajectory import TrajectoryAnalysis
-from .smoothingTool import SmoothingTool
 from .mth import Mth
 from scipy import interpolate
 import bisect
-from .timeManager import TimeManager
-from .selectionManager import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect
-from .layoutTools import LabeledProgress
+from .timemanager import TimeManager
+from .selectbase import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect
+from .layouttools import LabeledProgress
 from .data_import import merge_datas, find_vec_grps, get_resolution_diffs
 from .data_import import load_text_file, load_flat_file, load_cdf
 import numpy.lib.recfunctions as rfn
-from .qtThread import TaskRunner, ThreadPool, TaskThread
+from .qtthread import TaskRunner, ThreadPool, TaskThread
 
 from .grid import PlotGridObject
-from .plotBase import StackedLabel
+from .plotbase import StackedLabel
 from . import plot_helper
 
 import time
@@ -162,7 +161,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.epoch = None
         self.errorFlag = None
 
-        self.helpWindow = None
+        self.helpwin = None
         self.aboutDialog = None
         self.FIDs = []
         self.tickOffset = 0 # Smallest tick in data, used when plotting x data
@@ -283,7 +282,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             act.triggered.connect(toolFunc)
 
         # these are saves for options for program lifetime
-        self.plotMenuTableMode = True
+        self.plotmenuTableMode = True
         self.traceStatsOnTop = True
         self.mouseEnabled = False
 
@@ -304,7 +303,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
 
         self.magpyIcon = QtGui.QIcon()
         self.marsIcon = QtGui.QIcon()
-        img_path = getRelPath('images', directory=True)
+        img_path = get_relative_path('images', directory=True)
         if self.OS == 'mac':
             self.magpyIcon.addFile(img_path+'magPy_blue.hqx')
             self.marsIcon.addFile(img_path+'mars.hqx')
@@ -1018,9 +1017,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
             self.tools['Spectra'] = None
 
     def closeHelp(self):
-        if self.helpWindow:
-            self.helpWindow.close()
-            self.helpWindow = None
+        if self.helpwin:
+            self.helpwin.close()
+            self.helpwin = None
 
     def closeAbout(self):
         if self.aboutDialog:
@@ -1225,27 +1224,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         self.tools['Data'] = DataDisplay(self, self.FIDs, Title='Flatfile Data')
         self.tools['Data'].show()
 
-    def startSmoothing(self):
-        self.closeSmoothing()
-        if self.tools['Edit']:
-            self.tools['Edit'].showMinimized()
-            self.smoothing = SmoothingTool(self, self.tools['Edit'])
-            self.smoothing.restartSelect()
-            self.smoothing.show()
-
-    def closeSmoothing(self):
-        if self.smoothing:
-            self.smoothing.close()
-            self.smoothing = None
-            self.endGeneralSelect()
-
     def openHelp(self):
         self.closeHelp()
-        self.helpWindow = HelpWindow(self)
-        self.helpWindow.show()
+        self.helpwin = HelpWindow(self)
+        self.helpwin.show()
 
     def openAbout(self):
-        self.aboutDialog = AboutDialog(NAME, VERSION, COPYRIGHT, self)
+        self.aboutDialog = aboutdialog(NAME, VERSION, COPYRIGHT, self)
         self.aboutDialog.show()
 
     def toggleAntialiasing(self):
@@ -2941,7 +2926,7 @@ def startMagPy(files=None, display=True):
         main.showMaximized()
 
     # Add in fonts to database
-    font_dir = getRelPath('fonts')
+    font_dir = get_relative_path('fonts')
     fonts = os.listdir(font_dir)
     fonts = [os.path.join(font_dir, f) for f in fonts]
 

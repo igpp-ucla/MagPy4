@@ -3,10 +3,10 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from . import USERDATALOC
-from .qtThread import TaskRunner
-from .selectionManager import TimeFormatWidget
+from .qtthread import TaskRunner
+from .selectbase import TimeFormatWidget
 from fflib import ff_time
-from .layoutTools import LabeledProgress
+from .layouttools import LabeledProgress
 
 import requests
 import json

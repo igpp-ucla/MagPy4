@@ -2,9 +2,9 @@ import pyqtgraph as pg
 import numpy as np
 
 from fflib import ff_time
-from MagPy4.dynBase import GradLegend
+from MagPy4.dynbase import GradLegend
 import pyqtgraph as pg
-from MagPy4.plotBase import DateAxis, MagPyPlotItem, MagPyAxisItem
+from MagPy4.plotbase import DateAxis, MagPyPlotItem, MagPyAxisItem
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 class ColorLabel(pg.LabelItem):
@@ -1095,7 +1095,7 @@ class PlotGridObject(pg.GraphicsWidget):
         return menus
     
     def openPlotAppr(self):
-        from .plotAppearance import PlotAppearance
+        from .plotappr import PlotAppearance
         self.closePlotAppr()
         self.plotAppr = PlotAppearance(self)
         self.plotAppr.colorsChanged.connect(self.sigPlotColorsChanged)

@@ -1,4 +1,4 @@
-# filter.py - Short functions that deal with filtering data, used in FilterDialog.py
+# filter.py - Short functions that deal with filtering data, used in filterdialog.py
 # and perhaps useful elsewhere.
 
 import numpy

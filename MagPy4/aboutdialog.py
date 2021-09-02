@@ -1,22 +1,22 @@
-# AboutDialog.py - About dialog box
+# aboutdialog.py - About dialog box
 #
 # The About dialog box user interface was designed using Qt Designer, which
-# writes out the file AboutDialog.ui. This file is in turn converted into
-# AboutDialogUI.py at the command-line using the command:
+# writes out the file aboutdialog.ui. This file is in turn converted into
+# aboutdialogui.py at the command-line using the command:
 #
-# pyuic5 AboutDialog.ui -o AboutDialogUI.py
+# pyuic5 aboutdialog.ui -o aboutdialogui.py
 
-from .AboutDialogUI import Ui_AboutDialog
+from .aboutdialogui import Ui_aboutdialog
 from PyQt5 import QtCore
 from PyQt5 import QtGui
 from PyQt5 import QtWidgets
 
-class AboutDialog(QtWidgets.QDialog, Ui_AboutDialog):
+class aboutdialog(QtWidgets.QDialog, Ui_aboutdialog):
 
     def __init__(self, name, version, copyright, parent=None):
-        super(AboutDialog, self).__init__()
+        super(aboutdialog, self).__init__()
 
-        self.ui = Ui_AboutDialog()
+        self.ui = Ui_aboutdialog()
         self.ui.setupUi(self)
 
         self.setWindowTitle(f'About {name}')

@@ -5,7 +5,7 @@ from appdirs import user_data_dir
 os.environ['QT_MAC_WANTS_LAYER'] = '1'
 
 # Function used to get absolute path to data/image files and directories
-def getRelPath(relPath='', directory=False):
+def get_relative_path(relPath='', directory=False):
 	absPath = path.join(path.dirname(__file__), relPath)
 	if directory:
 		absPath = absPath + path.sep
@@ -16,7 +16,7 @@ def get_version(file_path):
 		return fd.readline().strip('\n')
 
 # Get package version and date
-version_path = getRelPath('version.txt')
+version_path = get_relative_path('version.txt')
 MAGPY_VERSION = get_version(version_path)
 
 # Initialize user data directory

@@ -1,6 +1,6 @@
-from .layoutTools import BaseLayout
-from . import waveAnalysis
-from .plotBase import MagPyPlotItem, StackedAxisLabel
+from .layouttools import BaseLayout
+from . import waveanalysis
+from .plotbase import MagPyPlotItem, StackedAxisLabel
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import numpy as np
@@ -230,7 +230,7 @@ class MaskTool(QtWidgets.QFrame):
         self.ui.setupUI(self, toolFrame, plotType)
 
         # Make a list of plot types that don't have a log color scale
-        waveObj = waveAnalysis.DynamicWave(self.window)
+        waveObj = waveanalysis.DynamicWave(self.window)
         self.linearColorPlots = ['Coherence', 'Phase']
         self.linearColorPlots += waveObj.plotGroups['Ellipticity']
         self.linearColorPlots += waveObj.plotGroups['Angle']
@@ -243,7 +243,7 @@ class MaskTool(QtWidgets.QFrame):
         }
 
         # Copy parameter info from Wave Analysis object
-        waveObj = waveAnalysis.DynamicWave(self.window)
+        waveObj = waveanalysis.DynamicWave(self.window)
         waveObj.numThreads = 1
         for kw in waveObj.defParams.keys():
             self.defaultPlotInfo[kw] = waveObj.defParams[kw]

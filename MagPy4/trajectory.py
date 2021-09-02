@@ -1,9 +1,9 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from .MagPy4UI import TimeEdit
 from PyQt5.QtWidgets import QSizePolicy
-from .layoutTools import BaseLayout
-from .plotBase import DateAxis, MagPyPlotItem
-from .dynBase import GradLegend, ColorBar
+from .layouttools import BaseLayout
+from .plotbase import DateAxis, MagPyPlotItem
+from .dynbase import GradLegend, ColorBar
 import pyqtgraph as pg
 from pyqtgraph import GraphicsWidgetAnchor
 import numpy as np

@@ -5,13 +5,13 @@ from PyQt5.QtWidgets import QSizePolicy
 
 import pyqtgraph as pg
 import numpy as np
-from .plotBase import MagPyPlotItem
-from .spectraUI import SpectraUI
-from .waveAnalysis import WaveAnalysis
+from .plotbase import MagPyPlotItem
+from .spectraui import SpectraUI
+from .waveanalysis import WaveAnalysis
 import os
 from bisect import bisect_left, bisect_right
 from scipy.interpolate import CubicSpline
-from .specAlg import SpectraCalc
+from .spectraalg import SpectraCalc
 
 class ColorPlotTitle(pg.LabelItem):
     ''' LabelItem with horizontally stacked labels in given colors '''
@@ -86,7 +86,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.ui.bandWidthSpinBox.valueChanged.connect(self.update)
         self.ui.separateTracesCheckBox.stateChanged.connect(self.toggleSepTraces)
         self.ui.aspectLockedCheckBox.stateChanged.connect(self.toggleLockAspect)
-        self.ui.waveAnalysisButton.clicked.connect(self.openWaveAnalysis)
+        self.ui.waveanalysisButton.clicked.connect(self.openWaveAnalysis)
         self.ui.logModeCheckBox.toggled.connect(self.toggleLogScale)
         self.ui.unitRatioCheckbox.stateChanged.connect(self.toggleUnitRatio)
 
@@ -105,7 +105,7 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
         self.plots = {}
 
         # Wave analysis and plot appearance objects
-        self.waveAnalysis = None
+        self.waveanalysis = None
         self.plotAppr = None
 
     def getRange(self):
@@ -602,15 +602,15 @@ class Spectra(QtWidgets.QFrame, SpectraUI):
 
     def closeWaveAnalysis(self):
         ''' Closes wave analysis window '''
-        if self.waveAnalysis:
-            self.waveAnalysis.close()
-            self.waveAnalysis = None
+        if self.waveanalysis:
+            self.waveanalysis.close()
+            self.waveanalysis = None
 
     def openWaveAnalysis(self):
         ''' Opens wave analysis window '''
         self.closeWaveAnalysis()
-        self.waveAnalysis = WaveAnalysis(self, self.window)
-        self.waveAnalysis.show()
+        self.waveanalysis = WaveAnalysis(self, self.window)
+        self.waveanalysis.show()
 
     def closeEvent(self, event):
         if self.wasClosed:

@@ -5,7 +5,7 @@ import re
 from scipy.interpolate import CubicSpline
 from bisect import bisect_left, bisect_right
 import sys
-from .layoutTools import SplitterWidget
+from .layouttools import SplitterWidget
 from functools import partial
 
 class ListWidget(QtWidgets.QListWidget):
@@ -238,7 +238,7 @@ class simpleCalc(QtWidgets.QFrame, simpleCalcUI):
         self.window = window
         self.editWindow = editWindow
 
-        self.helpWindow = None
+        self.helpwin = None
 
         self.ui.setupUI(self, window)
         self.ui.inputBox.setOutputFunc(self.eval_wrapper)
@@ -251,10 +251,10 @@ class simpleCalc(QtWidgets.QFrame, simpleCalcUI):
         self.closeHelp()
 
         # Create help window
-        self.helpWindow = QtWidgets.QWidget()
-        self.helpWindow.setWindowTitle('Calculate Tool Help')
-        self.helpWindow.resize(400, 500)
-        layout = QtWidgets.QVBoxLayout(self.helpWindow)
+        self.helpwin = QtWidgets.QWidget()
+        self.helpwin.setWindowTitle('Calculate Tool Help')
+        self.helpwin.resize(400, 500)
+        layout = QtWidgets.QVBoxLayout(self.helpwin)
         widget = QtWidgets.QTextBrowser()
         widget.setReadOnly(True)
         layout.addWidget(widget)
@@ -278,12 +278,12 @@ class simpleCalc(QtWidgets.QFrame, simpleCalcUI):
 
         # Show text
         widget.setText(txt)
-        self.helpWindow.show()
+        self.helpwin.show()
     
     def closeHelp(self):
-        if self.helpWindow:
-            self.helpWindow.close()
-            self.helpWindow = None
+        if self.helpwin:
+            self.helpwin.close()
+            self.helpwin = None
     
     def closeEvent(self, ev):
         self.closeHelp()

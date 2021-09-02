@@ -1,16 +1,16 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .plotBase import StackedLabel
+from .plotbase import StackedLabel
 from fflib import ff_time
 from .grid import PlotGridObject
-from .layoutTools import BaseLayout
-from .timeManager import TimeManager
-from .selectionManager import  GeneralSelect
-from .plotBase import MagPyPlotItem, GraphicsLayout
+from .layouttools import BaseLayout
+from .timemanager import TimeManager
+from .selectbase import  GeneralSelect
+from .plotbase import MagPyPlotItem, GraphicsLayout
 from .plotuibase import GraphicsView
-from .traceStats import TraceStats
+from .tracestats import TraceStats
 
-from .dynamicSpectra import DynamicSpectra, DynamicCohPha
+from .dynamicspectra import DynamicSpectra, DynamicCohPha
 from .spectra import Spectra
 
 import numpy as np

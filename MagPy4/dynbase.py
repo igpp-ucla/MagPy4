@@ -1,4 +1,4 @@
-from MagPy4.plotBase import MagPyPlotDataItem
+from MagPy4.plotbase import MagPyPlotDataItem
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from copy import copy
@@ -7,7 +7,7 @@ import pyqtgraph as pg
 import numpy as np
 import bisect
 import functools
-from .layoutTools import BaseLayout
+from .layouttools import BaseLayout
 import os
 from .data_util import find_gaps
 from multiprocessing import Pool
@@ -382,7 +382,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
 
     def evalExpr(self, exprStr, tO, tE):
         # Attempt to evaluate expression, print error if an exception occurs
-        from .simpleCalculations import simpleCalc
+        from .calctool import simpleCalc
         rng = (tO, tE)
         tool = simpleCalc(None, self.window)
         result = tool.evaluate(exprStr, rng)
@@ -1776,4 +1776,4 @@ class MaskOutline(pg.PlotCurveItem):
         # Draw path edges using given pen
         p.strokePath(path, cp)
 
-from .maskToolBase import MaskTool
+from .masktool import MaskTool

@@ -5,10 +5,10 @@ import pyqtgraph as pg
 
 import functools
 from .MagPy4UI import PyQtUtils
-from . import getRelPath
+from . import get_relative_path
 import os
 import numpy as np
-from .layoutTools import HBoxLayout, VBoxLayout
+from .layouttools import HBoxLayout, VBoxLayout
 
 class TraceInfo():
     ''' Object containing information about a plot variable '''
@@ -913,7 +913,7 @@ class PlotMenuUI(object):
     def setupUI(self, Frame):
         Frame.setWindowTitle('Plot Menu')
 
-        base_url = getRelPath('images', directory=True)
+        base_url = get_relative_path('images', directory=True)
 
         # Build icon image style sheet for each case
         checkBoxStyles = ['QCheckBox{spacing: 0px;}', 
@@ -993,7 +993,7 @@ class PlotMenuUI(object):
         self.layout.addWidget(self.pltLtFrame)
 
         # Set up split button
-        img_path = getRelPath('images')
+        img_path = get_relative_path('images')
         img_path = os.path.join(img_path, 'split_arrow.png')
         pixmap = QtGui.QPixmap(img_path)
         icon = QtGui.QIcon(pixmap)
@@ -1030,7 +1030,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
         self.window = window
         self.ui = PlotMenuUI()
         self.plotCount = 0
-        self.tableMode = self.window.plotMenuTableMode
+        self.tableMode = self.window.plotmenuTableMode
         self.ui.setupUI(self)
         self.ui.errorFlagEdit.setText(f'{self.window.errorFlag:.0e}')
 
@@ -1069,7 +1069,7 @@ class PlotMenu(QtWidgets.QFrame, PlotMenuUI):
             self.window.savedPlotInfo = None
 
     def closeEvent(self, event):
-        self.window.plotMenuTableMode = self.tableMode
+        self.window.plotmenuTableMode = self.tableMode
 
     def updtDstrOptions(self):
         self.ui.plottingLayout.updtDstrOptions()

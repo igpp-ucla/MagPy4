@@ -1,10 +1,10 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .plotBase import MagPyPlotItem
+from .plotbase import MagPyPlotItem
 from .MagPy4UI import TimeEdit, checkForOrbitLibs
-from .layoutTools import BaseLayout
+from .layouttools import BaseLayout
 from .trajectory import OriginGraphic, OrbitPlotter, MagnetosphereTool
-from . import getRelPath
+from . import get_relative_path
 
 import os
 import sys
@@ -701,7 +701,7 @@ class MMS_Data_Tool():
 
         # Write response contents to a zip folder
         zipName = 'files.zip'
-        zipPath = getRelPath(zipName)
+        zipPath = get_relative_path(zipName)
         fd = open(zipPath, 'wb')
         fd.write(res.content)
         fd.close()
@@ -726,7 +726,7 @@ class MMS_Data_Tool():
 
         # Unzip files
         with zipfile.ZipFile(fileName, 'r') as f:
-            f.extractall(path=getRelPath())
+            f.extractall(path=get_relative_path())
         f.close()
 
         # Sort the list of filenames by start date
@@ -759,7 +759,7 @@ class MMS_Data_Tool():
         # Files are split among different subdirectories, get bottom-most
         # directories and set path for the corresponding file
         directories = []
-        mms_zip_path = getRelPath('mms')
+        mms_zip_path = get_relative_path('mms')
         for dirpath, dirnames, filenames in os.walk(mms_zip_path):
             if dirnames:
                 continue
@@ -865,7 +865,7 @@ class Orbit_MMS():
 
     def readOrbitTable(self):
         # Open orbit table
-        orbitTablePath = getRelPath('orbittable.txt')
+        orbitTablePath = get_relative_path('orbittable.txt')
         fd = open(orbitTablePath, 'r')
 
         # Get the start/end indices corresponding to the orbit number and perigee times

@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from .plot_extensions import GridGraphicsLayout
 from .MagPy4UI import TimeEdit
-from .plotBase import GraphicsLayout, MagPyPlotItem
+from .plotbase import GraphicsLayout, MagPyPlotItem
 from .plotuibase import GraphicsView
 import functools
 
@@ -72,7 +72,7 @@ class SpectraGrid(RowGridLayout):
         self.updateRowWidths()
 
     def openPlotAppr(self):
-        from .plotAppearance import PlotAppearance
+        from .plotappr import PlotAppearance
         self.closePlotAppr()
         self.plotAppr = PlotAppearance(self)
         if self.window is not None:
@@ -283,8 +283,8 @@ class SpectraUI(object):
 
         bottomLayout.addLayout(wrapperLayout, 1)
 
-        self.waveAnalysisButton = QtWidgets.QPushButton('Open Wave Analysis')
-        self.waveAnalysisButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        self.waveanalysisButton = QtWidgets.QPushButton('Open Wave Analysis')
+        self.waveanalysisButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
 
         self.updateButton = QtWidgets.QPushButton('Update')
         self.updateButton.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
@@ -292,7 +292,7 @@ class SpectraUI(object):
         # Create frame w/ vertical layout for update & wave buttons
         btnFrame = QtWidgets.QGroupBox()
         btnLayout = QtWidgets.QVBoxLayout(btnFrame)
-        btnLayout.addWidget(self.waveAnalysisButton)
+        btnLayout.addWidget(self.waveanalysisButton)
         btnLayout.addWidget(self.updateButton)
         bottomLayout.addWidget(btnFrame)
 

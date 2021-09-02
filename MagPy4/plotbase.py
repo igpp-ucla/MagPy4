@@ -1,7 +1,7 @@
 import pyqtgraph as pg
 from PyQt5 import QtGui, QtCore, QtWidgets
 import numpy as np
-from .timeManager import TimeManager
+from .timemanager import TimeManager
 from datetime import datetime, timedelta
 from bisect import bisect_left, bisect_right
 from dateutil import rrule
@@ -354,7 +354,7 @@ class MagPyPlotItem(pg.PlotItem):
             self.removeItem(pdi)
     
     def get_specs(self):
-        from .dynBase import SpectraGridItem
+        from .dynbase import SpectraGridItem
         grids = []
         for item in self.items:
             if isinstance(item, SpectraGridItem):
@@ -368,8 +368,8 @@ class MagPyPlotItem(pg.PlotItem):
 
     def load_color_plot(self, specData, winFrame=None, showLabel=True):
         ''' Loads spectrogram from specData object '''
-        from .dynBase import SpectraGridItem
-        from .dynBase import SpectraLegend
+        from .dynbase import SpectraGridItem
+        from .dynbase import SpectraLegend
         # Extract grid info
         y, x = specData.get_bins()
 
