@@ -6,7 +6,8 @@ from .grid import PlotGridObject
 from .layoutTools import BaseLayout
 from .timeManager import TimeManager
 from .selectionManager import  GeneralSelect
-from .plotBase import MagPyPlotItem, GraphicsLayout, GraphicsView
+from .plotBase import MagPyPlotItem, GraphicsLayout
+from .plotuibase import GraphicsView
 from .traceStats import TraceStats
 
 from .dynamicSpectra import DynamicSpectra, DynamicCohPha

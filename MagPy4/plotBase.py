@@ -70,29 +70,6 @@ class StackedAxisLabel(pg.GraphicsLayout):
         font.setPointSize(fontSize)
         return font
 
-class GraphicsView(pg.GraphicsView):
-    def __init__(self, *args, **kwargs):
-        self.shortcut_dict = {}
-        super().__init__(*args, **kwargs)
-
-    def add_shortcut(self, key, func):
-        ''' Adds a shortcut to the GraphicsView that when triggered
-            calls func()
-        '''
-        # Check if shortcut in dict
-        item = self.shortcut_dict.get(key)
-
-        # Create a new shortcut and action linked to func if
-        # the shortcut hasn't been created yet
-        if item is None:
-            item = QtWidgets.QShortcut(key, self)
-            self.shortcut_dict[key] = item
-        # Otherwise, unlink the action's last signal connections
-        # and connect it to func
-        else:
-            item.activated.disconnect()
-        item.activated.connect(func)
-
 class FadeAnimation(QtCore.QPropertyAnimation):
     ''' Animation for QGraphicsOffacityEffect 'effect' that changes opacity
         from start/end values in rng
@@ -464,13 +441,6 @@ class MagPyPlotItem(pg.PlotItem):
     def setVarInfo(self, info):
         self.varInfo = info
     
-    def enablePlotAppr(self, val):
-        if val:
-            self.plotApprAction = QtWidgets.QAction('Change Plot Appearance...')
-            self.plotApprAction.triggered.connect(self.openPlotAppr)
-        else:
-            self.plotApprAction = None
-    
     def getContextMenus(self, ev):
         menu = self.getMenu()
         if self.plotApprAction:
@@ -478,11 +448,6 @@ class MagPyPlotItem(pg.PlotItem):
         else:
             return menu
 
-    def openPlotAppr(self):
-        from .plotAppearance import PlotAppearance
-        self.plotAppr = PlotAppearance(self, [self])
-        self.plotAppr.show()
-    
     def dataBounds(self, ax, frac=1.0, orthoRange=None):
         ''' Calls dataBounds() on each plot data item
             in plot and returns the min/max upper bounds

@@ -9,7 +9,8 @@ from scipy import fftpack, signal
 import numpy as np
 from .plotBase import StackedAxisLabel
 from .plot_extensions import GridGraphicsLayout
-from .plotBase import GraphicsView, MagPyPlotItem
+from .plotBase import MagPyPlotItem
+from .plotuibase import GraphicsView
 import functools
 from .layoutTools import BaseLayout
 from .dynBase import DynamicAnalysisTool, SpecData, PhaseGradient

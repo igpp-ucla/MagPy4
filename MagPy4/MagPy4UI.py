@@ -834,7 +834,7 @@ class MagPy4UI(object):
 
     def setupView(self):
         # Remove start up layout and setup main plot grid
-        from .plotBase import GraphicsView
+        from .plotuibase import GraphicsView
         self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = GridGraphicsLayout(self.window)
