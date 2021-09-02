@@ -8,7 +8,6 @@ import pyqtgraph as pg
 import functools
 import os
 
-from .plot_extensions import GridGraphicsLayout
 from . import get_relative_path
 from .mth import Mth
 import re
@@ -838,7 +837,7 @@ class MagPy4UI(object):
         from .plotuibase import GraphicsView
         self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        self.glw = GridGraphicsLayout(self.window)
+        self.glw = pg.GraphicsLayout()
         self.glw.layout.setVerticalSpacing(0)
         self.glw.layout.setContentsMargins(5, 5, 5, 5)
         self.gview.setCentralItem(self.glw)

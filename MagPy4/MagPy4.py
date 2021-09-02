@@ -9,13 +9,12 @@ import sys
 import pickle
 import argparse
 import json
-import re
 from fflib import ff_reader, ff_time, ff_writer
 from . import plot_helper
+from . import data_util
 
 # Version number and copyright notice displayed in the About box
 from . import get_relative_path, MAGPY_VERSION, USERDATALOC
-from MagPy4 import edit
 
 NAME = f'MagPy4'
 VERSION = f'Version {MAGPY_VERSION}'
@@ -42,15 +41,12 @@ from .mms_data import MMSDataDownloader
 from . import mms_orbit
 from . import mms_formation
 from .detrendwin import DetrendWindow
-from .dynbase import SpecData
 from .dynamicspectra import DynamicSpectra, DynamicCohPha
 from .waveanalysis import DynamicWave
-from .structureutil import CircularList
 from .trajectory import TrajectoryAnalysis
 from .mth import Mth
 from scipy import interpolate
 import bisect
-from .timemanager import TimeManager
 from .selectbase import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect
 from .layouttools import LabeledProgress
 from .data_import import merge_datas, find_vec_grps, get_resolution_diffs
@@ -62,12 +58,11 @@ from .grid import PlotGridObject
 from .plotbase import StackedLabel
 from . import plot_helper
 
-import time
 import functools
-import multiprocessing as mp
 import traceback
 from copy import copy
 from datetime import datetime
+from itertools import cycle
 
 CANREADCDFS = False
 
@@ -78,10 +73,9 @@ file_types_dict = {
     'CDF' : 'CDF (*.cdf)'
 }
 
-class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
+class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def __init__(self, app, parent=None):
         super(MagPy4Window, self).__init__(parent)
-        TimeManager.__init__(self, 0, 0, None)
 
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
@@ -97,6 +91,12 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if os.name == 'nt':
             self.OS = 'windows'
         print(f'OS: {self.OS}')
+
+        self.epoch = None
+        self.tE = 0
+        self.tO = 0
+        self.minTime = 0
+        self.maxTime = 0
 
         self.ui.scrollSelect.startChanged.connect(self.onStartSliderChanged)
         self.ui.scrollSelect.endChanged.connect(self.onEndSliderChanged)
@@ -230,11 +230,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         }
 
         # Selection colors given to each tool
-        colors_list = CircularList(list(colors.keys()))
+        colors_list = cycle(list(colors.keys()))
         self.select_colors = {}
         for tool in self.toolAbbrv:
             if tool not in self.toolInitFuncs:
-                color = colors_list.next_val()
+                color = next(colors_list)
                 self.select_colors[tool] = colors[color]
 
         # Selection types applied to specific tools, default is 'Single'
@@ -2731,6 +2731,38 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI, TimeManager):
         if i0 >= i1:
             i0 = i1-1
         return i0,i1
+
+    def calcDataIndexByTime(self, times, t):
+        return data_util.get_data_index(times, t)
+
+    def getTimeTicksFromTimeEdit(self, timeEdit):
+        return data_util.get_ticks_from_edit(timeEdit, self.epoch)
+
+    def getTimestampFromTick(self, tick):
+        return ff_time.tick_to_ts(tick, self.epoch)
+
+    def datetime_from_tick(self, tick):
+        ts = self.getTimestampFromTick(tick)
+        fmt = '%Y %j %b %d %H:%M:%S.%f'
+        date = datetime.strptime(ts, fmt)
+        return date
+
+    def getTickFromDateTime(self, dt):
+        return ff_time.date_to_tick(dt, self.epoch)
+
+    def getDateTimeObjFromTick(self, tick):
+        return ff_time.tick_to_date(tick, self.epoch)
+    
+    def getTickFromTimestamp(self, ts):
+        date = parser.isoparse(ts)
+        tick = ff_time.date_to_tick(date, self.epoch)
+        return tick
+    
+    def setTimeEditByTicks(self, t0, t1, timeEdit):
+        dt0 = self.getDateTimeFromTick(t0)
+        dt1 = self.getDateTimeFromTick(t1)
+        timeEdit.start.setDateTime(dt0)
+        timeEdit.end.setDateTime(dt1)
 
     def getSelectionStartEndTimes(self, regNum=0):
         if self.currSelect is None or self.currSelect.regions == []:

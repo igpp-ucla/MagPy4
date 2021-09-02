@@ -1,7 +1,6 @@
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .plot_extensions import GridGraphicsLayout
 import pyqtgraph as pg
 from scipy import fftpack
 import numpy as np
@@ -151,7 +150,7 @@ class BaseLayout(object):
         from .plotuibase import GraphicsView
         self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        self.glw = GridGraphicsLayout(window)
+        self.glw = pg.GraphicsLayout()
         self.gview.setCentralItem(self.glw)
         return self.glw
 

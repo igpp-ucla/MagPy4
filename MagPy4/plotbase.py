@@ -1,7 +1,7 @@
+from fflib import ff_time
 import pyqtgraph as pg
 from PyQt5 import QtGui, QtCore, QtWidgets
 import numpy as np
-from .timemanager import TimeManager
 from datetime import datetime, timedelta
 from bisect import bisect_left, bisect_right
 from dateutil import rrule
@@ -1025,8 +1025,10 @@ class DateAxis(pg.AxisItem):
         self.timeRange = None
         self.epoch = epoch
         self.levels = None
-        self.tm = TimeManager(0, 0, self.epoch)
         self.label_visible = False # Keeps track of whether label is visible
+
+        self.tO = 0
+        self.tE = 0
 
         super().__init__(orientation, *args, **kwargs)
         self.enableAutoSIPrefix(False)
@@ -1114,8 +1116,8 @@ class DateAxis(pg.AxisItem):
 
     def setRange(self, mn, mx):
         super().setRange(mn, mx)
-        self.tm.tO = mn + self.tickOffset
-        self.tm.tE = mx + self.tickOffset
+        self.tO = mn + self.tickOffset
+        self.tE = mx + self.tickOffset
 
         if self.label_visible:
             self.setLabel(self.get_label())
@@ -1126,7 +1128,7 @@ class DateAxis(pg.AxisItem):
 
     def get_range(self):
         ''' Returns the range of the axis item '''
-        return (self.tm.tO, self.tm.tE)
+        return (self.tO, self.tE)
 
     def get_default_mode(self):
         ''' Returns the time mode set for the axis item '''
@@ -1134,8 +1136,8 @@ class DateAxis(pg.AxisItem):
             # If no current time mode is set, get the time
             # range delta and guess mode
             minVal, maxVal = self.get_range()
-            start = self.tm.getDateTimeObjFromTick(minVal)
-            end = self.tm.getDateTimeObjFromTick(maxVal)
+            start = ff_time.tick_to_date(minVal, self.epoch)
+            end = ff_time.tick_to_date(maxVal, self.epoch)
             td = abs(end-start)
             mode = self.guess_mode(td)
         else:
@@ -1279,8 +1281,8 @@ class DateAxis(pg.AxisItem):
 
     def tickValues(self, minVal, maxVal, size):
         # Map to timedelta
-        start = self.tm.getDateTimeObjFromTick(minVal+self.tickOffset)
-        end = self.tm.getDateTimeObjFromTick(maxVal+self.tickOffset)
+        start = ff_time.tick_to_date(minVal + self.tickOffset, self.epoch)
+        end = ff_time.tick_to_date(maxVal + self.tickOffset, self.epoch)
         td = abs(end-start)
 
         # Get label format mode and spacer values
@@ -1316,7 +1318,7 @@ class DateAxis(pg.AxisItem):
         for spacer in spacer_vals:
             # Get tick dates in range with given spacer and map to ticks
             dates = self.get_tick_dates(start, end, mode, spacer, cstm)
-            ticks = [self.tm.getTickFromDateTime(date) for date in dates]
+            ticks = [ff_time.date_to_tick(date, self.epoch) for date in dates]
             ticks = [tick - self.tickOffset for tick in ticks]
 
             # Remove previously seen ticks
@@ -1357,7 +1359,7 @@ class DateAxis(pg.AxisItem):
         strs = []
         for value in values:
             value = value + self.tickOffset
-            date = self.tm.getDateTimeObjFromTick(value)
+            date = ff_time.tick_to_date(value, self.epoch)
             ts = date.strftime(fmt_str)
             strs.append(ts)
 

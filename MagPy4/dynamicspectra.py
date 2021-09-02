@@ -8,7 +8,6 @@ import pyqtgraph as pg
 from scipy import fftpack, signal
 import numpy as np
 from .plotbase import StackedAxisLabel
-from .plot_extensions import GridGraphicsLayout
 from .plotbase import MagPyPlotItem
 from .plotuibase import GraphicsView
 import functools
@@ -26,7 +25,7 @@ class DynamicSpectraUI(BaseLayout):
 
         self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-        self.glw = GridGraphicsLayout(window)
+        self.glw = pg.GraphicsLayout()
         self.gview.setCentralItem(self.glw)
         self.glw.layout.setHorizontalSpacing(5)
 
@@ -551,7 +550,7 @@ class DynamicCohPhaUI(BaseLayout):
             # Build grid graphics layout
             gview = GraphicsView()
             gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
-            glw = GridGraphicsLayout(window)
+            glw = pg.GraphicsLayout()
             gview.setCentralItem(glw)
             grids.append(glw)
             subLt.addWidget(gview)

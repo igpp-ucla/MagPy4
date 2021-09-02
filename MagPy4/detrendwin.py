@@ -4,7 +4,6 @@ from .plotbase import StackedLabel
 from fflib import ff_time
 from .grid import PlotGridObject
 from .layouttools import BaseLayout
-from .timemanager import TimeManager
 from .selectbase import  GeneralSelect
 from .plotbase import MagPyPlotItem, GraphicsLayout
 from .plotuibase import GraphicsView
@@ -12,6 +11,7 @@ from .tracestats import TraceStats
 
 from .dynamicspectra import DynamicSpectra, DynamicCohPha
 from .spectra import Spectra
+from . import data_util
 
 import numpy as np
 from scipy import signal
@@ -83,7 +83,7 @@ class DetrendWindowUI(BaseLayout):
             self.btns.append(btn)
         return frame
 
-class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI, TimeManager):
+class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI):
     # Plots detrended data and mimics some of main window's functionality
     def __init__(self, window, parent=None):
         super(DetrendWindow, self).__init__(parent)
@@ -93,7 +93,7 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI, TimeManager):
 
         # Initialize time parameters
         minTime, maxTime = window.getSelectionStartEndTimes()
-        TimeManager.__init__(self, minTime, maxTime, window.epoch)
+        self.epoch = self.window.epoch
 
         # Store other related state information
         self.OS = window.OS
@@ -488,8 +488,8 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI, TimeManager):
         # functions that handle the modifier string in the dstr
         times = self.getTimes(dstr, editNumber)[0]
         t0, t1 = self.getSelectionStartEndTimes(regNum)
-        i0 = self.calcDataIndexByTime(times, t0)
-        i1 = self.calcDataIndexByTime(times, t1)
+        i0 = data_util.get_data_index(times, t0)
+        i1 = data_util.get_data_index(times, t1)
         if i1 > len(times)-1:
             i1 = len(times)-1
         assert(i0 <= i1)

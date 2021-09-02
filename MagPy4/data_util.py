@@ -1,4 +1,7 @@
 import numpy as np
+from bisect import bisect_right, bisect_left
+from fflib import ff_time
+
 def get_resolution_diffs(times):
     ''' Computes the time resolution in seconds and first differences '''
     # Compute diffs
@@ -54,3 +57,23 @@ def find_gaps(times, comp_res=None):
     gap_indices = np.indices(times.shape)[0][breaks]
     
     return gap_indices
+
+def get_data_index(times, t):
+    assert(len(times) >= 2)
+    if t <= times[0]:
+        return 0
+    if t >= times[-1]:
+        return len(times)
+    b = bisect_left(times, t) # can bin search because times are sorted
+    if b < 0:
+        return 0
+    elif b >= len(times):
+        return len(times) - 1
+    return b
+
+def get_ticks_from_edit(timeEdit, epoch):
+    start = timeEdit.start.dateTime().toPyDateTime()
+    end = timeEdit.end.dateTime().toPyDateTime()
+    t0 = ff_time.date_to_tick(start, epoch)
+    t1 = ff_time.date_to_tick(end, epoch)
+    return (t0, t1) if t0 < t1 else (t0, t1)
