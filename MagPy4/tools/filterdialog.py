@@ -41,7 +41,7 @@ from .filter import hammingWindow
 from .filter import kaiserWindow
 from .filter import chebyshevWindow
 from .filterdialogui import Ui_filterdialog
-from ..mth import Mth
+from ..alg.mth import Mth
 from PyQt5 import QtCore
 from PyQt5 import QtGui
 from PyQt5 import QtWidgets

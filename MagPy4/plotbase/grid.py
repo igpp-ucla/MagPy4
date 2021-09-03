@@ -2,7 +2,7 @@ import pyqtgraph as pg
 import numpy as np
 
 from fflib import ff_time
-from .widgets.dynbase import GradLegend
+from ..tools.dynbase import GradLegend
 import pyqtgraph as pg
 from .plotbase import DateAxis, MagPyPlotItem, MagPyAxisItem
 from PyQt5 import QtCore, QtGui, QtWidgets

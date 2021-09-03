@@ -2,7 +2,8 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
-from ..MagPy4UI import TimeEdit, ScientificSpinBox
+from ..MagPy4UI import ScientificSpinBox
+from ..dispwidgets.layouttools import TimeEdit
 from ..plotbase import StackedLabel
 
 import numpy as np
@@ -16,7 +17,7 @@ from .editui import EditUI, CustomRotUI, MinVarUI
 from .filterdialog import filterdialog
 from .calctool import simpleCalc
 
-from ..mth import Mth
+from ..alg.mth import Mth
 from ..MagPy4UI import PyQtUtils
 
 from datetime import datetime

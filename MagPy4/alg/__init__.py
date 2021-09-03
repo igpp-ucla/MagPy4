@@ -1,4 +1,4 @@
-from ..spectraalg import SpectraCalc
+from ..alg.spectraalg import SpectraCalc
 
 calc_spectra = SpectraCalc.calc_power
 calc_coh_pha = SpectraCalc.calc_coh_pha

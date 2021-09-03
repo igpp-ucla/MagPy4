@@ -10,7 +10,7 @@ import pickle
 import argparse
 import json
 from fflib import ff_reader, ff_time, ff_writer
-from . import plot_helper
+from .plotbase import plot_helper
 from . import data_util
 
 # Version number and copyright notice displayed in the About box
@@ -27,36 +27,35 @@ import numpy as np
 import numpy.lib.recfunctions as rfn
 import pyqtgraph as pg
 from .MagPy4UI import MagPy4UI, FileLabel, ProgStates, FileLoadDialog, ProgressChecklist, ScrollArea
-from .pgextensions import TrackerRegion
-from .widgets.plotmenu import PlotMenu
-from .widgets.spectra import Spectra
-from .widgets.datadisplay import DataDisplay
-from .widgets.edit import Edit
-from .widgets.tracestats import TraceStats
-from .widgets.helpwin import HelpWindow
-from .widgets.aboutdialog import aboutdialog
-from .plotbase import MagPyPlotItem
-from .widgets.mmstools import PlaneNormal, Curlometer, Curvature, PressureTool, get_mms_grps
-from .widgets.mms_data import MMSDataDownloader
-from .widgets import mms_orbit
-from .widgets import mms_formation
-from .widgets.detrendwin import DetrendWindow
-from .widgets.dynamicspectra import DynamicSpectra, DynamicCohPha
-from .widgets.waveanalysis import DynamicWave
-from .widgets.trajectory import TrajectoryAnalysis
-from .mth import Mth
+from .plotwidgets.pgextensions import TrackerRegion
+from .tools.plotmenu import PlotMenu
+from .tools.spectra import Spectra
+from .tools.datadisplay import DataDisplay
+from .tools.edit import Edit
+from .tools.tracestats import TraceStats
+from .tools.helpwin import HelpWindow
+from .tools.aboutdialog import aboutdialog
+from .plotbase.plotbase import MagPyPlotItem
+from .tools.mmstools import PlaneNormal, Curlometer, Curvature, PressureTool, get_mms_grps
+from .tools.mms_data import MMSDataDownloader
+from .tools import mms_orbit
+from .tools import mms_formation
+from .tools.detrendwin import DetrendWindow
+from .tools.dynamicspectra import DynamicSpectra, DynamicCohPha
+from .tools.waveanalysis import DynamicWave
+from .tools.trajectory import TrajectoryAnalysis
+from .alg.mth import Mth
 from scipy import interpolate
 import bisect
-from .selectbase import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect
-from .layouttools import LabeledProgress
+from .plotwidgets.selectbase import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect
+from .dispwidgets.layouttools import LabeledProgress
 from .data_import import merge_datas, find_vec_grps, get_resolution_diffs
 from .data_import import load_text_file, load_flat_file, load_cdf
 import numpy.lib.recfunctions as rfn
 from .qtthread import TaskRunner, ThreadPool, TaskThread
 
-from .grid import PlotGridObject
-from .plotbase import StackedLabel
-from . import plot_helper
+from .plotbase.grid import PlotGridObject
+from .plotbase.plotbase import StackedLabel
 
 import functools
 import traceback

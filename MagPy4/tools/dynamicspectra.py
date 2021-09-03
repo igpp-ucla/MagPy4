@@ -1,4 +1,4 @@
-from MagPy4.grid import PlotGridObject
+from ..plotbase.grid import PlotGridObject
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
@@ -9,11 +9,11 @@ from scipy import fftpack, signal
 import numpy as np
 from ..plotbase import StackedAxisLabel
 from ..plotbase import MagPyPlotItem
-from ..plotuibase import GraphicsView
+from ..plotwidgets.plotuibase import GraphicsView
 import functools
-from ..layouttools import BaseLayout
+from ..dispwidgets.layouttools import BaseLayout
 from .dynbase import DynamicAnalysisTool, SpecData, PhaseGradient
-from ..spectraalg import SpectraCalc
+from ..alg.spectraalg import SpectraCalc
 
 class DynamicSpectraUI(BaseLayout):
     def setupUI(self, Frame, window):

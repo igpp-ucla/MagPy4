@@ -2,12 +2,12 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .dynbase import *
-from ..spectraalg import SpectraCalc, WaveCalc
-from ..layouttools import BaseLayout, VBoxLayout, HBoxLayout
+from ..alg.spectraalg import SpectraCalc, WaveCalc
+from ..dispwidgets.layouttools import BaseLayout, VBoxLayout, HBoxLayout
 from scipy import fftpack, signal
 import pyqtgraph as pg
-from ..spectraalg import SpecWave
-from ..grid import PlotGridObject
+from ..alg.spectraalg import SpecWave
+from ..plotbase.grid import PlotGridObject
 
 import multiprocessing
 import numpy as np

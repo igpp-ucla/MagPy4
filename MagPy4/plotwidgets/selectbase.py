@@ -1,13 +1,13 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from .MagPy4UI import TimeEdit
+from ..dispwidgets.layouttools import TimeEdit
 import pyqtgraph as pg
-from .pgextensions import LinkedRegion
+from ..plotwidgets.pgextensions import LinkedRegion
 import time as tm
 from datetime import datetime
-from .layouttools import BaseLayout, TableWidget, SplitterWidget
+from ..dispwidgets.layouttools import BaseLayout, TableWidget, SplitterWidget
 from fflib import ff_time
-from .plotbase import MagPyViewBox
+from ..plotbase.plotbase import MagPyViewBox
 
 class GeneralSelect(object):
     '''

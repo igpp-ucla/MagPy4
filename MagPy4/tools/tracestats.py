@@ -3,7 +3,8 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 import numpy as np
-from ..MagPy4UI import PyQtUtils, TimeEdit
+from ..MagPy4UI import PyQtUtils
+from ..dispwidgets.layouttools import TimeEdit
 from scipy import stats
 
 class TraceStatsUI(object):

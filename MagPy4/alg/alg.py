@@ -1,7 +1,7 @@
 import numpy as np
-from .widgets.dynbase import SpecData, DynamicAnalysisTool, ParallelGrid
+from ..tools.dynbase import SpecData, DynamicAnalysisTool, ParallelGrid
 import matplotlib.pyplot as plt
-from ..spectraalg import SpectraCalc, WaveCalc
+from ..alg.spectraalg import SpectraCalc, WaveCalc
 import matplotlib
 import matplotlib.dates as mpdates
 from datetime import datetime, timedelta

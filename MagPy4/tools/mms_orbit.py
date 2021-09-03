@@ -1,8 +1,9 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from ..plotbase import MagPyPlotItem
-from ..MagPy4UI import TimeEdit, checkForOrbitLibs
-from ..layouttools import BaseLayout
+from ..MagPy4UI import checkForOrbitLibs
+from ..dispwidgets.layouttools import TimeEdit
+from ..dispwidgets.layouttools import BaseLayout
 from .trajectory import OriginGraphic, OrbitPlotter, MagnetosphereTool
 from .. import get_relative_path
 

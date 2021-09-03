@@ -9,7 +9,8 @@ import functools
 import os
 
 from . import get_relative_path
-from .mth import Mth
+from .alg.mth import Mth
+from .dispwidgets.layouttools import TimeEdit
 import re
 from . import config
 
@@ -834,7 +835,7 @@ class MagPy4UI(object):
 
     def setupView(self):
         # Remove start up layout and setup main plot grid
-        from .plotuibase import GraphicsView
+        from .plotwidgets.plotuibase import GraphicsView
         self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = pg.GraphicsLayout()
@@ -856,110 +857,6 @@ class MagPy4UI(object):
 
         # Re-enable all UI elements for interacting w/ plots
         self.enableUIElems(True)
-
-class TimeEdit(QtWidgets.QWidget):
-    rangeChanged = QtCore.pyqtSignal(tuple)
-    def __init__(self, font=None):
-        if font is None:
-            font_name, font_size = config.fonts['monospace']
-            font = QtGui.QFont(font_name, font_size)
-
-        self.start = QtWidgets.QDateTimeEdit()
-        self.end = QtWidgets.QDateTimeEdit()
-
-        for edit in [self.start, self.end]:
-            edit.setFont(font)
-            edit.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum))
-            edit.setDisplayFormat("yyyy MMM dd hh:mm:ss.zzz")
-
-        self.start.editingFinished.connect(functools.partial(self.enforceMinMax, self.start))
-        self.end.editingFinished.connect(functools.partial(self.enforceMinMax, self.end))
-
-        self.linkedRegion = None
-
-        self.start.dateTimeChanged.connect(self._range_edited)
-        self.end.dateTimeChanged.connect(self._range_edited)
-
-        super().__init__()
-    
-    def _range_edited(self):
-        start = self.start.dateTime().toPyDateTime()
-        end = self.end.dateTime().toPyDateTime()
-        self.rangeChanged.emit((start, end))
-
-    def setFont(self, font):
-        for edit in [self.start, self.end]:
-            edit.setFont(font)
-
-    def setupMinMax(self, minmax):
-        min, max = minmax
-        self.minDateTime = min
-        self.maxDateTime = max
-        self.setStartNoCallback(min)
-        self.setEndNoCallback(max)
-
-    def setWithNoCallback(dte, dt):
-        dte.blockSignals(True)
-        dte.setDateTime(dt)
-        dte.blockSignals(False)
-
-    def setStartNoCallback(self, dt):
-        TimeEdit.setWithNoCallback(self.start, dt)
-
-    def setEndNoCallback(self, dt):
-        TimeEdit.setWithNoCallback(self.end, dt)
-    
-    def setTimeRange(self, start_dt, end_dt):
-        self.start.setDateTime(start_dt)
-        self.end.setDateTime(end_dt)
-        self._range_edited()
-    
-    def getRange(self):
-        ''' Return start/end datetimes '''
-        start = self.start.dateTime().toPyDateTime()
-        end = self.end.dateTime().toPyDateTime()
-        return (start, end)
-
-    def setLinkedRegion(self, region):
-        ''' 
-        Set the linked region that should be updated when this time edit's
-        values are changed
-        '''
-        self.linkedRegion = region
-
-    def getLinkedRegion(self):
-        return self.linkedRegion
-
-    def removeLinkToSelect(self, func):
-        ''' 
-        Disconnects this time edit from its linked GeneralSelect object
-        '''
-        self.linkedRegion = None
-        self.start.dateTimeChanged.disconnect(func)
-        self.end.dateTimeChanged.disconnect(func)
-
-    def linkToSelect(self, func):
-        ''' 
-        Link this time edit to a GeneralSelect object that will respond
-        to changes in this time edit's values and apply them to
-        this time edit's linked region if it has one
-        '''
-        self.start.dateTimeChanged.connect(func)
-        self.end.dateTimeChanged.connect(func)
-
-    # done this way to avoid mid editing corrections
-    def enforceMinMax(self, dte):
-        min = self.minDateTime
-        max = self.maxDateTime
-        dt = dte.dateTime()
-        dte.setDateTime(min if dt < min else max if dt > max else dt)
-
-    def toString(self):
-        #form = "yyyy MM dd hh mm ss zzz"
-        form = "yyyy MMM dd hh:mm:ss.zzz"
-        d0 = self.start.dateTime().toString(form)
-        d1 = self.end.dateTime().toString(form)
-        return d0,d1    
 
 class ScientificSpinBox(QtWidgets.QDoubleSpinBox):
     def validate(self, txt, pos):

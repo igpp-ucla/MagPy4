@@ -5,7 +5,7 @@ import re
 from scipy.interpolate import CubicSpline
 from bisect import bisect_left, bisect_right
 import sys
-from ..layouttools import SplitterWidget
+from ..dispwidgets.layouttools import SplitterWidget
 from functools import partial
 
 class ListWidget(QtWidgets.QListWidget):

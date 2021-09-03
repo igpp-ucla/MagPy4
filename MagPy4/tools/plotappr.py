@@ -6,7 +6,7 @@ from ..plotbase import DateAxis
 import re
 from datetime import datetime, timedelta
 import numpy as np
-from ..layouttools import BaseLayout
+from ..dispwidgets.layouttools import BaseLayout
 
 import pyqtgraph as pg
 import functools

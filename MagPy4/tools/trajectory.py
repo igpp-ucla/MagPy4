@@ -1,14 +1,14 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
-from ..MagPy4UI import TimeEdit
+from ..dispwidgets.layouttools import TimeEdit
 from PyQt5.QtWidgets import QSizePolicy
-from ..layouttools import BaseLayout
+from ..dispwidgets.layouttools import BaseLayout
 from ..plotbase import DateAxis, MagPyPlotItem
 from .dynbase import GradLegend, ColorBar
 import pyqtgraph as pg
 from pyqtgraph import GraphicsWidgetAnchor
 import numpy as np
 from scipy import interpolate
-from ..mth import Mth
+from ..alg.mth import Mth
 
 # Magnetosphere modules
 import sys

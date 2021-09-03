@@ -11,7 +11,7 @@ from .waveanalysis import WaveAnalysis
 import os
 from bisect import bisect_left, bisect_right
 from scipy.interpolate import CubicSpline
-from ..spectraalg import SpectraCalc
+from ..alg.spectraalg import SpectraCalc
 
 class ColorPlotTitle(pg.LabelItem):
     ''' LabelItem with horizontally stacked labels in given colors '''

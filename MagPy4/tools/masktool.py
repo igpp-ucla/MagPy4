@@ -1,4 +1,4 @@
-from ..layouttools import BaseLayout
+from ..dispwidgets.layouttools import BaseLayout
 from . import waveanalysis
 from ..plotbase import MagPyPlotItem, StackedAxisLabel
 from PyQt5 import QtGui, QtCore, QtWidgets

@@ -1,5 +1,5 @@
-from ..layouttools import BaseLayout
-from ..MagPy4UI import TimeEdit
+from ..dispwidgets.layouttools import BaseLayout
+from ..dispwidgets.layouttools import TimeEdit
 from .mmstools import MMSTools
 from ..plotbase import MagPyPlotItem
 from .mms_orbit import MMS_Data_Tool

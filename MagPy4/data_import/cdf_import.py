@@ -6,7 +6,7 @@ import numpy.lib.recfunctions as rfn
 from .general_data_import import FileData
 from fflib import ff_time
 import bisect
-from ..widgets.dynbase import SpecData
+from ..tools.dynbase import SpecData
 
 class CDF_ID():
     def __init__(self, cdf, data_dict, vec_grps):

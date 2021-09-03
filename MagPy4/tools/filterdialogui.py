@@ -7,7 +7,7 @@
 # WARNING! All changes made in this file will be lost!
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-from ..MagPy4UI import TimeEdit
+from ..dispwidgets.layouttools import TimeEdit
 
 class CheckBoxList(QtWidgets.QListWidget):
     ''' ListWidget with checkable items '''

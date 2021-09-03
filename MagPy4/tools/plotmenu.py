@@ -8,7 +8,7 @@ from ..MagPy4UI import PyQtUtils
 from .. import get_relative_path
 import os
 import numpy as np
-from ..layouttools import HBoxLayout, VBoxLayout
+from ..dispwidgets.layouttools import HBoxLayout, VBoxLayout
 
 class TraceInfo():
     ''' Object containing information about a plot variable '''
