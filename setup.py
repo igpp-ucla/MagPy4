@@ -21,8 +21,9 @@ setuptools.setup(
 		'numpy>=1.15.0', 'scipy>=1.1.0', 'pyqtgraph>=0.11.0',
 		'PyQt5>=5.15.2', 'cdflib', 'PyQtWebEngine',
 		'requests', 'python-dateutil', 'matplotlib',
-		'appdirs'],
-	packages=['MagPy4', 'MagPy4/geopack/geopack', 'MagPy4/data_import', 'MagPy4/alg'],
+		'appdirs', 'geopack'],
+	packages=['MagPy4', 'MagPy4/alg', 'MagPy4/data_import', 'MagPy4/plotbase',
+		'MagPy4/qtinterface', 'MagPy4/tools'],
 	classifiers=[
 		"Programming Language :: Python :: 3",
 		"Operating System :: OS Independent"

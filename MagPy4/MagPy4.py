@@ -27,7 +27,7 @@ import numpy as np
 import numpy.lib.recfunctions as rfn
 import pyqtgraph as pg
 from .MagPy4UI import MagPy4UI, FileLabel, ProgStates, FileLoadDialog, ProgressChecklist, ScrollArea
-from .plotwidgets.pgextensions import TrackerRegion
+from .plotbase.pgextensions import TrackerRegion
 from .tools.plotmenu import PlotMenu
 from .tools.spectra import Spectra
 from .tools.datadisplay import DataDisplay
@@ -47,8 +47,8 @@ from .tools.trajectory import TrajectoryAnalysis
 from .alg.mth import Mth
 from scipy import interpolate
 import bisect
-from .plotwidgets.selectbase import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect
-from .dispwidgets.layouttools import LabeledProgress
+from .plotbase.selectbase import GeneralSelect, FixedSelection, TimeRegionSelector, BatchSelect
+from .qtinterface.layouttools import LabeledProgress
 from .data_import import merge_datas, find_vec_grps, get_resolution_diffs
 from .data_import import load_text_file, load_flat_file, load_cdf
 import numpy.lib.recfunctions as rfn
@@ -302,7 +302,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         self.magpyIcon = QtGui.QIcon()
         self.marsIcon = QtGui.QIcon()
-        img_path = get_relative_path('images', directory=True)
+        rsrc_path = get_relative_path('rsrc')
+        img_path = os.path.join(rsrc_path, 'images')
         if self.OS == 'mac':
             self.magpyIcon.addFile(img_path+'magPy_blue.hqx')
             self.marsIcon.addFile(img_path+'mars.hqx')
@@ -592,9 +593,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     # this should also get called if flatfile changes
     def closeEvent(self, event):
         self.closeAllSubWindows()
-        if self.pltGrdObject:
-            self.pltGrdObject.closePlotAppr()
-            self.pltGrdObject.deleteLater()
 
     def openWsOpenDialog(self):
         # Opens file dialog for user to select a workspace file to open
@@ -2957,7 +2955,8 @@ def startMagPy(files=None, display=True):
         main.showMaximized()
 
     # Add in fonts to database
-    font_dir = get_relative_path('fonts')
+    rsrc_dir = get_relative_path('rsrc')
+    font_dir = os.path.join(rsrc_dir, 'fonts')
     fonts = os.listdir(font_dir)
     fonts = [os.path.join(font_dir, f) for f in fonts]
 

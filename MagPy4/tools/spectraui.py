@@ -3,9 +3,9 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 
 import pyqtgraph as pg
-from ..dispwidgets.layouttools import TimeEdit
+from ..qtinterface.layouttools import TimeEdit
 from ..plotbase import GraphicsLayout, MagPyPlotItem
-from ..plotwidgets.plotuibase import GraphicsView
+from ..qtinterface.plotuibase import GraphicsView
 import functools
 
 class RowGridLayout(GraphicsLayout):

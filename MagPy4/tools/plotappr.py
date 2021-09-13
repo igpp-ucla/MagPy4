@@ -1,12 +1,12 @@
 from numpy.core.fromnumeric import trace
-from MagPy4.extraticklabels import AddTickLabels
+from ..tools.addticklabels import AddTickLabels
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from ..plotbase import DateAxis
 import re
 from datetime import datetime, timedelta
 import numpy as np
-from ..dispwidgets.layouttools import BaseLayout
+from ..qtinterface.layouttools import BaseLayout
 
 import pyqtgraph as pg
 import functools

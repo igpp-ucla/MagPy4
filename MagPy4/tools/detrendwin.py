@@ -3,10 +3,10 @@ from PyQt5.QtWidgets import QSizePolicy
 from ..plotbase import StackedLabel
 from fflib import ff_time
 from ..plotbase.grid import PlotGridObject
-from ..dispwidgets.layouttools import BaseLayout
-from ..plotwidgets.selectbase import  GeneralSelect
+from ..qtinterface.layouttools import BaseLayout
+from ..plotbase.selectbase import  GeneralSelect
 from ..plotbase import MagPyPlotItem, GraphicsLayout
-from ..plotwidgets.plotuibase import GraphicsView
+from ..qtinterface.plotuibase import GraphicsView
 from .tracestats import TraceStats
 
 from .dynamicspectra import DynamicSpectra, DynamicCohPha
@@ -555,3 +555,30 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI):
             return True
         else:
             return False
+
+    def calcDataIndexByTime(self, times, t):
+        return data_util.get_data_index(times, t)
+
+    def getTimeTicksFromTimeEdit(self, timeEdit):
+        return data_util.get_ticks_from_edit(timeEdit, self.epoch)
+
+    def getTimestampFromTick(self, tick):
+        return ff_time.tick_to_ts(tick, self.epoch)
+
+    def datetime_from_tick(self, tick):
+        ts = self.getTimestampFromTick(tick)
+        fmt = '%Y %j %b %d %H:%M:%S.%f'
+        date = datetime.strptime(ts, fmt)
+        return date
+
+    def getTickFromDateTime(self, dt):
+        return ff_time.date_to_tick(dt, self.epoch)
+
+    def getDateTimeObjFromTick(self, tick):
+        return ff_time.tick_to_date(tick, self.epoch)
+    
+    def getTickFromTimestamp(self, ts):
+        date = parser.isoparse(ts)
+        tick = ff_time.date_to_tick(date, self.epoch)
+        return tick
+    

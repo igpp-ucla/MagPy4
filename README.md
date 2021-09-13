@@ -1,4 +1,4 @@
-# MagPy4 / MarsPy ![bird](MagPy4/images/magPy64.png)
+# MagPy4 / MarsPy ![bird](MagPy4/rsrc/images/magPy64.png)
 
 Magnetic Field Analysis Program. Built for IGPP at UCLA.
 

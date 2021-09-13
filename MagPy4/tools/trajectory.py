@@ -1,7 +1,7 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
-from ..dispwidgets.layouttools import TimeEdit
+from ..qtinterface.layouttools import TimeEdit
 from PyQt5.QtWidgets import QSizePolicy
-from ..dispwidgets.layouttools import BaseLayout
+from ..qtinterface.layouttools import BaseLayout
 from ..plotbase import DateAxis, MagPyPlotItem
 from .dynbase import GradLegend, ColorBar
 import pyqtgraph as pg
@@ -12,7 +12,7 @@ from ..alg.mth import Mth
 
 # Magnetosphere modules
 import sys
-from ..geopack.geopack import geopack
+from geopack import geopack
 from datetime import datetime, timedelta
 import multiprocessing
 from multiprocessing import Pool

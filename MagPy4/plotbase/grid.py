@@ -1095,7 +1095,7 @@ class PlotGridObject(pg.GraphicsWidget):
         return menus
     
     def openPlotAppr(self):
-        from .plotappr import PlotAppearance
+        from ..tools.plotappr import PlotAppearance
         self.closePlotAppr()
         self.plotAppr = PlotAppearance(self)
         self.plotAppr.colorsChanged.connect(self.sigPlotColorsChanged)

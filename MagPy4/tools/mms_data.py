@@ -4,9 +4,9 @@ from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from .. import USERDATALOC
 from ..qtthread import TaskRunner
-from ..plotwidgets.selectbase import TimeFormatWidget
+from ..plotbase.selectbase import TimeFormatWidget
 from fflib import ff_time
-from ..dispwidgets.layouttools import LabeledProgress
+from ..qtinterface.layouttools import LabeledProgress
 
 import requests
 import json

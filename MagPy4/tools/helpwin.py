@@ -19,11 +19,12 @@ class HelpWindowUI(object):
         frame.setWindowTitle('MagPy4 Help')
         frame.resize(800, 600)
 
-        html_dir = get_relative_path('help')
-        htmlPath = os.path.join(html_dir, 'help.html')
+        rsrc_dir = get_relative_path('rsrc')
+        htmlPath = os.path.join(rsrc_dir, 'help', 'help.html')
         html = Path(htmlPath).read_text()
 
-        cssPath = get_relative_path('help.css')
+        cssPath = os.path.join(rsrc_dir, 'help', 'help.css')
+        cssPath = os.path.join()
         self.view = QWebEngineView()
         self.view.setHtml(html, QtCore.QUrl.fromLocalFile(cssPath))
 

@@ -10,7 +10,7 @@ import os
 
 from . import get_relative_path
 from .alg.mth import Mth
-from .dispwidgets.layouttools import TimeEdit
+from .qtinterface.layouttools import TimeEdit
 import re
 from . import config
 
@@ -191,7 +191,8 @@ class ProgressChecklist(QtWidgets.QFrame):
         to each of them that indicates whether it has been successfull,
         failed, or is the current task
     '''
-    img_path = get_relative_path('images')
+    rsrc_path = get_relative_path('rsrc')
+    img_path = os.path.join(rsrc_path, 'images')
     image_dict = {
         ProgStates.LOADING : os.path.join(img_path, 'l_loading_icon.svg'),
         ProgStates.SUCCESS : os.path.join(img_path, 'finished_icon.svg'),
@@ -769,7 +770,8 @@ class MagPy4UI(object):
         startLt = QtWidgets.QVBoxLayout(self.startFrame)
 
         # Set background image
-        img_dir = get_relative_path('images', directory=True)
+        rsrc_dir = get_relative_path('rsrc')
+        img_dir = os.path.join(rsrc_dir, 'images')
         img_path = os.path.join(img_dir, 'magpy_background.png')
         if os.name == 'nt':
             img_path = img_path.replace('\\', '/')
@@ -835,7 +837,7 @@ class MagPy4UI(object):
 
     def setupView(self):
         # Remove start up layout and setup main plot grid
-        from .plotwidgets.plotuibase import GraphicsView
+        from .qtinterface.plotuibase import GraphicsView
         self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = pg.GraphicsLayout()

@@ -3,7 +3,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from .dynbase import *
 from ..alg.spectraalg import SpectraCalc, WaveCalc
-from ..dispwidgets.layouttools import BaseLayout, VBoxLayout, HBoxLayout
+from ..qtinterface.layouttools import BaseLayout, VBoxLayout, HBoxLayout
 from scipy import fftpack, signal
 import pyqtgraph as pg
 from ..alg.spectraalg import SpecWave

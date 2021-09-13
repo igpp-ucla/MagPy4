@@ -3,7 +3,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import pyqtgraph as pg
 from ..MagPy4UI import ScientificSpinBox
-from ..dispwidgets.layouttools import TimeEdit
+from ..qtinterface.layouttools import TimeEdit
 from ..plotbase import StackedLabel
 
 import numpy as np
@@ -21,7 +21,6 @@ from ..alg.mth import Mth
 from ..MagPy4UI import PyQtUtils
 
 from datetime import datetime
-from ..geopack.geopack import geopack
 from fflib import ff_time
 
 class Edit(QtWidgets.QFrame, EditUI):
@@ -577,6 +576,7 @@ class DataFlagTool(QtWidgets.QFrame):
 class GSM_GSE_Coord():
     TO_GSM = -1
     TO_GSE = 1
+    from geopack import geopack
     def get_universal_time(epoch, ticks):
         ''' Convert seconds since epoch time to
             universal time
@@ -598,7 +598,6 @@ class GSM_GSE_Coord():
         '''
         # Map time ticks to universal time
         ut = GSM_GSE_Coord.get_universal_time(epoch, t)
-
         # Convert coordinates and yield in tuple format
         vals = []
         for xt, yt, zt, tt in zip(x, y, z, ut):

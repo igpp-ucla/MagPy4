@@ -1,11 +1,11 @@
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
-from ..dispwidgets.layouttools import TimeEdit
+from ..qtinterface.layouttools import TimeEdit
 import pyqtgraph as pg
-from ..plotwidgets.pgextensions import LinkedRegion
+from ..plotbase.pgextensions import LinkedRegion
 import time as tm
 from datetime import datetime
-from ..dispwidgets.layouttools import BaseLayout, TableWidget, SplitterWidget
+from ..qtinterface.layouttools import BaseLayout, TableWidget, SplitterWidget
 from fflib import ff_time
 from ..plotbase.plotbase import MagPyViewBox
 

@@ -4,7 +4,7 @@ name=MagPy
 version={0}
 entry_point=MagPy4.MagPy4:runMagPy
 console=true
-icon=MagPy4/images/magPy_blue.ico
+icon=MagPy4/rsrc/images/magPy_blue.ico
 [Python]
 version=3.8.6
 [Include]

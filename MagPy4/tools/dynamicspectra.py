@@ -9,9 +9,9 @@ from scipy import fftpack, signal
 import numpy as np
 from ..plotbase import StackedAxisLabel
 from ..plotbase import MagPyPlotItem
-from ..plotwidgets.plotuibase import GraphicsView
+from ..qtinterface.plotuibase import GraphicsView
 import functools
-from ..dispwidgets.layouttools import BaseLayout
+from ..qtinterface.layouttools import BaseLayout
 from .dynbase import DynamicAnalysisTool, SpecData, PhaseGradient
 from ..alg.spectraalg import SpectraCalc
 

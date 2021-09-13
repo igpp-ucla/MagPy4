@@ -8,7 +8,7 @@ from ..MagPy4UI import PyQtUtils
 from .. import get_relative_path
 import os
 import numpy as np
-from ..dispwidgets.layouttools import HBoxLayout, VBoxLayout
+from ..qtinterface.layouttools import HBoxLayout, VBoxLayout
 
 class TraceInfo():
     ''' Object containing information about a plot variable '''
@@ -913,7 +913,9 @@ class PlotMenuUI(object):
     def setupUI(self, Frame):
         Frame.setWindowTitle('Plot Menu')
 
-        base_url = get_relative_path('images', directory=True)
+        rsrc_path = get_relative_path('rsrc')
+        img_path = os.path.join(rsrc_path, 'images')
+        img_path = os.path.join(img_path, '')
 
         # Build icon image style sheet for each case
         checkBoxStyles = ['QCheckBox{spacing: 0px;}', 
@@ -925,7 +927,7 @@ class PlotMenuUI(object):
                 style = f'QCheckBox::indicator:{kw}'
 
                 # Get style image
-                imgPath = f'image: url({base_url}checkbox_{kw}'
+                imgPath = f'image: url({img_path}checkbox_{kw}'
 
                 # Append additional info for 'hover'/'pressed' kws
                 if subKw != '':
@@ -993,7 +995,8 @@ class PlotMenuUI(object):
         self.layout.addWidget(self.pltLtFrame)
 
         # Set up split button
-        img_path = get_relative_path('images')
+        rsrc_path = get_relative_path('rsrc')
+        img_path = os.path.join(rsrc_path, 'images')
         img_path = os.path.join(img_path, 'split_arrow.png')
         pixmap = QtGui.QPixmap(img_path)
         icon = QtGui.QIcon(pixmap)

@@ -2,8 +2,8 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from ..plotbase import MagPyPlotItem
 from ..MagPy4UI import checkForOrbitLibs
-from ..dispwidgets.layouttools import TimeEdit
-from ..dispwidgets.layouttools import BaseLayout
+from ..qtinterface.layouttools import TimeEdit
+from ..qtinterface.layouttools import BaseLayout
 from .trajectory import OriginGraphic, OrbitPlotter, MagnetosphereTool
 from .. import get_relative_path
 
@@ -866,7 +866,8 @@ class Orbit_MMS():
 
     def readOrbitTable(self):
         # Open orbit table
-        orbitTablePath = get_relative_path('orbittable.txt')
+        rsrc_path = get_relative_path('rsrc')
+        orbitTablePath = os.path.join(rsrc_path, 'orbittable.txt')
         fd = open(orbitTablePath, 'r')
 
         # Get the start/end indices corresponding to the orbit number and perigee times

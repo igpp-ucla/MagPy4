@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import QSizePolicy
 
 from ..alg.mth import Mth
 from ..MagPy4UI import MatrixWidget
-from ..dispwidgets.layouttools import TimeEdit
+from ..qtinterface.layouttools import TimeEdit
 import functools
 
 class VectorLayout(QtWidgets.QGridLayout):

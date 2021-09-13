@@ -2,7 +2,7 @@
 
 <head>
     <title>MagPy4 Help</title>
-    <link rel='stylesheet' type='text/css' href='help/help.css' />
+    <link rel='stylesheet' type='text/css' href='rsrc/help/help.css' />
 </head>
 
 <body>
@@ -37,7 +37,7 @@
         <i>S<sub>1</sub></i>, <i>S<sub>2</sub></i>, &hellip;, <i>S<sub>n/2</sub></i>.</p>
     <p>If there are three orthogonal measurements of wave amplitudes in direction x, y, and z, we can form the
         cospectral matrix of variances and cross variances at each frequency <i>i</i>:</p>
-    <p class='center'><img src='help/figure1.png' alt='Figure 1' height='73' width='364'></p>
+    <p class='center'><img src='rsrc/help/figure1.png' alt='Figure 1' height='73' width='364'></p>
     <p>This matrix is the cospectral density of the signal.</p>
     <p>If you were to plot the sum of the diagonal terms (the trace) versus frequency, perhaps averaging over frequency
         to provide statistical accuracy or stability of the estimates, the plot would show the power spectral density
@@ -45,20 +45,20 @@
     <h4>Wave Analysis</h4>
     <p>The cospectrum matrix is the real part of the spectrum matrix. The imaginary part of the spectrum matrix, which
         is called the quaspectrum matrix, can be calculated at each frequency i by:</p>
-    <p class='center'><img src='help/figure2.png' alt='Figure 2' height='64' width='361'></p>
+    <p class='center'><img src='rsrc/help/figure2.png' alt='Figure 2' height='64' width='361'></p>
     <p>These two matrixes give much information about wave properties. These properties were exploited by Born
         and Wolf (1970) to analyze optical signals and by Rankin and Kurtz (1970) to analyze micropulsations. Means
         (1972) showed that the direction of propagation can be directly obtained from the matrix <i>Q<sub>i</sub></i>.</p>
     <h4>Coherence</h4>
     <p>The coherence between signals 1 and signals 2 at each frequency <i>i</i> is defined by:</p>
-    <p class='center'><img src='help/figure3.png' alt='Figure 3' height='52' width='190'></p>
+    <p class='center'><img src='rsrc/help/figure3.png' alt='Figure 3' height='52' width='190'></p>
     <p>where <i>C<sub>i,mn</sub></i> is the mn-component of the cospectrum at each frequency <i>i</i> and <i>Q<sub>i,mn</sub></i>
         is the mn-component of the quaspectrum at each frequency <i>i</i>.</p>
     <h4>Phase</h4>
     <p>Phase is the difference, expressed in degrees or radians, between two waves having the same frequency and
         referenced to the same point in time. The phase difference between signal 1 and signal 2 at each frequency <i>i</i>
         can be defined by:</p>
-    <p class='center'><img src='help/figure4.png' alt='Figure 4' height='30' width='179'></p>
+    <p class='center'><img src='rsrc/help/figure4.png' alt='Figure 4' height='30' width='179'></p>
     <h3>Tools &gt; Detrend</h3>
     <p> After selecting a time interval in the main window, each variable in the selected plot(s) is
         detrended independently using the least-squares fit method and plotted in a separate window.
@@ -135,8 +135,8 @@
         are <i>m<sub>ij</sub></i>
         (i and j represent the x, y, and z components). Assume the eigenvalues of <i>M</i> are <i>&lambda;<sub>&mu;</sub></i>
         (<i>&mu;</i>=1,2,3) and the eigenvectors that form the transformation matrix are <b><i>V<sub>&mu;</sub></i></b>.</p>
-    <p class='center'><img src='help/figure5.png' alt='Figure 5' height='57' width='119'></p>
-    <p class='center'><img src='help/figure6.png' alt='Figure 6' height='24' width='171'></p>
+    <p class='center'><img src='rsrc/help/figure5.png' alt='Figure 5' height='57' width='119'></p>
+    <p class='center'><img src='rsrc/help/figure6.png' alt='Figure 6' height='24' width='171'></p>
     <p class='center'><b><i>M</i></b><b><i>V<sub>&mu;</sub></i></b> = <i>&lambda;<sub>&mu;</sub></i><b><i>V<sub>&mu;</sub></i></b>.</p>
     <h3>Options</h3>
     <p>The Options menu allows you to change the style of the plot. You can choose to scale the y-range of the data
@@ -157,8 +157,8 @@
         is the smallest value of this data set and maximum is the largest value. The median is the value separating
         the higher half from the lower half of the data set. Suppose the mean value is <i>&mu;</i> and the standard
         deviation is <i>&sigma;</i>, then:</p>
-    <p class='center'><img src='help/figure7.png' alt='Figure 7' height='57' width='78'></p>
-    <p class='center'><img src='help/figure8.png' alt='Figure 8' height='75' width='130'></p>
+    <p class='center'><img src='rsrc/help/figure7.png' alt='Figure 7' height='57' width='78'></p>
+    <p class='center'><img src='rsrc/help/figure8.png' alt='Figure 8' height='75' width='130'></p>
 </body>
 
 </html>

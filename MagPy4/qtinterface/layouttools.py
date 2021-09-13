@@ -252,7 +252,7 @@ class BaseLayout(object):
         return spacer
 
     def getGraphicsGrid(self, window=None):
-        from ..plotbase.plotuibase import GraphicsView
+        from ..qtinterface.plotuibase import GraphicsView
         self.gview = GraphicsView()
         self.gview.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding))
         self.glw = pg.GraphicsLayout()
