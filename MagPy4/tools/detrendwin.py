@@ -404,7 +404,7 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI):
             self.minTime = self.tO
             self.maxTime = self.tE
             self.pltGrd.set_x_range(self.tO, self.tE)
-            self.pltGrd.set_x_lim(self.tO, self.tE)
+            self.pltGrd.set_x_lim(self.minTime, self.maxTime)
 
             self.lastPlotStrings.append(pltStrs)
             plotNum += 1

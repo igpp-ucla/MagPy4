@@ -1718,13 +1718,12 @@ class MagPyPlotDataItem(pg.PlotDataItem):
                 view = self.getViewBox()
                 if view is None or not view.autoRangeEnabled()[0]:
                     # this option presumes that x-values have uniform spacing
-                    range = self.viewRect()
+                    range = view.viewRange()[0]
                     if range is not None and len(x) > 1:
-                        lft = range.left()
-                        rght = range.right()
+                        lft, rght = range[0], range[-1]
                         x0 = bisect_left(x, lft)
                         x0 = max(0, x0-1)
-                        x1 = bisect_right(x, rght)
+                        x1 = bisect_right(x, rght+1)
                         x = x[x0:x1+1]
                         y = y[x0:x1+1]
                         if self.connectSegments is not None:

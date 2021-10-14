@@ -213,7 +213,7 @@ def find_groups(group_exprs, axes, labels):
         and places them in a dictionary with
         key = axis corresponding to the expression
 
-        Returns a tuple -> (dict, list)
+        Returns a tuple -> (dict, list) 
     '''
     groups = {}
     suffixes = set()
@@ -243,6 +243,7 @@ def find_full_groups(group_expr, axes, groups, suffixes):
     '''
     full_groups = {}
     for suffix in suffixes:
+        suffix = re.escape(suffix)
         suffix_grp = []
         # Iterate over each axis to form a new regular
         # expression from axis group_expr and suffix

@@ -355,7 +355,6 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
             start_date = ff_time.tick_to_date(start, self.epoch)
             stop_date = ff_time.tick_to_date(stop, self.epoch)
-
         self.tO = start_tick
         self.tE = end_tick
 
@@ -1774,7 +1773,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.iiE = self.iE
         print(f'slider ticks: {self.iiE}')
 
-        self.ui.setupSliders(tick, self.iiE, self.getMinAndMaxDateTime())
+        self.ui.setupSliders(self.resolution, (self.minTime, self.maxTime), self.getMinAndMaxDateTime())
 
     def getCDFPaths(self):
         fileNames = QtWidgets.QFileDialog.getOpenFileNames(self, caption="Open CDF File", options = QtWidgets.QFileDialog.ReadOnly, filter='CDF Files (*.cdf)')[0]
@@ -2019,9 +2018,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def plotData(self, dataStrings, links, heightFactors, save=False):
         # Remove any saved linked regions from plots and save their state
-        self.ui.scrollSelect.set_range(self.maxTime-self.minTime)
+        self.ui.scrollSelect.set_range_info(self.minTime, self.maxTime, self.resolution)
         self.ui.scrollSelect.set_start(self.tO-self.minTime)
-        self.ui.scrollSelect.set_range(self.tE-self.minTime)
+        self.ui.scrollSelect.set_range_info(self.minTime, self.maxTime, self.resolution)
         selectState = self.getSelectState()
         self.closeFixSelection()
         self.closeBatchSelect()

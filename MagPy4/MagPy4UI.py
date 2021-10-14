@@ -640,10 +640,11 @@ class MagPy4UI(object):
         self.startUp(window)
 
     # update slider tick amount and timers and labels and stuff based on new file
-    def setupSliders(self, tick, max, minmax):
-        self.scrollSelect.set_range(max)
+    def setupSliders(self, res, endpoints, minmax):
+        start, stop = endpoints
+        self.scrollSelect.set_range_info(start, stop, res)
         self.scrollSelect.set_start(0)
-        self.scrollSelect.set_end(max)
+        self.scrollSelect.set_end(abs(stop-start))
         self.timeEdit.setupMinMax(minmax)
 
     def enableUIElems(self, enabled=True):
@@ -1124,6 +1125,9 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
         # Keeps track of active slider
         self.current_slider = 0
 
+        # Helps adjust position
+        self.tick_endpoints = (0, 100)
+
         # Positions of start/end markers relative to position
         # selected on scroll bar
         self.slider_relative_start = 0
@@ -1187,14 +1191,18 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
         self.update()
         self.endChanged.emit(t)
 
-    def set_range(self, t):
-        ''' Sets the maximum number of ticks '''
-        self.num_ticks = t
+    def set_num_ticks(self, num_ticks):
+        self.num_ticks = num_ticks
         self.update()
 
     def get_num_ticks(self):
         ''' Returns the maximum number of ticks '''
         return self.num_ticks
+
+    def set_range_info(self, min_time, max_time, res):
+        self.tick_range = (min_time, max_time)
+        diff = abs(max_time - min_time)
+        self.set_num_ticks(np.ceil(diff))
 
     def mouseReleaseEvent(self, ev):
         self.sliderReleased.emit()
@@ -1206,7 +1214,6 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
 
         # Get position and current slider rects
         pos = ev.pos()
-        startRect, endRect, scrollRect = self.get_marker_rects()
 
         # Update position of currently selected slider
         if self.current_slider == 0: # Start slider
@@ -1261,13 +1268,14 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
         # If the new positions would shrink the scrollbar
         # set to lowest/highest values possible while still maintaining
         # the original size of the scroll bar
+        # print (self.start_pos, self.end_pos, diff, self.get_num_ticks())
         if abs(self.end_pos - self.start_pos) < abs(diff):
             num_ticks = self.get_num_ticks()
             if self.end_pos == 0 or self.start_pos == 0:
                 # Bounded by min value
                 self.start_pos = 0
                 self.end_pos = abs(diff)
-            elif self.end_pos == num_ticks or self.start_pos == num_ticks:
+            elif self.end_pos >= num_ticks or self.start_pos >= num_ticks:
                 # Bounded by max value
                 self.start_pos = num_ticks - abs(diff)
                 self.end_pos = num_ticks
@@ -1314,7 +1322,8 @@ class ScrollSelector(QtWidgets.QAbstractSlider):
         # available space for placing ticks
         int_pos = (x - self.mark_width) * (self.get_num_ticks() / avail_width)
         int_pos = min(max(int_pos, 0), self.get_num_ticks())
-        return np.round(int_pos)
+        int_pos = np.round(int_pos)
+        return int_pos
 
     def get_marker_rects(self):
         ''' Gets the rect for each marker and scrollbar '''
