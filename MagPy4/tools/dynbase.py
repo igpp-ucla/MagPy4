@@ -1,4 +1,4 @@
-from MagPy4.plotbase import MagPyPlotDataItem
+from MagPy4.plotbase import MagPyPlotDataItem, MagPyAxisItem
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 from copy import copy
@@ -484,8 +484,16 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
 
 class ColorBarAxis(pg.AxisItem):
     def __init__(self, *args, **kwargs):
+        self.prefix = ''
         super().__init__(*args, **kwargs)
         self.setStyle(tickLength=-5)
+    
+    def setPrefix(self, p):
+        self.prefix = p
+
+    def tickStrings(self, values, scale, spacing):
+        result = super().tickStrings(values, scale, spacing)
+        return [f'{self.prefix}{val}' for val in result]
 
     def tickSpacing(self, minVal, maxVal, size):
         dif = abs(maxVal - minVal)
@@ -599,6 +607,9 @@ class GradLegend(pg.GraphicsLayout):
     def getValueRange(self):
         ''' Returns the numerical value range represented by gradient '''
         return self.valueRange
+
+    def setPrefix(self, p):
+        self.axisItem.setPrefix(p)
 
     def setRange(self, gradient, valRange):
         ''' Sets the color gradient and numerical value range it represents '''
@@ -1031,33 +1042,15 @@ class SpectraLegend(GradLegend):
         self.logMode = logMode
         if logMode:
             self.setTickSpacing(1, 0.5)
+            self.setPrefix('10^')
         else:
             self.setTickSpacing(None, None)
-
-        # Update label if there is one linked to this gradlegend
-        label = self.getLabel()
-        if label:
-            labels = label.getLabelText()
-            if len(labels) == 0:
-                return
-
-            top_label = labels[0]
-            new_top_label = self.update_log_label(top_label, logMode)
-            labels[0] = new_top_label
-            label.setupLabels(labels)
-
-    def update_log_label(self, label, log_scale):
-        items = label.split(' ')
-        new_label = label
-        if len(items) > 0:
-            if items[0] == 'Log' and not log_scale:
-                new_label = ' '.join(items[1:])
-            elif items[0] != 'Log' and log_scale:
-                new_label = ' '.join(['Log'] + items)
-        return new_label
+            self.setPrefix('')
 
     def logModeSetting(self):
         return self.logMode
+
+from ..common import logbase_reverse, logbase_map
 
 class SpectraGridItem(pg.GraphicsObject):
     '''
@@ -1067,12 +1060,14 @@ class SpectraGridItem(pg.GraphicsObject):
         # Data bounds
         self.x_bound = times[[0, -1]]
         self.y_bound = freqs[[0, -1]]
+        self.freqs = freqs
 
         # Used to update window's status bar w/ the clicked value if passed
         self.window = window
         self.clickable = True
         self.spec = None
         self.logmode = False
+        self.logbase = [None, None]
 
         # Color and rect tuples to draw on plot
         shape = np.array(freqs).shape
@@ -1098,20 +1093,44 @@ class SpectraGridItem(pg.GraphicsObject):
 
     def setLogMode(self, x=False, val=True):
         if self.logmode != val:
-            self.remap_paths(val)
             self.logmode = val
+            self.remap_paths(val)
 
-    def remap_paths(self, val):
+    def setLogBase(self, x=None, y=None):
+        prev = self.logbase[:]
+        if y is not None:
+            self.logbase[1] = y
+        
+        if self.logbase != prev and self.logmode:
+            self.remap_paths(False, prev[1])
+            self.remap_paths(self.logmode)
+    
+    def getLogBase(self):
+        logbase = self.logbase[1]
+        logbase = '10' if logbase is None else logbase
+        return logbase
+
+    def remap_paths(self, val, logbase=None):
         ''' Update rects when y scaling mode is updated '''
         for color, rect in self.paths:
             top, bottom = rect.top(), rect.bottom()
+            logbase = self.getLogBase() if logbase is None else logbase
             if val: # Log scale
-                top, bottom = np.log10(top), np.log10(bottom)
+                logfunc = logbase_map[logbase]
+                top, bottom = logfunc(top), logfunc(bottom)
             else: # Linear scale
-                top, bottom = top ** 10, bottom ** 10
+                logfunc = logbase_reverse[logbase]
+                top, bottom = logfunc(top), logfunc(bottom)
             rect.setTop(top)
             rect.setBottom(bottom)
+        
+        if val:
+            freqs = logfunc(self.freqs)
+            diffs = np.diff(freqs)
+
+        self._boundingRect = None
         self.prepareGeometryChange()
+        self.update()
 
     def dataBounds(self, ax, frac=1.0, orthoRange=None):
         if ax == 0:
@@ -1119,7 +1138,9 @@ class SpectraGridItem(pg.GraphicsObject):
         else:
             b = self.y_bound
             if self.logmode:
-                b = np.log10(self.y_bound)
+                logbase = self.getLogBase()
+                logfunc = logbase_map[logbase]
+                b = logfunc(self.y_bound)
         return b
 
     def pixelPadding(self):
@@ -1366,6 +1387,7 @@ class SpecData():
         self.log_color = log_color
         self.mask_info = mask_info
         self.log_scale = log_y
+        self.logbase = '10' # Default is log base 10
         self.grad_range = None
 
         # Default gradient is RGB gradient
@@ -1469,6 +1491,12 @@ class SpecData():
 
     def log_y_scale(self):
         return self.log_scale
+
+    def set_logbase(self, b):
+        self.logbase = b
+    
+    def get_logbase(self):
+        return self.logbase
 
     def log_color_scale(self):
         return self.log_color
@@ -1592,7 +1620,7 @@ class SpecData():
                 return None
 
             if self.log_y_scale:
-                maskYVals = np.log10(maskYVals)
+                maskYVals = logbase_map[self.logbase](maskYVals)
 
             maskOutline = MaskOutline(mask, list(maskYVals), self.x_bins, pen=pen)
             return maskOutline

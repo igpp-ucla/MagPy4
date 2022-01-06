@@ -237,7 +237,7 @@ class MaskTool(QtWidgets.QFrame):
     
         # Set up default plot info for dynamic spectra, coherence, and phase plots
         self.defaultPlotInfo = {
-            'Spectra': (None, 'Log Power', 'nT^2/Hz'),
+            'Spectra': (None, 'Power', 'nT^2/Hz'),
             'Coherence': ((0, 1), 'Coherence', None),
             'Phase': ((-180, 180), 'Angle', 'Degrees')
         }

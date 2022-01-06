@@ -447,6 +447,10 @@ class PlotGrid(Grid, QtGui.QGraphicsGridLayout):
         new_plot = (parent is None) or (hidden)
         if new_plot and isinstance(plot, MagPyPlotItem):
             plot.sigXRangeChanged.connect(self.update_grid_range)
+            plot.sigLogChanged.connect(self._log_updated)
+
+    def _log_updated(self, values):
+        self.parentLayoutItem().update_y_ranges()
 
     def _update_time_loc(self):
         ax_grid = self.axis_grids['bottom']
@@ -971,7 +975,7 @@ class PlotGridObject(pg.GraphicsWidget):
                 # Get bounds for plot data items
                 set_bounds = [ranges[i] for i in plot_set]
                 set_bounds = [b for b in set_bounds if (b is not None and b[1] is not None)]
-
+                
                 if len(set_bounds) == 0:
                     continue
 
@@ -1006,6 +1010,7 @@ class PlotGridObject(pg.GraphicsWidget):
             half = diff * 0.01 
             if plot.isSpecialPlot():
                 half = 0.0
+            
             plot.setYRange(bounds[0] - half, bounds[1] + half, 0.0)
 
     def set_autoscale(self, val=True):

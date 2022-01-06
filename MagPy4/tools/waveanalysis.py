@@ -768,8 +768,8 @@ class DynamicWave(QtWidgets.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             'Propagation Angle (Means)' : ((0, 90), 'Angle', 'Degrees'),
             'Propagation Angle (SVD)' : ((0, 90), 'Angle', 'Degrees'),
             'Propagation Angle (Min Var)' : ((0, 90), 'Angle', 'Degrees'),
-            'Power Spectra Trace' : (None, 'Log Power', 'nT^2/Hz'),
-            'Compressional Power' : (None, 'Log Power', 'nT^2/Hz')
+            'Power Spectra Trace' : (None, 'Power', 'nT^2/Hz'),
+            'Compressional Power' : (None, 'Power', 'nT^2/Hz')
         }
 
         self.titleDict = {}

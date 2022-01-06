@@ -521,6 +521,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             return
 
         self.setNewWindowTicks(start, end)
+    
+    def get_plot_items(self):
+        return self.pltGrdObject.get_plots()
 
     def zoomCentered(self, ev, axis):
         ''' Distributes wheel events across plots in grid
@@ -528,7 +531,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         '''
 
         # Pass scroll event to all plot items
-        for plot in self.plotItems:
+        for plot in self.get_plot_items():
             vb = plot.getViewBox()
             vb.setMouseEnabled(x=True, y=False)
             pg.ViewBox.wheelEvent(vb, ev, axis)
@@ -2382,6 +2385,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         return self.tO, self.tE
 
     def updateLogScaling(self, plotIndex, val):
+        return
+        plot_items = self.get_plot_items()
+
         # Look through all link sets the plot at the given index is in
         for row in self.lastPlotLinks:
             if plotIndex not in row:
@@ -2390,13 +2396,13 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             # Check link set to see if it contains a log-scaled plot or not
             logModeDetected = False
             for plotIndex in row:
-                if self.plotItems[plotIndex].ctrl.logYCheck.isChecked() == val:
+                if plot_items[plotIndex].ctrl.logYCheck.isChecked() == val:
                     logModeDetected = True
 
             # Adjust all other plots to have same scale
             if logModeDetected:
                 for plotIndex in row:
-                    currPlt = self.plotItems[plotIndex]
+                    currPlt = plot_items[plotIndex]
                     currPlt.ctrl.logYCheck.blockSignals(True)
                     currPlt.ctrl.logYCheck.setChecked(val)
                     currPlt.updateLogMode()

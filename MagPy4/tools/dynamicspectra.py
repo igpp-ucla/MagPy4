@@ -481,9 +481,7 @@ class DynamicSpectra(QtWidgets.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
     def getLabels(self, dstr, logScale):
         title = 'Dynamic Spectra Analysis ' + '(' + dstr + ')'
         axisLbl = 'Frequency (Hz)'
-        if logScale:
-            axisLbl = 'Log ' + axisLbl
-        legendLbl = StackedAxisLabel(['Log Power', '(nT^2/Hz)'], angle=0)
+        legendLbl = StackedAxisLabel(['Power', '(nT^2/Hz)'], angle=0)
         legendLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
         return title, axisLbl, legendLbl
 

@@ -1,3 +1,5 @@
+import functools
+import PyQt5
 from fflib import ff_time
 import pyqtgraph as pg
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -7,6 +9,35 @@ from bisect import bisect_left, bisect_right
 from dateutil import rrule
 from dateutil.rrule import rrule
 from dateutil.rrule import rrule, SECONDLY, MINUTELY, HOURLY, DAILY, MONTHLY, YEARLY
+from ..common import logbase_map, logbase_reverse
+
+class LogAction(QtWidgets.QWidgetAction):
+    toggled = QtCore.pyqtSignal(bool)
+    baseChanged = QtCore.pyqtSignal(str)
+    def __init__(self, axis='X', parent=None) -> None:
+        super().__init__(parent)
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QGridLayout(widget)
+        
+        # Set up checkbox
+        self.checkbox = QtWidgets.QCheckBox(f'Log {axis}')
+        self.checkbox.toggled.connect(self.toggled)
+        
+        # Set up base info dropdown
+        label = QtWidgets.QLabel('      Base: ')
+        self.dropdown = QtWidgets.QComboBox()
+        self.dropdown.addItems(list(logbase_map.keys()))
+        self.dropdown.currentTextChanged.connect(self.baseChanged)
+
+        sublayout = QtWidgets.QHBoxLayout()
+        sublayout.addWidget(label)
+        sublayout.addWidget(self.dropdown)
+        sublayout.addStretch()
+
+        # Set widget for this item
+        layout.addWidget(self.checkbox, 0, 0, 1, 1)
+        layout.addLayout(sublayout, 1, 0, 1, 1)
+        self.setDefaultWidget(widget)
 
 class StackedAxisLabel(pg.GraphicsLayout):
     def __init__(self, lbls, angle=90, *args, **kwargs):
@@ -275,6 +306,7 @@ class MagPyViewBox(pg.ViewBox):
         self.get_plot().vbHoverEvent(ev)
 
 class MagPyPlotItem(pg.PlotItem):
+    sigLogChanged = QtCore.pyqtSignal(tuple)
     def __init__(self, epoch=None, name=None, selectable=False, *args, **kwargs):
         # Initialize axis items
         axisKws = ['left', 'top', 'right', 'bottom']
@@ -295,11 +327,13 @@ class MagPyPlotItem(pg.PlotItem):
         # Set default name, None if none passed
         self.name = name
         self.varInfo = []
-        self.plotApprAction = None
-        self.plotAppr = None
+        self.logMenu = None
 
         # Hover tracking disabled by default
         self.hoverTracker = None
+
+        # Log bases empty by default
+        self.logbase = [None, None]
 
         super().__init__(viewBox=vb, axisItems=axisItems, *args, **kwargs)
         for ax in axisItems:
@@ -321,8 +355,7 @@ class MagPyPlotItem(pg.PlotItem):
         return self.name
 
     def updateLogMode(self):
-        x = self.ctrl.logXCheck.isChecked()
-        y = self.ctrl.logYCheck.isChecked()
+        x, y = self.getLogMode()
         for i in self.items:
             if hasattr(i, 'setLogMode'):
                 i.setLogMode(x,y)
@@ -330,6 +363,34 @@ class MagPyPlotItem(pg.PlotItem):
         self.getAxis('top').setLogMode(x)
         self.getAxis('left').setLogMode(y)
         self.getAxis('right').setLogMode(y)
+
+        self.sigLogChanged.emit((None, None))
+    
+    def getLogMode(self):
+        x = self.ctrl.logXCheck.isChecked()
+        y = self.ctrl.logYCheck.isChecked()
+        return (x, y)
+    
+    def getLogBase(self):
+        return self.logbase
+    
+    def setLogBase(self, x=None, y=None):
+        if x is not None:
+            for axdir in ['top', 'bottom']:
+                self.getAxis(axdir).setLogBase(x)
+            self.logbase[0] = x
+
+        if y is not None:
+            for axdir in ['left', 'right']:
+                self.getAxis(axdir).setLogBase(y)
+            self.logbase[1] = y
+        
+        for i in self.items:
+            if hasattr(i, 'setLogBase'):
+                i.setLogBase(*self.logbase)
+
+        self.sigLogChanged.emit((None, None))
+        self.updateLogMode()
 
     def plot(self, *args, **kargs):
         clear = kargs.get('clear', False)
@@ -370,17 +431,23 @@ class MagPyPlotItem(pg.PlotItem):
         ''' Loads spectrogram from specData object '''
         from ..tools.dynbase import SpectraGridItem
         from ..tools.dynbase import SpectraLegend
+
         # Extract grid info
         y, x = specData.get_bins()
 
         # Set log y scaling
         self.logYScale = specData.log_y_scale()
+        logbase = specData.get_logbase()
         self.setLogMode(x=False, y=self.logYScale)
+        self.setLogBase(y=logbase)
+
+        # Extract ranges and scale data logarithmically
         x_range, y_range = specData.get_ranges()
-        ys, ye = y_range
+        ylow, yhigh = y_range
+        logfunc = logbase_map[logbase]
         if self.logYScale:
-            ys = np.log10(ys)
-            ye = np.log10(ye)
+            ys = logfunc(ylow)
+            ye = logfunc(yhigh)
         self.setYRange(ys, ye, 0.0)
 
         # Set labels
@@ -438,15 +505,67 @@ class MagPyPlotItem(pg.PlotItem):
         grids = self.get_specs()
         return grids + self.listDataItems()
 
+    def addItem(self, item, *args, **kargs):
+        if hasattr(item, 'setLogBase'):
+            item.setLogBase(*self.logbase)
+
+        return super().addItem(item, *args, **kargs)
+
     def setVarInfo(self, info):
         self.varInfo = info
     
+    def _updateLogMenu(self):
+        # Block signals
+        self.xlogaction.blockSignals(True)
+        self.ylogaction.blockSignals(True)
+
+        # Get current log values
+        logx, logy = self.getLogMode()
+        basex, basey = self.getLogBase()
+
+        # Initialize values
+        self.xlogaction.checkbox.setChecked(logx)
+        self.ylogaction.checkbox.setChecked(logy)
+
+        self.xlogaction.dropdown.setCurrentText(basex)
+        self.ylogaction.dropdown.setCurrentText(basey)
+
+        self.xlogaction.blockSignals(False)
+        self.ylogaction.blockSignals(False)
+
+    def getLogMenu(self):
+        if self.logMenu:
+            self._updateLogMenu()
+            return self.logMenu
+
+        # Set up log menu
+        logmenu = QtWidgets.QMenu('Log Menu')
+        xlogaction = LogAction('X')
+        ylogaction = LogAction('Y')
+        self.xlogaction = xlogaction
+        self.ylogaction = ylogaction
+
+        logmenu.addAction(xlogaction)
+        logmenu.addAction(ylogaction)
+
+        # Connect actions to functions
+        xlogaction.toggled.connect(self.ctrl.logXCheck.setChecked)
+        ylogaction.toggled.connect(self.ctrl.logYCheck.setChecked)
+
+        xfunc = functools.partial(self.setLogBase, y=None)
+        yfunc = functools.partial(self.setLogBase, None)
+        xlogaction.baseChanged.connect(xfunc)
+        ylogaction.baseChanged.connect(yfunc)
+
+        # Initialize values
+        self._updateLogMenu()
+
+        self.logMenu = logmenu
+        return logmenu
+
     def getContextMenus(self, ev):
-        menu = self.getMenu()
-        if self.plotApprAction:
-            return [self.plotApprAction, menu]
-        else:
-            return menu
+        menus = [self.getLogMenu(), self.getMenu()]
+        return self.getLogMenu()
 
     def dataBounds(self, ax, frac=1.0, orthoRange=None):
         ''' Calls dataBounds() on each plot data item
@@ -457,6 +576,9 @@ class MagPyPlotItem(pg.PlotItem):
         lower, upper = None, None
         for pdi in pdis:
             bounds = pdi.dataBounds(ax=ax, frac=frac, orthoRange=orthoRange)
+            if bounds is None or bounds[0] is None or bounds[1] is None:
+                continue
+
             if lower is None:
                 lower, upper = bounds
             else:
@@ -627,6 +749,7 @@ class MagPyAxisItem(pg.AxisItem):
         self.minWidthSet = False
         self.levels = None
         self.ignore_bounds = False
+        self.logbase = '10'
         pg.AxisItem.__init__(self, orientation, pen=None, linkView=None, parent=None, maxTickLength=-5, showValues=True)
 
     def getTickSpacing(self):
@@ -673,8 +796,15 @@ class MagPyAxisItem(pg.AxisItem):
         self.picture = None
         self.update()
 
-    def tickStrings(self, values, scale, spacing):
-        return pg.AxisItem.tickStrings(self, values, scale, spacing)
+    def tickValues(self, values, scale, spacing):
+        prev = None
+        if self.logMode and self.logbase != '10':
+            prev = self.logMode
+            self.logMode = False
+        result = super().tickValues(values, scale, spacing)
+        if prev is not None:
+            self.logMode = prev
+        return result
 
     def setLogMode(self, val):
         pg.AxisItem.setLogMode(self, val)
@@ -719,9 +849,15 @@ class MagPyAxisItem(pg.AxisItem):
         if self.logMode:
             w += 10
         return w # 10 extra to offset if in scientific notation
+    
+    def setLogBase(self, b):
+        if b not in logbase_map:
+            raise Exception('Error: Invalid log base given to axis item')
+        self.logbase = b
+        self.update()
 
     def logTickStrings(self, values, scale, spacing):
-        return [f'10<sup>{int(x)}</sup>' for x in np.array(values).astype(float)]
+        return [f'{self.logbase}<sup>{int(x)}</sup>' for x in np.array(values).astype(float)]
 
     def drawPicture(self, p, axisSpec, tickSpecs, textSpecs):
         p.setRenderHint(p.Antialiasing, False)
@@ -1645,9 +1781,25 @@ class MagPyPlotDataItem(pg.PlotDataItem):
     def __init__(self, *args, **kwargs):
         self.connectSegments = None
         pg.PlotDataItem.__init__(self, *args, **kwargs)
+        self.opts['logBase'] = [None, None]
 
         if isinstance(self.opts['connect'], (list, np.ndarray)):
             self.connectSegments = self.opts['connect']
+    
+    def setLogBase(self, x=None, y=None):
+        if x is not None:
+            self.opts['logBase'][0] = x
+
+        if y is not None:
+            self.opts['logBase'][1] = y
+        
+        self._clearDisplay()
+        self.updateItems()
+        self.update()
+
+    def _clearDisplay(self):
+        self.xDisp = None
+        self.yDisp = None
 
     def getSegs(self, segs, ds, n=None):
         # Splits connection vals by ds, setting values to zero if there is a break
@@ -1668,6 +1820,14 @@ class MagPyPlotDataItem(pg.PlotDataItem):
                 segs[i] = 0
 
         return segs
+    
+    def _get_log_func(self, index):
+        logbase = self.opts['logBase'][index]
+        if logbase is None:
+            logfunc = np.log10
+        else:
+            logfunc = logbase_map[logbase]
+        return logfunc
 
     def getData(self):
         if self.xData is None:
@@ -1676,6 +1836,7 @@ class MagPyPlotDataItem(pg.PlotDataItem):
         if self.xDisp is None:
             x = self.xData
             y = self.yData
+            mask = None
 
             if self.connectSegments is not None:
                 segs = self.connectSegments[:]
@@ -1689,9 +1850,14 @@ class MagPyPlotDataItem(pg.PlotDataItem):
                     x=x[1:]
                     y=y[1:]
             if self.opts['logMode'][0]:
-                x = np.log10(x)
+                logfunc = self._get_log_func(0)
+                x = logfunc(x)
+
             if self.opts['logMode'][1]:
-                y = np.log10(y)
+                logfunc = self._get_log_func(1)
+                mask = y > 0
+                y = logfunc(y[mask])
+                x = x[mask]
 
             ds = self.opts['downsample']
             if not isinstance(ds, int):
@@ -2150,7 +2316,6 @@ class GridTracker(pg.GraphicsObject):
         return hover_items
     
     def get_hover_squares(self, pos):
-        from bisect import bisect_right
         spec_objects = self.plot.get_specs()
         spec_points = []
         for spec in spec_objects:
@@ -2159,8 +2324,9 @@ class GridTracker(pg.GraphicsObject):
                 continue
             x, y, z = spec.spec.values()
             xs, ys = pos.x(), pos.y()
-            if self.plot.getAxis('left').logMode:
-                ys = 10 ** ys
+            if self.plot.getAxis('left').logMode: # TODO: Update this for log mode !
+                logbase = self.plot.getLogBase()
+                ys = logbase_reverse[logbase[1]](ys)
             x_index = bisect_left(x, xs) - 1
             if len(np.array(y).shape) > 1:
                 y = y[x_index]
