@@ -285,10 +285,10 @@ class AxisGrid(Grid):
     def get_labels(self):
         return self.axes_labels
 
-class PlotGrid(Grid, QtGui.QGraphicsGridLayout):
+class PlotGrid(Grid, QtWidgets.QGraphicsGridLayout):
     def __init__(self, shape=(1,1)) -> None:
         Grid.__init__(self, shape)
-        QtGui.QGraphicsGridLayout.__init__(self)
+        QtWidgets.QGraphicsGridLayout.__init__(self)
         self.border = (0, 255, 0)
         self.time_label = None
         self.axis_grids = {'top': AxisGrid(self), 'bottom': AxisGrid(self)}

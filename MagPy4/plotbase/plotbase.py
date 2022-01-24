@@ -80,7 +80,7 @@ class StackedAxisLabel(pg.GraphicsLayout):
                 self.layout.removeItem(layout_item)
 
         self.sublabels = []
-        self.sublayout = QtGui.QGraphicsLinearLayout()
+        self.sublayout = QtWidgets.QGraphicsLinearLayout()
         self.sublayout.setOrientation(self.orientation)
         self.sublayout.setSpacing(0)
         self.layout.addItem(self.sublayout, 0, 0, 1, 1)
@@ -1063,7 +1063,7 @@ class MagPyAxisItem(pg.AxisItem):
                 if s is None and (not self.ignore_bounds):
                     rects.append(None)
                 else:
-                    br = p.boundingRect(QtCore.QRectF(0, 0, 100, 100), QtCore.Qt.AlignCenter, pg.asUnicode(s))
+                    br = p.boundingRect(QtCore.QRectF(0, 0, 100, 100), QtCore.Qt.AlignCenter, str(s))
                     if self.logMode:
                         # Calculate bounding rect for rich-text log tick labels
                         txtItem = QtWidgets.QGraphicsTextItem()
@@ -1113,7 +1113,7 @@ class MagPyAxisItem(pg.AxisItem):
                 vstr = strings[j]
                 if vstr is None: ## this tick was ignored because it is out of bounds
                     continue
-                vstr = pg.asUnicode(vstr)
+                vstr = str(vstr)
                 x = tickPositions[i][j]
                 textRect = rects[j]
                 height = textRect.height()
@@ -1672,7 +1672,7 @@ class DateAxis(pg.AxisItem):
                 if s is None:
                     rects.append(None)
                 else:
-                    br = p.boundingRect(QtCore.QRectF(0, 0, 100, 100), QtCore.Qt.AlignCenter, pg.asUnicode(s))
+                    br = p.boundingRect(QtCore.QRectF(0, 0, 100, 100), QtCore.Qt.AlignCenter, str(s))
                     if self.logMode:
                         # Calculate bounding rect for rich-text log tick labels
                         txtItem = QtWidgets.QGraphicsTextItem()
@@ -1720,7 +1720,7 @@ class DateAxis(pg.AxisItem):
                 vstr = strings[j]
                 if vstr is None: ## this tick was ignored because it is out of bounds
                     continue
-                vstr = pg.asUnicode(vstr)
+                vstr = str(vstr)
                 x = tickPositions[i][j]
                 textRect = rects[j]
                 height = textRect.height()
@@ -1780,7 +1780,7 @@ class DateAxis(pg.AxisItem):
 class MagPyPlotDataItem(pg.PlotDataItem):
     def __init__(self, *args, **kwargs):
         self.connectSegments = None
-        pg.PlotDataItem.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.opts['logBase'] = [None, None]
 
         if isinstance(self.opts['connect'], (list, np.ndarray)):

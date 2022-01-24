@@ -993,7 +993,7 @@ class PyQtUtils:
             # this will activate the window
             window.activateWindow()
 
-class FileLabel(QtGui.QLabel):
+class FileLabel(QtWidgets.QLabel):
     '''
         Self-adjusting label for lists of files opened
     '''
