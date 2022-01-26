@@ -195,7 +195,7 @@ class DataDisplay(QtWidgets.QFrame, DataDisplayUI):
 
         self.updateTimeVarBox()
         self.update()
-        self.clip = QtGui.QApplication.clipboard()
+        self.clip = QtGui.QGuiApplication.clipboard()
 
         # Disable 'View Edited Data' checkbox if set to view only unedited data
         if self.window.currentEdit == 0:

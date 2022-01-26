@@ -10,6 +10,7 @@ from dateutil import rrule
 from dateutil.rrule import rrule
 from dateutil.rrule import rrule, SECONDLY, MINUTELY, HOURLY, DAILY, MONTHLY, YEARLY
 from ..common import logbase_map, logbase_reverse
+from pyqtgraph.graphicsItems.PlotDataItem import PlotDataset
 
 class LogAction(QtWidgets.QWidgetAction):
     toggled = QtCore.pyqtSignal(bool)
@@ -1785,7 +1786,9 @@ class MagPyPlotDataItem(pg.PlotDataItem):
 
         if isinstance(self.opts['connect'], (list, np.ndarray)):
             self.connectSegments = self.opts['connect']
-    
+        elif self.opts['connect'] == 'auto':
+            self.opts['connect'] = 'all'
+        
     def setLogBase(self, x=None, y=None):
         if x is not None:
             self.opts['logBase'][0] = x
@@ -1829,13 +1832,12 @@ class MagPyPlotDataItem(pg.PlotDataItem):
             logfunc = logbase_map[logbase]
         return logfunc
 
-    def getData(self):
-        if self.xData is None:
+    def getDisplayDataset(self):
+        if self._dataset is None:
             return (None, None)
 
-        if self.xDisp is None:
-            x = self.xData
-            y = self.yData
+        if self._datasetDisplay is None:
+            x, y = self._dataset.x, self._dataset.y
             mask = None
 
             if self.connectSegments is not None:
@@ -1931,16 +1933,15 @@ class MagPyPlotDataItem(pg.PlotDataItem):
                         segs_new[:] = segs[::,np.newaxis]
                         segs = segs_new.reshape(n*2)
 
-            self.xDisp = x
-            self.yDisp = y
-
             if self.connectSegments is not None:
                 self.opts['connect'] = segs
 
-        return self.xDisp, self.yDisp
+            self._datasetDisplay = PlotDataset(x, y)
+        return self._datasetDisplay
 
     def updateItems(self, *args, **kwargs):
-        x, y = self.getData()
+        data = self.getDisplayDataset()
+        x, y = data.x, data.y
         curveArgs = {}
         for k,v in [('pen','pen'), ('shadowPen','shadowPen'), ('fillLevel','fillLevel'), ('fillBrush', 'brush'), ('antialias', 'antialias'), ('connect', 'connect'), ('stepMode', 'stepMode')]:
             curveArgs[v] = self.opts[k]
