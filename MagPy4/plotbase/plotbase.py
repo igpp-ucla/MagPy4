@@ -449,6 +449,8 @@ class MagPyPlotItem(pg.PlotItem):
         if self.logYScale:
             ys = logfunc(ylow)
             ye = logfunc(yhigh)
+        else:
+            ys, ye = ylow, yhigh
         self.setYRange(ys, ye, 0.0)
 
         # Set labels
