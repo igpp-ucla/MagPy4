@@ -1121,7 +1121,7 @@ class PlotGridObject(pg.GraphicsWidget):
         for plot in plots:
             ax = plot.getAxis('bottom')
             if isinstance(ax, DateAxis):
-                tick_to_date = lambda t : ff_time.tick_to_ts(t, plot.epoch)[:-3]
+                tick_to_date = lambda t : ff_time.tick_to_timestamp(t, plot.epoch)[:-3]
                 format_funcs = {'x':tick_to_date}
             else:
                 format_funcs = {}

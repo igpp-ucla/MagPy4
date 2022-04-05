@@ -611,6 +611,7 @@ def plot_spec_data(spec, figsize=(9, 6), title=None, logy=None,
         
         # Set xaxis as a datetime axis
         ax.xaxis_date()
+
     # Non-smoothed plots are plotted using a color mesh
     else:
         shading = 'flat'

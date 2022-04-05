@@ -413,7 +413,7 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI):
         self.DATASTRINGS = list(self.dtDatas.keys())
 
         # Enable tracking and update grid
-        map_func = lambda s : ff_time.tick_to_ts(s+self.tickOffset, self.epoch)
+        map_func = lambda s : ff_time.tick_to_timestamp(s+self.tickOffset, self.epoch)
         self.ui.glw.enableTracking(True, textFuncs={'x':map_func}, viewWidget=self.ui.gview)
         self.ui.glw.update()
 
@@ -563,7 +563,7 @@ class DetrendWindow(QtWidgets.QFrame, DetrendWindowUI):
         return data_util.get_ticks_from_edit(timeEdit, self.epoch)
 
     def getTimestampFromTick(self, tick):
-        return ff_time.tick_to_ts(tick, self.epoch)
+        return ff_time.tick_to_timestamp(tick, self.epoch)
 
     def datetime_from_tick(self, tick):
         ts = self.getTimestampFromTick(tick)

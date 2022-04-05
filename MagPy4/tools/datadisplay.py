@@ -137,7 +137,7 @@ class FFTableModel(QtCore.QAbstractTableModel):
         if index.column() == self.time_col:
             t = self.arraydata[index.row()][index.column()]
             if self.UTCMode:
-                value = ff_time.tick_to_ts(t, self.epoch)
+                value = ff_time.tick_to_timestamp(t, self.epoch)
             else:
                 value = "%16.4f" % t
         else:

@@ -323,7 +323,7 @@ def read_text_file(filename, epoch='J2000'):
 
     times = data[time_lbl]
     dates = map_to_dates(times)
-    ticks = ff_time.dates_to_ticks(dates, 'J2000', fold_mode=True)
+    ticks = ff_time.dates_to_ticks(dates, 'J2000')
 
     # Create a new data table with mapped ticks
     old_type = data.dtype.descr

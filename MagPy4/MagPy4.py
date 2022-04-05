@@ -1531,7 +1531,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.plotDataDefault()
         self.updateFileLabel()
         self.workspace = None
-    
+
     def updateFileLabel(self):
         files = [os.path.basename(id.name) for id in self.FIDs]
         self.ui.fileStatus.set_labels(files)
@@ -1558,8 +1558,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         # Set epoch and map times if previous epoch does not match
         epoch = file_data.get_epoch()
         if self.epoch is not None and epoch != self.epoch:
-            dates = ff_time.ticks_to_dates(times, epoch)[0]
-            times = ff_time.dates_to_ticks(dates, self.epoch, fold_mode=True)
+            dates = ff_time.ticks_to_dates(times, epoch)
+            times = ff_time.dates_to_ticks(dates, self.epoch)
         else:
             self.epoch = epoch
 
@@ -2741,7 +2741,7 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         return data_util.get_ticks_from_edit(timeEdit, self.epoch)
 
     def getTimestampFromTick(self, tick):
-        return ff_time.tick_to_ts(tick, self.epoch)
+        return ff_time.tick_to_timestamp(tick, self.epoch)
 
     def datetime_from_tick(self, tick):
         ts = self.getTimestampFromTick(tick)
@@ -2837,6 +2837,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
                 plottedGrps.append(matchingGrp)
 
         return plottedGrps
+    
+    def getCurrentRange(self):
+        s = self.tO - self.tickOffset
+        e = self.tE - self.tickOffset
+        return (s, e)
 
     def autoSelectRange(self):
         # Automatically select the section currently being viewed
@@ -2844,6 +2849,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         if self.currSelect == None:
             self.startTool('Stats')
         self.currSelect.addRegion(t0, t1)
+    
+    def selectRange(self, s, e):
+        self.currSelect.addRegion(s, e)
     
     def getCurrentTool(self, setTrace=True):
         if self.currSelect:
