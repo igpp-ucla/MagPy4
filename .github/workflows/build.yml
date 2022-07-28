@@ -35,6 +35,7 @@ jobs:
         pip3 install pynsist
         pip3 install wheel
         pip3 install requests
+        pip3 install appdirs
 
     - name: Extract build scripts
       run: move build/* .
