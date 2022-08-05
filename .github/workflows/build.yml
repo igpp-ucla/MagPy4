@@ -26,7 +26,7 @@ jobs:
 
     - name: Create create requirements.txt
       run: |
-        pip3 install --use-feature=in-tree-build ./mp2
+        pip3 install ./mp2
         echo 'y' | pip3 uninstall MagPy4
         pip3 freeze > requirements.txt
         type requirements.txt
