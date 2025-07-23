@@ -199,7 +199,7 @@ class MaskToolUI(BaseLayout):
 
     def openColorSelect(self):
         # Open color selection dialog and connect to line color update function
-        clrDialog = QtGui.QColorDialog(self.maskFrame)
+        clrDialog = QtWidgets.QColorDialog(self.maskFrame)
         clrDialog.show()
         clrDialog.colorSelected.connect(self.setMaskColor)
 
