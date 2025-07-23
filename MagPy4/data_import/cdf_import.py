@@ -86,8 +86,8 @@ def get_cdf_datas(cdf, labels, time_len, exclude_keys=[], clip=None):
         # Get information about variable
         info = cdf.varinq(label)
 
-        num_dims = info.get('Num_Dims')
-        dims = info.get('Dim_Sizes')
+        num_dims = info.Num_Dims
+        dims = info.Dim_Sizes
         attrs = cdf.varattsget(label)
 
         if 'DISPLAY_TYPE' in attrs and 'spectogram' == attrs['DISPLAY_TYPE'].lower():
@@ -294,7 +294,7 @@ def get_cdf_indices(times, clip_range):
 def load_cdf(path, exclude_expr=[], label_func=None, clip_range=None):
     # Open CDF and get list of variables
     cdf = cdflib.CDF(path)
-    labels = cdf.cdf_info()['zVariables']
+    labels = cdf.cdf_info().zVariables
     labels.sort()
 
     # Get all epochs in file
@@ -306,7 +306,7 @@ def load_cdf(path, exclude_expr=[], label_func=None, clip_range=None):
         attrs = cdf.varattsget(label)
 
         # Skip non-time-series data
-        if 'Data_Type_Description' in info and info['Data_Type_Description'] == 'CDF_CHAR':
+        if info.Data_Type_Description == 'CDF_CHAR':
             continue
 
         if 'DEPEND_0' not in attrs:
@@ -341,7 +341,7 @@ def load_cdf(path, exclude_expr=[], label_func=None, clip_range=None):
     tables = {}
     for epoch_lbl in time_dict:
         # Skip non-TT2000 formatted epochs
-        mode = cdf.varinq(epoch_lbl)['Data_Type_Description']
+        mode = cdf.varinq(epoch_lbl).Data_Type_Description
         if mode not in ['CDF_TIME_TT2000', 'CDF_EPOCH']:
             continue
 
@@ -353,7 +353,7 @@ def load_cdf(path, exclude_expr=[], label_func=None, clip_range=None):
             times = times * 1e-9 - 32.184 # Nanoseconds to seconds, then remove leap ofst
         elif mode == 'CDF_EPOCH':
             epoch = 'Y1966'
-            ofst = cdflib.cdfepoch.parse([datetime(1966, 1, 1).isoformat()+'.000'])[0]
+            ofst = cdflib.cdfepoch.parse([datetime(1966, 1, 1).isoformat()+'.000'])
             times = (times - ofst) * 1e-3
 
         # Get indices for clipping if time range specified

@@ -1,35 +1,46 @@
-config_str = """\
+config_template = """\
 [Application]
-name=MagPy
-version={0}
-entry_point=MagPy4.MagPy4:runMagPy
-console=true
-icon=MagPy4/rsrc/images/magPy_blue.ico
+name = MagPy
+version = {version}
+entry_point = MagPy4.MagPy4:runMagPy
+console = true
+icon = MagPy4/rsrc/images/magPy_blue.ico
 [Python]
-version=3.8.6
+version = 3.8.6
 [Include]
-packages=
+packages =
     tkinter
     _tkinter
-pypi_wheels = {1}
+files = lib
+pypi_wheels =
+{pypi_wheels_block}
 extra_wheel_sources =
     fflib
     pip_wheels
-files=lib
 exclude=
     MagPy4/testData\
 """
 
 def main():
-    with open('MagPy4/version.txt', 'r') as fd:
-        version = fd.read().strip('\n')
-    
-    with open('requirements.txt', 'r') as fd:
-        requirements = fd.readlines()
-        requirements = '\t'.join(requirements).rstrip('\n')
-    
-    txt = config_str.format(version, requirements)
-    with open('installer.cfg', 'w') as fd:
-        fd.write(txt)
+    with open('MagPy4/version.txt') as f:
+        version = f.read().strip()
+        
+    reqs = []
+    with open('requirements.txt') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith(('#', '-e')):
+                continue
+            reqs.append(line)
 
-main()
+    pypi_wheels_block = "\n".join(f"    {req}" for req in reqs)
+
+    cfg = config_template.format(
+        version=version,
+        pypi_wheels_block=pypi_wheels_block
+    )
+    with open('installer.cfg', 'w') as f:
+        f.write(cfg)
+
+if __name__ == '__main__':
+    main()
