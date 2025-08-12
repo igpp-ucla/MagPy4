@@ -265,7 +265,7 @@ class WaveCalc():
                 row is a different signal (array_like)
         '''
         # Initialize array and lower triangular indices to iterate over
-        mats = np.empty((len(ffts[0]), 3, 3), dtype=np.complex)
+        mats = np.empty((len(ffts[0]), 3, 3), dtype=complex)
         xind, yind = np.tril_indices(3, 0, 3)
 
         # Compute fft * np.conj(fft) for each pair of signals
@@ -742,7 +742,7 @@ class SpecWave(WaveCalc):
         summat = np.array(summat, dtype=np.complex64)
 
         # Return single summed matrix
-        self._mat = np.array([summat], dtype=np.complex)
+        self._mat = np.array([summat], dtype=complex)
         return self._mat
 
     def svd_params(self, ffts, params, avg):
