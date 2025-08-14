@@ -5,6 +5,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import QSizePolicy
 import numpy as np
 from scipy import ndimage
+import numpy as np
 
 class ToolSpecificLt(BaseLayout):
     def __init__(self):
@@ -303,12 +304,13 @@ class MaskTool(QtWidgets.QFrame):
         self.plt.plot(line.xData, line.yData, pen=pen)
 
     def setupGrid(self, plt, lbls, times):
-        # Get the gradient legend from the plot, using log tick marks where appropr.
-        if 'Power' in self.plotType or 'Spectra' == self.plotType:
-            gradLegend = plt.getGradLegend(logMode=True)
-        else:
-            gradLegend = plt.getGradLegend()
+        title, axisLbl, legendLbl = lbls
+
+        spec = plt.getSpecData()[0]
+        gradLegend = plt.getGradLegend(logMode=spec.log_color_scale())
+        gradLegend.setRange(spec.get_gradient(), spec.get_value_range())
         gradLegend.setBarWidth(38)
+        gradLegend.setLabel(legendLbl)
 
         # Set custom gradient legend tick spacing
         spacing = self.tool.getGradTickSpacing(self.plotType)
@@ -316,8 +318,39 @@ class MaskTool(QtWidgets.QFrame):
             major, minor = spacing
             gradLegend.setTickSpacing(major, minor)
 
-        # Set up plot labels
-        title, axisLbl, legendLbl = lbls
+        # Overlay masked value ranges on the legend
+        # Pull from the mask UI settings so the legend reflects them
+        alphaMin, alphaMax, alphaOp = self.ui.toolMaskLt.getMaskRanges()
+        vmin, vmax = gradLegend.getValueRange()
+        logColor = spec.log_color_scale()
+
+        def to_axis_units(v):
+            # convert to axis units if the color scale is logarithmic
+            return np.log10(v) if (v is not None and logColor) else v
+
+        intervals = []
+        # Build intervals in axis units
+        amin_ax = to_axis_units(alphaMin)
+        amax_ax = to_axis_units(alphaMax)
+
+        if amin_ax is not None and amax_ax is not None:
+            if alphaOp == 'AND':
+                # [min, max]
+                intervals = [(amin_ax, amax_ax)]
+            else:
+                # Two bars if OR operation: [vmin, max] and [min, vmax]
+                intervals = [(vmin, amax_ax), (amin_ax, vmax)]
+        elif amin_ax is not None:
+            intervals = [(amin_ax, vmax)]
+        elif amax_ax is not None:
+            intervals = [(vmin, amax_ax)]
+        else:
+            intervals = []
+
+        # Apply mask color to the legend
+        maskColor = self.getMaskColor()  # (r,g,b)
+        gradLegend.setLegendMask(intervals, maskColor)
+
         plt.setTitle(title, size='13pt')
         plt.getAxis('left').setLabel(axisLbl)
     
