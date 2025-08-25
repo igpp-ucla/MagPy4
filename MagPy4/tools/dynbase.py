@@ -1544,7 +1544,10 @@ class SpecData():
                 y_bins = np.vstack([y_bins, bottom_row])
 
             if len(x_bins) == len(self.grid[0]):
-                x_end = x_bins[-1] + (x_bins[-2] - x_bins[-1])
+                # forward step in whatever direction time runs
+                step = x_bins[-1] - x_bins[-2]
+                # extrapolate one more edge
+                x_end = x_bins[-1] + step
                 x_bins = np.hstack([x_bins, x_end])
 
         return y_bins, x_bins

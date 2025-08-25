@@ -96,7 +96,7 @@ class ToolSpecificLt(BaseLayout):
         return None
 
 class MaskToolUI(BaseLayout):
-    def setupUI(self, maskFrame, plotTool, plotType):
+    def setupUI(self, maskFrame, plotTool, plotType, waveNames=None):
         self.maskFrame = maskFrame
         maskFrame.setWindowTitle('Mask Tool')
         layout = QtWidgets.QGridLayout(maskFrame)
@@ -122,12 +122,11 @@ class MaskToolUI(BaseLayout):
                 minVal, maxVal = -18, 18
             if plotType in plotTool.plotGroups['Power']:
                 logMode = True
-        valRange = (minVal, maxVal)
 
         # Set up mask values calculator
         groupFrame = QtWidgets.QGroupBox('Mask Values')
         self.toolMaskLt = ToolSpecificLt()
-        toolMaskSubLt = self.toolMaskLt.getMaskLt(valRange, logMode, groupFrame)
+        toolMaskSubLt = self.toolMaskLt.getMaskLt((minVal, maxVal), logMode, groupFrame)
 
         # Mask properties layout
         maskPropLt = self.setupMaskSettingsLt()
@@ -136,19 +135,46 @@ class MaskToolUI(BaseLayout):
         self.updateBtn = QtWidgets.QPushButton(' Plot ')
 
         settingsLt = QtWidgets.QHBoxLayout()
-        for lt in [groupFrame, maskPropLt, self.updateBtn]:
-            settingsLt.addWidget(lt)
-        
+        for w in [groupFrame, maskPropLt, self.updateBtn]:
+            settingsLt.addWidget(w)
         settingsLt.setAlignment(self.updateBtn, QtCore.Qt.AlignBottom)
 
-        layout.addLayout(settingsLt, 0, 0, 1, 1, QtCore.Qt.AlignTop|QtCore.Qt.AlignLeft)
-        layout.setRowStretch(0, 0)
+        # Apply coherence mask to other plots section
+        self.applyRow = QtWidgets.QHBoxLayout()
+        self.applyRowLbl = QtWidgets.QLabel('Apply coherence mask to:')
+        self.applyTarget = QtWidgets.QComboBox()
+        self.applyTarget.addItems(['—', 'Dynamic Spectra', 'Dynamic Wave Analysis'])
+
+        self.waveFunc = QtWidgets.QComboBox()
+        self.waveFunc.setVisible(False)
+        if waveNames:
+            self.waveFunc.addItems(list(waveNames))
+
+        def _toggle_wave(txt):
+            self.waveFunc.setVisible(txt == 'Dynamic Wave Analysis')
+        self.applyTarget.currentTextChanged.connect(_toggle_wave)
+
+        self.applyBtn = QtWidgets.QPushButton('Plot masked')
+        self.applyBtn.setEnabled(False)
+
+        self.applyRow.addWidget(self.applyRowLbl)
+        self.applyRow.addWidget(self.applyTarget, 1)
+        self.applyRow.addWidget(self.waveFunc, 2)
+        self.applyRow.addWidget(self.applyBtn)
+
+        # Coherence mask only
+        layout.addLayout(settingsLt, 0, 0, 1, 2, QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
+        layout.addLayout(self.applyRow, 1, 0, 1, 2, QtCore.Qt.AlignLeft)
 
         # Plot graphics grid
         self.glw = self.getGraphicsGrid()
         self.gview.setVisible(False)
-        layout.addWidget(self.gview, 1, 0, 1, 1)
-
+        layout.addWidget(self.gview, 2, 0, 1, 2)
+        
+        layout.setRowStretch(0, 0)
+        layout.setRowStretch(1, 0)
+        layout.setRowStretch(2, 1)
+        
     def setupMaskSettingsLt(self):
         frame = QtWidgets.QGroupBox('Mask Properties')
         frame.resize(100, 50)
@@ -163,9 +189,9 @@ class MaskToolUI(BaseLayout):
         self.colorBox = QtWidgets.QPushButton()
         self.colorBox.clicked.connect(self.openColorSelect)
 
-        # Default mask color is white
-        self.maskColor = (255, 255, 255)
-        self.setMaskColor(QtGui.QColor(255, 255, 255))
+        # Default mask color is black
+        self.maskColor = (0, 0, 0)
+        self.setMaskColor(QtGui.QColor(0, 0, 0))
 
         colorLt = QtWidgets.QGridLayout()
         colorLt.setContentsMargins(0, 0, 0, 0)
@@ -227,29 +253,42 @@ class MaskTool(QtWidgets.QFrame):
         self.tool = toolFrame
         self.window = toolFrame.window
         self.plotType = plotType
-        self.ui = MaskToolUI()
-        self.ui.setupUI(self, toolFrame, plotType)
 
         # Make a list of plot types that don't have a log color scale
         waveObj = waveanalysis.DynamicWave(self.window)
+        waveNames = list(waveObj.defParams.keys())
+
+        self.ui = MaskToolUI()
+        self.ui.setupUI(self, toolFrame, plotType, waveNames)
+
         self.linearColorPlots = ['Coherence', 'Phase']
         self.linearColorPlots += waveObj.plotGroups['Ellipticity']
         self.linearColorPlots += waveObj.plotGroups['Angle']
-    
-        # Set up default plot info for dynamic spectra, coherence, and phase plots
+
+        # Default plot info
         self.defaultPlotInfo = {
             'Spectra': (None, 'Power', 'nT^2/Hz'),
             'Coherence': ((0, 1), 'Coherence', None),
             'Phase': ((-180, 180), 'Angle', 'Degrees')
         }
-
-        # Copy parameter info from Wave Analysis object
-        waveObj = waveanalysis.DynamicWave(self.window)
         waveObj.numThreads = 1
         for kw in waveObj.defParams.keys():
             self.defaultPlotInfo[kw] = waveObj.defParams[kw]
 
+        # Cross-plot mask support
+        self._overrideMask = None
+        self._lastMask = None
+        self._lastMaskFT = None
+        if hasattr(self.ui, 'applyBtn'):
+            self.ui.applyBtn.setEnabled(False)
+
         self.ui.updateBtn.clicked.connect(self.update)
+        if hasattr(self.ui, 'applyBtn'):
+            try:
+                self.ui.applyBtn.clicked.connect(self.apply_mask_to_other)
+            except Exception:
+                pass
+
 
     def getVarInfos(self):
         varInfo = self.ui.toolMaskLt.getVarInfo()
@@ -280,15 +319,37 @@ class MaskTool(QtWidgets.QFrame):
 
         # Get plot info and parameters from main tool
         grid, freqs, times = self.getValueGrid()
+        if self._overrideMask is not None and self._overrideMask.shape != grid.shape:
+            nF, nT = grid.shape
+            m = self._overrideMask
+            rF, rT = m.shape
+            if rT != nT:
+                m = m[:, :nT] if rT > nT else np.concatenate([m, np.repeat(m[:, [-1]], nT - rT, axis=1)], axis=1)
+            if rF != nF:
+                m = m[:nF, :] if rF > nF else np.concatenate([m, np.repeat(m[[-1], :], nF - rF, axis=0)], axis=0)
+            self._overrideMask = m
         logScale = self.tool.getAxisScaling() == 'Logarithmic'
         varInfo = self.tool.getVarInfo()
         colorRng = self.getColorRng(grid)
 
-        # Generate mask
+        # mask creation
         maskRng = self.ui.toolMaskLt.getMaskRanges()
-        maskInfo = self.createMask(grid, maskRng)
+        if self._overrideMask is not None:
+            # Use coherence mask (coherence→spectra/wave path)
+            maskColor = self.getMaskColor()
+            maskOutline = self.ui.outlineCheck.isChecked()
+            maskInfo = (self._overrideMask, maskColor, maskOutline)
+        else:
+            maskInfo = self.createMask(grid, maskRng)
 
-        # Generate the plot and arrange the items in the plot layout
+            # If it's a coherence mask, then enable the button
+            if self.plotType == 'Coherence':
+                alphaMask = maskInfo[0]
+                self._lastMask = alphaMask
+                self._lastMaskFT = (np.asarray(freqs), np.asarray(times))
+                if hasattr(self.ui, 'applyBtn'):
+                    self.ui.applyBtn.setEnabled(True)
+
         plt = self.getPlotItem(grid, freqs, times, logScale, colorRng, maskInfo)
         lbls = self.getLabels(varInfo, logScale)
         self.setupGrid(plt, lbls, times)
@@ -450,3 +511,151 @@ class MaskTool(QtWidgets.QFrame):
         plt.createPlot(freqs, grid, times, colorRng, logColorScale, maskInfo=maskInfo)
 
         return plt
+    
+    def _remap_mask_to(self, mask_src, freqs_src, times_src, freqs_dst, times_dst):
+        # Build index maps
+        t_idx = np.clip(np.searchsorted(times_src, times_dst) - 1, 0, len(times_src)-1)
+        f_idx = np.clip(np.searchsorted(freqs_src, freqs_dst), 0, len(freqs_src)-1)
+        return mask_src[np.ix_(f_idx, t_idx)]
+    
+    def apply_mask_to_other(self):
+        # Only valid if we have a coherence mask cached
+        if self.plotType != 'Coherence' or self._lastMask is None or self._lastMaskFT is None:
+            return
+
+        target = getattr(self.ui.applyTarget, 'currentText', lambda: '—')()
+        if target not in ('Dynamic Spectra', 'Dynamic Wave Analysis'):
+            return
+
+        # Clone state (fftInt/shift/bw/scale/detrend), keep the same time selection via window
+        state = self.tool.getState()
+
+        freqs_src, times_src = self._lastMaskFT
+        alpha_mask_src = self._lastMask
+
+        if target == 'Dynamic Spectra':
+            from .dynamicspectra import DynamicSpectra
+            spec = DynamicSpectra(self.window)
+
+            # Get the first var A from (A x B)
+            try:
+                varA, _ = self.tool.getVarInfo()
+                state['varInfo'] = varA
+            except Exception:
+                pass
+            state['plotType'] = 'Spectra'
+            spec.loadState(state)
+            spec.update()
+
+            times_dst, freqs_dst, grid_dst = spec.lastCalc
+            nF, nT = grid_dst.shape
+
+            remapped = self._remap_mask_to(alpha_mask_src, freqs_src, times_src,
+                                        freqs_dst, times_dst, (nF, nT))
+
+            mt = MaskTool(spec, 'Spectra')
+            mt._overrideMask = remapped
+            mt.update()
+            mt.show()
+
+        else:
+            from .waveanalysis import DynamicWave
+            wave = DynamicWave(self.window)
+
+            wave_func = self.ui.waveFunc.currentText() if hasattr(self.ui, 'waveFunc') else None
+            if not wave_func:
+                wave_func = 'Power Spectra Trace'
+
+            state['plotType'] = wave_func
+            wave.loadState(state)
+            wave.update()
+
+            times_dst, freqs_dst, grid_dst = wave.lastCalc
+            nF, nT = grid_dst.shape
+
+            remapped = self._remap_mask_to(alpha_mask_src, freqs_src, times_src,
+                                        freqs_dst, times_dst, (nF, nT))
+
+            mt = MaskTool(wave, wave_func if wave_func else 'Wave')
+            mt._overrideMask = remapped
+            mt.update()
+            mt.show()
+
+    
+    def _to_numeric_1d(self, arr):
+        """Convert times/freqs to a numeric 1D float array for mapping"""
+        a = np.asarray(arr)
+        if np.issubdtype(a.dtype, np.datetime64):
+            return a.astype('datetime64[ns]').astype(np.int64).astype(np.float64)
+        return np.ravel(a).astype(np.float64, copy=False)
+
+    def _index_map_nn(self, src_vals, dst_vals):
+        """Map each dst position to the nearest src index using searchsorted"""
+        s = self._to_numeric_1d(src_vals)
+        d = self._to_numeric_1d(dst_vals)
+        n = s.size
+        if n == 0:
+            return np.zeros_like(d, dtype=int)
+        if n == 1:
+            return np.zeros_like(d, dtype=int)
+
+        reversed_order = s[0] > s[-1]
+        if reversed_order:
+            s = s[::-1]
+
+        # Right insertion positions
+        r = np.searchsorted(s, d, side='right')
+        # Left = r-1
+        left  = np.clip(r - 1, 0, n - 1)
+        right = np.clip(r,     0, n - 1)
+
+        # Choose the nearer of left or right
+        dl = np.abs(d - s[left])
+        dr = np.abs(d - s[right])
+        idx = np.where(dl <= dr, left, right).astype(int)
+
+        # restore indices to original orientation
+        if reversed_order:
+            idx = (n - 1) - idx
+
+        np.clip(idx, 0, n - 1, out=idx)
+        return idx
+
+    def _remap_mask_to(self, mask_src, freqs_src, times_src, freqs_dst, times_dst, grid_shape):
+        """
+        Remap boolean mask from (freqs_src, times_src) → (freqs_dst, times_dst)
+        using nearest-neighbor on each axis. Returns mask with EXACT shape `grid_shape`.
+        """
+        nF, nT = int(grid_shape[0]), int(grid_shape[1])
+
+        # Build index maps into mask
+        f_idx = self._index_map_nn(freqs_src, np.asarray(freqs_dst)[:nF])
+        t_idx = self._index_map_nn(times_src, np.asarray(times_dst)[:nT])
+
+        m = np.asarray(mask_src, dtype=bool)
+
+        if m.ndim != 2:
+            raise ValueError("mask_src must be 2D")
+        if m.shape != (len(freqs_src), len(times_src)) and m.shape == (len(times_src), len(freqs_src)):
+            m = m.T
+
+        f_idx = np.clip(f_idx, 0, m.shape[0] - 1)
+        t_idx = np.clip(t_idx, 0, m.shape[1] - 1)
+
+        remap = m[np.ix_(f_idx, t_idx)]
+
+        if remap.shape[1] != nT:
+            if remap.shape[1] > nT:
+                remap = remap[:, :nT]
+            else:
+                pad = np.repeat(remap[:, [-1]], nT - remap.shape[1], axis=1)
+                remap = np.concatenate([remap, pad], axis=1)
+        if remap.shape[0] != nF:
+            if remap.shape[0] > nF:
+                remap = remap[:nF, :]
+            else:
+                pad = np.repeat(remap[[-1], :], nF - remap.shape[0], axis=0)
+                remap = np.concatenate([remap, pad], axis=0)
+
+        assert remap.shape == (nF, nT), f"Remap shape {remap.shape} != {nF,nT}"
+        return remap
