@@ -482,32 +482,41 @@ class MaskTool(QtWidgets.QFrame):
     def getMaskColor(self):
         return self.ui.maskColor
 
-    def extendFreqs(self, freqs):
-        # Get lower bound for frequencies on plot
-        diff = abs(freqs[1] - freqs[0])
-        lowerFreqBnd = freqs[0] - diff
-        if lowerFreqBnd == 0 and self.ui.scaleModeBox.currentText() == 'Logarithmic':
-            lowerFreqBnd = freqs[0] - diff/2
-        freqs = np.concatenate([[lowerFreqBnd], freqs])
-        return freqs
+    def extendFreqs(self, freqs, logScale: bool = False):
+        """
+        Extend freq array by one lower *edge* for pcolormesh-style grids.
+        In log mode, keep the first edge strictly > 0.
+        Prints before/after for debugging.
+        """
+        if freqs is None or len(freqs) == 0:
+            return freqs
+
+        # Estimate bin width
+        if len(freqs) >= 2:
+            diff = abs(freqs[1] - freqs[0])
+        else:
+            diff = abs(freqs[0]) * 0.05 if freqs[0] != 0 else 1e-6
+
+        lower = freqs[0] - diff
+        # pre_lower = lower
+
+        # Avoid non-positive lower edge on log scale
+        if logScale and lower <= 0:
+            lower = freqs[0] - diff / 2.0
+            if lower <= 0:
+                lower = max(freqs[0] * 0.5, 1e-12)
+
+        out = np.concatenate([[lower], freqs])
+
+        return out
 
     def getPlotItem(self, grid, freqs, times, logScale, colorRng, maskInfo):
         # Determine if color map should interpret the values on a log scale
-        if self.plotType in self.linearColorPlots:
-            logColorScale = False
-        else:
-            logColorScale = True
-
-        # Wrapped colors should be used for phase plots
-        # A regular spectrogram plot item should be used otherwise
-        if self.plotType == 'Phase':
-            plt = MagPyPlotItem(self.window.epoch)
-        else:
-            plt = MagPyPlotItem(self.window.epoch)
-
+        logColorScale = self.plotType not in self.linearColorPlots
+        plt = MagPyPlotItem(self.window.epoch)
         # Get the lower bound for the frequencies and generate the plot
         # from the grid values and mask info
-        freqs = self.extendFreqs(freqs)
+        freqs = self.extendFreqs(freqs, logScale)
         plt.createPlot(freqs, grid, times, colorRng, logColorScale, maskInfo=maskInfo, logY=logScale)
 
         return plt
@@ -527,34 +536,15 @@ class MaskTool(QtWidgets.QFrame):
         if target not in ('Dynamic Spectra', 'Dynamic Wave Analysis'):
             return
 
+        m_src = np.asarray(self._lastMask, dtype=bool)
+        f_src, t_src = self._lastMaskFT
+
         state = self.tool.getState()
-        freqs_src, times_src = self._lastMaskFT
-        alpha_mask_src = self._lastMask
 
-        # small selections, we let the tool compute normally and wait.
-        def wait_for_lastcalc(tool, timeout_ms=600000):
-            if getattr(tool, 'lastCalc', None) is not None:
-                return tool.lastCalc
-            loop = QtCore.QEventLoop()
-            done = {'res': None}
-            sig = getattr(tool, 'computed', None)
-            if callable(getattr(sig, 'connect', None)):
-                def _on_done(res):
-                    done['res'] = res
-                    try: sig.disconnect(_on_done)
-                    except Exception: pass
-                    loop.quit()
-                sig.connect(_on_done)
-                tool.update()
-                QtCore.QTimer.singleShot(timeout_ms, loop.quit)
-                loop.exec_()
-                return done['res']
-
-            tool.update()
-            timer = QtCore.QElapsedTimer(); timer.start()
-            while getattr(tool, 'lastCalc', None) is None and timer.elapsed() < timeout_ms:
-                QtWidgets.QApplication.processEvents(QtCore.QEventLoop.AllEvents, 25)
-            return getattr(tool, 'lastCalc', None)
+        def infer_fft_from_src_rows(nf):
+            if nf <= 0: return None
+            N_est = max(16, int(2*nf))
+            return 1 << int(round(np.log2(N_est)))
 
         if target == 'Dynamic Spectra':
             from .dynamicspectra import DynamicSpectra
@@ -569,74 +559,82 @@ class MaskTool(QtWidgets.QFrame):
             state['plotType'] = 'Spectra'
             spec.loadState(state)
 
-            dataRng = spec.getDataRange()
-            numPoints = dataRng[1] - dataRng[0]
+            try:
+                spec.updateParameters()
+            except Exception:
+                pass
+
+            # align FFT to source resolution (e.g. ~4096 from ~2046 rows)
+            nF_src = int(len(f_src))
+            fft_guess = infer_fft_from_src_rows(nF_src)
+
+            # selection size
+            a, b = spec.getDataRange()
+            numPoints = max(1, b - a)
+            try:
+                spec.ui.fftInt.setMaximum(numPoints)
+                spec.ui.fftShift.setMaximum(numPoints)
+            except Exception:
+                pass
+
+            if fft_guess is not None:
+                before = spec.ui.fftInt.value()
+                new_interval = min(fft_guess, numPoints)
+                spec.ui.fftInt.setValue(new_interval)
+                # use 1/4 overlap
+                spec.ui.fftShift.setValue(max(1, new_interval // 4))
+                after = spec.ui.fftInt.value()
+
+            # read params
             interval = spec.ui.fftInt.value()
-            shift  = spec.ui.fftShift.value()
-            dstr = spec.ui.dstrBox.currentText()
+            shift = spec.ui.fftShift.value()
             bw = spec.ui.bwBox.value()
-            detrendMode = spec.ui.detrendCheck.isChecked()
-            logScaling = spec.ui.scaleModeBox.currentText() == 'Logarithmic'
-            colorRng = spec.getGradRange()
+            dstr = spec.ui.dstrBox.currentText()
+            detrend = spec.ui.detrendCheck.isChecked()
             fftParam = (interval, shift, bw)
+            expected_windows = max(1, (numPoints - interval) // max(shift, 1) + 1)
 
-            # If params acceptable, do the normal async compute and wait
+            # small data selection
+            use_chunked = False
             if spec.checkParameters(interval, shift, bw, numPoints):
-                spec_calc = wait_for_lastcalc(spec)
-                if not spec_calc:
-                    QtWidgets.QMessageBox.warning(self, "Mask",
-                        "Dynamic Spectra could not compute for the selected time range.")
-                    return
-                times_dst, freqs_dst, grid_dst = spec_calc
+                calc = self._compute_sync(spec, timeout_ms=180_000)
+                if not calc:
+                    use_chunked = True
+                else:
+                    t_dst, f_dst, g_dst = calc
+                    spec.lastCalc = (t_dst, f_dst, g_dst)
 
-            else:
-                # Large selection: compute in chunks using the tool's own calcGrid
+            # long data selection
+            if not spec.checkParameters(interval, shift, bw, numPoints) or use_chunked:
                 max_cols = getattr(spec, 'maxTimeColumns', 4000)
-                # Number of time columns (windows): floor((N - interval)/shift) + 1 (>=1)
-                n_cols_total = max(1, (numPoints - interval) // max(shift, 1) + 1)
-
-                grids   = []
-                t_edges = []
-                freqs_ref = None
-
-                # convert each block to an index range
-                start_idx = dataRng[0]
-                remaining = n_cols_total
+                grids, t_edges, f_ref = [], [], None
+                start_idx, remaining, chunk_id = a, expected_windows, 0
                 while remaining > 0:
                     nwin = min(max_cols, remaining)
-                    # end = start_idx + interval + (nwin-1)*shift
-                    end_idx = start_idx + interval + (nwin - 1) * shift
-                    end_idx = min(end_idx, dataRng[1])
-
-                    grid, freqs, times_edges = spec.calcGrid((start_idx, end_idx), fftParam, dstr, detrendMode)
-
-                    if freqs_ref is None:
-                        freqs_ref = freqs
-                    else:
-                        if len(freqs_ref) != len(freqs):
-                            raise RuntimeError("Frequency axis changed between chunks.")
-
+                    end_idx = min(start_idx + interval + (nwin - 1) * shift, b)
+                    grid, freqs, times_edges = spec.calcGrid((start_idx, end_idx), fftParam, dstr, detrend)
+                    if f_ref is None:
+                        f_ref = freqs
+                    elif len(f_ref) != len(freqs):
+                        raise RuntimeError("Spectra: frequency axis changed between chunks")
                     grids.append(grid)
-                    # drop the first edge of each new chunk to avoid duplicates
                     if not t_edges:
                         t_edges = list(times_edges)
                     else:
                         t_edges.extend(list(times_edges)[1:])
-
-                    # Advance to next block
-                    start_idx = start_idx + nwin * shift
+                    start_idx += nwin * shift
                     remaining -= nwin
-
+                    chunk_id += 1
                     QtWidgets.QApplication.processEvents(QtCore.QEventLoop.AllEvents, 1)
 
-                # concatenate results
-                grid_dst  = np.concatenate(grids, axis=1)
-                freqs_dst = freqs_ref
-                times_dst = np.asarray(t_edges)
+                g_dst  = np.concatenate(grids, axis=1)
+                f_dst  = f_ref
+                t_dst  = np.asarray(t_edges)
+                spec.lastCalc = (t_dst, f_dst, g_dst)
 
-                spec.lastCalc = (times_dst, freqs_dst, grid_dst)
-
-            remapped = self._remap_mask_to(alpha_mask_src, freqs_src, times_src, freqs_dst, times_dst)
+            t_dst, f_dst, g_dst = spec.lastCalc
+            # remap mask to new grid
+            remapped = self._remap_mask_to(m_src, f_src, t_src, f_dst, t_dst)
 
             mt = MaskTool(spec, 'Spectra')
             mt._overrideMask = remapped
@@ -646,80 +644,77 @@ class MaskTool(QtWidgets.QFrame):
 
         from .waveanalysis import DynamicWave
         wave = DynamicWave(self.window)
-
-        wave_func = self.ui.waveFunc.currentText() if hasattr(self.ui, 'waveFunc') else None
-        if not wave_func:
-            wave_func = 'Power Spectra Trace'
-
-        state['plotType'] = wave_func
         wave.loadState(state)
+        try:
+            wave.updateParameters()
+        except Exception:
+            pass
 
-        dataRng = wave.getDataRange()
-        numPoints = dataRng[1] - dataRng[0]
+        nF_src = int(len(f_src))
+        fft_guess = infer_fft_from_src_rows(nF_src)
+        a, b = wave.getDataRange()
+        numPoints = max(1, b - a)
+        try:
+            wave.ui.fftInt.setMaximum(numPoints)
+            wave.ui.fftShift.setMaximum(numPoints)
+        except Exception:
+            pass
+        if fft_guess is not None:
+            before = wave.ui.fftInt.value()
+            new_interval = min(fft_guess, numPoints)
+            wave.ui.fftInt.setValue(new_interval)
+            wave.ui.fftShift.setValue(max(1, new_interval // 4))
+            after = wave.ui.fftInt.value()
+
         interval = wave.ui.fftInt.value()
         shift = wave.ui.fftShift.value()
         bw = wave.ui.bwBox.value()
-        detrendMode = wave.ui.detrendCheck.isChecked()
+        detrend = wave.ui.detrendCheck.isChecked()
         fftParam = (interval, shift, bw)
-        try:
-            vecDstrs = wave.getVarInfo()
-        except Exception:
-            vecDstrs = None
+        expected_windows = max(1, (numPoints - interval) // max(shift, 1) + 1)
 
+        use_chunked = False
         if wave.checkParameters(interval, shift, bw, numPoints):
-            wave_calc = wait_for_lastcalc(wave)
-            if not wave_calc:
-                QtWidgets.QMessageBox.warning(self, "Mask",
-                    "Dynamic Wave Analysis could not compute for the selected time range.")
-                return
-            times_dst, freqs_dst, grid_dst = wave_calc
+            calc = self._compute_sync(wave, timeout_ms=180_000)
+            if not calc:
+                use_chunked = True
+            else:
+                t_dst, f_dst, g_dst = calc
+                wave.lastCalc = (t_dst, f_dst, g_dst)
 
-        else:
-            # Large selection: chunked compute using wave.calcGrid(...)
+        if not wave.checkParameters(interval, shift, bw, numPoints) or use_chunked:
             max_cols = getattr(wave, 'maxTimeColumns', 4000)
-            n_cols_total = max(1, (numPoints - interval) // max(shift, 1) + 1)
-
-            grids   = []
-            t_edges = []
-            freqs_ref = None
-
-            start_idx = dataRng[0]
-            remaining = n_cols_total
+            grids, t_edges, f_ref = [], [], None
+            start_idx, remaining, chunk_id = a, expected_windows, 0
             while remaining > 0:
                 nwin = min(max_cols, remaining)
-                end_idx = start_idx + interval + (nwin - 1) * shift
-                end_idx = min(end_idx, dataRng[1])
-
-                if vecDstrs is None:
-                    grid, freqs, times_edges = wave.calcGrid(wave_func, (start_idx, end_idx), fftParam)
-                else:
-                    grid, freqs, times_edges = wave.calcGrid(wave_func, (start_idx, end_idx), fftParam, vecDstrs, detrendMode)
-
-                if freqs_ref is None:
-                    freqs_ref = freqs
-                else:
-                    if len(freqs_ref) != len(freqs):
-                        raise RuntimeError("Frequency axis changed between chunks.")
-
+                end_idx = min(start_idx + interval + (nwin - 1) * shift, b)
+                grid, freqs, times_edges = wave.calcGrid(
+                    self.ui.waveFunc.currentText() if hasattr(self.ui, 'waveFunc') else 'Power Spectra Trace',
+                    (start_idx, end_idx), fftParam, None, detrend
+                )
+                if f_ref is None:
+                    f_ref = freqs
+                elif len(f_ref) != len(freqs):
+                    raise RuntimeError("Wave: frequency axis changed between chunks")
                 grids.append(grid)
                 if not t_edges:
                     t_edges = list(times_edges)
                 else:
                     t_edges.extend(list(times_edges)[1:])
-
-                start_idx = start_idx + nwin * shift
+                start_idx += nwin * shift
                 remaining -= nwin
+                chunk_id += 1
                 QtWidgets.QApplication.processEvents(QtCore.QEventLoop.AllEvents, 1)
 
-            grid_dst  = np.concatenate(grids, axis=1)
-            freqs_dst = freqs_ref
-            times_dst = np.asarray(t_edges)
+            g_dst  = np.concatenate(grids, axis=1)
+            f_dst  = f_ref
+            t_dst  = np.asarray(t_edges)
+            wave.lastCalc = (t_dst, f_dst, g_dst)
 
-            wave.lastCalc = (times_dst, freqs_dst, grid_dst)
+        remapped = self._remap_mask_to(m_src, f_src, t_src, wave.lastCalc[1], wave.lastCalc[0])
 
-        remapped = self._remap_mask_to(alpha_mask_src, freqs_src, times_src, freqs_dst, times_dst)
-
-        mt = MaskTool(wave, wave_func)
+        mt = MaskTool(wave, self.ui.waveFunc.currentText() if hasattr(self.ui, 'waveFunc') else 'Wave')
         mt._overrideMask = remapped
         mt.update()
         mt.show()
@@ -765,14 +760,67 @@ class MaskTool(QtWidgets.QFrame):
         return idx
 
     def _remap_mask_to(self, mask_src, freqs_src, times_src, freqs_dst, times_dst):
-        t_idx = np.clip(np.searchsorted(times_src, times_dst) - 1, 0, len(times_src)-1)
-        f_idx = np.clip(np.searchsorted(freqs_src, freqs_dst),      0, len(freqs_src)-1)
+        """
+        Remap a mask onto a destination grid.
+        Returns a mask with shape (len(freqs_dst), len(times_dst)-1) == grid.shape.
+        - freqs_src : centers (len = nF_src)
+        - times_src : edges for coherence (len = nT_src + 1)
+        - freqs_dst : centers (len = nF_dst)
+        - times_dst : edges (len = nT_dst + 1)
+        """
         m = np.asarray(mask_src, dtype=bool)
         if m.ndim != 2:
             raise ValueError("mask must be 2D")
-        if m.shape == (len(times_src), len(freqs_src)):
-            m = m.T
-        f_idx = np.clip(f_idx, 0, m.shape[0]-1)
-        t_idx = np.clip(t_idx, 0, m.shape[1]-1)
-        return m[np.ix_(f_idx, t_idx)]
 
+        if times_src.ndim == 1 and len(times_src) == m.shape[1] + 1:
+            t_src_cent = 0.5 * (times_src[:-1] + times_src[1:])
+        else:
+            t_src_cent = np.asarray(times_src).ravel()
+
+        if len(freqs_src) == m.shape[0]:
+            f_src_cent = np.asarray(freqs_src).ravel()
+        else:
+            f_src_cent = 0.5 * (freqs_src[:-1] + freqs_src[1:])
+
+        t_dst_cent = 0.5 * (times_dst[:-1] + times_dst[1:])
+        f_dst_cent = np.asarray(freqs_dst).ravel()
+
+        ti = self._index_map_nn(t_src_cent, t_dst_cent)
+        fi = self._index_map_nn(f_src_cent, f_dst_cent)
+
+        remapped = m[np.ix_(fi, ti)]
+        return remapped
+
+    def _infer_fft_from_src_rows(self, n_freq_rows: int):
+        if n_freq_rows <= 0:
+            return None
+        N_est = max(16, int(2 * n_freq_rows))
+        pow2 = 1 << int(round(np.log2(N_est)))
+        return pow2
+
+    def _compute_sync(self, tool, timeout_ms=180_000):
+        """
+        Force a synchronous compute for dynamic tools:
+        - reset lastCalc
+        - call tool.update()
+        - continue until lastCalc is populated or timeout
+        """
+        try:
+            tool.lastCalc = None
+        except Exception:
+            pass
+
+        QtWidgets.QApplication.processEvents(QtCore.QEventLoop.AllEvents, 1)
+        tool.update()
+
+        timer = QtCore.QElapsedTimer()
+        timer.start()
+        while getattr(tool, 'lastCalc', None) is None and timer.elapsed() < timeout_ms:
+            QtWidgets.QApplication.processEvents(QtCore.QEventLoop.AllEvents, 25)
+
+        calc = getattr(tool, 'lastCalc', None)
+        if calc is None:
+            print(f"[MASKTOOL] _compute_sync: timeout after {timeout_ms} ms with no lastCalc", flush=True)
+        else:
+            t, f, g = calc
+        return calc
