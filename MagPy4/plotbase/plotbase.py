@@ -427,8 +427,7 @@ class MagPyPlotItem(pg.PlotItem):
         specs = self.get_specs()
         for spec in specs:
             self.removeItem(spec)
-            
-    def createPlot(self, freq, grid, times, colorRng, logColorScale, maskInfo):
+
     def createPlot(self, freq, grid, times, colorRng, logColorScale, maskInfo, logY):
         ''' Creates spectrogram plot from grid data and mask info '''
         self.clear_specs()
