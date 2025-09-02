@@ -512,14 +512,14 @@ class MaskTool(QtWidgets.QFrame):
 
         return plt
     
-    def _remap_mask_to(self, mask_src, freqs_src, times_src, freqs_dst, times_dst):
-        # Build index maps
-        t_idx = np.clip(np.searchsorted(times_src, times_dst) - 1, 0, len(times_src)-1)
-        f_idx = np.clip(np.searchsorted(freqs_src, freqs_dst), 0, len(freqs_src)-1)
-        return mask_src[np.ix_(f_idx, t_idx)]
-    
     def apply_mask_to_other(self):
-        # Only valid if we have a coherence mask cached
+        """
+        Apply the current *coherence* mask to a Dynamic Spectra or Dynamic Wave plot.
+        Mostly mirrors the logic of normal tools:
+        - if the target checkParameters(...) rejects a large
+            selection, compute in chunks with the tool's own calcGrid(...), stitch them together, set
+            lastCalc, then open the target MaskTool with the remapped mask.
+        """
         if self.plotType != 'Coherence' or self._lastMask is None or self._lastMaskFT is None:
             return
 
@@ -527,17 +527,40 @@ class MaskTool(QtWidgets.QFrame):
         if target not in ('Dynamic Spectra', 'Dynamic Wave Analysis'):
             return
 
-        # Clone state (fftInt/shift/bw/scale/detrend), keep the same time selection via window
         state = self.tool.getState()
-
         freqs_src, times_src = self._lastMaskFT
         alpha_mask_src = self._lastMask
+
+        # small selections, we let the tool compute normally and wait.
+        def wait_for_lastcalc(tool, timeout_ms=600000):
+            if getattr(tool, 'lastCalc', None) is not None:
+                return tool.lastCalc
+            loop = QtCore.QEventLoop()
+            done = {'res': None}
+            sig = getattr(tool, 'computed', None)
+            if callable(getattr(sig, 'connect', None)):
+                def _on_done(res):
+                    done['res'] = res
+                    try: sig.disconnect(_on_done)
+                    except Exception: pass
+                    loop.quit()
+                sig.connect(_on_done)
+                tool.update()
+                QtCore.QTimer.singleShot(timeout_ms, loop.quit)
+                loop.exec_()
+                return done['res']
+
+            tool.update()
+            timer = QtCore.QElapsedTimer(); timer.start()
+            while getattr(tool, 'lastCalc', None) is None and timer.elapsed() < timeout_ms:
+                QtWidgets.QApplication.processEvents(QtCore.QEventLoop.AllEvents, 25)
+            return getattr(tool, 'lastCalc', None)
 
         if target == 'Dynamic Spectra':
             from .dynamicspectra import DynamicSpectra
             spec = DynamicSpectra(self.window)
 
-            # Get the first var A from (A x B)
+            # Use var A from (A × B)
             try:
                 varA, _ = self.tool.getVarInfo()
                 state['varInfo'] = varA
@@ -545,41 +568,161 @@ class MaskTool(QtWidgets.QFrame):
                 pass
             state['plotType'] = 'Spectra'
             spec.loadState(state)
-            spec.update()
 
-            times_dst, freqs_dst, grid_dst = spec.lastCalc
-            nF, nT = grid_dst.shape
+            dataRng = spec.getDataRange()
+            numPoints = dataRng[1] - dataRng[0]
+            interval = spec.ui.fftInt.value()
+            shift  = spec.ui.fftShift.value()
+            dstr = spec.ui.dstrBox.currentText()
+            bw = spec.ui.bwBox.value()
+            detrendMode = spec.ui.detrendCheck.isChecked()
+            logScaling = spec.ui.scaleModeBox.currentText() == 'Logarithmic'
+            colorRng = spec.getGradRange()
+            fftParam = (interval, shift, bw)
 
-            remapped = self._remap_mask_to(alpha_mask_src, freqs_src, times_src,
-                                        freqs_dst, times_dst, (nF, nT))
+            # If params acceptable, do the normal async compute and wait
+            if spec.checkParameters(interval, shift, bw, numPoints):
+                spec_calc = wait_for_lastcalc(spec)
+                if not spec_calc:
+                    QtWidgets.QMessageBox.warning(self, "Mask",
+                        "Dynamic Spectra could not compute for the selected time range.")
+                    return
+                times_dst, freqs_dst, grid_dst = spec_calc
+
+            else:
+                # Large selection: compute in chunks using the tool's own calcGrid
+                max_cols = getattr(spec, 'maxTimeColumns', 4000)
+                # Number of time columns (windows): floor((N - interval)/shift) + 1 (>=1)
+                n_cols_total = max(1, (numPoints - interval) // max(shift, 1) + 1)
+
+                grids   = []
+                t_edges = []
+                freqs_ref = None
+
+                # convert each block to an index range
+                start_idx = dataRng[0]
+                remaining = n_cols_total
+                while remaining > 0:
+                    nwin = min(max_cols, remaining)
+                    # end = start_idx + interval + (nwin-1)*shift
+                    end_idx = start_idx + interval + (nwin - 1) * shift
+                    end_idx = min(end_idx, dataRng[1])
+
+                    grid, freqs, times_edges = spec.calcGrid((start_idx, end_idx), fftParam, dstr, detrendMode)
+
+                    if freqs_ref is None:
+                        freqs_ref = freqs
+                    else:
+                        if len(freqs_ref) != len(freqs):
+                            raise RuntimeError("Frequency axis changed between chunks.")
+
+                    grids.append(grid)
+                    # drop the first edge of each new chunk to avoid duplicates
+                    if not t_edges:
+                        t_edges = list(times_edges)
+                    else:
+                        t_edges.extend(list(times_edges)[1:])
+
+                    # Advance to next block
+                    start_idx = start_idx + nwin * shift
+                    remaining -= nwin
+
+                    QtWidgets.QApplication.processEvents(QtCore.QEventLoop.AllEvents, 1)
+
+                # concatenate results
+                grid_dst  = np.concatenate(grids, axis=1)
+                freqs_dst = freqs_ref
+                times_dst = np.asarray(t_edges)
+
+                spec.lastCalc = (times_dst, freqs_dst, grid_dst)
+
+            remapped = self._remap_mask_to(alpha_mask_src, freqs_src, times_src, freqs_dst, times_dst)
 
             mt = MaskTool(spec, 'Spectra')
             mt._overrideMask = remapped
             mt.update()
             mt.show()
+            return
+
+        from .waveanalysis import DynamicWave
+        wave = DynamicWave(self.window)
+
+        wave_func = self.ui.waveFunc.currentText() if hasattr(self.ui, 'waveFunc') else None
+        if not wave_func:
+            wave_func = 'Power Spectra Trace'
+
+        state['plotType'] = wave_func
+        wave.loadState(state)
+
+        dataRng = wave.getDataRange()
+        numPoints = dataRng[1] - dataRng[0]
+        interval = wave.ui.fftInt.value()
+        shift = wave.ui.fftShift.value()
+        bw = wave.ui.bwBox.value()
+        detrendMode = wave.ui.detrendCheck.isChecked()
+        fftParam = (interval, shift, bw)
+        try:
+            vecDstrs = wave.getVarInfo()
+        except Exception:
+            vecDstrs = None
+
+        if wave.checkParameters(interval, shift, bw, numPoints):
+            wave_calc = wait_for_lastcalc(wave)
+            if not wave_calc:
+                QtWidgets.QMessageBox.warning(self, "Mask",
+                    "Dynamic Wave Analysis could not compute for the selected time range.")
+                return
+            times_dst, freqs_dst, grid_dst = wave_calc
 
         else:
-            from .waveanalysis import DynamicWave
-            wave = DynamicWave(self.window)
+            # Large selection: chunked compute using wave.calcGrid(...)
+            max_cols = getattr(wave, 'maxTimeColumns', 4000)
+            n_cols_total = max(1, (numPoints - interval) // max(shift, 1) + 1)
 
-            wave_func = self.ui.waveFunc.currentText() if hasattr(self.ui, 'waveFunc') else None
-            if not wave_func:
-                wave_func = 'Power Spectra Trace'
+            grids   = []
+            t_edges = []
+            freqs_ref = None
 
-            state['plotType'] = wave_func
-            wave.loadState(state)
-            wave.update()
+            start_idx = dataRng[0]
+            remaining = n_cols_total
+            while remaining > 0:
+                nwin = min(max_cols, remaining)
+                end_idx = start_idx + interval + (nwin - 1) * shift
+                end_idx = min(end_idx, dataRng[1])
 
-            times_dst, freqs_dst, grid_dst = wave.lastCalc
-            nF, nT = grid_dst.shape
+                if vecDstrs is None:
+                    grid, freqs, times_edges = wave.calcGrid(wave_func, (start_idx, end_idx), fftParam)
+                else:
+                    grid, freqs, times_edges = wave.calcGrid(wave_func, (start_idx, end_idx), fftParam, vecDstrs, detrendMode)
 
-            remapped = self._remap_mask_to(alpha_mask_src, freqs_src, times_src,
-                                        freqs_dst, times_dst, (nF, nT))
+                if freqs_ref is None:
+                    freqs_ref = freqs
+                else:
+                    if len(freqs_ref) != len(freqs):
+                        raise RuntimeError("Frequency axis changed between chunks.")
 
-            mt = MaskTool(wave, wave_func if wave_func else 'Wave')
-            mt._overrideMask = remapped
-            mt.update()
-            mt.show()
+                grids.append(grid)
+                if not t_edges:
+                    t_edges = list(times_edges)
+                else:
+                    t_edges.extend(list(times_edges)[1:])
+
+                start_idx = start_idx + nwin * shift
+                remaining -= nwin
+                QtWidgets.QApplication.processEvents(QtCore.QEventLoop.AllEvents, 1)
+
+            grid_dst  = np.concatenate(grids, axis=1)
+            freqs_dst = freqs_ref
+            times_dst = np.asarray(t_edges)
+
+            wave.lastCalc = (times_dst, freqs_dst, grid_dst)
+
+        remapped = self._remap_mask_to(alpha_mask_src, freqs_src, times_src, freqs_dst, times_dst)
+
+        mt = MaskTool(wave, wave_func)
+        mt._overrideMask = remapped
+        mt.update()
+        mt.show()
 
     
     def _to_numeric_1d(self, arr):
@@ -621,41 +764,15 @@ class MaskTool(QtWidgets.QFrame):
         np.clip(idx, 0, n - 1, out=idx)
         return idx
 
-    def _remap_mask_to(self, mask_src, freqs_src, times_src, freqs_dst, times_dst, grid_shape):
-        """
-        Remap boolean mask from (freqs_src, times_src) → (freqs_dst, times_dst)
-        using nearest-neighbor on each axis. Returns mask with EXACT shape `grid_shape`.
-        """
-        nF, nT = int(grid_shape[0]), int(grid_shape[1])
-
-        # Build index maps into mask
-        f_idx = self._index_map_nn(freqs_src, np.asarray(freqs_dst)[:nF])
-        t_idx = self._index_map_nn(times_src, np.asarray(times_dst)[:nT])
-
+    def _remap_mask_to(self, mask_src, freqs_src, times_src, freqs_dst, times_dst):
+        t_idx = np.clip(np.searchsorted(times_src, times_dst) - 1, 0, len(times_src)-1)
+        f_idx = np.clip(np.searchsorted(freqs_src, freqs_dst),      0, len(freqs_src)-1)
         m = np.asarray(mask_src, dtype=bool)
-
         if m.ndim != 2:
-            raise ValueError("mask_src must be 2D")
-        if m.shape != (len(freqs_src), len(times_src)) and m.shape == (len(times_src), len(freqs_src)):
+            raise ValueError("mask must be 2D")
+        if m.shape == (len(times_src), len(freqs_src)):
             m = m.T
+        f_idx = np.clip(f_idx, 0, m.shape[0]-1)
+        t_idx = np.clip(t_idx, 0, m.shape[1]-1)
+        return m[np.ix_(f_idx, t_idx)]
 
-        f_idx = np.clip(f_idx, 0, m.shape[0] - 1)
-        t_idx = np.clip(t_idx, 0, m.shape[1] - 1)
-
-        remap = m[np.ix_(f_idx, t_idx)]
-
-        if remap.shape[1] != nT:
-            if remap.shape[1] > nT:
-                remap = remap[:, :nT]
-            else:
-                pad = np.repeat(remap[:, [-1]], nT - remap.shape[1], axis=1)
-                remap = np.concatenate([remap, pad], axis=1)
-        if remap.shape[0] != nF:
-            if remap.shape[0] > nF:
-                remap = remap[:nF, :]
-            else:
-                pad = np.repeat(remap[[-1], :], nF - remap.shape[0], axis=0)
-                remap = np.concatenate([remap, pad], axis=0)
-
-        assert remap.shape == (nF, nT), f"Remap shape {remap.shape} != {nF,nT}"
-        return remap
