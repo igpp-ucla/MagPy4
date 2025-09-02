@@ -90,7 +90,7 @@ def get_cdf_datas(cdf, labels, time_len, exclude_keys=[], clip=None):
         dims = info.Dim_Sizes
         attrs = cdf.varattsget(label)
 
-        if 'DISPLAY_TYPE' in attrs and 'spectrogram' == attrs['DISPLAY_TYPE'].lower():
+        if 'DISPLAY_TYPE' in attrs and 'spectogram' == attrs['DISPLAY_TYPE'].lower():
             continue
 
         # Skip non-time-series data
