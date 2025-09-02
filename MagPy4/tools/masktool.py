@@ -791,13 +791,6 @@ class MaskTool(QtWidgets.QFrame):
         remapped = m[np.ix_(fi, ti)]
         return remapped
 
-    def _infer_fft_from_src_rows(self, n_freq_rows: int):
-        if n_freq_rows <= 0:
-            return None
-        N_est = max(16, int(2 * n_freq_rows))
-        pow2 = 1 << int(round(np.log2(N_est)))
-        return pow2
-
     def _compute_sync(self, tool, timeout_ms=180_000):
         """
         Force a synchronous compute for dynamic tools:
