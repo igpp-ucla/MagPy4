@@ -508,7 +508,7 @@ class MaskTool(QtWidgets.QFrame):
         # Get the lower bound for the frequencies and generate the plot
         # from the grid values and mask info
         freqs = self.extendFreqs(freqs)
-        plt.createPlot(freqs, grid, times, colorRng, logColorScale, maskInfo=maskInfo)
+        plt.createPlot(freqs, grid, times, colorRng, logColorScale, maskInfo=maskInfo, logY=logScale)
 
         return plt
     
