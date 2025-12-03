@@ -58,6 +58,9 @@ jobs:
         pip3 install wheel
         pip3 install requests
 
+    - name: Install NSIS
+      run: choco install nsis -y
+
     - name: Extract build scripts
       run: move build/* .
       
