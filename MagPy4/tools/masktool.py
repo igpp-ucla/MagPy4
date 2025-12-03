@@ -650,6 +650,17 @@ class MaskTool(QtWidgets.QFrame):
         except Exception:
             pass
 
+        # make wave compute the same quantity picked in the mask tool
+        if hasattr(self.ui, "waveFunc"):
+            sel_wave = self.ui.waveFunc.currentText()
+            try:
+                wave.ui.waveParam.setCurrentText(sel_wave)
+            except Exception:
+                pass
+        else:
+            sel_wave = "Power Spectra Trace"
+
+
         nF_src = int(len(f_src))
         fft_guess = infer_fft_from_src_rows(nF_src)
         a, b = wave.getDataRange()
@@ -689,10 +700,16 @@ class MaskTool(QtWidgets.QFrame):
             while remaining > 0:
                 nwin = min(max_cols, remaining)
                 end_idx = min(start_idx + interval + (nwin - 1) * shift, b)
+                plot_type = sel_wave
+                vec_dstrs = wave.getVarInfo()
                 grid, freqs, times_edges = wave.calcGrid(
-                    self.ui.waveFunc.currentText() if hasattr(self.ui, 'waveFunc') else 'Power Spectra Trace',
-                    (start_idx, end_idx), fftParam, None, detrend
+                    plot_type,
+                    (start_idx, end_idx),
+                    fftParam,
+                    vec_dstrs,
+                    detrend
                 )
+
                 if f_ref is None:
                     f_ref = freqs
                 elif len(f_ref) != len(freqs):
@@ -714,7 +731,7 @@ class MaskTool(QtWidgets.QFrame):
 
         remapped = self._remap_mask_to(m_src, f_src, t_src, wave.lastCalc[1], wave.lastCalc[0])
 
-        mt = MaskTool(wave, self.ui.waveFunc.currentText() if hasattr(self.ui, 'waveFunc') else 'Wave')
+        mt = MaskTool(wave, sel_wave if hasattr(self.ui, 'waveFunc') else 'Wave')
         mt._overrideMask = remapped
         mt.update()
         mt.show()
