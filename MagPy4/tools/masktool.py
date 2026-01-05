@@ -371,7 +371,6 @@ class MaskTool(QtWidgets.QFrame):
         spec = plt.getSpecData()[0]
         gradLegend = plt.getGradLegend(logMode=spec.log_color_scale())
         gradLegend.setRange(spec.get_gradient(), spec.get_value_range())
-        # gradLegend.setBarWidth(38)
         gradLegend.setLabel(legendLbl)
 
         # Set custom gradient legend tick spacing
@@ -414,8 +413,6 @@ class MaskTool(QtWidgets.QFrame):
         gradLegend.setLegendMask(intervals, maskColor)
 
         plt.setTitle(title, size='14pt')
-        # dynamic time axis label
-        # plt.getAxis('bottom').setLabel()
         plt.getAxis('left').setLabel(axisLbl)
         plt.getAxis('top').setStyle(showValues=False)
         plt.getAxis('right').setStyle(showValues=False)
@@ -436,11 +433,8 @@ class MaskTool(QtWidgets.QFrame):
         # Time info
         timeInfo = self.tool.getTimeInfoLbl((times[0], times[-1]))
 
+        # Mirror dynamic analysis layout. Clear grid and setup plot grid.
         self.ui.glw.clear()
-        # self.ui.glw.addItem(plt, 0, 0, 1, 1)
-        # self.ui.glw.addItem(gradLegend, 0, 1, 1, 1)
-        # self.ui.glw.addItem(legendLbl, 0, 2, 1, 1)
-        # self.ui.glw.addItem(timeInfo, 1, 0, 1, 3)
         sp = QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
         pltGrd = PlotGridObject(self.window)
         pltGrd.setSizePolicy(sp)
