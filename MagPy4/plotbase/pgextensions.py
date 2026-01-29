@@ -1,8 +1,11 @@
 
-from PyQt5 import QtGui, QtCore, QtWidgets
+from PyQt5 import QtGui, QtCore, QtWidgets, QtPrintSupport
 import pyqtgraph as pg
 from fflib import ff_time
 import functools
+import os
+import tempfile
+import subprocess
 
 # Label item placed at top
 class RegionLabel(pg.InfLineLabel):
@@ -372,10 +375,10 @@ class PDFExporter(pyqtgraph.exporters.Exporter):
         # Orientation option
         self.params = Parameter(name='params', type='group', children=[
             {'name':'Orientation: ', 'type':'list', 
-                'values': ['Portrait', 'Landscape']
+                'limits': ['Portrait', 'Landscape'], 'value': 'Portrait'
             },
             {'name':'Aspect Ratio: ', 'type':'list', 
-                'values':['Original', '4x6', '5x7', '8x10']
+                'limits':['Original', '4x6', '5x7', '8x10'], 'value': 'Original'
             }
         ])
 
@@ -397,11 +400,11 @@ class PDFExporter(pyqtgraph.exporters.Exporter):
         # Enable clipping for main plot grid if its in the scene
         mainGrid = None
         sceneItems = self.getScene().items()
-        from .MagPy4UI import MainPlotGrid
-        for si in sceneItems:
-            if isinstance(si, MainPlotGrid):
-                mainGrid = si
-                mainGrid.enablePDFClipping(True)
+        # from .MagPy4UI import MainPlotGrid
+        # for si in sceneItems:
+        #     if isinstance(si, MainPlotGrid):
+        #         mainGrid = si
+        #         mainGrid.enablePDFClipping(True)
 
         # Set page orientation if user selected 'Landscape' mode
         horzLt = self.params['Orientation: '] == 'Landscape'
@@ -450,7 +453,10 @@ class PDFExporter(pyqtgraph.exporters.Exporter):
             # Item resizing + color plot preparations
             for item in self.getScene().items():
                 if hasattr(item, 'resizeEvent'):
-                    item.resizeEvent(None)
+                    try:
+                        item.resizeEvent(None)
+                    except Exception as e:
+                        continue
 
             for item in self.getScene().items():
                 if hasattr(item, 'prepareForExport'):
@@ -497,6 +503,8 @@ class PDFExporter(pyqtgraph.exporters.Exporter):
         view = self.getScene().getViewWidget()
         widget = view.centralWidget
         return widget
+
+# TO-DO: Look into adding postscript/eps exporter
 
 # Add PDF exporter to list of exporters
 PDFExporter.register()
