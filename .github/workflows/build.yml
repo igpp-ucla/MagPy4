@@ -11,22 +11,44 @@ jobs:
         python-version: [3.8]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       name: Checkout repository
+      with:
+        fetch-depth: 0
+        ref: ${{ github.ref }}
 
     - name: Set up Python ${{ matrix.python-version}}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-        
-    - name: Checkout temporary copy of MagPy
-      uses: actions/checkout@v2
-      with:
-        path: 'mp2'
 
-    - name: Create create requirements.txt
+    - name: Create pip_wheels directory
+      run: mkdir pip_wheels
+
+    - name: Create MagPy wheel
+      run: pip3 wheel . -w pip_wheels
+  
+    - name: Clone fflib
+      uses: actions/checkout@v3
+      with:
+        repository: igpp-ucla/fflib
+        ref: v2.0.1
+        token : ${{ secrets.GITHUB_TOKEN }} # `GitHub_PAT` is a secret that contains your PAT
+        path: fflib
+        fetch-depth: 0
+
+    - name: Create fflib wheel
+      run: pip3 wheel fflib/ -w pip_wheels
+
+    - name: Install fflib wheel
+      run: pip3 install --no-index --find-links=pip_wheels fflib==2.0.1
+
+    # - name: Create cdflib wheel
+    #   run: pip3 wheel cdflib -w pip_wheels
+
+    - name: Create requirements.txt
       run: |
-        pip3 install --use-feature=in-tree-build ./mp2
+        pip3 install .
         echo 'y' | pip3 uninstall MagPy4
         pip3 freeze > requirements.txt
 
@@ -36,31 +58,22 @@ jobs:
         pip3 install wheel
         pip3 install requests
 
+    - name: Install NSIS
+      run: choco install nsis -y
+
     - name: Extract build scripts
       run: move build/* .
       
     - name: Copy over files needed for tkinter
       run: |
-        mkdir lib
-        mkdir pynsist_pkgs
+        if (-not (Test-Path lib)) {
+          New-Item -ItemType Directory lib
+        }
+        if (-not (Test-Path pynsist_pkgs)) {
+          New-Item -ItemType Directory pynsist_pkgs
+        }
         python pynsist_helper.py
         ls pynsist_pkgs
-
-    - name: Create pip_wheels directory
-      run: mkdir pip_wheels
-
-    - name: Clone fflib
-      uses: actions/checkout@v2
-      with:
-        repository: igpp-ucla/fflib
-        token : ${{ secrets.GITHUB_TOKEN }} # `GitHub_PAT` is a secret that contains your PAT
-        path: fflib
-
-    - name: Create fflib wheel
-      run: pip3 wheel fflib/ -w pip_wheels
-
-    - name: Create cdflib wheel
-      run: pip3 wheel cdflib -w pip_wheels
 
     - name: Create installer.cfg
       run: python config.py
@@ -81,4 +94,3 @@ jobs:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: .\build\nsis\${{ env.installer_path }}
         asset_name: ${{ env.installer_name }}
-        asset_content_type: application/vnd.microsoft.portable-executable

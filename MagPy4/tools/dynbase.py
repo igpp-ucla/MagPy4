@@ -535,29 +535,59 @@ class ColorBar(pg.GraphicsWidget):
         self.gradient = gradient
         self.setMaximumWidth(50)
         self.setMinimumWidth(30)
+        self._mask_overlay = None
 
     def setGradient(self, gradient):
         self.gradient = gradient
+
+    def setMaskOverlay(self, intervals01, color):
+        """intervals01: list of (f0, f1) with 0=bottom,1=top in the bar’s rect."""
+        if intervals01 and len(intervals01) > 0:
+            normed = []
+            for lo, hi in intervals01:
+                a = max(0.0, min(1.0, float(lo)))
+                b = max(0.0, min(1.0, float(hi)))
+                if a > b:
+                    a, b = b, a
+                if b > a:
+                    normed.append((a, b))
+            self._mask_overlay = (normed, color)
+        else:
+            self._mask_overlay = None
+        self.update()
+
+    def clearMaskOverlay(self):
+        self._mask_overlay = None
+        self.update()
 
     def getGradient(self):
         return self.gradient
 
     def paint(self, p, opt, widget):
-        ''' Fill the bounding rect w/ current gradient '''
-        pg.GraphicsWidget.paint(self, p, opt,widget)
-        # Get paint rect and pen
+        ''' Fill the bounding rect w/ current gradient and then overlay mask bands. '''
+        pg.GraphicsWidget.paint(self, p, opt, widget)
+
         rect = self.boundingRect()
         pen = pg.mkPen((0, 0, 0))
         pen.setJoinStyle(QtCore.Qt.MiterJoin)
 
-        # Set gradient bounds
+        # Draw gradient
         self.gradient.setStart(0, rect.bottom())
         self.gradient.setFinalStop(0, rect.top())
-
-        # Draw gradient
         p.setPen(pen)
         p.setBrush(self.gradient)
         p.drawRect(rect)
+
+        if self._mask_overlay is not None:
+            intervals01, color = self._mask_overlay
+            p.setPen(pg.mkPen(color))
+            p.setBrush(pg.mkBrush(color))
+            h = rect.height()
+            for f0, f1 in intervals01:
+                y_top = rect.bottom() - f1 * h
+                y_bot = rect.bottom() - f0 * h
+                band = QtCore.QRectF(rect.left(), y_top, rect.width(), y_bot - y_top)
+                p.drawRect(band)
 
 class GradLegend(pg.GraphicsLayout):
     def __init__(self, parent=None, *args, **kwargs):
@@ -664,6 +694,39 @@ class GradLegend(pg.GraphicsLayout):
                 # Bring previous editor to front
                 self.editor.raise_()
             self.editor.show()
+            
+    def setLegendMask(self, valueIntervals, color):
+        """
+        valueIntervals: list of (v0, v1) in the SAME units as self.getValueRange()
+                        (i.e., already log10 if the color scale is log).
+        color: QtGui.QColor or (r,g,b)
+        """
+        if isinstance(color, tuple):
+            color = QtGui.QColor(*color)
+
+        vmin, vmax = self.getValueRange()
+        if vmin is None or vmax is None or vmin == vmax:
+            self.colorBar.clearMaskOverlay()
+            return
+
+        # Map value -> fractional position in [0,1]
+        span = float(vmax - vmin)
+        intervals01 = []
+        for a, b in (valueIntervals or []):
+            if a is None and b is None:
+                continue
+            lo = vmin if a is None else max(vmin, min(vmax, float(a)))
+            hi = vmax if b is None else max(vmin, min(vmax, float(b)))
+            if lo == hi:
+                continue
+            f0 = (lo - vmin) / span
+            f1 = (hi - vmin) / span
+            intervals01.append((f0, f1))
+
+        if intervals01:
+            self.colorBar.setMaskOverlay(intervals01, color)
+        else:
+            self.colorBar.clearMaskOverlay()
 
 class DynamicAnalysisTool():
     fftBins = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 
@@ -1481,7 +1544,10 @@ class SpecData():
                 y_bins = np.vstack([y_bins, bottom_row])
 
             if len(x_bins) == len(self.grid[0]):
-                x_end = x_bins[-1] + (x_bins[-2] - x_bins[-1])
+                # forward step in whatever direction time runs
+                step = x_bins[-1] - x_bins[-2]
+                # extrapolate one more edge
+                x_end = x_bins[-1] + step
                 x_bins = np.hstack([x_bins, x_end])
 
         return y_bins, x_bins

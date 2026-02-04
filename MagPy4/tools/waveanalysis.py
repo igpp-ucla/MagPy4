@@ -739,6 +739,7 @@ class DynamicWave(QtWidgets.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.ui = DynamicWaveUI()
         self.window = window
         self.wasClosed = False
+        self.preWindow = None
 
         # Multiprocessing parameters
         try:
@@ -799,6 +800,16 @@ class DynamicWave(QtWidgets.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.ui.maskBtn.clicked.connect(self.openMaskTool)
         self.ui.addBtn.clicked.connect(self.addToMain)
 
+    def closePreSelectWin(self):
+        """Close the (optional) pre-select window if it exists."""
+        wnd = getattr(self, 'preWindow', None)
+        if wnd is not None:
+            try:
+                wnd.close()
+            except Exception:
+                pass
+        self.preWindow = None
+    
     def closeEvent(self, ev):
         self.close()
         self.closeLineTool()
@@ -827,9 +838,10 @@ class DynamicWave(QtWidgets.QFrame, DynamicWaveUI, DynamicAnalysisTool):
         self.ui.waveParam.setCurrentText(pltType)
 
     def setUserSelections(self):
-        if self.preWindow:
-            # Set UI's values to match those in the preselect window & close it
-            plotType, vectorDstrs, scaling, bw = self.preWindow.getParams()
+        """If a pre-select window was used, copy its selections into the UI and close it."""
+        wnd = getattr(self, 'preWindow', None)
+        if wnd:
+            plotType, vectorDstrs, scaling, bw = wnd.getParams()
             self.ui.waveParam.setCurrentText(plotType)
             self.ui.scaleModeBox.setCurrentText(scaling)
             self.ui.bwBox.setValue(bw)
@@ -911,7 +923,8 @@ class DynamicWave(QtWidgets.QFrame, DynamicWaveUI, DynamicAnalysisTool):
             gradLblStrs.append('['+units+']')
 
         # Build gradient legend's stacked label and rotate if necessary
-        angle = 90 if plotType in self.plotGroups['Ellipticity'] else 0
+        # angle = 90 if plotType in self.plotGroups['Ellipticity'] else 0
+        angle = 270
         legendLbl = StackedAxisLabel(gradLblStrs, angle=angle)
         legendLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
         return title, axisLbl, legendLbl

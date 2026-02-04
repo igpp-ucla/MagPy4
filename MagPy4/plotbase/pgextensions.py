@@ -1,8 +1,13 @@
 
-from PyQt5 import QtGui, QtCore, QtWidgets
+from PyQt5 import QtGui, QtCore, QtWidgets, QtPrintSupport
 import pyqtgraph as pg
 from fflib import ff_time
 import functools
+import os
+import tempfile
+import subprocess
+import shutil
+import sys
 
 # Label item placed at top
 class RegionLabel(pg.InfLineLabel):
@@ -362,6 +367,81 @@ def vbMenu_UpdateState(self):
 
 from pyqtgraph.parametertree import Parameter
 import pyqtgraph.exporters
+
+def _render_scene_to_pdf(exporter, fileName, orientation_value, aspect_value):
+    """
+    Reuses the SAME rendering steps as PDFExporter.export, but parameterized so
+    PSExporter can render a temporary PDF then convert it.
+    """
+    pdfFile = QtGui.QPdfWriter(fileName)
+
+    # Set orientation
+    horzLt = (orientation_value == 'Landscape')
+    if horzLt:
+        pdfFile.setPageOrientation(QtGui.QPageLayout.Landscape)
+
+    # DPI / target rec
+    res = QtWidgets.QDesktopWidget().logicalDpiX()
+    pdfFile.setResolution(res)
+
+    pageLt = pdfFile.pageLayout()
+    targetRect = pageLt.paintRectPixels(res)
+    targetRect = QtCore.QRectF(targetRect)
+    margins = QtCore.QMarginsF(pageLt.marginsPixels(res))
+    targetRect.moveTopLeft(QtCore.QPointF(0, 0))
+    targetRect = targetRect.marginsRemoved(margins)
+
+    oldSource = exporter.getSourceRect()
+
+    widget = None
+    if aspect_value != 'Original':
+        hzAspect, vtAspect = [float(v) for v in aspect_value.split('x')]
+        if horzLt:
+            hzAspect, vtAspect = vtAspect, hzAspect
+
+        widget = exporter.getCentralWidget()
+        oldSource = widget.boundingRect()
+
+        scaledRect = exporter.getScaledRect(hzAspect, vtAspect)
+        widget.resize(scaledRect.width(), scaledRect.height())
+
+        sourceRect = widget.boundingRect()
+        tr = widget.viewTransform()
+        sourceRect = tr.mapRect(sourceRect)
+
+        # Item resizing + color plot preparations
+        for item in exporter.getScene().items():
+            if hasattr(item, 'resizeEvent'):
+                try:
+                    item.resizeEvent(None)
+                except Exception:
+                    pass
+
+        for item in exporter.getScene().items():
+            if hasattr(item, 'prepareForExport'):
+                item.prepareForExport()
+    else:
+        sourceRect = oldSource
+
+    exporter.getScene().update()
+
+    painter = QtGui.QPainter(pdfFile)
+    try:
+        exporter.setExportMode(True, {'painter': painter})
+        exporter.getScene().render(painter, targetRect, QtCore.QRectF(sourceRect))
+    finally:
+        exporter.setExportMode(False)
+    painter.end()
+
+    # Return view/widget to original size
+    if widget:
+        widget.resize(oldSource.width(), oldSource.height())
+
+    # Reset color plots
+    for item in exporter.getScene().items():
+        if hasattr(item, 'resetAfterExport'):
+            item.resetAfterExport()
+
 class PDFExporter(pyqtgraph.exporters.Exporter):
     Name = "PDF Document"
     allowCopy = False
@@ -372,10 +452,10 @@ class PDFExporter(pyqtgraph.exporters.Exporter):
         # Orientation option
         self.params = Parameter(name='params', type='group', children=[
             {'name':'Orientation: ', 'type':'list', 
-                'values': ['Portrait', 'Landscape']
+                'limits': ['Portrait', 'Landscape'], 'value': 'Portrait'
             },
             {'name':'Aspect Ratio: ', 'type':'list', 
-                'values':['Original', '4x6', '5x7', '8x10']
+                'limits':['Original', '4x6', '5x7', '8x10'], 'value': 'Original'
             }
         ])
 
@@ -391,99 +471,13 @@ class PDFExporter(pyqtgraph.exporters.Exporter):
         if '.pdf' not in fileName:
             fileName = f"{fileName}.pdf"
 
-        # Initialize PDF Writer paint device
-        self.pdfFile = QtGui.QPdfWriter(fileName)
+        _render_scene_to_pdf(
+            exporter=self,
+            fileName=fileName,
+            orientation_value=self.params['Orientation: '],
+            aspect_value=self.params['Aspect Ratio: '],
+        )
 
-        # Enable clipping for main plot grid if its in the scene
-        mainGrid = None
-        sceneItems = self.getScene().items()
-        from .MagPy4UI import MainPlotGrid
-        for si in sceneItems:
-            if isinstance(si, MainPlotGrid):
-                mainGrid = si
-                mainGrid.enablePDFClipping(True)
-
-        # Set page orientation if user selected 'Landscape' mode
-        horzLt = self.params['Orientation: '] == 'Landscape'
-        if horzLt:
-            self.pdfFile.setPageOrientation(QtGui.QPageLayout.Landscape)
-
-        # Get the device resolution and set resolution for the PDF Writer
-        res = QtWidgets.QDesktopWidget().logicalDpiX()
-        self.pdfFile.setResolution(res)
-
-        # Get the paintRect for the page in pixels
-        pageLt = self.pdfFile.pageLayout()
-        targetRect = pageLt.paintRectPixels(res)
-
-        ## Map to QRectF and remove margins
-        targetRect = QtCore.QRectF(targetRect)
-        margins = QtCore.QMarginsF(pageLt.marginsPixels(res))
-        targetRect.moveTopLeft(QtCore.QPointF(0, 0))
-        targetRect = targetRect.marginsRemoved(margins)
-
-        # Get the source rect
-        oldSource = self.getSourceRect()
-
-        # Get aspect ratio and apply it to image
-        aspect = self.params['Aspect Ratio: ']
-        widget = None
-        if aspect != 'Original':
-            # Map the aspect ratio to width and height in inches
-            hzAspect, vtAspect = [float(v) for v in aspect.split('x')]
-            if horzLt: # Flip if horizontal layout
-                hzAspect, vtAspect = vtAspect, hzAspect
-
-            # Get the central widget for the view
-            widget = self.getCentralWidget()
-            oldSource = widget.boundingRect()
-
-            # Resize the layout to given scale ratio
-            scaledRect = self.getScaledRect(hzAspect, vtAspect)
-            widget.resize(scaledRect.width(), scaledRect.height())
-
-            # Get new source rect from layout's bounding rect
-            sourceRect = widget.boundingRect()
-            tr = widget.viewTransform()
-            sourceRect = tr.mapRect(sourceRect)
-
-            # Item resizing + color plot preparations
-            for item in self.getScene().items():
-                if hasattr(item, 'resizeEvent'):
-                    item.resizeEvent(None)
-
-            for item in self.getScene().items():
-                if hasattr(item, 'prepareForExport'):
-                    item.prepareForExport()
-
-        else:
-            # Default source rect if no aspect ratio is applied
-            sourceRect = oldSource
-
-        # Get view and resize according to aspect ratio
-        self.getScene().update()
-
-        # Start painter and render scene
-        painter = QtGui.QPainter(self.pdfFile)
-        try:
-            self.setExportMode(True, {'painter': painter})
-            self.getScene().render(painter, targetRect, QtCore.QRectF(sourceRect))
-        finally:
-            self.setExportMode(False)
-        painter.end()
-
-        # Disable clipping for main plot grid if in scene
-        if mainGrid:
-            mainGrid.enablePDFClipping(False)
-
-        # Return view/widget to original size
-        if widget:
-            widget.resize(oldSource.width(), oldSource.height())
-
-        # Reset color plots
-        for item in self.getScene().items():
-            if hasattr(item, 'resetAfterExport'):
-                item.resetAfterExport()
 
     def getScaledRect(self, width, height):
         # Returns a rect w/ width = width in inches, height = height in inches
@@ -498,5 +492,100 @@ class PDFExporter(pyqtgraph.exporters.Exporter):
         widget = view.centralWidget
         return widget
 
-# Add PDF exporter to list of exporters
+def _find_pdftops_exe() -> str:
+    exe_name = "pdftops.exe" if os.name == "nt" else "pdftops"
+
+    here = os.path.abspath(os.path.dirname(__file__))
+    magpy_root = os.path.abspath(os.path.join(here, "..", ".."))
+
+    cand = os.path.join(magpy_root, "poppler", "bin", exe_name)
+    if os.path.exists(cand):
+        return cand
+    cand = os.path.join(magpy_root, "poppler", exe_name)
+    if os.path.exists(cand):
+        return cand
+
+    raise FileNotFoundError(
+        "Could not find Poppler 'pdftops'. Put it in MagPy4/poppler/bin."
+    )
+
+
+class PSExporter(pyqtgraph.exporters.Exporter):
+    Name = "PostScript/EPS Document"
+    allowCopy = False
+
+    def __init__(self, item):
+        pyqtgraph.exporters.Exporter.__init__(self, item)
+
+        self.params = Parameter(name='params', type='group', children=[
+            {'name': 'Format: ', 'type': 'list', 'limits': ['PS', 'EPS'], 'value': 'EPS'},
+            {'name': 'PS Level: ', 'type': 'list', 'limits': ['Level 2', 'Level 3'], 'value': 'Level 3'},
+            {'name':'Orientation: ', 'type':'list',
+                'limits': ['Portrait', 'Landscape'], 'value': 'Portrait'
+            },
+            {'name':'Aspect Ratio: ', 'type':'list',
+                'limits':['Original', '4x6', '5x7', '8x10'], 'value': 'Original'
+            },
+        ])
+
+    def parameters(self):
+        return self.params
+
+    def export(self, fileName=None, toBytes=False, copy=False):
+        if fileName is None and not toBytes and not copy:
+            filter = ["*." + self.params['Format: '].lower()]
+            self.fileSaveDialog(filter=filter)
+            return
+
+        output_is_eps = (self.params['Format: '] == 'EPS') or fileName.lower().endswith('.eps')
+
+        # Render a temporary PDF using PDFExporter
+        tmp_pdf = None
+        try:
+            fd, tmp_pdf = tempfile.mkstemp(suffix=".pdf")
+            os.close(fd)
+
+            pdf_exporter = PDFExporter(self.item)
+
+            pdf_exporter.params['Orientation: '] = self.params['Orientation: ']
+            pdf_exporter.params['Aspect Ratio: '] = self.params['Aspect Ratio: ']
+
+            pdf_exporter.export(tmp_pdf, toBytes=False, copy=copy)
+
+            # Convert PDF to PS/EPS with pdftops
+            pdftops_exe = _find_pdftops_exe()
+
+            args = [pdftops_exe]
+            if output_is_eps:
+                args.append("-eps")
+
+            level = self.params['PS Level: ']
+            if level == "Level 2":
+                args.append("-level2")
+            else:
+                args.append("-level3")
+
+            args.extend([tmp_pdf, fileName])
+
+            proc = subprocess.run(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    "pdftops failed.\n"
+                    f"Command: {' '.join(args)}\n"
+                    f"stderr:\n{proc.stderr.decode(errors='replace')}"
+                )
+
+        finally:
+            if tmp_pdf and os.path.exists(tmp_pdf):
+                try:
+                    os.remove(tmp_pdf)
+                except OSError:
+                    pass
+
 PDFExporter.register()
+PSExporter.register()

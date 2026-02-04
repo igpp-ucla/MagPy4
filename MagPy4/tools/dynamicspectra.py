@@ -481,7 +481,7 @@ class DynamicSpectra(QtWidgets.QFrame, DynamicSpectraUI, DynamicAnalysisTool):
     def getLabels(self, dstr, logScale):
         title = 'Dynamic Spectra Analysis ' + '(' + dstr + ')'
         axisLbl = 'Frequency (Hz)'
-        legendLbl = StackedAxisLabel(['Power', '(nT^2/Hz)'], angle=0)
+        legendLbl = StackedAxisLabel(['Power', '(nT^2/Hz)'], angle=270)
         legendLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
         return title, axisLbl, legendLbl
 
@@ -869,7 +869,7 @@ class DynamicCohPha(QtWidgets.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         legendStrs = ['Angle', '[Degrees]']
         if cohMode:
             legendStrs = [plotType]
-        legendLbl = StackedAxisLabel(legendStrs, angle=0)
+        legendLbl = StackedAxisLabel(legendStrs, angle=270)
         legendLbl.setSizePolicy(QSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred))
 
         return title, axisLbl, legendLbl
@@ -879,7 +879,6 @@ class DynamicCohPha(QtWidgets.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         varA, varB = varPair
 
         cohLst, phaLst = [], []
-        timeSeries = []
 
         # Get data to be used in calculations
         dstrs = [(dstr, self.window.currentEdit) for dstr in varPair]
@@ -888,45 +887,35 @@ class DynamicCohPha(QtWidgets.QFrame, DynamicCohPhaUI, DynamicAnalysisTool):
         # Prepend filler data so data indices are mapped
         # correctly
         pre = np.zeros(dsI)
-        data = {key : np.insert(data[key], 0, pre) for key in data}
+        data = {key: np.insert(data[key], 0, pre) for key in data}
         times = np.insert(times, 0, pre)
 
-        # Compute grid
-        minIndex, maxIndex = dsI, deI
-        startIndex, endIndex = minIndex, minIndex + interval
-        while endIndex <= maxIndex:
-            # Save start time
-            timeSeries.append(times[startIndex])
+        sel_times = times[dsI:deI]
+        sel_data  = np.vstack([data[dstrs[0]], data[dstrs[1]]])[:, dsI:deI]
 
-            # Calculate ffts and coh/pha
-            N = endIndex - startIndex
+        # This returns: time_edges (len = #segments + 1), and a list of 2×interval segments
+        time_edges, segs = self.splitDataSegments(sel_times, sel_data, interval, shiftAmt, onedim=False)
+        # segs[k].shape == (2, interval)
 
-            # Clip to data selection
-            data1 = data[dstrs[0]][startIndex:endIndex]
-            data2 = data[dstrs[1]][startIndex:endIndex]
-
-            # Detrend if necessary
+        # Compute coherency/phase window-by-window
+        for seg in segs:
+            d1, d2 = seg[0], seg[1]
             if detrend:
-                data1 = signal.detrend(data1)
-                data2 = signal.detrend(data2)
-
-            # Calculate fft
-            coh, pha = SpectraCalc.calc_coh_pha(np.vstack([data1, data2]), bw, res)
+                d1 = signal.detrend(d1)
+                d2 = signal.detrend(d2)
+            coh, pha = SpectraCalc.calc_coh_pha(seg, bw, res)
             cohLst.append(coh)
             phaLst.append(pha)
 
-            # Move to next interval
-            startIndex += shiftAmt
-            endIndex = startIndex + interval
-        timeSeries.append(times[startIndex]) # Add bounding end time
-        timeSeries = np.array(timeSeries)
-
-        # Transpose here to turn fft result rows into per-time columns
+        # Assemble grids (freq × time) and freqs
         cohGrid = np.array(cohLst).T
         phaGrid = np.array(phaLst).T
-        freqs = SpectraCalc.calc_freq(bw, N, res)
+        freqs = SpectraCalc.calc_freq(bw, interval, res)
 
-        return (cohGrid, phaGrid), freqs, timeSeries
+        assert cohGrid.shape[1] == len(time_edges) - 1, f"coh width {cohGrid.shape[1]} vs edges {len(time_edges)-1}"
+        assert phaGrid.shape[1] == len(time_edges) - 1, f"pha width {phaGrid.shape[1]} vs edges {len(time_edges)-1}"
+
+        return (cohGrid, phaGrid), freqs, np.asarray(time_edges)
 
     def generatePlots(self, grids, freqs, times, logScaling):
         freqs = self.extendFreqs(freqs, logScaling)

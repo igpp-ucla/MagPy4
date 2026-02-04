@@ -428,6 +428,26 @@ class MagPyPlotItem(pg.PlotItem):
         for spec in specs:
             self.removeItem(spec)
 
+    def createPlot(self, freq, grid, times, colorRng, logColorScale, maskInfo, logY):
+        ''' Creates spectrogram plot from grid data and mask info '''
+        self.clear_specs()
+        from ..tools.dynbase import SpecData
+        
+        specData = SpecData(freq, times, grid, color_rng=colorRng, log_color=logColorScale, mask_info=maskInfo)
+        specData = SpecData(freq, times, grid, color_rng=colorRng, log_color=logColorScale, mask_info=maskInfo, log_y=logY)
+
+        # Load spectrogram into plot
+        grid_obj, legend, lgnd_lbl = self.load_color_plot(specData, showLabel=True)
+        return (grid_obj, legend, lgnd_lbl)
+
+    def getGradLegend(self, logMode=False):
+        from ..tools.dynbase import SpectraLegend
+        legend = SpectraLegend(offsets=(0, 0))
+        legend.setPlot(self)
+        legend.enableMenu(True)
+        legend.setLogMode(logMode)
+        return legend
+
     def load_color_plot(self, specData, winFrame=None, showLabel=True):
         ''' Loads spectrogram from specData object '''
         from ..tools.dynbase import SpectraGridItem

@@ -17,7 +17,7 @@ setuptools.setup(
 	description='Magnetic Field Analysis Program',
 	long_description=long_description,
 	url='https://github.com/igpp-ucla/MagPy4',
-	install_requires=['fflib @ git+https://github.com/igpp-ucla/fflib.git@2.0.0',
+	install_requires=['fflib @ git+https://github.com/igpp-ucla/fflib.git@v2.0.1',
 		'numpy>=1.15.0', 'scipy>=1.1.0', 'pyqtgraph',
 		'PyQt5', 'cdflib', 'PyQtWebEngine',
 		'requests', 'python-dateutil', 'matplotlib',
