@@ -24,7 +24,7 @@ class HelpWindowUI(object):
         html = Path(htmlPath).read_text()
 
         cssPath = os.path.join(rsrc_dir, 'help', 'help.css')
-        cssPath = os.path.join()
+        # cssPath = os.path.join()
         self.view = QWebEngineView()
         self.view.setHtml(html, QtCore.QUrl.fromLocalFile(cssPath))
 
