@@ -78,6 +78,37 @@ jobs:
     - name: Create installer.cfg
       run: python config.py
 
+    - name: Download Poppler (pdftops) and stage for installer
+      shell: pwsh
+      run: |
+        $ver = "25.12.0-0"
+        $zip = "Release-$ver.zip"
+        $url = "https://github.com/oschwartz10612/poppler-windows/releases/download/v$ver/$zip"
+
+        Write-Host "Downloading $url"
+        Invoke-WebRequest -Uri $url -OutFile $zip
+
+        Write-Host "Extracting $zip"
+        Expand-Archive -Path $zip -DestinationPath poppler_zip -Force
+
+        $popplerRoot = Get-ChildItem poppler_zip | Where-Object { $_.PSIsContainer } | Select-Object -First 1
+        $bin = Join-Path $popplerRoot.FullName "Library\bin"
+
+        if (-not (Test-Path $bin)) {
+          throw "Poppler bin folder not found at: $bin"
+        }
+
+        New-Item -ItemType Directory -Force -Path "poppler\bin" | Out-Null
+        Copy-Item "$bin\*" "poppler\bin\" -Recurse -Force
+
+        # confirm pdftops.exe is present
+        if (-not (Test-Path "poppler\bin\pdftops.exe")) {
+          throw "pdftops.exe not found after staging"
+        }
+
+        Write-Host "Poppler staged at poppler\bin"
+        Get-ChildItem "poppler\bin" | Select-Object -First 10 | Format-Table -AutoSize
+
     - name: Build executable
       run: pynsist installer.cfg
       
