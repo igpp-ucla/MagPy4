@@ -11,7 +11,7 @@ version = 3.8.6
 packages =
     tkinter
     _tkinter
-files = 
+files =
     lib
     poppler > poppler
 pypi_wheels =
