@@ -12,8 +12,7 @@ packages =
     tkinter
     _tkinter
 files =
-    lib
-    poppler > poppler
+{files_block}
 pypi_wheels =
 {pypi_wheels_block}
 extra_wheel_sources =
@@ -37,11 +36,13 @@ def main():
 
     pypi_wheels_block = "\n".join(f"    {req}" for req in reqs)
 
+    files_block = "\n".join(f"    {file}" for file in ['lib', 'poppler > poppler'])
+
     cfg = config_template.format(
         version=version,
-        pypi_wheels_block=pypi_wheels_block
+        pypi_wheels_block=pypi_wheels_block,
+        files_block=files_block
     )
-    print(cfg)
     with open('installer.cfg', 'w') as f:
         f.write(cfg)
 
