@@ -75,7 +75,7 @@ jobs:
         python pynsist_helper.py
         ls pynsist_pkgs
 
-    - name: Download Poppler (pdftops) and stage for installer
+    - name: Install Poppler and stage for installer
       shell: pwsh
       run: |
         $ver = "25.12.0-0"

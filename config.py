@@ -41,6 +41,7 @@ def main():
         version=version,
         pypi_wheels_block=pypi_wheels_block
     )
+    print(cfg)
     with open('installer.cfg', 'w') as f:
         f.write(cfg)
 
