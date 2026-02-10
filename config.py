@@ -13,7 +13,7 @@ packages =
     _tkinter
 files =
     lib
-    poppler > poppler
+    poppler
 pypi_wheels =
 {pypi_wheels_block}
 extra_wheel_sources =
