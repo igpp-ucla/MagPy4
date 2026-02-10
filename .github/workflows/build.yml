@@ -123,6 +123,13 @@ jobs:
         $lines[($start-1)..($end-2)] | ForEach-Object { $_ }
         Write-Host "=========================================="
 
+    - name: Verify Poppler folder exists
+      shell: pwsh
+      run: |
+        Write-Host "CWD:" (Get-Location)
+        if (!(Test-Path "poppler")) { throw "poppler folder missing" }
+        if (!(Test-Path "poppler\bin\pdftops.exe")) { throw "pdftops.exe missing" }
+        Get-ChildItem "poppler\bin" | Select-Object -First 20 | Format-Table -AutoSize
 
     - name: Build executable
       run: pynsist installer.cfg
