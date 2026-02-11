@@ -11,9 +11,7 @@ version = 3.8.6
 packages =
     tkinter
     _tkinter
-files = 
-    lib
-    poppler > poppler
+files = poppler > $INSTDIR\pkgs
 pypi_wheels =
 {pypi_wheels_block}
 extra_wheel_sources =

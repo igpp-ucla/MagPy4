@@ -75,10 +75,7 @@ jobs:
         python pynsist_helper.py
         ls pynsist_pkgs
 
-    - name: Create installer.cfg
-      run: python config.py
-
-    - name: Download Poppler (pdftops) and stage for installer
+    - name: Install Poppler and stage for installer
       shell: pwsh
       run: |
         $ver = "25.12.0-0"
@@ -108,6 +105,9 @@ jobs:
 
         Write-Host "Poppler staged at poppler\bin"
         Get-ChildItem "poppler\bin" | Select-Object -First 10 | Format-Table -AutoSize
+
+    - name: Create installer.cfg
+      run: python config.py
 
     - name: Build executable
       run: pynsist installer.cfg
