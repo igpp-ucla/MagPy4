@@ -109,28 +109,6 @@ jobs:
     - name: Create installer.cfg
       run: python config.py
 
-    # debugging step to check installer.cfg content
-    - name: Show [Include] section from installer.cfg
-      shell: pwsh
-      run: |
-        Write-Host "===== installer.cfg [Include] section ====="
-        $lines = Get-Content installer.cfg
-        $start = ($lines | Select-String -Pattern '^\[Include\]$').LineNumber
-        if (-not $start) { throw "No [Include] section found in installer.cfg" }
-        $start = $start[0]
-        $end = ($lines | Select-String -Pattern '^\[' | Where-Object { $_.LineNumber -gt $start } | Select-Object -First 1).LineNumber
-        if (-not $end) { $end = $lines.Count + 1 }
-        $lines[($start-1)..($end-2)] | ForEach-Object { $_ }
-        Write-Host "=========================================="
-
-    - name: Verify Poppler folder exists
-      shell: pwsh
-      run: |
-        Write-Host "CWD:" (Get-Location)
-        if (!(Test-Path "poppler")) { throw "poppler folder missing" }
-        if (!(Test-Path "poppler\bin\pdftops.exe")) { throw "pdftops.exe missing" }
-        Get-ChildItem "poppler\bin" | Select-Object -First 20 | Format-Table -AutoSize
-
     - name: Build executable
       run: pynsist installer.cfg
       
