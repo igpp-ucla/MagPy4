@@ -899,9 +899,17 @@ class MaskTool(QtWidgets.QFrame):
         specData = plt.getSpecData()[0]
         specCopy = copy(specData)
 
+        # TO-DO: If there are multiple spectrograms, handle naming conflicts
+        existing_names = [spec for spec in self.window.get_specdict().keys()]
         name = specCopy.get_name()
         if 'Analysis' in name:
             name = ' '.join([elem.strip(' ') for elem in name.split('Analysis')])
+        if name in existing_names:
+            base_name = name
+            suffix = 1
+            while name in existing_names:
+                name = f"{base_name} ({suffix})"
+                suffix += 1
         specCopy.set_name(name)
 
         self.window.add_spectrogram(specCopy, name)

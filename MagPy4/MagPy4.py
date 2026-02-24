@@ -2251,6 +2251,9 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         self.lastPlotStrings.append([(key, -1)])
         self.plotTracePens.append([])
         self.replotGrid()
+        
+    def get_specdict(self):
+        return self.SPECDICT
 
     def plot_added(self):
         # Updates to grid after plot added
@@ -2487,8 +2490,8 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # Generate a default new filename
         if '.' in FID.name:
-            basename, extension = FID.name.split('.')
-            defaultName = f'{basename}_new.{extension}'
+            parts = FID.name.rsplit('.', 1)
+            defaultName = f'{parts[0]}_new.{parts[1]}'
         else:
             defaultName = FID.name + '_new'
 
