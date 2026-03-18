@@ -1019,7 +1019,7 @@ class DynamicAnalysisTool():
             fd.write(lbl + str(val) + '\n')
 
         # Get SCET row string
-        timeRowStr = ('{:<15}'.format('Freq\SCET'))
+        timeRowStr = ('{:<15}'.format('Freq\\SCET'))
         for t in times[:-1]:
             timeRowStr += fmtStr(t)
         timeRowStr += '\n'

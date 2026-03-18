@@ -133,6 +133,17 @@ class MaskToolUI(BaseLayout):
         # Mask properties layout
         maskPropLt = self.setupMaskSettingsLt()
 
+        launched_from_dyn_coh = (
+            plotType == 'Coherence' and
+            hasattr(plotTool, 'ui') and
+            hasattr(plotTool.ui, 'boxA') and
+            hasattr(plotTool.ui, 'boxB')
+        )
+        if launched_from_dyn_coh:
+            applyCohMask = self.setupCohMaskApply(plotTool, plotType, waveNames)
+        else:
+            applyCohMask = None
+        
         # Update button
         self.updateBtn = QtWidgets.QPushButton(' Plot ')
         
@@ -141,7 +152,11 @@ class MaskToolUI(BaseLayout):
             self.addBtn = plotTool.getAddBtn()
             self.addBtn.setEnabled(False)
         
-        widgets = [groupFrame, maskPropLt, self.updateBtn]
+        if applyCohMask is None:
+            widgets = [groupFrame, maskPropLt, self.updateBtn]
+        else:
+            widgets = [groupFrame, maskPropLt, applyCohMask, self.updateBtn]
+        
         if self.addBtn is not None:
             widgets.append(self.addBtn)
 
@@ -152,47 +167,11 @@ class MaskToolUI(BaseLayout):
         settingsLt.setAlignment(self.updateBtn, QtCore.Qt.AlignBottom)
         if self.addBtn is not None:
             settingsLt.setAlignment(self.addBtn, QtCore.Qt.AlignBottom)
-
-        launched_from_dyn_coh = (
-            plotType == 'Coherence' and
-            hasattr(plotTool, 'ui') and
-            hasattr(plotTool.ui, 'boxA') and
-            hasattr(plotTool.ui, 'boxB')
-        )
         
         row = 0
         layout.addLayout(settingsLt, row, 0, 1, 2, QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
         layout.setRowStretch(row, 0)
         row += 1
-        
-        if launched_from_dyn_coh:
-            # Apply coherence mask to other plots section
-            self.applyRow = QtWidgets.QHBoxLayout()
-            self.applyRowLbl = QtWidgets.QLabel('Apply coherence mask to:')
-            self.applyTarget = QtWidgets.QComboBox()
-            self.applyTarget.addItems(['—', 'Dynamic Spectra', 'Dynamic Wave Analysis'])
-
-            self.waveFunc = QtWidgets.QComboBox()
-            self.waveFunc.setVisible(False)
-            if waveNames:
-                self.waveFunc.addItems(list(waveNames))
-
-            def _toggle_wave(txt):
-                self.waveFunc.setVisible(txt == 'Dynamic Wave Analysis')
-            self.applyTarget.currentTextChanged.connect(_toggle_wave)
-
-            self.applyBtn = QtWidgets.QPushButton('Plot masked')
-            self.applyBtn.setEnabled(False)
-            
-            self.applyRow.addWidget(self.applyRowLbl)
-            self.applyRow.addWidget(self.applyTarget, 1)
-            self.applyRow.addWidget(self.waveFunc, 2)
-            self.applyRow.addWidget(self.applyBtn)
-
-            # Coherence mask only
-            layout.addLayout(self.applyRow, 1, 0, 1, 2, QtCore.Qt.AlignLeft)
-            layout.setRowStretch(row, 0)
-            row += 1
 
         # Plot graphics grid
         self.glw = self.getGraphicsGrid()
@@ -249,6 +228,42 @@ class MaskToolUI(BaseLayout):
         layout.addWidget(self.outlineCheck, 1, 0, 1, 1)
         layout.addWidget(self.filterCheck, 0, 1, 1, 1)
         layout.addWidget(sigmaFrm, 1, 1, 1, 1)
+
+        return frame
+
+    def setupCohMaskApply(self, plotTool, plotType, waveNames):
+        frame = QtWidgets.QGroupBox('Apply Coherence Mask to Other Plots')
+        frame.resize(100, 50)
+        layout = QtWidgets.QGridLayout()
+        layout.setHorizontalSpacing(10)
+
+        wrapLt = QtWidgets.QVBoxLayout(frame)
+        wrapLt.addLayout(layout)
+        wrapLt.setAlignment(QtCore.Qt.AlignTop)
+        
+        self.applyRow = QtWidgets.QHBoxLayout()
+        self.applyRowLbl = QtWidgets.QLabel('Apply to:')
+        self.applyTarget = QtWidgets.QComboBox()
+        self.applyTarget.addItems(['—', 'Dynamic Spectra', 'Dynamic Wave Analysis'])
+
+        self.waveFunc = QtWidgets.QComboBox()
+        self.waveFunc.setVisible(False)
+        if waveNames:
+            self.waveFunc.addItems(list(waveNames))
+
+        def _toggle_wave(txt):
+            self.waveFunc.setVisible(txt == 'Dynamic Wave Analysis')
+        self.applyTarget.currentTextChanged.connect(_toggle_wave)
+
+        self.applyBtn = QtWidgets.QPushButton('Plot masked')
+        self.applyBtn.setEnabled(False)
+        
+
+        # Add sub layouts and widgets into frame
+        layout.addWidget(self.applyRowLbl)
+        layout.addWidget(self.applyTarget, 0, 1, 1, 1)
+        layout.addWidget(self.waveFunc, 1, 1, 1, 1)
+        layout.addWidget(self.applyBtn, 0, 2, 1, 1, QtCore.Qt.AlignRight)
 
         return frame
 
@@ -898,8 +913,7 @@ class MaskTool(QtWidgets.QFrame):
 
         specData = plt.getSpecData()[0]
         specCopy = copy(specData)
-
-        # TO-DO: If there are multiple spectrograms, handle naming conflicts
+        
         existing_names = [spec for spec in self.window.get_specdict().keys()]
         name = specCopy.get_name()
         if 'Analysis' in name:
