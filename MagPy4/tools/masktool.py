@@ -140,9 +140,9 @@ class MaskToolUI(BaseLayout):
             hasattr(plotTool.ui, 'boxB')
         )
         if launched_from_dyn_coh:
-            applyCohMask = self.setupCohMaskApply(plotTool, plotType, waveNames)
+            self.applyCohMask = self.setupCohMaskApply(plotTool, plotType, waveNames)
         else:
-            applyCohMask = None
+            self.applyCohMask = None
         
         # Update button
         self.updateBtn = QtWidgets.QPushButton(' Plot ')
@@ -152,10 +152,10 @@ class MaskToolUI(BaseLayout):
             self.addBtn = plotTool.getAddBtn()
             self.addBtn.setEnabled(False)
         
-        if applyCohMask is None:
+        if self.applyCohMask is None:
             widgets = [groupFrame, maskPropLt, self.updateBtn]
         else:
-            widgets = [groupFrame, maskPropLt, applyCohMask, self.updateBtn]
+            widgets = [groupFrame, maskPropLt, self.applyCohMask, self.updateBtn]
         
         if self.addBtn is not None:
             widgets.append(self.addBtn)
@@ -264,6 +264,8 @@ class MaskToolUI(BaseLayout):
         layout.addWidget(self.applyTarget, 0, 1, 1, 1)
         layout.addWidget(self.waveFunc, 1, 1, 1, 1)
         layout.addWidget(self.applyBtn, 0, 2, 1, 1, QtCore.Qt.AlignRight)
+        
+        frame.setVisible(False)
 
         return frame
 
@@ -289,6 +291,10 @@ class MaskToolUI(BaseLayout):
             height = min(height+750, 750)
             width = min(950, width+950)
             self.maskFrame.resize(width, height)
+    
+    def toggleMaskOptions(self):
+        if not self.applyCohMask.isVisible():
+            self.applyCohMask.setVisible(True)
 
 class MaskTool(QtWidgets.QFrame):
     def __init__(self, toolFrame, plotType, parent=None):
@@ -361,6 +367,8 @@ class MaskTool(QtWidgets.QFrame):
 
     def update(self):
         self.ui.adjustWindowSize()
+        if self.plotType == 'Coherence':
+            self.ui.toggleMaskOptions()
 
         # Get plot info and parameters from main tool
         grid, freqs, times = self.getValueGrid()
