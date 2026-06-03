@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 from bisect import bisect
 import re
@@ -21,7 +21,12 @@ def load_text_file(filename, epoch=None):
     if epoch is None:
         epoch = 'J2000'
     reader = TextFileInfo(filename)
-    data = reader.read_data(epoch)
+    try:
+        data = reader.read_data(epoch)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise
     return (data, reader)
 
 class FORMATS(Enum):
@@ -245,7 +250,45 @@ def guess_file_info(hdr, first_line):
         'time_col' : time_col
     }
 
+    # If no ISO timestamp found, check for year + doy column pair which can
+    # be used to synthesize timestamps
+    if time_col is None:
+        col_names = [c.strip().lower() for c in hdr.split(delimeter if isinstance(delimeter, str) else ',')]
+        year_col = next((i for i, n in enumerate(col_names) if n == 'year'), None)
+        doy_col = next((i for i, n in enumerate(col_names) if n in ('doy', 'day_of_year')), None)
+
+        if year_col is not None and doy_col is not None:
+            fday_col = next(
+                (i for i, n in enumerate(col_names) if n in ('fday', 'frac_day', 'fractional_day')),
+                None
+            )
+            file_info['year_col'] = year_col
+            file_info['doy_col'] = doy_col
+            file_info['fday_col'] = fday_col
+            file_info['time_col'] = doy_col
+
     return file_info
+
+
+def build_ticks_from_year_doy(data, year_col, doy_col, fday_col, epoch):
+    ''' Build time ticks from year, day-of-year, and optional fractional day columns '''
+    year_lbl = data.dtype.names[year_col]
+    doy_lbl = data.dtype.names[doy_col]
+
+    years = data[year_lbl].astype(int)
+    doys = data[doy_lbl].astype(int)
+
+    if fday_col is not None:
+        fday_lbl = data.dtype.names[fday_col]
+        fdays = data[fday_lbl].astype(float)
+    else:
+        fdays = np.zeros(len(years))
+
+    dates = [
+        datetime(int(y), 1, 1) + timedelta(days=int(d) - 1 + float(f))
+        for y, d, f in zip(years, doys, fdays)
+    ]
+    return ff_time.dates_to_ticks(dates, epoch)
 
 def map_to_dates(times):
     ''' Map timestamps to datetimes '''
@@ -261,12 +304,32 @@ def read_text_file(filename, epoch='J2000'):
     # Open file and read in header line and first record
     with open(filename, 'r') as fd:
         skip_header = 0 # Comment lines to skip
+        last_comment = None
         hdr = fd.readline()
         while skip_header < 100 and hdr.startswith('#'):
+            last_comment = hdr
             hdr = fd.readline()
             skip_header += 1
 
         line = fd.readline()
+
+    # Detect blank/degenerate header (e.g. a row of bare commas between comments
+    # and a commented-out column-name line, which is a common CSV export artifact)
+    hdr_content = hdr.strip().strip(',').strip()
+    if not hdr_content:
+        msg = (
+            f"'{filename}': the first non-comment line (line {skip_header + 1}) "
+            f"is blank. Column names could not be determined."
+        )
+        if last_comment is not None:
+            candidate = last_comment.lstrip('#').strip()
+            tokens = [t.strip() for t in candidate.split(',') if t.strip()]
+            if tokens and not all(is_float(t) for t in tokens):
+                msg += (
+                    f"\n  Hint: the column header may be on the preceding commented "
+                    f"line (starts with '#'). Found: '{candidate[:100]}'"
+                )
+        raise ValueError(msg)
 
     # Determine file type and delimeter
     pds_info = read_pds_xml_info(filename, line=line)
@@ -274,6 +337,20 @@ def read_text_file(filename, epoch='J2000'):
         file_info = guess_file_info(hdr, line)
     else:
         file_info = pds_info
+
+    # Validate that a parseable timestamp column was found
+    if file_info['time_col'] is None:
+        if ',' in hdr:
+            col_names = [t.strip() for t in hdr.split(',') if t.strip()]
+        else:
+            col_names = hdr.split()
+        raise ValueError(
+            f"'{filename}': no timestamp column found. "
+            f"The reader requires either:\n"
+            f"  - A column containing ISO 8601 datetime strings (e.g. '2023-01-15T12:30:00'), or\n"
+            f"  - Columns named 'year' and 'doy' (day-of-year) for automatic timestamp synthesis.\n"
+            f"Detected column names: {col_names[:10]}"
+        )
 
     delimeter = file_info['delimiter']
     names = True if file_info.get('label_header') is None else file_info['label_header']
@@ -321,9 +398,32 @@ def read_text_file(filename, epoch='J2000'):
     time_col = file_info['time_col']
     time_lbl = data.dtype.names[time_col]
 
-    times = data[time_lbl]
-    dates = map_to_dates(times)
-    ticks = ff_time.dates_to_ticks(dates, 'J2000')
+    if 'year_col' in file_info:
+        try:
+            ticks = build_ticks_from_year_doy(
+                data,
+                file_info['year_col'],
+                file_info['doy_col'],
+                file_info.get('fday_col'),
+                epoch
+            )
+        except Exception as e:
+            raise ValueError(
+                f"'{filename}': failed to build timestamps from year/doy columns. "
+                f"Original error: {e}"
+            ) from e
+    else:
+        times = data[time_lbl]
+        try:
+            dates = map_to_dates(times)
+        except Exception as e:
+            sample = times[0] if len(times) > 0 else '<empty>'
+            raise ValueError(
+                f"'{filename}': failed to parse timestamps in column '{time_lbl}'. "
+                f"Expected ISO 8601 format (e.g. '2023-01-15T12:30:00'). "
+                f"First value seen: '{sample}'. Original error: {e}"
+            ) from e
+        ticks = ff_time.dates_to_ticks(dates, epoch)
 
     # Create a new data table with mapped ticks
     old_type = data.dtype.descr
