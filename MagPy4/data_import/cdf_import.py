@@ -64,6 +64,7 @@ def get_cdf_datas(cdf, labels, time_len, exclude_keys=[], clip=None):
     datas = []
     data_labels = []
     data_units = []
+    data_sources = []  # CDF variable name that produced each label column
     vec_grps = {}
 
     if clip:
@@ -136,6 +137,7 @@ def get_cdf_datas(cdf, labels, time_len, exclude_keys=[], clip=None):
             # Store data, reshaping so it is in column format
             data_labels.append(data_lbl)
             data_units.append(units)
+            data_sources.append(label)
             datas.append(np.reshape(data, (len(data), 1)))
 
         # Multi-dimensional data
@@ -192,6 +194,7 @@ def get_cdf_datas(cdf, labels, time_len, exclude_keys=[], clip=None):
             datas.append(data)
             data_units.extend([units]*len(plot_labels))
             data_labels.extend(plot_labels)
+            data_sources.extend([label]*len(plot_labels))
 
             # Save vector grouping
             vec_grps[label] = [lbl.strip(' ').replace(' ', '_') for lbl in plot_labels]
@@ -206,18 +209,31 @@ def get_cdf_datas(cdf, labels, time_len, exclude_keys=[], clip=None):
 
     datas = np.hstack(datas)
 
-    # Remove duplicates for any variables that appear more than once, like Bt
+    # handle duplicate labelings
+    drop_indices = []
     for key in label_counts:
         if label_counts[key] > 1:
-            repeat_indices = []
-            # Gather repeated indices
-            for i in range(0, len(data_labels)):
-                if data_labels[i] == key:
-                    repeat_indices.append(i)
-            # Delete repeat indices from all lists
-            datas = np.delete(datas, repeat_indices[1:], axis=1)
-            data_units = np.delete(np.array(data_units), repeat_indices[1:]).tolist()
-            data_labels = np.delete(np.array(data_labels), repeat_indices[1:]).tolist()
+            repeat_indices = [i for i, lbl in enumerate(data_labels) if lbl == key]
+            sources = [data_sources[i] for i in repeat_indices]
+            if len(set(sources)) == 1:
+                # All copies are from the same source — true CDF duplicate, drop extras
+                drop_indices.extend(repeat_indices[1:])
+            else:
+                # Different sources share a label name — rename each with its source prefix
+                for i in repeat_indices:
+                    data_labels[i] = f'{data_sources[i]}_{data_labels[i]}'
+
+    if drop_indices:
+        datas = np.delete(datas, drop_indices, axis=1)
+        data_units = np.delete(np.array(data_units), drop_indices).tolist()
+        data_labels = np.delete(np.array(data_labels), drop_indices).tolist()
+        data_sources = np.delete(np.array(data_sources), drop_indices).tolist()
+
+    # Rebuild vec_grps so component labels match the (possibly renamed) data_labels
+    vec_grps = {
+        src_var: [data_labels[i] for i, s in enumerate(data_sources) if s == src_var]
+        for src_var in vec_grps
+    }
 
     return datas, data_labels, data_units, vec_grps
 
