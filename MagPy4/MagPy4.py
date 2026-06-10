@@ -7,6 +7,8 @@ handles data, plotting and main window management
 import os
 import sys
 import subprocess
+import tempfile
+import importlib.util
 import pickle
 import argparse
 import json
@@ -405,24 +407,30 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
     def checkForUpdate(self):
         result = updateMagPy()
 
-        if result.returncode == 0:
-            QtWidgets.QMessageBox.information(self, 'Update successful',
-                'MagPy4 updated successfully.\n\nRestart to use the new version.')
-        else:
+        if result.returncode != 0:
             output = (result.stderr or result.stdout).strip()
             QtWidgets.QMessageBox.critical(self, 'Update failed',
                 f'Update failed (exit code {result.returncode}).\n\n{output}')
             return
 
-        # Close and relaunch as a detached process so the original exits cleanly
+        if result.installer_launched:
+            QtWidgets.QMessageBox.information(self, 'Update started',
+                'The MagPy4 installer has been launched.\n\n'
+                'Please follow the installer prompts to complete the update.')
+        else:
+            QtWidgets.QMessageBox.information(self, 'Update successful',
+                'MagPy4 updated successfully.\n\nRestart to use the new version.')
+
         self.close()
         self.app.processEvents()
 
-        if os.name == 'nt':
-            subprocess.Popen(['MagPy4.exe'],
-                             creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
-        else:
-            subprocess.Popen(['MagPy4'])
+        # The installer handles relaunching MagPy4 itself; only relaunch here for pip builds
+        if not result.installer_launched:
+            if os.name == 'nt':
+                subprocess.Popen(['MagPy4.exe'],
+                                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
+            else:
+                subprocess.Popen(['MagPy4'])
 
     def getPenInfo(self, pen):
         color = pen.color().name()
@@ -3025,19 +3033,78 @@ def runMagPy():
     if res:
         startMagPy(files=files)
 
+class _UpdateResult:
+    ''' Uniform result object returned by updateMagPy() in all code paths. '''
+    def __init__(self, returncode, stdout='', stderr='', installer_launched=False):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        self.installer_launched = installer_launched
+
+
+def _download_and_launch_installer():
+    '''
+    For pynsist Windows builds (no pip): fetches the latest MagPy4 installer
+    exe from GitHub Releases, saves it to a temp file, and launches it.
+    The installer handles replacing the existing installation.
+    '''
+    try:
+        import requests
+    except ImportError:
+        return _UpdateResult(1, stderr='The "requests" package is required for Windows updates.')
+
+    try:
+        api_url = 'https://api.github.com/repos/igpp-ucla/MagPy4/releases/latest'
+        resp = requests.get(api_url, timeout=30)
+        resp.raise_for_status()
+        release = resp.json()
+
+        assets = release.get('assets', [])
+        exe_asset = next((a for a in assets if a['name'].lower().endswith('.exe')), None)
+
+        if exe_asset is None:
+            return _UpdateResult(1, stderr='No .exe installer found in the latest GitHub release.')
+
+        dl_resp = requests.get(exe_asset['browser_download_url'], stream=True, timeout=300)
+        dl_resp.raise_for_status()
+
+        with tempfile.NamedTemporaryFile(suffix='.exe', delete=False) as tmp:
+            for chunk in dl_resp.iter_content(chunk_size=65536):
+                tmp.write(chunk)
+            tmp_path = tmp.name
+
+        subprocess.Popen([tmp_path])
+        return _UpdateResult(0, installer_launched=True)
+
+    except Exception as e:
+        return _UpdateResult(1, stderr=str(e))
+
+
 def updateMagPy():
     '''
-    Runs command to install latest version of MagPy4 from GitHub through pip.
-    Uses sys.executable to guarantee the same Python environment that is running
-    MagPy4, and captures output so errors are not silently swallowed on Windows.
-    Returns a CompletedProcess with stdout/stderr/returncode.
+    Updates MagPy4 to the latest version.
+
+    Two strategies depending on the build type:
+    - pip-installed build: runs "pip install" from GitHub using the same
+      Python executable that is running MagPy4 (sys.executable), so the
+      correct environment is always targeted.
+    - pynsist Windows installer build (pip absent): downloads the latest
+      installer exe from GitHub Releases and launches it; the installer
+      handles replacing the existing installation.
+
+    Returns an _UpdateResult with .returncode, .stdout, .stderr, and
+    .installer_launched attributes.
     '''
+    if importlib.util.find_spec('pip') is None:
+        return _download_and_launch_installer()
+
     gitLink = 'git+https://github.com/igpp-ucla/MagPy4.git'
-    return subprocess.run(
+    proc = subprocess.run(
         [sys.executable, '-m', 'pip', 'install', gitLink],
         capture_output=True,
         text=True,
     )
+    return _UpdateResult(proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
 
 def readArgs():
     '''
