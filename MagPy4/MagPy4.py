@@ -6,6 +6,7 @@ handles data, plotting and main window management
 # python 3.6
 import os
 import sys
+import subprocess
 import pickle
 import argparse
 import json
@@ -402,14 +403,26 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
         return state_dict
 
     def checkForUpdate(self):
-        # Close window before updating
+        result = updateMagPy()
+
+        if result.returncode == 0:
+            QtWidgets.QMessageBox.information(self, 'Update successful',
+                'MagPy4 updated successfully.\n\nRestart to use the new version.')
+        else:
+            output = (result.stderr or result.stdout).strip()
+            QtWidgets.QMessageBox.critical(self, 'Update failed',
+                f'Update failed (exit code {result.returncode}).\n\n{output}')
+            return
+
+        # Close and relaunch as a detached process so the original exits cleanly
         self.close()
         self.app.processEvents()
 
-        # Run update command and then re-run program
-        updateMagPy()
-        cmd = 'MagPy4' if os.name != 'nt' else 'MagPy4.exe'
-        os.system(cmd)
+        if os.name == 'nt':
+            subprocess.Popen(['MagPy4.exe'],
+                             creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
+        else:
+            subprocess.Popen(['MagPy4'])
 
     def getPenInfo(self, pen):
         color = pen.color().name()
@@ -3014,18 +3027,17 @@ def runMagPy():
 
 def updateMagPy():
     '''
-    Runs command to install latest version of MagPy4 from GitHub through pip
+    Runs command to install latest version of MagPy4 from GitHub through pip.
+    Uses sys.executable to guarantee the same Python environment that is running
+    MagPy4, and captures output so errors are not silently swallowed on Windows.
+    Returns a CompletedProcess with stdout/stderr/returncode.
     '''
     gitLink = 'git+https://github.com/igpp-ucla/MagPy4.git'
-
-    # Determine which command to use based on system type
-    windowsMode = (os.name == 'nt')
-    updtCmd = f'pip3 install {gitLink}'
-    if windowsMode:
-        updtCmd = f'py -m pip install {gitLink}'
-
-    # Run command
-    os.system(updtCmd)
+    return subprocess.run(
+        [sys.executable, '-m', 'pip', 'install', gitLink],
+        capture_output=True,
+        text=True,
+    )
 
 def readArgs():
     '''
@@ -3041,7 +3053,10 @@ def readArgs():
 
     # Skip loading if updating MagPy; run update script instead
     if args.update:
-        updateMagPy()
+        result = updateMagPy()
+        print(result.stdout, end='')
+        if result.returncode != 0:
+            print(result.stderr, end='', file=sys.stderr)
         runFlag = False
 
     # Check if any filenames were passed
