@@ -156,6 +156,23 @@ class Vector():
         
         return Vector(vals, self.times)
 
+    # Reflected operators, used when the Vector is the right-hand operand
+    # (e.g. 2 * vec). Vector-Vector cases are handled by the left operand.
+    def __radd__(self, o):
+        return Vector(o + self.values, self.times)
+
+    def __rsub__(self, o):
+        return Vector(o - self.values, self.times)
+
+    def __rmul__(self, o):
+        return Vector(o * self.values, self.times)
+
+    def __rtruediv__(self, o):
+        return Vector(o / self.values, self.times)
+
+    def __rpow__(self, o):
+        return Vector(o ** self.values, self.times)
+
     def __neg__(self):
         vals = self.values * (-1)
         return Vector(vals, self.times)
@@ -349,19 +366,17 @@ class simpleCalc(QtWidgets.QFrame, simpleCalcUI):
             try:
                 value = eval(expr, vecDict)
                 return (None, value)
-            except:
-                error = sys.exc_info()[0]
-                return (None, f'Error: {error}')
+            except Exception as e:
+                return (None, f'Error: {type(e).__name__}: {e}')
 
-        name, expr = expr.split('=')
+        name, expr = expr.split('=', 1)
         name = name.strip(' ')
 
         # Evalute expression
         try:
             value = eval(expr, vecDict)
-        except:
-            error = sys.exc_info()[0]
-            return (None, f'Error: {error}')
+        except Exception as e:
+            return (None, f'Error: {type(e).__name__}: {e}')
     
         return (name, value)
     

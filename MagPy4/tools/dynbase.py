@@ -382,15 +382,23 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
 
     def evalExpr(self, exprStr, tO, tE):
         # Attempt to evaluate expression, print error if an exception occurs
-        from .calctool import simpleCalc
+        from .calctool import simpleCalc, Vector
         rng = (tO, tE)
         tool = simpleCalc(None, self.window)
         result = tool.evaluate(exprStr, rng)
-        if result is None or result[0] is None:
+        self.errorMsg = None
+        if result is None:
+            self.errorMsg = 'Invalid operation'
             return None
 
         # Extract values from data
         name, data = result
+        if name is None and isinstance(data, str): # Evaluation error message
+            self.errorMsg = data.replace('Error: ', '', 1)
+            return None
+        if not isinstance(data, (float, int, Vector)):
+            self.errorMsg = 'Expression must result in a variable or constant'
+            return None
 
         # Reshape constants to match times length
         if isinstance(data, (float, int)):
@@ -411,7 +419,7 @@ class SpectraLineEditor(QtWidgets.QFrame, SpectraLineEditorUI):
 
         result = self.evalExpr(exprStr, tO, tE)
         if result is None: # Return + print error message for invalid expression
-            self.ui.statusBar.showMessage('Error: Invalid operation')
+            self.ui.statusBar.showMessage(f'Error: {self.errorMsg}')
             return
 
         times, data = result

@@ -14,13 +14,13 @@ import os
 import xml.etree.ElementTree as ET
 import re
 
-def load_text_file(filename, epoch=None):
+def load_text_file(filename, epoch=None, time_config=None):
     ''' Helper function that creates a TextFileInfo object
         and returns it along with the FileData object
     '''
     if epoch is None:
         epoch = 'J2000'
-    reader = TextFileInfo(filename)
+    reader = TextFileInfo(filename, time_config=time_config)
     try:
         data = reader.read_data(epoch)
     except Exception as e:
@@ -290,6 +290,92 @@ def build_ticks_from_year_doy(data, year_col, doy_col, fday_col, epoch):
     ]
     return ff_time.dates_to_ticks(dates, epoch)
 
+def normalize_time_spec(file_info):
+    ''' Converts the auto-detected timestamp fields in file_info (as produced
+        by guess_file_info / read_pds_xml_info) into a normalized time_spec
+        dict describing how to compute time ticks. Returns {'mode': None}
+        if no timestamp could be auto-detected.
+    '''
+    if file_info.get('time_col') is None:
+        return {'mode': None}
+
+    if 'year_col' in file_info:
+        return {
+            'mode': 'year_doy',
+            'year_col': file_info['year_col'],
+            'doy_col': file_info['doy_col'],
+            'fday_col': file_info.get('fday_col'),
+        }
+
+    return {'mode': 'iso', 'col': file_info['time_col']}
+
+def parse_custom_format_dates(values, fmt, filename=''):
+    ''' Parses a list of strings into datetimes using a strptime format string '''
+    dates = []
+    for v in values:
+        v = v.strip()
+        try:
+            dates.append(datetime.strptime(v, fmt))
+        except ValueError as e:
+            raise ValueError(
+                f"'{filename}': failed to parse timestamp '{v}' using format '{fmt}'. {e}"
+            ) from e
+    return dates
+
+def compute_time_ticks(data, time_spec, epoch, filename=''):
+    ''' Computes time ticks (relative to epoch) from a structured array
+        according to the given time_spec. Returns (ticks, cols_consumed),
+        where cols_consumed are the column indices that should be replaced
+        by / collapsed into the resulting tick array.
+
+        time_spec modes:
+          {'mode': 'iso', 'col': <int>}
+          {'mode': 'year_doy', 'year_col': <int>, 'doy_col': <int>, 'fday_col': <int or None>}
+          {'mode': 'custom', 'cols': [<int>] or [<int>, <int>], 'format': <strptime format>}
+    '''
+    mode = time_spec.get('mode')
+
+    if mode == 'year_doy':
+        try:
+            ticks = build_ticks_from_year_doy(
+                data, time_spec['year_col'], time_spec['doy_col'],
+                time_spec.get('fday_col'), epoch
+            )
+        except Exception as e:
+            raise ValueError(
+                f"'{filename}': failed to build timestamps from year/doy columns. "
+                f"Original error: {e}"
+            ) from e
+        return ticks, [time_spec['doy_col']]
+
+    if mode == 'custom':
+        cols = time_spec['cols']
+        fmt = time_spec['format']
+        labels = [data.dtype.names[c] for c in cols]
+        if len(labels) == 2:
+            raw_values = [f'{a} {b}' for a, b in zip(data[labels[0]], data[labels[1]])]
+        else:
+            raw_values = list(data[labels[0]])
+        dates = parse_custom_format_dates(raw_values, fmt, filename)
+        ticks = ff_time.dates_to_ticks(dates, epoch)
+        return ticks, list(cols)
+
+    # ISO mode (default)
+    col = time_spec['col']
+    lbl = data.dtype.names[col]
+    times = data[lbl]
+    try:
+        dates = map_to_dates(times)
+    except Exception as e:
+        sample = times[0] if len(times) > 0 else '<empty>'
+        raise ValueError(
+            f"'{filename}': failed to parse timestamps in column '{lbl}'. "
+            f"Expected ISO 8601 format (e.g. '2023-01-15T12:30:00'). "
+            f"First value seen: '{sample}'. Original error: {e}"
+        ) from e
+    ticks = ff_time.dates_to_ticks(dates, epoch)
+    return ticks, [col]
+
 def map_to_dates(times):
     ''' Map timestamps to datetimes '''
     if len(times) > 0 and times[0].endswith(' '):
@@ -297,11 +383,11 @@ def map_to_dates(times):
     parser = isoparser.ISOParser('T')
     return list(map(parser.isoparse, times))
 
-def read_text_file(filename, epoch='J2000'):
-    ''' Reads in text file data (with time ticks relative to given epoch)
-        and returns the structured data and a dictionary of file info
+def _read_header_info(filename):
+    ''' Reads past comment lines to find the header row and the first data
+        record, validating that the header is not blank. Returns
+        (hdr, line, skip_header, last_comment).
     '''
-    # Open file and read in header line and first record
     with open(filename, 'r') as fd:
         skip_header = 0 # Comment lines to skip
         last_comment = None
@@ -331,6 +417,60 @@ def read_text_file(filename, epoch='J2000'):
                 )
         raise ValueError(msg)
 
+    return hdr, line, skip_header, last_comment
+
+def preview_text_file(filename, n_preview=10):
+    ''' Performs a lightweight partial read of a text file for use in import
+        preview dialogs: returns the detected columns, a handful of raw
+        sample rows, and the auto-detected time_spec, without running the
+        full numpy parse of the entire file.
+    '''
+    hdr, line, skip_header, last_comment = _read_header_info(filename)
+
+    with open(filename, 'r') as fd:
+        for _ in range(skip_header + 1):
+            fd.readline()
+        sample_lines = []
+        for raw in fd:
+            sample_lines.append(raw.rstrip('\n'))
+            if len(sample_lines) >= n_preview:
+                break
+
+    pds_info = read_pds_xml_info(filename, line=line)
+    if pds_info is None:
+        file_info = guess_file_info(hdr, line)
+    else:
+        file_info = pds_info
+
+    if file_info['type'] == FORMATS.CSV:
+        columns = [c.strip() for c in hdr.split(',')]
+        rows = [[v.strip() for v in l.split(',')] for l in sample_lines]
+    else:
+        cols = [0] + guess_cols(hdr, line) + [None]
+        spans = list(zip(cols, cols[1:]))
+        columns = [hdr[slice(a, b)].strip() for a, b in spans]
+        rows = [[l[slice(a, b)].strip() for a, b in spans] for l in sample_lines]
+
+    return {
+        'columns': columns,
+        'rows': rows,
+        'file_info': file_info,
+        'time_spec': normalize_time_spec(file_info),
+        'skip_header': skip_header,
+    }
+
+def read_text_file(filename, epoch='J2000', time_config=None):
+    ''' Reads in text file data (with time ticks relative to given epoch)
+        and returns the structured data and a dictionary of file info.
+
+        time_config, if given, overrides automatic timestamp detection and
+        must be a dict in one of these shapes:
+          {'mode': 'iso', 'col': <int>}
+          {'mode': 'year_doy', 'year_col': <int>, 'doy_col': <int>, 'fday_col': <int or None>}
+          {'mode': 'custom', 'cols': [<int>] or [<int>, <int>], 'format': <strptime format str>}
+    '''
+    hdr, line, skip_header, last_comment = _read_header_info(filename)
+
     # Determine file type and delimeter
     pds_info = read_pds_xml_info(filename, line=line)
     if pds_info is None:
@@ -338,19 +478,24 @@ def read_text_file(filename, epoch='J2000'):
     else:
         file_info = pds_info
 
-    # Validate that a parseable timestamp column was found
-    if file_info['time_col'] is None:
-        if ',' in hdr:
-            col_names = [t.strip() for t in hdr.split(',') if t.strip()]
-        else:
-            col_names = hdr.split()
-        raise ValueError(
-            f"'{filename}': no timestamp column found. "
-            f"The reader requires either:\n"
-            f"  - A column containing ISO 8601 datetime strings (e.g. '2023-01-15T12:30:00'), or\n"
-            f"  - Columns named 'year' and 'doy' (day-of-year) for automatic timestamp synthesis.\n"
-            f"Detected column names: {col_names[:10]}"
-        )
+    # Resolve how timestamps will be derived, either from an explicit
+    # user-supplied override or from auto-detection
+    if time_config is not None:
+        time_spec = time_config
+    else:
+        time_spec = normalize_time_spec(file_info)
+        if time_spec['mode'] is None:
+            if ',' in hdr:
+                col_names = [t.strip() for t in hdr.split(',') if t.strip()]
+            else:
+                col_names = hdr.split()
+            raise ValueError(
+                f"'{filename}': no timestamp column found. "
+                f"The reader requires either:\n"
+                f"  - A column containing ISO 8601 datetime strings (e.g. '2023-01-15T12:30:00'), or\n"
+                f"  - Columns named 'year' and 'doy' (day-of-year) for automatic timestamp synthesis.\n"
+                f"Detected column names: {col_names[:10]}"
+            )
 
     delimeter = file_info['delimiter']
     names = True if file_info.get('label_header') is None else file_info['label_header']
@@ -394,43 +539,26 @@ def read_text_file(filename, epoch='J2000'):
         if new_dtype != dtype:
             data = np.array(data, dtype=np.dtype(new_dtype))
 
-    # Get the time column data and convert to ticks
-    time_col = file_info['time_col']
-    time_lbl = data.dtype.names[time_col]
+    # Get time ticks according to the resolved time_spec. cols_consumed holds
+    # the column index(es) used to derive the timestamp (more than one for
+    # 'custom' mode when date/time are split across two columns) - all of
+    # them collapse into a single time column in the output.
+    ticks, cols_consumed = compute_time_ticks(data, time_spec, epoch, filename)
+    cols_sorted = sorted(cols_consumed)
+    time_col = cols_sorted[0]
+    extra_cols = cols_sorted[1:]
 
-    if 'year_col' in file_info:
-        try:
-            ticks = build_ticks_from_year_doy(
-                data,
-                file_info['year_col'],
-                file_info['doy_col'],
-                file_info.get('fday_col'),
-                epoch
-            )
-        except Exception as e:
-            raise ValueError(
-                f"'{filename}': failed to build timestamps from year/doy columns. "
-                f"Original error: {e}"
-            ) from e
-    else:
-        times = data[time_lbl]
-        try:
-            dates = map_to_dates(times)
-        except Exception as e:
-            sample = times[0] if len(times) > 0 else '<empty>'
-            raise ValueError(
-                f"'{filename}': failed to parse timestamps in column '{time_lbl}'. "
-                f"Expected ISO 8601 format (e.g. '2023-01-15T12:30:00'). "
-                f"First value seen: '{sample}'. Original error: {e}"
-            ) from e
-        ticks = ff_time.dates_to_ticks(dates, epoch)
-
-    # Create a new data table with mapped ticks
+    # Create a new data table with mapped ticks, dropping any extra
+    # columns that were consumed (e.g. a second date/time column)
     old_type = data.dtype.descr
+    time_lbl = old_type[time_col][0]
     old_type[time_col] = (time_lbl, 'f8')
+    for c in sorted(extra_cols, reverse=True):
+        del old_type[c]
     dtype = np.dtype(old_type)
 
-    data = rfn.drop_fields(data, [time_lbl])
+    drop_lbls = [data.dtype.names[c] for c in cols_sorted]
+    data = rfn.drop_fields(data, drop_lbls)
     data = rfn.structured_to_unstructured(data)
 
     table_data = np.insert(data, time_col, ticks, axis=1)
@@ -461,20 +589,21 @@ def read_text_file(filename, epoch='J2000'):
 
 class TextFileInfo():
     ''' Text File Descriptor '''
-    def __init__(self, filename):
+    def __init__(self, filename, time_config=None):
         self.name = filename
         self.filename = filename
         self.epoch = None
         self.subtype = FORMATS.TAB
         self.delimiter = None
         self.data_obj = None
-    
+        self.time_config = time_config
+
     def __repr__(self):
         return f'TextFileInfo({self.name}) at {hex(id(self))}'
 
     def read_data(self, epoch='J2000'):
         ''' Reads in the file data '''
-        data, info = read_text_file(self.filename, epoch=epoch)
+        data, info = read_text_file(self.filename, epoch=epoch, time_config=self.time_config)
         self.epoch = epoch
         self.delimiter = info.get('delimiter')
         return data

@@ -38,6 +38,7 @@ from .tools.edit import Edit
 from .tools.tracestats import TraceStats
 from .tools.helpwin import HelpWindow
 from .tools.aboutdialog import aboutdialog
+from .tools.text_import_dialog import TextImportDialog
 from .plotbase.plotbase import MagPyPlotItem
 from .tools.mmstools import PlaneNormal, Curlometer, Curvature, PressureTool, get_mms_grps
 from .tools.mms_data import MMSDataDownloader
@@ -1377,10 +1378,14 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
             else:
                 files['ascii'].append(path)
 
+        # Review/confirm the timestamp configuration for each ASCII file
+        # before queuing it for the (async) load
+        ascii_files, ascii_read_funcs = self.reviewTextFiles(files['ascii'])
+
         # Assemble list of files to load and their read functions
-        read_funcs = [load_text_file] * len(files['ascii'])
+        read_funcs = ascii_read_funcs
         read_funcs += [load_flat_file] * len(files['ff'])
-        load_files = files['ascii'] + files['ff']
+        load_files = ascii_files + files['ff']
 
         # Skip if nothing to load
         if len(load_files) == 0:
@@ -1388,6 +1393,25 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
         # Load files asynchronously
         self.loadFilesAsync(read_funcs, load_files, clear)
+
+    def reviewTextFiles(self, filenames):
+        ''' Shows the text import preview dialog for each ASCII file so the
+            user can confirm/correct how its timestamp column is identified.
+            Returns (confirmed_filenames, read_funcs) where each read_func
+            has the user's chosen time_config bound to it.
+        '''
+        confirmed_files = []
+        read_funcs = []
+        for path in filenames:
+            dialog = TextImportDialog(path, parent=self)
+            if dialog.exec_() != QtWidgets.QDialog.Accepted:
+                print(f'Skipped {os.path.basename(path)}: import cancelled')
+                continue
+            time_config = dialog.get_time_config()
+            confirmed_files.append(path)
+            read_funcs.append(functools.partial(load_text_file, time_config=time_config))
+
+        return confirmed_files, read_funcs
     
     def loadFilesAsync(self, read_funcs, files_to_read, clear, *args, **kwargs):
         ''' Creates a task to read in the files and connects it to the load dialog '''
@@ -1605,7 +1629,11 @@ class MagPy4Window(QtWidgets.QMainWindow, MagPy4UI):
 
     def openTextFile(self, filename):
         ''' Open an ASCII file '''
-        data = load_text_file(filename, self.epoch)
+        dialog = TextImportDialog(filename, parent=self)
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            print(f'Skipped {os.path.basename(filename)}: import cancelled')
+            return
+        data = load_text_file(filename, self.epoch, time_config=dialog.get_time_config())
         self.loadFileData(data)
 
     def updateAfterOpening(self):
