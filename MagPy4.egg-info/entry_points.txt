@@ -1,0 +1,4 @@
+[console_scripts]
+MagPy4 = MagPy4.MagPy4:runMagPy
+MagPy4-cli = MagPy4.cli.main:main
+MarsPy = MagPy4.MagPy4:runMarsPy

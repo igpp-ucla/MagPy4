@@ -1,0 +1,8 @@
+MagPy4
+MagPy4/alg
+MagPy4/cli
+MagPy4/cli/tools
+MagPy4/data_import
+MagPy4/plotbase
+MagPy4/qtinterface
+MagPy4/tools

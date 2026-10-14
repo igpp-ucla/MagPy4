@@ -21,8 +21,8 @@ setuptools.setup(
 		'numpy>=1.15.0', 'scipy>=1.1.0', 'pyqtgraph',
 		'PyQt5', 'cdflib', 'PyQtWebEngine',
 		'requests', 'python-dateutil', 'matplotlib',
-		'appdirs', 'geopack'],
-	packages=['MagPy4', 'MagPy4/alg', 'MagPy4/data_import', 'MagPy4/plotbase',
+		'appdirs', 'geopack==1.0.11'],
+	packages=['MagPy4', 'MagPy4/alg', 'MagPy4/cli', 'MagPy4/cli/tools', 'MagPy4/data_import', 'MagPy4/plotbase',
 		'MagPy4/qtinterface', 'MagPy4/tools'],
 	classifiers=[
 		"Programming Language :: Python :: 3",
@@ -34,6 +34,7 @@ setuptools.setup(
 		'console_scripts': [
 			'MagPy4=MagPy4.MagPy4:runMagPy',
 			'MarsPy=MagPy4.MagPy4:runMarsPy',
+			'MagPy4-cli=MagPy4.cli.main:main',
 		],
 	},
 )
