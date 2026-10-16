@@ -5,6 +5,8 @@ version = {version}
 entry_point = MagPy4.MagPy4:runMagPy
 console = true
 icon = MagPy4/rsrc/images/magPy_blue.ico
+[Command MagPy4-cli]
+entry_point = MagPy4.cli.main:run_cli
 [Python]
 version = 3.8.6
 [Include]

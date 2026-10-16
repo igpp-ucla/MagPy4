@@ -525,5 +525,11 @@ def main(argv=None, input_fn=None, stdin=None, stdout=None, stderr=None):
             print('Run with --debug for details', file=stderr)
         return 1
 
-if __name__ == '__main__':
+def run_cli():
+    ''' Entry point for launchers that ignore the return value of the target
+        function (such as the pynsist Windows installer's commands)
+    '''
     sys.exit(main())
+
+if __name__ == '__main__':
+    run_cli()

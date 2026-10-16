@@ -27,5 +27,18 @@ Magnetic Field Analysis Program. Built for IGPP at UCLA.
 ### Windows
 * Download the latest installer and run it again. This will overwrite the previous installation.
 
+## Command line
+Analysis tools can be run without the GUI with the `MagPy4-cli` command (open a new terminal after installing):
+
+    MagPy4-cli --list-tools
+    MagPy4-cli data.csv dynwave --vars Bmso --plot-type azimuth -o figure.png
+    MagPy4-cli data.csv spectra-wave --vars bx by bz --window 2026-05-15T00:10 +10m -f csv
+
+Missing options are asked for interactively. Run `MagPy4-cli -h` for details, or `MagPy4-cli FILE TOOL -h` for a tool's options.
+
+If the command is not found (for example in an older Windows install), run it through MagPy's own Python instead, adjusting the folder to where MagPy was installed:
+
+    "%LOCALAPPDATA%\Programs\MagPy\Python\python.exe" -m MagPy4.cli --list-tools
+
 ## Resources
 Additional information is available at https://igpp-ucla.github.io/magpy-docs/
