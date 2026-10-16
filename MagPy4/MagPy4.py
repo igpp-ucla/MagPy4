@@ -3115,6 +3115,20 @@ def _download_and_launch_installer():
         return _UpdateResult(1, stderr=str(e))
 
 
+def _pip_available():
+    '''
+    Returns True only if `sys.executable -m pip` actually runs. find_spec('pip')
+    is not sufficient: bundled (pynsist) interpreters can expose a pip stub or
+    extra sys.path entries that the subprocess does not see.
+    '''
+    try:
+        proc = subprocess.run([sys.executable, '-m', 'pip', '--version'],
+                              capture_output=True, text=True, timeout=30)
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
 def updateMagPy():
     '''
     Updates MagPy4 to the latest version from GitHub.
@@ -3129,7 +3143,7 @@ def updateMagPy():
     Always returns an _UpdateResult with .returncode, .stdout, .stderr, and
     .installer_launched attributes.
     '''
-    if importlib.util.find_spec('pip') is None:
+    if not _pip_available():
         return _download_and_launch_installer()
 
     gitLink = 'git+https://github.com/igpp-ucla/MagPy4.git'
