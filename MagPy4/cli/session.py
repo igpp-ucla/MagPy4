@@ -73,7 +73,7 @@ class Session():
         return 'ascii'
 
     @staticmethod
-    def _exists(path, file_type):
+    def exists(path, file_type):
         ''' Flat files are named by their base (without .ffh/.ffd) '''
         if file_type != 'flat':
             return os.path.exists(path)
@@ -103,7 +103,7 @@ class Session():
             raise SessionError(f"Unknown file type '{file_type}', expected "
                 f"one of {', '.join(self.FILE_TYPES)}")
 
-        if not self._exists(path, file_type):
+        if not self.exists(path, file_type):
             raise SessionError(f"File not found: '{path}'")
 
         try:

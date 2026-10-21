@@ -102,6 +102,18 @@ def print_tool_list(out):
         print(f'  {name.ljust(width)}  {tool.description}', file=out)
 
 # ---- Parameter handling ----
+QUOTE_PAIRS = {'"': '"', "'": "'", '“': '”', '‘': '’'}
+
+def clean_path(text):
+    ''' Cleans up a path typed or pasted by the user: removes surrounding
+        whitespace and one pair of matching quotes (Windows' "Copy as path"
+        adds double quotes) and expands a leading ~
+    '''
+    text = text.strip()
+    if len(text) >= 2 and QUOTE_PAIRS.get(text[0]) == text[-1]:
+        text = text[1:-1].strip()
+    return os.path.expanduser(text)
+
 def match_variable(session, name):
     ''' Exact match, or a unique case-insensitive match '''
     if name in session.vars:
@@ -385,7 +397,7 @@ def prompt_output_path(prompter, tool, params, fmt):
         '(end a new folder name with / to create it).')
     while True:
         answer = prompter.ask(f'Save to (Enter to {default})', allow_empty=True)
-        path = answer.strip().strip('"\'') or None
+        path = clean_path(answer) or None
         if path and os.path.isfile(path) and not prompter.confirm(
                 f"'{path}' already exists. Overwrite?"):
             continue
@@ -429,9 +441,16 @@ def run(argv, prompter, stdout, stderr):
         return 0
 
     # Open the file
-    path = args.file
-    if not path:
-        path = prompter.ask('Data file', flag='FILE')
+    if args.file:
+        path = clean_path(args.file)
+    else:
+        def parse_file(text):
+            candidate = clean_path(text)
+            kind = args.file_type or Session.detect_file_type(candidate)
+            if not Session.exists(candidate, kind):
+                raise ValueError(f'file not found: {candidate}')
+            return candidate
+        path = prompter.ask('Data file', flag='FILE', parse=parse_file)
     time_config = build_time_config(args)
     file_type = args.file_type or Session.detect_file_type(path)
     if time_config and file_type != 'ascii':
